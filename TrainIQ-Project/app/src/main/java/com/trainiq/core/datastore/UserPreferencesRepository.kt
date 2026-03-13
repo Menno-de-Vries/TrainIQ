@@ -11,6 +11,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore by preferencesDataStore(name = "trainiq_preferences")
@@ -18,6 +19,11 @@ private val Context.dataStore by preferencesDataStore(name = "trainiq_preference
 data class AiPreferences(
     val enabled: Boolean,
     val apiKey: String,
+)
+
+data class HealthConnectSyncPreferences(
+    val changesToken: String,
+    val cacheStateJson: String,
 )
 
 @Singleton
@@ -28,6 +34,8 @@ class UserPreferencesRepository @Inject constructor(
     private val themeModeKey = stringPreferencesKey("theme_mode")
     private val aiEnabledKey = booleanPreferencesKey("ai_enabled")
     private val geminiApiKey = stringPreferencesKey("gemini_api_key")
+    private val healthChangesTokenKey = stringPreferencesKey("health_connect_changes_token")
+    private val healthCacheStateKey = stringPreferencesKey("health_connect_cache_state")
 
     val streakCount: Flow<Int> = context.dataStore.data.map { preferences -> preferences[streakKey] ?: 0 }
     val themeMode: Flow<ThemeMode> = context.dataStore.data.map { preferences ->
@@ -58,5 +66,27 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun clearGeminiApiKey() {
         context.dataStore.edit { preferences -> preferences.remove(geminiApiKey) }
+    }
+
+    suspend fun getHealthConnectSyncPreferences(): HealthConnectSyncPreferences {
+        val preferences = context.dataStore.data.first()
+        return HealthConnectSyncPreferences(
+            changesToken = preferences[healthChangesTokenKey].orEmpty(),
+            cacheStateJson = preferences[healthCacheStateKey].orEmpty(),
+        )
+    }
+
+    suspend fun saveHealthConnectSyncPreferences(changesToken: String, cacheStateJson: String) {
+        context.dataStore.edit { preferences ->
+            preferences[healthChangesTokenKey] = changesToken
+            preferences[healthCacheStateKey] = cacheStateJson
+        }
+    }
+
+    suspend fun clearHealthConnectSyncPreferences() {
+        context.dataStore.edit { preferences ->
+            preferences.remove(healthChangesTokenKey)
+            preferences.remove(healthCacheStateKey)
+        }
     }
 }

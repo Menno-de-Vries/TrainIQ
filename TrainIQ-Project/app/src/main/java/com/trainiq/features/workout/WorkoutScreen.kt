@@ -32,6 +32,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import com.trainiq.core.ui.MessageCard
+import com.trainiq.core.ui.ScreenHeader
+import com.trainiq.core.ui.ShimmerCardPlaceholder
 import com.trainiq.core.util.SetLogger
 import com.trainiq.core.util.WorkoutExerciseItem
 import com.trainiq.domain.model.LoggedSet
@@ -43,9 +46,9 @@ import com.trainiq.domain.usecase.AddExerciseToDayUseCase
 import com.trainiq.domain.usecase.AddWorkoutDayUseCase
 import com.trainiq.domain.usecase.CreateRoutineUseCase
 import com.trainiq.domain.usecase.DeleteRoutineUseCase
+import com.trainiq.domain.usecase.DeleteWorkoutSessionUseCase
 import com.trainiq.domain.usecase.FinishWorkoutUseCase
 import com.trainiq.domain.usecase.GetWorkoutDayUseCase
-import com.trainiq.domain.usecase.DeleteWorkoutSessionUseCase
 import com.trainiq.domain.usecase.ObserveWorkoutOverviewUseCase
 import com.trainiq.domain.usecase.RemoveExerciseFromDayUseCase
 import com.trainiq.domain.usecase.RemoveWorkoutDayUseCase
@@ -240,20 +243,17 @@ fun WorkoutScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item { Text("Train", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
+        item { ScreenHeader(title = "Train") }
         message?.let {
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Text(it, modifier = Modifier.weight(1f))
-                        TextButton(onClick = onDismissMessage) { Text("Dismiss") }
-                    }
-                }
-            }
+            item { MessageCard(message = it, onDismiss = onDismissMessage) }
         }
+        if (overview == null) {
+            item { ShimmerCardPlaceholder(lineCount = 4) }
+            item { ShimmerCardPlaceholder(lineCount = 3) }
+            item { ShimmerCardPlaceholder(lineCount = 5) }
+            return@LazyColumn
+        }
+
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -278,7 +278,7 @@ fun WorkoutScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Active Routine", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    if (overview?.activeRoutine == null) {
+                    if (overview.activeRoutine == null) {
                         Text("No active routine yet. Create one below and mark it active.")
                     } else {
                         Text(overview.activeRoutine.name)
@@ -292,7 +292,7 @@ fun WorkoutScreen(
         }
 
         item { Text("Routines", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) }
-        if (overview?.routines.isNullOrEmpty()) {
+        if (overview.routines.isEmpty()) {
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -302,7 +302,7 @@ fun WorkoutScreen(
                 }
             }
         } else {
-            items(overview?.routines ?: emptyList(), key = { it.id }) { routine ->
+            items(overview.routines, key = { it.id }) { routine ->
                 RoutineCard(
                     routine = routine,
                     onStartWorkout = onStartWorkout,
@@ -318,10 +318,10 @@ fun WorkoutScreen(
         }
 
         item { Text("Exercise Library", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) }
-        if (overview?.exercises.isNullOrEmpty()) {
+        if (overview.exercises.isEmpty()) {
             item { Text("No exercises available yet.") }
         } else {
-            items(overview?.exercises ?: emptyList(), key = { it.id }) { exercise ->
+            items(overview.exercises, key = { it.id }) { exercise ->
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(exercise.name, fontWeight = FontWeight.SemiBold)
@@ -332,7 +332,7 @@ fun WorkoutScreen(
         }
 
         item { Text("History", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) }
-        if (overview?.history.isNullOrEmpty()) {
+        if (overview.history.isEmpty()) {
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -342,7 +342,7 @@ fun WorkoutScreen(
                 }
             }
         } else {
-            items(overview?.history ?: emptyList(), key = { it.id }) { session ->
+            items(overview.history, key = { it.id }) { session ->
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(modifier = Modifier.weight(1f)) {

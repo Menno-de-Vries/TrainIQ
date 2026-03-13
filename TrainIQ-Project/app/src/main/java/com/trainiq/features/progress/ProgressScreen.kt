@@ -27,6 +27,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import com.trainiq.core.ui.MessageCard
+import com.trainiq.core.ui.ScreenHeader
+import com.trainiq.core.ui.ShimmerCardPlaceholder
 import com.trainiq.core.util.ChartComposable
 import com.trainiq.core.util.MetricCard
 import com.trainiq.core.util.toReadableDate
@@ -115,7 +118,16 @@ fun ProgressScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item { Text("Progress", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
+        item { ScreenHeader(title = "Progress") }
+        message?.let {
+            item { MessageCard(message = it, onDismiss = onDismissMessage) }
+        }
+        if (overview == null) {
+            item { ShimmerCardPlaceholder(lineCount = 4) }
+            item { ShimmerCardPlaceholder(lineCount = 3) }
+            item { ShimmerCardPlaceholder(lineCount = 5) }
+            return@LazyColumn
+        }
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -132,21 +144,14 @@ fun ProgressScreen(
                         bodyFat = ""
                         muscleMass = ""
                     }) { Text("Save measurement") }
-                    message?.let {
-                        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                            Text(it)
-                            TextButton(onClick = onDismissMessage) { Text("Dismiss") }
-                        }
-                    }
                 }
             }
         }
-        if (overview == null || (
-                overview.weightTrend.isEmpty() &&
-                    overview.bodyFatTrend.isEmpty() &&
-                    overview.strengthTrend.isEmpty() &&
-                    overview.volumeTrend.isEmpty()
-                )
+        if (
+            overview.weightTrend.isEmpty() &&
+            overview.bodyFatTrend.isEmpty() &&
+            overview.strengthTrend.isEmpty() &&
+            overview.volumeTrend.isEmpty()
         ) {
             item {
                 MetricCard(
@@ -158,7 +163,7 @@ fun ProgressScreen(
             }
         } else {
             item {
-                MetricCard("Estimated 1RM", "${overview.estimatedOneRepMax.toInt()} kg", "Calculated with Epley formula", Modifier.fillMaxWidth())
+                MetricCard("Estimated 1RM", "${overview.estimatedOneRepMax.toInt()} kg", "Calculated from your logged sets", Modifier.fillMaxWidth())
             }
             item {
                 MetricCard("Fatigue Index", String.format("%.2f", overview.fatigueIndex), "Weekly volume versus baseline", Modifier.fillMaxWidth())

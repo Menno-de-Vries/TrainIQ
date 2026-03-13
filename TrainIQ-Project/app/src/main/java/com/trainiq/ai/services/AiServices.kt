@@ -15,6 +15,8 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
+private const val GeminiFlashModel = "gemini-2.5-flash"
+
 @Singleton
 class MealAnalysisService @Inject constructor(
     private val api: GeminiApi,
@@ -27,7 +29,7 @@ class MealAnalysisService @Inject constructor(
             val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return fallbackMealScan()
             val file = File(path)
             val response = api.generateContent(
-                model = "gemini-1.5-flash",
+                model = GeminiFlashModel,
                 apiKey = apiKey,
                 request = GeminiRequest(
                     contents = listOf(
@@ -107,7 +109,7 @@ class WorkoutDebriefService @Inject constructor(
         runCatching {
             val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return fallbackWorkoutDebrief(totalVolume, progression)
             val response = api.generateContent(
-                model = "gemini-1.5-flash",
+                model = GeminiFlashModel,
                 apiKey = apiKey,
                 request = GeminiRequest(
                     contents = listOf(
@@ -147,13 +149,17 @@ class GoalAdvisorService @Inject constructor(
         runCatching {
             val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return deterministicGoalAdvice(height, weight, bodyFat, goal)
             val response = api.generateContent(
-                model = "gemini-1.5-flash",
+                model = GeminiFlashModel,
                 apiKey = apiKey,
                 request = GeminiRequest(
                     contents = listOf(
                         GeminiRequest.Content(
                             parts = listOf(GeminiRequest.Part(text = GeminiPrompts.goalAdvisor(height, weight, bodyFat, goal))),
                         ),
+                    ),
+                    thinkingConfig = GeminiRequest.ThinkingConfig(
+                        includeThoughts = false,
+                        thinkingBudget = 1000,
                     ),
                 ),
             )
@@ -205,7 +211,7 @@ class WeeklyReportService @Inject constructor(
         runCatching {
             val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return fallbackWeeklyReport(adherence)
             val response = api.generateContent(
-                model = "gemini-1.5-flash",
+                model = GeminiFlashModel,
                 apiKey = apiKey,
                 request = GeminiRequest(
                     contents = listOf(

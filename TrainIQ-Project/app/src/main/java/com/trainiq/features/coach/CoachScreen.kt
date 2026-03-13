@@ -26,6 +26,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import com.trainiq.core.ui.MessageCard
+import com.trainiq.core.ui.ScreenHeader
+import com.trainiq.core.ui.ShimmerCardPlaceholder
 import com.trainiq.domain.model.CoachOverview
 import com.trainiq.domain.model.GoalAdvice
 import com.trainiq.domain.model.UserProfile
@@ -177,18 +180,13 @@ fun CoachScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item {
-            Text("Coach", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        }
+        item { ScreenHeader(title = "Coach") }
         message?.let {
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(it)
-                        TextButton(onClick = onDismissMessage) { Text("Dismiss") }
-                    }
-                }
-            }
+            item { MessageCard(message = it, onDismiss = onDismissMessage) }
+        }
+        if (overview == null) {
+            item { ShimmerCardPlaceholder(lineCount = 4) }
+            item { ShimmerCardPlaceholder(lineCount = 5) }
         }
         item {
             Card(modifier = Modifier.fillMaxWidth()) {

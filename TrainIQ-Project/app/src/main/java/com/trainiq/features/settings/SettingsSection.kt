@@ -5,7 +5,6 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,19 +31,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.HealthConnectClient
-import androidx.health.connect.client.PermissionController
-import androidx.health.connect.client.permission.HealthPermission
-import androidx.health.connect.client.records.StepsRecord
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.trainiq.BuildConfig
 import com.trainiq.ai.services.GoalAdvisorService
 import com.trainiq.core.datastore.AiPreferences
+import com.trainiq.core.health.HealthConnectRefreshOnResume
+import com.trainiq.core.health.rememberHealthConnectPermissionRequester
+import com.trainiq.core.ui.MessageCard
+import com.trainiq.core.ui.ScreenHeader
+import com.trainiq.core.ui.SectionCard
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.theme.ThemeMode
 import com.trainiq.data.local.TrainIqLocalStore
@@ -192,25 +190,13 @@ class SettingsViewModel @Inject constructor(
 @Composable
 fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     val aiPreferences by viewModel.aiPreferences.collectAsStateWithLifecycle()
     val profile by viewModel.profile.collectAsStateWithLifecycle()
     val healthStatus by viewModel.healthStatus.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = PermissionController.createRequestPermissionResultContract(),
-    ) { viewModel.refreshHealthConnectStatus() }
-
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.refreshHealthConnectStatus()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
+    val requestHealthPermission = rememberHealthConnectPermissionRequester(viewModel::refreshHealthConnectStatus)
+    HealthConnectRefreshOnResume(viewModel::refreshHealthConnectStatus)
 
     LaunchedEffect(Unit) {
         viewModel.refreshHealthConnectStatus()
@@ -231,13 +217,15 @@ fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
         onResetProfile = viewModel::resetProfile,
         onClearAllData = viewModel::clearAllData,
         onDismissMessage = viewModel::clearMessage,
-        onRequestHealthPermission = {
-            permissionLauncher.launch(setOf(HealthPermission.getReadPermission(StepsRecord::class)))
-        },
+        onRequestHealthPermission = requestHealthPermission,
         onRefreshHealth = viewModel::refreshHealthConnectStatus,
         onOpenHealthSettings = {
             val intent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
-            if (intent.resolveActivity(context.packageManager) != null) context.startActivity(intent)
+            if (intent.resolveActivity(context.packageManager) != null) {
+                context.startActivity(intent)
+            } else {
+                viewModel.refreshHealthConnectStatus()
+            }
         },
         onOpenHealthInstall = {
             val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata"))
@@ -291,7 +279,7 @@ fun SettingsScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item { Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
+        item { ScreenHeader(title = "Settings") }
         item {
             SectionCard(title = "Quick Status") {
                 Text("Theme: ${themeMode.name.lowercase().replaceFirstChar(Char::titlecase)}")
@@ -301,12 +289,7 @@ fun SettingsScreen(
         }
         message?.let {
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(it, modifier = Modifier.weight(1f))
-                        TextButton(onClick = onDismissMessage) { Text("Dismiss") }
-                    }
-                }
+                MessageCard(message = it, onDismiss = onDismissMessage)
             }
         }
         item {
@@ -349,11 +332,23 @@ fun SettingsScreen(
             SectionCard(title = "Health Connect") {
                 Text("Status: ${healthStatusLabel(healthStatus)}")
                 Text(healthStatus.message)
+                healthStatus.lastSyncedAt?.let {
+                    Text("Last checked: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it))}")
+                }
                 healthStatus.stepsToday?.let { steps ->
                     Text(if (steps > 0) "Today's steps available: $steps" else "Connected, but no step data was returned today yet.")
                 }
+                healthStatus.averageHeartRateBpm?.let { bpm ->
+                    Text("Average heart rate today: $bpm bpm")
+                }
+                healthStatus.latestHeartRateBpm?.let { bpm ->
+                    Text("Latest heart rate sample: $bpm bpm")
+                }
+                healthStatus.sleepMinutes?.takeIf { it > 0 }?.let { minutes ->
+                    Text("Recent sleep: ${minutes / 60}h ${minutes % 60}m across ${healthStatus.sleepSessionCount} session(s)")
+                }
                 when (healthStatus.state) {
-                    HealthConnectState.PERMISSION_REQUIRED -> Text("Grant access to let TrainIQ read your daily steps.")
+                    HealthConnectState.PERMISSION_REQUIRED -> Text("Grant access to let TrainIQ read your daily steps, heart rate, and sleep.")
                     HealthConnectState.PROVIDER_MISSING -> Text("Install or update Health Connect first, then return here and refresh.")
                     else -> Unit
                 }
@@ -388,7 +383,7 @@ fun SettingsScreen(
             SectionCard(title = "Data / Storage") {
                 Text("Storage mode: Local JSON store")
                 Text("AI key storage: local app preferences")
-                Text("Health Connect cache: no persistent cache stored")
+                Text("Health Connect cache: persisted change token plus lightweight sync snapshot")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = onClearApiKey) { Text("Clear AI key") }
                     TextButton(onClick = onClearAllData) { Text("Clear local data") }
@@ -402,16 +397,6 @@ fun SettingsScreen(
                 Text("Health Connect: ${healthStatusLabel(healthStatus)}")
                 Text("Designed as a manual-first training and nutrition MVP.")
             }
-        }
-    }
-}
-
-@Composable
-private fun SectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            content()
         }
     }
 }

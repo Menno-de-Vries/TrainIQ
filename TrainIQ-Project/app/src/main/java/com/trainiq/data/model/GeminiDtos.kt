@@ -4,6 +4,7 @@ import com.google.gson.annotations.SerializedName
 
 data class GeminiRequest(
     val contents: List<Content>,
+    @SerializedName("thinking_config") val thinkingConfig: ThinkingConfig? = null,
 ) {
     data class Content(val parts: List<Part>)
 
@@ -15,6 +16,11 @@ data class GeminiRequest(
     data class InlineData(
         @SerializedName("mime_type") val mimeType: String,
         val data: String,
+    )
+
+    data class ThinkingConfig(
+        @SerializedName("include_thoughts") val includeThoughts: Boolean,
+        @SerializedName("thinking_budget") val thinkingBudget: Int,
     )
 }
 

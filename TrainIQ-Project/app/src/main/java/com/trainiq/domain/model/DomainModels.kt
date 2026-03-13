@@ -243,12 +243,35 @@ enum class HealthConnectState {
     ERROR,
 }
 
+data class HealthConnectMetrics(
+    val stepsToday: Int,
+    val averageHeartRateBpm: Int? = null,
+    val latestHeartRateBpm: Int? = null,
+    val sleepMinutes: Long = 0L,
+    val sleepSessionCount: Int = 0,
+)
+
 data class HealthConnectStatus(
     val state: HealthConnectState,
-    val stepsToday: Int? = null,
+    val metrics: HealthConnectMetrics? = null,
     val message: String,
     val lastSyncedAt: Long? = null,
-)
+) {
+    val stepsToday: Int?
+        get() = metrics?.stepsToday
+
+    val averageHeartRateBpm: Int?
+        get() = metrics?.averageHeartRateBpm
+
+    val latestHeartRateBpm: Int?
+        get() = metrics?.latestHeartRateBpm
+
+    val sleepMinutes: Long?
+        get() = metrics?.sleepMinutes
+
+    val sleepSessionCount: Int
+        get() = metrics?.sleepSessionCount ?: 0
+}
 
 data class ChartPoint(
     val label: String,

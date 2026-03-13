@@ -2,7 +2,6 @@ package com.trainiq.features.home
 
 import android.content.Intent
 import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -11,31 +10,29 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.HealthConnectClient
-import androidx.health.connect.client.PermissionController
-import androidx.health.connect.client.permission.HealthPermission
-import androidx.health.connect.client.records.StepsRecord
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import com.trainiq.core.health.HealthConnectRefreshOnResume
+import com.trainiq.core.health.rememberHealthConnectPermissionRequester
+import com.trainiq.core.ui.ScreenHeader
+import com.trainiq.core.ui.ShimmerCardPlaceholder
 import com.trainiq.core.util.MetricCard
 import com.trainiq.core.util.ProgressCard
 import com.trainiq.domain.model.HealthConnectState
@@ -89,23 +86,12 @@ fun HomeRoute(
 ) {
     val dashboard by viewModel.dashboard.collectAsStateWithLifecycle()
     val healthConnectStatus by viewModel.healthConnectStatus.collectAsStateWithLifecycle()
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = PermissionController.createRequestPermissionResultContract(),
-    ) { viewModel.refreshHealthConnectStatus() }
+    val requestHealthPermission = rememberHealthConnectPermissionRequester(viewModel::refreshHealthConnectStatus)
 
     LaunchedEffect(Unit) {
         viewModel.refreshHealthConnectStatus()
     }
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.refreshHealthConnectStatus()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
+    HealthConnectRefreshOnResume(viewModel::refreshHealthConnectStatus)
 
     HomeScreen(
         state = dashboard,
@@ -114,9 +100,7 @@ fun HomeRoute(
         onOpenCoach = onOpenCoach,
         onOpenTrain = onOpenTrain,
         onOpenSettings = onOpenSettings,
-        onRequestHealthPermission = {
-            permissionLauncher.launch(setOf(HealthPermission.getReadPermission(StepsRecord::class)))
-        },
+        onRequestHealthPermission = requestHealthPermission,
         onRefreshHealth = viewModel::refreshHealthConnectStatus,
     )
 }
@@ -133,19 +117,23 @@ fun HomeScreen(
     onRefreshHealth: () -> Unit,
 ) {
     val context = LocalContext.current
+    val dashboard = state
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("TrainIQ", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                TextButton(onClick = onOpenSettings) { Text("Settings") }
-            }
+        item { ScreenHeader(title = "TrainIQ", actionIcon = Icons.Default.Settings, actionContentDescription = "Open settings", onActionClick = onOpenSettings) }
+
+        if (dashboard == null) {
+            item { ShimmerCardPlaceholder(lineCount = 4) }
+            item { ShimmerCardPlaceholder(lineCount = 3) }
+            item { ShimmerCardPlaceholder(lineCount = 4) }
+            return@LazyColumn
         }
 
-        if (state?.profile == null) {
+        if (dashboard.profile == null) {
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -160,16 +148,16 @@ fun HomeScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                     ProgressCard(
                         title = "Calorie progress",
-                        progress = state.calorieProgress / state.calorieTarget.coerceAtLeast(1).toFloat(),
-                        current = "${state.calorieProgress} kcal",
-                        target = "${state.calorieTarget} kcal",
+                        progress = dashboard.calorieProgress / dashboard.calorieTarget.coerceAtLeast(1).toFloat(),
+                        current = "${dashboard.calorieProgress} kcal",
+                        target = "${dashboard.calorieTarget} kcal",
                         modifier = Modifier.weight(1f),
                     )
                     ProgressCard(
                         title = "Protein progress",
-                        progress = state.proteinProgress / state.proteinTarget.coerceAtLeast(1).toFloat(),
-                        current = "${state.proteinProgress} g",
-                        target = "${state.proteinTarget} g",
+                        progress = dashboard.proteinProgress / dashboard.proteinTarget.coerceAtLeast(1).toFloat(),
+                        current = "${dashboard.proteinProgress} g",
+                        target = "${dashboard.proteinTarget} g",
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -180,8 +168,8 @@ fun HomeScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 MetricCard(
                     title = "Streak",
-                    value = "${state?.streak ?: 0} days",
-                    subtitle = if ((state?.streak ?: 0) > 0) "Opeenvolgende dagen met activiteit" else "Log een training of maaltijd om te starten",
+                    value = "${dashboard.streak} days",
+                    subtitle = if (dashboard.streak > 0) "Opeenvolgende dagen met activiteit" else "Log een training of maaltijd om te starten",
                     modifier = Modifier.weight(1f),
                 )
                 MetricCard(
@@ -190,7 +178,13 @@ fun HomeScreen(
                         HealthConnectState.CONNECTED, HealthConnectState.NO_DATA -> "${healthConnectStatus.stepsToday ?: 0}"
                         else -> "Unavailable"
                     },
-                    subtitle = healthConnectStatus.message,
+                    subtitle = buildString {
+                        append(healthConnectStatus.message)
+                        healthConnectStatus.averageHeartRateBpm?.let { append(" • Avg HR $it bpm") }
+                        healthConnectStatus.sleepMinutes?.takeIf { it > 0 }?.let {
+                            append(" • Sleep ${it / 60}h ${it % 60}m")
+                        }
+                    },
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -222,13 +216,13 @@ fun HomeScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Next workout", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    if (state?.nextWorkout == null) {
+                    if (dashboard.nextWorkout == null) {
                         Text("Er is nog geen actieve routine of trainingsdag ingesteld.")
                         Button(onClick = onOpenTrain) { Text("Open Train") }
                     } else {
-                        Text(state.nextWorkout.name)
-                        Text(state.nextWorkout.exercises.joinToString { it.exercise.name }.ifBlank { "Voeg oefeningen toe aan deze dag." })
-                        Button(onClick = { onStartWorkout(state.nextWorkout.id) }) { Text("Start workout") }
+                        Text(dashboard.nextWorkout.name)
+                        Text(dashboard.nextWorkout.exercises.joinToString { it.exercise.name }.ifBlank { "Voeg oefeningen toe aan deze dag." })
+                        Button(onClick = { onStartWorkout(dashboard.nextWorkout.id) }) { Text("Start workout") }
                     }
                 }
             }
@@ -238,7 +232,7 @@ fun HomeScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Coach insight", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(state?.aiInsight ?: "Je dashboard wordt gevuld zodra je profiel, trainingen en voeding toevoegt.")
+                    Text(dashboard.aiInsight)
                 }
             }
         }
