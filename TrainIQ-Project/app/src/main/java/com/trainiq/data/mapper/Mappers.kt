@@ -17,7 +17,20 @@ import com.trainiq.domain.model.WorkoutExercisePlan
 import com.trainiq.domain.model.WorkoutRoutine
 import com.trainiq.domain.model.WorkoutSessionSummary
 
-fun UserProfileEntity.toDomain() = UserProfile(id, name, height, weight, bodyFat, activityLevel, goal)
+fun UserProfileEntity.toDomain() = UserProfile(
+    id = id,
+    name = name,
+    height = height,
+    weight = weight,
+    bodyFat = bodyFat,
+    activityLevel = activityLevel,
+    goal = goal,
+    calorieTarget = calorieTarget,
+    proteinTarget = proteinTarget,
+    carbsTarget = carbsTarget,
+    fatTarget = fatTarget,
+    trainingFocus = trainingFocus,
+)
 
 fun ExerciseEntity.toDomain() = Exercise(id, name, muscleGroup, equipment)
 

@@ -24,11 +24,6 @@ android {
         vectorDrawables.useSupportLibrary = true
         buildConfigField(
             "String",
-            "GEMINI_API_KEY",
-            "\"${providers.gradleProperty("GEMINI_API_KEY").orElse("").get()}\""
-        )
-        buildConfigField(
-            "String",
             "GEMINI_BASE_URL",
             "\"https://generativelanguage.googleapis.com/\""
         )

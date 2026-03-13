@@ -12,6 +12,11 @@ data class UserProfileEntity(
     val bodyFat: Double,
     val activityLevel: String,
     val goal: String,
+    val calorieTarget: Int,
+    val proteinTarget: Int,
+    val carbsTarget: Int,
+    val fatTarget: Int,
+    val trainingFocus: String,
 )
 
 @Entity(tableName = "workout_routines")

@@ -8,6 +8,11 @@ data class UserProfile(
     val bodyFat: Double,
     val activityLevel: String,
     val goal: String,
+    val calorieTarget: Int,
+    val proteinTarget: Int,
+    val carbsTarget: Int,
+    val fatTarget: Int,
+    val trainingFocus: String,
 )
 
 data class Exercise(
@@ -73,11 +78,12 @@ data class BodyMeasurement(
 )
 
 data class HomeDashboard(
+    val profile: UserProfile?,
     val calorieProgress: Int,
     val calorieTarget: Int,
     val proteinProgress: Int,
     val proteinTarget: Int,
-    val steps: Int,
+    val steps: Int?,
     val nextWorkout: WorkoutDay?,
     val streak: Int,
     val aiInsight: String,
@@ -102,6 +108,7 @@ data class MealScanItem(
 )
 
 data class ProgressOverview(
+    val measurements: List<BodyMeasurement>,
     val weightTrend: List<ChartPoint>,
     val bodyFatTrend: List<ChartPoint>,
     val strengthTrend: List<ChartPoint>,
@@ -114,6 +121,7 @@ data class CoachOverview(
     val weeklyReport: String,
     val trainingInsights: List<String>,
     val nutritionCoachMessage: String,
+    val profile: UserProfile?,
 )
 
 data class GoalAdvice(
@@ -136,6 +144,20 @@ data class WorkoutOverview(
     val routines: List<WorkoutRoutine>,
     val exercises: List<Exercise>,
     val history: List<WorkoutSessionSummary>,
+)
+
+enum class HealthConnectAvailability {
+    UNAVAILABLE,
+    NEEDS_INSTALL,
+    NEEDS_PERMISSION,
+    CONNECTED,
+    ERROR,
+}
+
+data class HealthConnectStatus(
+    val availability: HealthConnectAvailability,
+    val stepsToday: Int? = null,
+    val message: String,
 )
 
 data class ChartPoint(

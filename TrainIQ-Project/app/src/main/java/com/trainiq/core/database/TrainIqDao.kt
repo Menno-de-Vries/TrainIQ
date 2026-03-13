@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -29,6 +30,18 @@ interface TrainIqDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMeasurements(measurements: List<BodyMeasurementEntity>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRoutine(routine: WorkoutRoutineEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertWorkoutDay(day: WorkoutDayEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertExercise(exercise: ExerciseEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertWorkoutExercise(exercise: WorkoutExerciseEntity)
+
     @Insert
     suspend fun insertWorkoutSession(session: WorkoutSessionEntity): Long
 
@@ -37,6 +50,9 @@ interface TrainIqDao {
 
     @Insert
     suspend fun insertMeal(meal: MealEntity)
+
+    @Insert
+    suspend fun insertMeasurement(measurement: BodyMeasurementEntity)
 
     @Query("SELECT COUNT(*) FROM exercises")
     suspend fun exerciseCount(): Int
@@ -79,4 +95,55 @@ interface TrainIqDao {
 
     @Query("UPDATE workout_routines SET active = CASE WHEN id = :routineId THEN 1 ELSE 0 END")
     suspend fun setActiveRoutine(routineId: Long)
+
+    @Query("SELECT COUNT(*) FROM workout_routines")
+    suspend fun routineCount(): Int
+
+    @Query("SELECT MAX(id) FROM workout_routines")
+    suspend fun getMaxRoutineId(): Long?
+
+    @Query("SELECT MAX(id) FROM workout_days")
+    suspend fun getMaxWorkoutDayId(): Long?
+
+    @Query("SELECT MAX(id) FROM exercises")
+    suspend fun getMaxExerciseId(): Long?
+
+    @Query("SELECT MAX(id) FROM workout_exercises")
+    suspend fun getMaxWorkoutExerciseId(): Long?
+
+    @Query("DELETE FROM workout_exercises WHERE id = :workoutExerciseId")
+    suspend fun deleteWorkoutExercise(workoutExerciseId: Long)
+
+    @Query("DELETE FROM workout_exercises WHERE dayId = :dayId")
+    suspend fun deleteWorkoutExercisesForDay(dayId: Long)
+
+    @Query("DELETE FROM workout_days WHERE id = :dayId")
+    suspend fun deleteWorkoutDay(dayId: Long)
+
+    @Query("DELETE FROM workout_days WHERE routineId = :routineId")
+    suspend fun deleteWorkoutDaysForRoutine(routineId: Long)
+
+    @Query("DELETE FROM workout_routines WHERE id = :routineId")
+    suspend fun deleteRoutine(routineId: Long)
+
+    @Query("UPDATE workout_routines SET name = :name, description = :description WHERE id = :routineId")
+    suspend fun updateRoutine(routineId: Long, name: String, description: String)
+
+    @Transaction
+    suspend fun deleteWorkoutDayCascade(dayId: Long) {
+        deleteWorkoutExercisesForDay(dayId)
+        deleteWorkoutDay(dayId)
+    }
+
+    @Transaction
+    suspend fun deleteRoutineCascade(routineId: Long) {
+        observeWorkoutDaysSnapshot(routineId).forEach { day ->
+            deleteWorkoutExercisesForDay(day.id)
+        }
+        deleteWorkoutDaysForRoutine(routineId)
+        deleteRoutine(routineId)
+    }
+
+    @Query("SELECT * FROM workout_days WHERE routineId = :routineId")
+    suspend fun observeWorkoutDaysSnapshot(routineId: Long): List<WorkoutDayEntity>
 }

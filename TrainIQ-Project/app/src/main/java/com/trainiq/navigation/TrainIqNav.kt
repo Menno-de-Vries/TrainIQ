@@ -7,6 +7,7 @@ import androidx.compose.material.icons.automirrored.filled.DirectionsRun
 import androidx.compose.material.icons.filled.AutoGraph
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -28,6 +29,7 @@ import com.trainiq.features.coach.CoachRoute
 import com.trainiq.features.home.HomeRoute
 import com.trainiq.features.nutrition.NutritionRoute
 import com.trainiq.features.progress.ProgressRoute
+import com.trainiq.features.settings.SettingsRoute
 import com.trainiq.features.workout.ActiveWorkoutRoute
 import com.trainiq.features.workout.WorkoutRoute
 
@@ -37,6 +39,7 @@ sealed class Screen(val route: String, val label: String, val icon: androidx.com
     data object Nutrition : Screen("nutrition", "Nutrition", Icons.Default.Restaurant)
     data object Progress : Screen("progress", "Progress", Icons.Default.AutoGraph)
     data object Coach : Screen("coach", "Coach", Icons.Default.SmartToy)
+    data object Settings : Screen("settings", "Settings", Icons.Default.Settings)
     data object ActiveWorkout : Screen("active_workout/{dayId}", "Workout", Icons.AutoMirrored.Filled.DirectionsRun) {
         fun createRoute(dayId: Long) = "active_workout/$dayId"
     }
@@ -45,7 +48,7 @@ sealed class Screen(val route: String, val label: String, val icon: androidx.com
 @Composable
 fun TrainIqApp() {
     val navController = rememberNavController()
-    val items = listOf(Screen.Home, Screen.Train, Screen.Nutrition, Screen.Progress, Screen.Coach)
+    val items = listOf(Screen.Home, Screen.Train, Screen.Nutrition, Screen.Progress, Screen.Coach, Screen.Settings)
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
@@ -80,7 +83,11 @@ fun TrainIqApp() {
             modifier = Modifier.padding(padding),
         ) {
             composable(Screen.Home.route) {
-                HomeRoute(onStartWorkout = { dayId -> navController.navigate(Screen.ActiveWorkout.createRoute(dayId)) })
+                HomeRoute(
+                    onStartWorkout = { dayId -> navController.navigate(Screen.ActiveWorkout.createRoute(dayId)) },
+                    onOpenCoach = { navController.navigate(Screen.Coach.route) },
+                    onOpenTrain = { navController.navigate(Screen.Train.route) },
+                )
             }
             composable(Screen.Train.route) {
                 WorkoutRoute(onStartWorkout = { dayId -> navController.navigate(Screen.ActiveWorkout.createRoute(dayId)) })
@@ -88,6 +95,7 @@ fun TrainIqApp() {
             composable(Screen.Nutrition.route) { NutritionRoute() }
             composable(Screen.Progress.route) { ProgressRoute() }
             composable(Screen.Coach.route) { CoachRoute() }
+            composable(Screen.Settings.route) { SettingsRoute() }
             composable(
                 route = Screen.ActiveWorkout.route,
                 arguments = listOf(navArgument("dayId") { type = NavType.LongType }),
