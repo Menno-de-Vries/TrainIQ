@@ -2,7 +2,6 @@ package com.trainiq.data.mapper
 
 import com.trainiq.core.database.BodyMeasurementEntity
 import com.trainiq.core.database.ExerciseEntity
-import com.trainiq.core.database.MealEntity
 import com.trainiq.core.database.UserProfileEntity
 import com.trainiq.core.database.WorkoutDayEntity
 import com.trainiq.core.database.WorkoutExerciseEntity
@@ -10,7 +9,6 @@ import com.trainiq.core.database.WorkoutRoutineEntity
 import com.trainiq.core.database.WorkoutSessionEntity
 import com.trainiq.domain.model.BodyMeasurement
 import com.trainiq.domain.model.Exercise
-import com.trainiq.domain.model.Meal
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutExercisePlan
@@ -33,8 +31,6 @@ fun UserProfileEntity.toDomain() = UserProfile(
 )
 
 fun ExerciseEntity.toDomain() = Exercise(id, name, muscleGroup, equipment)
-
-fun MealEntity.toDomain() = Meal(id, date, calories, protein, carbs, fat)
 
 fun BodyMeasurementEntity.toDomain() = BodyMeasurement(id, date, weight, bodyFat, muscleMass)
 

@@ -48,7 +48,7 @@ import com.trainiq.core.datastore.AiPreferences
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.theme.ThemeMode
 import com.trainiq.data.local.TrainIqLocalStore
-import com.trainiq.domain.model.HealthConnectAvailability
+import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.usecase.GetHealthConnectStatusUseCase
@@ -81,7 +81,7 @@ class SettingsViewModel @Inject constructor(
 
     private val _healthStatus = MutableStateFlow(
         HealthConnectStatus(
-            availability = HealthConnectAvailability.UNAVAILABLE,
+            state = HealthConnectState.ERROR,
             message = "Health Connect status wordt geladen.",
         ),
     )
@@ -352,18 +352,18 @@ fun SettingsScreen(
                 healthStatus.stepsToday?.let { steps ->
                     Text(if (steps > 0) "Today's steps available: $steps" else "Connected, but no step data was returned today yet.")
                 }
-                when (healthStatus.availability) {
-                    HealthConnectAvailability.NEEDS_PERMISSION -> Text("Grant access to let TrainIQ read your daily steps.")
-                    HealthConnectAvailability.NEEDS_INSTALL -> Text("Install or update Health Connect first, then return here and refresh.")
+                when (healthStatus.state) {
+                    HealthConnectState.PERMISSION_REQUIRED -> Text("Grant access to let TrainIQ read your daily steps.")
+                    HealthConnectState.PROVIDER_MISSING -> Text("Install or update Health Connect first, then return here and refresh.")
                     else -> Unit
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    when (healthStatus.availability) {
-                        HealthConnectAvailability.NEEDS_INSTALL -> Button(onClick = onOpenHealthInstall) { Text("Install / update") }
-                        HealthConnectAvailability.NEEDS_PERMISSION -> Button(onClick = onRequestHealthPermission) { Text("Grant access") }
-                        HealthConnectAvailability.CONNECTED -> Button(onClick = onOpenHealthSettings) { Text("Open Health Connect") }
-                        HealthConnectAvailability.UNAVAILABLE -> Text("Not supported on this device.")
-                        HealthConnectAvailability.ERROR -> Text("Unable to read Health Connect right now.")
+                    when (healthStatus.state) {
+                        HealthConnectState.PROVIDER_MISSING -> Button(onClick = onOpenHealthInstall) { Text("Install / update") }
+                        HealthConnectState.PERMISSION_REQUIRED -> Button(onClick = onRequestHealthPermission) { Text("Grant access") }
+                        HealthConnectState.CONNECTED, HealthConnectState.NO_DATA -> Button(onClick = onOpenHealthSettings) { Text("Open Health Connect") }
+                        HealthConnectState.UNSUPPORTED -> Text("Not supported on this device.")
+                        HealthConnectState.ERROR -> Text("Unable to read Health Connect right now.")
                     }
                     TextButton(onClick = onRefreshHealth) { Text("Refresh") }
                 }
@@ -416,10 +416,11 @@ private fun SectionCard(title: String, content: @Composable ColumnScope.() -> Un
     }
 }
 
-private fun healthStatusLabel(status: HealthConnectStatus): String = when (status.availability) {
-    HealthConnectAvailability.UNAVAILABLE -> "Not supported"
-    HealthConnectAvailability.NEEDS_INSTALL -> "Provider not installed"
-    HealthConnectAvailability.NEEDS_PERMISSION -> "Permission required"
-    HealthConnectAvailability.CONNECTED -> if ((status.stepsToday ?: 0) > 0) "Connected" else "Connected, no step data yet"
-    HealthConnectAvailability.ERROR -> "Error"
+private fun healthStatusLabel(status: HealthConnectStatus): String = when (status.state) {
+    HealthConnectState.UNSUPPORTED -> "Not supported"
+    HealthConnectState.PROVIDER_MISSING -> "Provider missing"
+    HealthConnectState.PERMISSION_REQUIRED -> "Permission required"
+    HealthConnectState.CONNECTED -> "Connected"
+    HealthConnectState.NO_DATA -> "Connected, no data yet"
+    HealthConnectState.ERROR -> "Error"
 }

@@ -9,9 +9,26 @@ object GeminiPrompts {
         Return a concise summary, progression feedback, and a training recommendation.
     """.trimIndent()
 
-    fun mealScanner() = """
-        Identify the food items visible in this meal photo.
-        Return concise item names and estimated calories, protein, carbs, and fat.
+    fun mealScanner(userContext: String) = """
+        Analyze the meal photo and estimate visible foods.
+        User context: ${userContext.ifBlank { "None provided." }}
+        Return JSON only in this shape:
+        {
+          "items": [
+            {
+              "name": "Food name",
+              "estimatedGrams": 120,
+              "calories": 180,
+              "protein": 12,
+              "carbs": 20,
+              "fat": 6,
+              "confidence": "high|medium|low",
+              "notes": "short note"
+            }
+          ],
+          "notes": "short overall note"
+        }
+        Be conservative when uncertain. Do not include markdown fences.
     """.trimIndent()
 
     fun goalAdvisor(height: Double, weight: Double, bodyFat: Double, goal: String) = """

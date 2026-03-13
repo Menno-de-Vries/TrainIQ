@@ -1,13 +1,17 @@
 package com.trainiq.domain.repository
 
 import com.trainiq.domain.model.CoachOverview
+import com.trainiq.domain.model.FoodItem
+import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.model.GoalAdvice
 import com.trainiq.domain.model.HealthConnectStatus
 import com.trainiq.domain.model.HomeDashboard
 import com.trainiq.domain.model.LoggedSet
-import com.trainiq.domain.model.MealScanItem
+import com.trainiq.domain.model.MealAnalysisResult
+import com.trainiq.domain.model.NutritionFacts
 import com.trainiq.domain.model.NutritionOverview
 import com.trainiq.domain.model.ProgressOverview
+import com.trainiq.domain.model.Recipe
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutDebrief
@@ -45,11 +49,45 @@ interface WorkoutRepository {
 
 interface NutritionRepository {
     fun observeNutritionOverview(): Flow<NutritionOverview>
-    suspend fun analyzeMealPhoto(path: String): NutritionOverview
-    suspend fun saveScannedMeal(items: List<MealScanItem>)
-    suspend fun addMeal(calories: Int, protein: Int, carbs: Int, fat: Int)
-    suspend fun updateMeal(mealId: Long, calories: Int, protein: Int, carbs: Int, fat: Int)
+    suspend fun analyzeMealPhoto(path: String, context: String): MealAnalysisResult
+    suspend fun saveFoodItem(
+        id: Long?,
+        name: String,
+        barcode: String?,
+        caloriesPer100g: Double,
+        proteinPer100g: Double,
+        carbsPer100g: Double,
+        fatPer100g: Double,
+        sourceType: FoodSourceType,
+    ): FoodItem
+    suspend fun saveRecipe(
+        id: Long?,
+        name: String,
+        notes: String?,
+        totalCookedGrams: Double?,
+        ingredients: List<Pair<Long, Double>>,
+    ): Recipe
+    suspend fun saveMeal(
+        id: Long?,
+        name: String,
+        notes: String?,
+        items: List<MealEntryRequest>,
+    ): Long
     suspend fun deleteMeal(mealId: Long)
+    suspend fun deleteFood(foodId: Long)
+    suspend fun deleteRecipe(recipeId: Long)
+}
+
+data class MealEntryRequest(
+    val itemType: MealEntryType,
+    val referenceId: Long,
+    val gramsUsed: Double,
+    val notes: String? = null,
+)
+
+enum class MealEntryType {
+    FOOD,
+    RECIPE,
 }
 
 interface ProgressRepository {

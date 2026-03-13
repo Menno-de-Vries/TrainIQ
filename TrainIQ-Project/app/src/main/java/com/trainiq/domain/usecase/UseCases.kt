@@ -1,8 +1,9 @@
 package com.trainiq.domain.usecase
 
 import com.trainiq.domain.model.LoggedSet
-import com.trainiq.domain.model.MealScanItem
 import com.trainiq.domain.model.UserProfile
+import com.trainiq.domain.repository.MealEntryRequest
+import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.repository.CoachRepository
 import com.trainiq.domain.repository.HomeRepository
 import com.trainiq.domain.repository.NutritionRepository
@@ -81,25 +82,51 @@ class ObserveNutritionUseCase @Inject constructor(private val repository: Nutrit
 }
 
 class AnalyzeMealUseCase @Inject constructor(private val repository: NutritionRepository) {
-    suspend operator fun invoke(path: String) = repository.analyzeMealPhoto(path)
+    suspend operator fun invoke(path: String, context: String) = repository.analyzeMealPhoto(path, context)
 }
 
-class SaveScannedMealUseCase @Inject constructor(private val repository: NutritionRepository) {
-    suspend operator fun invoke(items: List<MealScanItem>) = repository.saveScannedMeal(items)
+class SaveFoodItemUseCase @Inject constructor(private val repository: NutritionRepository) {
+    suspend operator fun invoke(
+        id: Long?,
+        name: String,
+        barcode: String?,
+        caloriesPer100g: Double,
+        proteinPer100g: Double,
+        carbsPer100g: Double,
+        fatPer100g: Double,
+        sourceType: FoodSourceType,
+    ) = repository.saveFoodItem(id, name, barcode, caloriesPer100g, proteinPer100g, carbsPer100g, fatPer100g, sourceType)
 }
 
-class AddMealUseCase @Inject constructor(private val repository: NutritionRepository) {
-    suspend operator fun invoke(calories: Int, protein: Int, carbs: Int, fat: Int) =
-        repository.addMeal(calories, protein, carbs, fat)
+class SaveRecipeUseCase @Inject constructor(private val repository: NutritionRepository) {
+    suspend operator fun invoke(
+        id: Long?,
+        name: String,
+        notes: String?,
+        totalCookedGrams: Double?,
+        ingredients: List<Pair<Long, Double>>,
+    ) = repository.saveRecipe(id, name, notes, totalCookedGrams, ingredients)
 }
 
-class UpdateMealUseCase @Inject constructor(private val repository: NutritionRepository) {
-    suspend operator fun invoke(mealId: Long, calories: Int, protein: Int, carbs: Int, fat: Int) =
-        repository.updateMeal(mealId, calories, protein, carbs, fat)
+class SaveMealUseCase @Inject constructor(private val repository: NutritionRepository) {
+    suspend operator fun invoke(
+        id: Long?,
+        name: String,
+        notes: String?,
+        items: List<MealEntryRequest>,
+    ) = repository.saveMeal(id, name, notes, items)
 }
 
 class DeleteMealUseCase @Inject constructor(private val repository: NutritionRepository) {
     suspend operator fun invoke(mealId: Long) = repository.deleteMeal(mealId)
+}
+
+class DeleteFoodUseCase @Inject constructor(private val repository: NutritionRepository) {
+    suspend operator fun invoke(foodId: Long) = repository.deleteFood(foodId)
+}
+
+class DeleteRecipeUseCase @Inject constructor(private val repository: NutritionRepository) {
+    suspend operator fun invoke(recipeId: Long) = repository.deleteRecipe(recipeId)
 }
 
 class ObserveProgressUseCase @Inject constructor(private val repository: ProgressRepository) {

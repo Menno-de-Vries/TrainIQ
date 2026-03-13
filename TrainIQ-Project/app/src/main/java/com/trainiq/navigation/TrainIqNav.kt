@@ -1,6 +1,7 @@
 package com.trainiq.navigation
 
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsRun
@@ -12,11 +13,14 @@ import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavType
@@ -48,7 +52,7 @@ sealed class Screen(val route: String, val label: String, val icon: androidx.com
 @Composable
 fun TrainIqApp() {
     val navController = rememberNavController()
-    val items = listOf(Screen.Home, Screen.Train, Screen.Nutrition, Screen.Progress, Screen.Coach, Screen.Settings)
+    val items = listOf(Screen.Home, Screen.Train, Screen.Nutrition, Screen.Progress, Screen.Coach)
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
@@ -56,7 +60,10 @@ fun TrainIqApp() {
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
             if (currentDestination?.route?.startsWith("active_workout") != true) {
-                NavigationBar {
+                NavigationBar(
+                    modifier = Modifier.height(72.dp),
+                    tonalElevation = 6.dp,
+                ) {
                     items.forEach { screen ->
                         val selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true
                         NavigationBarItem(
@@ -69,8 +76,20 @@ fun TrainIqApp() {
                                     restoreState = true
                                 }
                             },
-                            icon = { Icon(screen.icon, contentDescription = screen.label) },
-                            label = { Text(screen.label) },
+                            icon = {
+                                Icon(
+                                    screen.icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.semantics { contentDescription = screen.label },
+                                )
+                            },
+                            label = null,
+                            alwaysShowLabel = false,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = androidx.compose.material3.MaterialTheme.colorScheme.onSecondaryContainer,
+                                indicatorColor = androidx.compose.material3.MaterialTheme.colorScheme.secondaryContainer,
+                                unselectedIconColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
                         )
                     }
                 }
@@ -87,6 +106,7 @@ fun TrainIqApp() {
                     onStartWorkout = { dayId -> navController.navigate(Screen.ActiveWorkout.createRoute(dayId)) },
                     onOpenCoach = { navController.navigate(Screen.Coach.route) },
                     onOpenTrain = { navController.navigate(Screen.Train.route) },
+                    onOpenSettings = { navController.navigate(Screen.Settings.route) },
                 )
             }
             composable(Screen.Train.route) {

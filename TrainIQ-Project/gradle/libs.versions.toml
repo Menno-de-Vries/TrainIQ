@@ -18,6 +18,7 @@ kotlin = "2.0.21"
 lifecycle = "2.8.7"
 material = "1.12.0"
 materialIcons = "1.7.8"
+mlkitBarcode = "17.3.0"
 navigationCompose = "2.8.7"
 okhttpLogging = "4.12.0"
 room = "2.7.0"
@@ -62,6 +63,7 @@ kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttpLogging" }
 retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "gsonConverter" }
 retrofit-converter-gson = { group = "com.squareup.retrofit2", name = "converter-gson", version.ref = "gsonConverter" }
+mlkit-barcode = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "mlkitBarcode" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

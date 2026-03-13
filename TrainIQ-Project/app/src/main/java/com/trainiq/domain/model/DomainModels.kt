@@ -60,13 +60,119 @@ data class LoggedSet(
     val rpe: Double,
 )
 
-data class Meal(
+data class NutritionFacts(
+    val calories: Double,
+    val protein: Double,
+    val carbs: Double,
+    val fat: Double,
+) {
+    operator fun plus(other: NutritionFacts): NutritionFacts = NutritionFacts(
+        calories = calories + other.calories,
+        protein = protein + other.protein,
+        carbs = carbs + other.carbs,
+        fat = fat + other.fat,
+    )
+
+    companion object {
+        val Zero = NutritionFacts(0.0, 0.0, 0.0, 0.0)
+    }
+}
+
+enum class FoodSourceType {
+    MANUAL,
+    BARCODE,
+    AI,
+    IMPORTED,
+}
+
+data class FoodItem(
     val id: Long,
-    val date: Long,
-    val calories: Int,
-    val protein: Int,
-    val carbs: Int,
-    val fat: Int,
+    val name: String,
+    val barcode: String? = null,
+    val caloriesPer100g: Double,
+    val proteinPer100g: Double,
+    val carbsPer100g: Double,
+    val fatPer100g: Double,
+    val sourceType: FoodSourceType,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+data class FoodPortion(
+    val foodId: Long,
+    val grams: Double,
+    val nutrition: NutritionFacts,
+)
+
+data class RecipeIngredient(
+    val id: Long,
+    val recipeId: Long,
+    val foodItemId: Long,
+    val foodName: String,
+    val gramsUsed: Double,
+    val nutrition: NutritionFacts,
+)
+
+data class Recipe(
+    val id: Long,
+    val name: String,
+    val notes: String? = null,
+    val ingredients: List<RecipeIngredient>,
+    val totalCookedGrams: Double? = null,
+    val totalNutrition: NutritionFacts,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+enum class LoggedMealItemType {
+    FOOD,
+    RECIPE,
+}
+
+data class LoggedMealItem(
+    val id: Long,
+    val mealId: Long,
+    val itemType: LoggedMealItemType,
+    val referenceId: Long,
+    val name: String,
+    val gramsUsed: Double,
+    val nutritionSnapshot: NutritionFacts,
+    val notes: String? = null,
+)
+
+data class LoggedMeal(
+    val id: Long,
+    val timestamp: Long,
+    val name: String,
+    val notes: String? = null,
+    val items: List<LoggedMealItem>,
+    val totalNutrition: NutritionFacts,
+)
+
+data class MealScanItem(
+    val name: String,
+    val estimatedGrams: Double,
+    val nutrition: NutritionFacts,
+    val confidence: String? = null,
+    val notes: String? = null,
+)
+
+data class MealAnalysisResult(
+    val items: List<MealScanItem>,
+    val notes: String? = null,
+    val rawResponse: String? = null,
+)
+
+data class NutritionOverview(
+    val foods: List<FoodItem>,
+    val recipes: List<Recipe>,
+    val meals: List<LoggedMeal>,
+    val todaysCalories: Double,
+    val todaysProtein: Double,
+    val todaysCarbs: Double,
+    val todaysFat: Double,
+    val todaysMeals: List<LoggedMeal>,
+    val scannedResult: MealAnalysisResult? = null,
 )
 
 data class BodyMeasurement(
@@ -87,24 +193,6 @@ data class HomeDashboard(
     val nextWorkout: WorkoutDay?,
     val streak: Int,
     val aiInsight: String,
-)
-
-data class NutritionOverview(
-    val meals: List<Meal>,
-    val todaysCalories: Int,
-    val todaysProtein: Int,
-    val todaysCarbs: Int,
-    val todaysFat: Int,
-    val recipes: List<String>,
-    val scannedItems: List<MealScanItem> = emptyList(),
-)
-
-data class MealScanItem(
-    val name: String,
-    val calories: Int,
-    val protein: Int,
-    val carbs: Int,
-    val fat: Int,
 )
 
 data class ProgressOverview(
@@ -146,18 +234,20 @@ data class WorkoutOverview(
     val history: List<WorkoutSessionSummary>,
 )
 
-enum class HealthConnectAvailability {
-    UNAVAILABLE,
-    NEEDS_INSTALL,
-    NEEDS_PERMISSION,
+enum class HealthConnectState {
+    UNSUPPORTED,
+    PROVIDER_MISSING,
+    PERMISSION_REQUIRED,
     CONNECTED,
+    NO_DATA,
     ERROR,
 }
 
 data class HealthConnectStatus(
-    val availability: HealthConnectAvailability,
+    val state: HealthConnectState,
     val stepsToday: Int? = null,
     val message: String,
+    val lastSyncedAt: Long? = null,
 )
 
 data class ChartPoint(

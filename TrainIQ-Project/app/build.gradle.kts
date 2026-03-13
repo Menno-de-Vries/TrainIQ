@@ -94,6 +94,7 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
     implementation(libs.coil.compose)
+    implementation(libs.mlkit.barcode)
 
     testImplementation(libs.junit)
 

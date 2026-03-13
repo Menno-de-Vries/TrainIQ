@@ -8,7 +8,7 @@ import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
-import com.trainiq.domain.model.HealthConnectAvailability
+import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.Instant
@@ -35,19 +35,19 @@ class HealthConnectDataSource @Inject constructor(
     suspend fun getStatus(): HealthConnectStatus {
         return when (HealthConnectClient.getSdkStatus(context)) {
             HealthConnectClient.SDK_UNAVAILABLE -> HealthConnectStatus(
-                availability = HealthConnectAvailability.UNAVAILABLE,
-                message = "Health Connect wordt op dit toestel niet ondersteund.",
+                state = HealthConnectState.UNSUPPORTED,
+                message = "Health Connect is not supported on this device.",
             )
 
             HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> HealthConnectStatus(
-                availability = HealthConnectAvailability.NEEDS_INSTALL,
-                message = "Installeer of update Health Connect om stappen te synchroniseren.",
+                state = HealthConnectState.PROVIDER_MISSING,
+                message = "Install or update Health Connect before TrainIQ can read steps.",
             )
 
             HealthConnectClient.SDK_AVAILABLE -> fetchConnectedStatus()
             else -> HealthConnectStatus(
-                availability = HealthConnectAvailability.ERROR,
-                message = "De beschikbaarheid van Health Connect kon niet worden bepaald.",
+                state = HealthConnectState.ERROR,
+                message = "Unable to determine Health Connect availability.",
             )
         }
     }
@@ -58,28 +58,39 @@ class HealthConnectDataSource @Inject constructor(
             val grantedPermissions = client.permissionController.getGrantedPermissions()
             if (!grantedPermissions.contains(readStepsPermission)) {
                 HealthConnectStatus(
-                    availability = HealthConnectAvailability.NEEDS_PERMISSION,
-                    message = "Geef toegang tot stappen om je dagactiviteit te tonen.",
+                    state = HealthConnectState.PERMISSION_REQUIRED,
+                    message = "Grant step permission to connect Health Connect.",
                 )
             } else {
                 val start = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant()
                 val end = Instant.now()
-                val steps = client.readRecords(
+                val records = client.readRecords(
                     ReadRecordsRequest(
                         recordType = StepsRecord::class,
                         timeRangeFilter = TimeRangeFilter.between(start, end),
                     ),
-                ).records.sumOf { it.count.toInt() }
-                HealthConnectStatus(
-                    availability = HealthConnectAvailability.CONNECTED,
-                    stepsToday = steps,
-                    message = "Stappen van vandaag zijn gesynchroniseerd.",
-                )
+                ).records
+                val steps = records.sumOf { it.count.toInt() }
+                if (records.isEmpty() || steps <= 0) {
+                    HealthConnectStatus(
+                        state = HealthConnectState.NO_DATA,
+                        stepsToday = 0,
+                        message = "Health Connect is connected, but no step data is available for today yet.",
+                        lastSyncedAt = System.currentTimeMillis(),
+                    )
+                } else {
+                    HealthConnectStatus(
+                        state = HealthConnectState.CONNECTED,
+                        stepsToday = steps,
+                        message = "Health Connect is connected and today's steps were read successfully.",
+                        lastSyncedAt = System.currentTimeMillis(),
+                    )
+                }
             }
         }.getOrElse { throwable ->
             HealthConnectStatus(
-                availability = HealthConnectAvailability.ERROR,
-                message = throwable.message ?: "Health Connect kon niet worden gelezen.",
+                state = HealthConnectState.ERROR,
+                message = throwable.message ?: "Health Connect could not be read right now.",
             )
         }
     }

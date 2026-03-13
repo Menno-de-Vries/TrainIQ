@@ -7,7 +7,6 @@ import com.trainiq.ai.services.WorkoutDebriefService
 import com.trainiq.analytics.AnalyticsEngine
 import com.trainiq.core.database.BodyMeasurementEntity
 import com.trainiq.core.database.ExerciseEntity
-import com.trainiq.core.database.MealEntity
 import com.trainiq.core.database.UserProfileEntity
 import com.trainiq.core.database.WorkoutDayEntity
 import com.trainiq.core.database.WorkoutExerciseEntity
@@ -17,24 +16,41 @@ import com.trainiq.core.database.WorkoutSetEntity
 import com.trainiq.core.util.toReadableDate
 import com.trainiq.core.util.todayEpochMillis
 import com.trainiq.data.datasource.HealthConnectDataSource
+import com.trainiq.data.local.FoodItemStorage
+import com.trainiq.data.local.LoggedMealItemStorage
+import com.trainiq.data.local.LoggedMealStorage
+import com.trainiq.data.local.RecipeIngredientStorage
+import com.trainiq.data.local.RecipeStorage
 import com.trainiq.data.local.TrainIqLocalStore
 import com.trainiq.data.mapper.toDomain
 import com.trainiq.domain.model.BodyMeasurement
 import com.trainiq.domain.model.ChartPoint
 import com.trainiq.domain.model.CoachOverview
+import com.trainiq.domain.model.FoodItem
+import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.model.GoalAdvice
 import com.trainiq.domain.model.HomeDashboard
+import com.trainiq.domain.model.LoggedMeal
+import com.trainiq.domain.model.LoggedMealItem
+import com.trainiq.domain.model.LoggedMealItemType
 import com.trainiq.domain.model.LoggedSet
-import com.trainiq.domain.model.Meal
+import com.trainiq.domain.model.MealAnalysisResult
 import com.trainiq.domain.model.MealScanItem
+import com.trainiq.domain.model.NutritionFacts
 import com.trainiq.domain.model.NutritionOverview
 import com.trainiq.domain.model.ProgressOverview
+import com.trainiq.domain.model.Recipe
+import com.trainiq.domain.model.RecipeIngredient
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutDebrief
 import com.trainiq.domain.model.WorkoutOverview
+import com.trainiq.domain.model.nutritionForGrams
+import com.trainiq.domain.model.rounded
 import com.trainiq.domain.repository.CoachRepository
 import com.trainiq.domain.repository.HomeRepository
+import com.trainiq.domain.repository.MealEntryRequest
+import com.trainiq.domain.repository.MealEntryType
 import com.trainiq.domain.repository.NutritionRepository
 import com.trainiq.domain.repository.ProgressRepository
 import com.trainiq.domain.repository.WorkoutRepository
@@ -67,9 +83,9 @@ class TrainIqRepository @Inject constructor(
 ) : HomeRepository, WorkoutRepository, NutritionRepository, ProgressRepository, CoachRepository {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val scannedMealItems = MutableStateFlow<List<MealScanItem>>(emptyList())
+    private val scannedMealResult = MutableStateFlow<MealAnalysisResult?>(null)
 
-    private val snapshotState: StateFlow<RepositorySnapshot> = combine(localStore.state, scannedMealItems) { state, scanned ->
+    private val snapshotState: StateFlow<RepositorySnapshot> = combine(localStore.state, scannedMealResult) { state, scanned ->
         RepositorySnapshot(
             profile = state.profile?.toDomain(),
             routines = state.routines,
@@ -78,9 +94,11 @@ class TrainIqRepository @Inject constructor(
             workoutExercises = state.workoutExercises,
             sessions = state.sessions,
             sets = state.workoutSets,
-            meals = state.meals.map { it.toDomain() },
+            foods = state.foods.map(::mapFood),
+            recipes = buildRecipes(state.foods, state.recipes, state.recipeIngredients),
+            meals = buildMeals(state.meals, state.mealItems),
             measurements = state.measurements.map { it.toDomain() },
-            scannedMealItems = scanned,
+            scannedMealResult = scanned,
         )
     }.stateIn(scope, SharingStarted.Eagerly, RepositorySnapshot())
 
@@ -91,13 +109,14 @@ class TrainIqRepository @Inject constructor(
     override fun observeDashboard(): Flow<HomeDashboard> = snapshotState.map { snapshot ->
         val activeRoutine = buildWorkoutOverview(snapshot).activeRoutine
         val nextWorkout = activeRoutine?.days?.minByOrNull { it.orderIndex }
-        val todaysMeals = snapshot.meals.filter { it.date >= todayEpochMillis() }
+        val todaysMeals = snapshot.meals.filter { it.timestamp >= todayEpochMillis() }
+        val todaysNutrition = todaysMeals.fold(NutritionFacts.Zero) { acc, meal -> acc + meal.totalNutrition }
         val profile = snapshot.profile
         HomeDashboard(
             profile = profile,
-            calorieProgress = todaysMeals.sumOf { it.calories },
+            calorieProgress = todaysNutrition.calories.toInt(),
             calorieTarget = profile?.calorieTarget ?: 0,
-            proteinProgress = todaysMeals.sumOf { it.protein },
+            proteinProgress = todaysNutrition.protein.toInt(),
             proteinTarget = profile?.proteinTarget ?: 0,
             steps = null,
             nextWorkout = nextWorkout,
@@ -273,57 +292,176 @@ class TrainIqRepository @Inject constructor(
 
     override fun observeNutritionOverview(): Flow<NutritionOverview> = snapshotState.map(::buildNutritionOverview)
 
-    override suspend fun analyzeMealPhoto(path: String): NutritionOverview {
-        scannedMealItems.value = mealAnalysisService.analyzeMealImage(path)
-        return buildNutritionOverview(snapshotState.value.copy(scannedMealItems = scannedMealItems.value))
+    override suspend fun analyzeMealPhoto(path: String, context: String): MealAnalysisResult {
+        val result = mealAnalysisService.analyzeMealImage(path, context)
+        scannedMealResult.value = result
+        return result
     }
 
-    override suspend fun saveScannedMeal(items: List<MealScanItem>) {
-        if (items.isEmpty()) return
-        addMeal(
-            calories = items.sumOf { it.calories },
-            protein = items.sumOf { it.protein },
-            carbs = items.sumOf { it.carbs },
-            fat = items.sumOf { it.fat },
+    override suspend fun saveFoodItem(
+        id: Long?,
+        name: String,
+        barcode: String?,
+        caloriesPer100g: Double,
+        proteinPer100g: Double,
+        carbsPer100g: Double,
+        fatPer100g: Double,
+        sourceType: FoodSourceType,
+    ): FoodItem {
+        val now = System.currentTimeMillis()
+        val current = localStore.state.value
+        val existing = current.foods.firstOrNull { it.id == id }
+        val duplicateBarcode = barcode?.trim()?.takeIf { it.isNotBlank() }?.let { code ->
+            current.foods.firstOrNull { it.barcode == code && it.id != id }
+        }
+        val foodId = existing?.id ?: duplicateBarcode?.id ?: ((current.foods.maxOfOrNull { it.id } ?: 0L) + 1L)
+        val storage = FoodItemStorage(
+            id = foodId,
+            name = name.trim(),
+            barcode = barcode?.trim()?.takeIf { it.isNotBlank() },
+            caloriesPer100g = caloriesPer100g,
+            proteinPer100g = proteinPer100g,
+            carbsPer100g = carbsPer100g,
+            fatPer100g = fatPer100g,
+            sourceType = sourceType,
+            createdAt = existing?.createdAt ?: duplicateBarcode?.createdAt ?: now,
+            updatedAt = now,
         )
-        scannedMealItems.value = emptyList()
+        localStore.update { state ->
+            state.copy(foods = state.foods.filterNot { it.id == foodId } + storage)
+        }
+        return mapFood(storage)
     }
 
-    override suspend fun addMeal(calories: Int, protein: Int, carbs: Int, fat: Int) {
-        localStore.update { state ->
-            val mealId = (state.meals.maxOfOrNull { it.id } ?: 0L) + 1L
-            state.copy(
-                meals = listOf(
-                    MealEntity(
-                        id = mealId,
-                        date = System.currentTimeMillis(),
-                        calories = calories,
-                        protein = protein,
-                        carbs = carbs,
-                        fat = fat,
-                    ),
-                ) + state.meals,
+    override suspend fun saveRecipe(
+        id: Long?,
+        name: String,
+        notes: String?,
+        totalCookedGrams: Double?,
+        ingredients: List<Pair<Long, Double>>,
+    ): Recipe {
+        val current = localStore.state.value
+        val recipeId = id ?: ((current.recipes.maxOfOrNull { it.id } ?: 0L) + 1L)
+        val now = System.currentTimeMillis()
+        val recipe = RecipeStorage(
+            id = recipeId,
+            name = name.trim(),
+            notes = notes?.trim()?.takeIf { it.isNotBlank() },
+            totalCookedGrams = totalCookedGrams,
+            createdAt = current.recipes.firstOrNull { it.id == recipeId }?.createdAt ?: now,
+            updatedAt = now,
+        )
+        val ingredientStartId = current.recipeIngredients.maxOfOrNull { it.id } ?: 0L
+        val ingredientStorage = ingredients.mapIndexed { index, (foodId, gramsUsed) ->
+            RecipeIngredientStorage(
+                id = ingredientStartId + index + 1L,
+                recipeId = recipeId,
+                foodItemId = foodId,
+                gramsUsed = gramsUsed,
             )
         }
+        localStore.update { state ->
+            state.copy(
+                recipes = state.recipes.filterNot { it.id == recipeId } + recipe,
+                recipeIngredients = state.recipeIngredients.filterNot { it.recipeId == recipeId } + ingredientStorage,
+            )
+        }
+        return buildRecipes(localStore.state.value.foods, localStore.state.value.recipes, localStore.state.value.recipeIngredients)
+            .first { it.id == recipeId }
     }
 
-    override suspend fun updateMeal(mealId: Long, calories: Int, protein: Int, carbs: Int, fat: Int) {
+    override suspend fun saveMeal(id: Long?, name: String, notes: String?, items: List<MealEntryRequest>): Long {
+        val snapshot = snapshotState.value
+        val current = localStore.state.value
+        val mealId = id ?: ((current.meals.maxOfOrNull { it.id } ?: 0L) + 1L)
+        val timestamp = snapshot.meals.firstOrNull { it.id == mealId }?.timestamp ?: System.currentTimeMillis()
+        val mealStorage = LoggedMealStorage(
+            id = mealId,
+            timestamp = timestamp,
+            name = name.trim(),
+            notes = notes?.trim()?.takeIf { it.isNotBlank() },
+        )
+        val startItemId = current.mealItems.maxOfOrNull { it.id } ?: 0L
+        val mealItems = items.mapIndexed { index, request ->
+            when (request.itemType) {
+                MealEntryType.FOOD -> {
+                    val food = snapshot.foods.first { it.id == request.referenceId }
+                    val nutrition = food.nutritionForGrams(request.gramsUsed)
+                    LoggedMealItemStorage(
+                        id = startItemId + index + 1L,
+                        mealId = mealId,
+                        itemType = LoggedMealItemType.FOOD,
+                        referenceId = food.id,
+                        name = food.name,
+                        gramsUsed = request.gramsUsed,
+                        calories = nutrition.calories,
+                        protein = nutrition.protein,
+                        carbs = nutrition.carbs,
+                        fat = nutrition.fat,
+                        notes = request.notes,
+                    )
+                }
+
+                MealEntryType.RECIPE -> {
+                    val recipe = snapshot.recipes.first { it.id == request.referenceId }
+                    val baseGrams = recipe.totalCookedGrams ?: recipe.ingredients.sumOf { it.gramsUsed }
+                    val ratio = request.gramsUsed / baseGrams.coerceAtLeast(1.0)
+                    val nutrition = NutritionFacts(
+                        calories = recipe.totalNutrition.calories * ratio,
+                        protein = recipe.totalNutrition.protein * ratio,
+                        carbs = recipe.totalNutrition.carbs * ratio,
+                        fat = recipe.totalNutrition.fat * ratio,
+                    ).rounded()
+                    LoggedMealItemStorage(
+                        id = startItemId + index + 1L,
+                        mealId = mealId,
+                        itemType = LoggedMealItemType.RECIPE,
+                        referenceId = recipe.id,
+                        name = recipe.name,
+                        gramsUsed = request.gramsUsed,
+                        calories = nutrition.calories,
+                        protein = nutrition.protein,
+                        carbs = nutrition.carbs,
+                        fat = nutrition.fat,
+                        notes = request.notes,
+                    )
+                }
+            }
+        }
         localStore.update { state ->
             state.copy(
-                meals = state.meals.map { meal ->
-                    if (meal.id == mealId) {
-                        meal.copy(calories = calories, protein = protein, carbs = carbs, fat = fat)
-                    } else {
-                        meal
-                    }
-                },
+                meals = state.meals.filterNot { it.id == mealId } + mealStorage,
+                mealItems = state.mealItems.filterNot { it.mealId == mealId } + mealItems,
             )
         }
+        scannedMealResult.value = null
+        return mealId
     }
 
     override suspend fun deleteMeal(mealId: Long) {
         localStore.update { state ->
-            state.copy(meals = state.meals.filterNot { it.id == mealId })
+            state.copy(
+                meals = state.meals.filterNot { it.id == mealId },
+                mealItems = state.mealItems.filterNot { it.mealId == mealId },
+            )
+        }
+    }
+
+    override suspend fun deleteFood(foodId: Long) {
+        localStore.update { state ->
+            state.copy(
+                foods = state.foods.filterNot { it.id == foodId },
+                recipeIngredients = state.recipeIngredients.filterNot { it.foodItemId == foodId },
+            )
+        }
+    }
+
+    override suspend fun deleteRecipe(recipeId: Long) {
+        localStore.update { state ->
+            state.copy(
+                recipes = state.recipes.filterNot { it.id == recipeId },
+                recipeIngredients = state.recipeIngredients.filterNot { it.recipeId == recipeId },
+            )
         }
     }
 
@@ -496,15 +634,18 @@ class TrainIqRepository @Inject constructor(
     }
 
     private fun buildNutritionOverview(snapshot: RepositorySnapshot): NutritionOverview {
-        val todaysMeals = snapshot.meals.filter { it.date >= todayEpochMillis() }
+        val todaysMeals = snapshot.meals.filter { it.timestamp >= todayEpochMillis() }.sortedByDescending { it.timestamp }
+        val totals = todaysMeals.fold(NutritionFacts.Zero) { acc, meal -> acc + meal.totalNutrition }
         return NutritionOverview(
-            meals = snapshot.meals.sortedByDescending { it.date },
-            todaysCalories = todaysMeals.sumOf { it.calories },
-            todaysProtein = todaysMeals.sumOf { it.protein },
-            todaysCarbs = todaysMeals.sumOf { it.carbs },
-            todaysFat = todaysMeals.sumOf { it.fat },
-            recipes = emptyList(),
-            scannedItems = snapshot.scannedMealItems,
+            foods = snapshot.foods.sortedBy { it.name.lowercase() },
+            recipes = snapshot.recipes.sortedBy { it.name.lowercase() },
+            meals = snapshot.meals.sortedByDescending { it.timestamp },
+            todaysCalories = totals.calories,
+            todaysProtein = totals.protein,
+            todaysCarbs = totals.carbs,
+            todaysFat = totals.fat,
+            todaysMeals = todaysMeals,
+            scannedResult = snapshot.scannedMealResult,
         )
     }
 
@@ -538,8 +679,10 @@ class TrainIqRepository @Inject constructor(
         if (nextWorkout == null) {
             return "Maak een actieve routine zodat TrainIQ je volgende workout kan plannen."
         }
-        val todaysProtein = snapshot.meals.filter { it.date >= todayEpochMillis() }.sumOf { it.protein }
-        val proteinGap = profile.proteinTarget - todaysProtein
+        val todaysProtein = snapshot.meals
+            .filter { it.timestamp >= todayEpochMillis() }
+            .sumOf { it.totalNutrition.protein }
+        val proteinGap = profile.proteinTarget - todaysProtein.toInt()
         return when {
             snapshot.sessions.isEmpty() -> "Je bent klaar om te starten. Plan ${nextWorkout.name} als eerste sessie voor je doel '${profile.goal}'."
             proteinGap > 20 -> "Je volgende workout is ${nextWorkout.name}. Voeg vandaag nog ongeveer $proteinGap g eiwit toe voor beter herstel."
@@ -551,13 +694,13 @@ class TrainIqRepository @Inject constructor(
         val today = todayEpochMillis()
         val last7Days = (0..6).map { today - (it * 86_400_000L) }.toSet()
         val workoutDays = snapshot.sessions.map { normalizeToDay(it.date) }.toSet()
-        val mealDays = snapshot.meals.map { normalizeToDay(it.date) }.toSet()
+        val mealDays = snapshot.meals.map { normalizeToDay(it.timestamp) }.toSet()
         val activeDays = last7Days.count { it in workoutDays || it in mealDays }
         return (activeDays / 7.0 * 100).toInt()
     }
 
-    private fun computeStreak(sessions: List<WorkoutSessionEntity>, meals: List<Meal>): Int {
-        val activeDays = (sessions.map { normalizeToDay(it.date) } + meals.map { normalizeToDay(it.date) }).toSet()
+    private fun computeStreak(sessions: List<WorkoutSessionEntity>, meals: List<LoggedMeal>): Int {
+        val activeDays = (sessions.map { normalizeToDay(it.date) } + meals.map { normalizeToDay(it.timestamp) }).toSet()
         if (activeDays.isEmpty()) return 0
         var streak = 0
         var day = todayEpochMillis()
@@ -576,6 +719,80 @@ class TrainIqRepository @Inject constructor(
             .toInstant()
             .toEpochMilli()
 
+    private fun mapFood(storage: FoodItemStorage): FoodItem = FoodItem(
+        id = storage.id,
+        name = storage.name,
+        barcode = storage.barcode,
+        caloriesPer100g = storage.caloriesPer100g,
+        proteinPer100g = storage.proteinPer100g,
+        carbsPer100g = storage.carbsPer100g,
+        fatPer100g = storage.fatPer100g,
+        sourceType = storage.sourceType,
+        createdAt = storage.createdAt,
+        updatedAt = storage.updatedAt,
+    )
+
+    private fun buildRecipes(
+        foods: List<FoodItemStorage>,
+        recipes: List<RecipeStorage>,
+        ingredients: List<RecipeIngredientStorage>,
+    ): List<Recipe> {
+        val foodsById = foods.associateBy { it.id }.mapValues { mapFood(it.value) }
+        return recipes.map { recipe ->
+            val recipeIngredients = ingredients
+                .filter { it.recipeId == recipe.id }
+                .mapNotNull { ingredient ->
+                    val food = foodsById[ingredient.foodItemId] ?: return@mapNotNull null
+                    RecipeIngredient(
+                        id = ingredient.id,
+                        recipeId = recipe.id,
+                        foodItemId = food.id,
+                        foodName = food.name,
+                        gramsUsed = ingredient.gramsUsed,
+                        nutrition = food.nutritionForGrams(ingredient.gramsUsed),
+                    )
+                }
+            Recipe(
+                id = recipe.id,
+                name = recipe.name,
+                notes = recipe.notes,
+                ingredients = recipeIngredients,
+                totalCookedGrams = recipe.totalCookedGrams,
+                totalNutrition = recipeIngredients.fold(NutritionFacts.Zero) { acc, ingredient -> acc + ingredient.nutrition }.rounded(),
+                createdAt = recipe.createdAt,
+                updatedAt = recipe.updatedAt,
+            )
+        }
+    }
+
+    private fun buildMeals(
+        meals: List<LoggedMealStorage>,
+        items: List<LoggedMealItemStorage>,
+    ): List<LoggedMeal> = meals.map { meal ->
+        val mealItems = items
+            .filter { it.mealId == meal.id }
+            .map { item ->
+                LoggedMealItem(
+                    id = item.id,
+                    mealId = item.mealId,
+                    itemType = item.itemType,
+                    referenceId = item.referenceId,
+                    name = item.name,
+                    gramsUsed = item.gramsUsed,
+                    nutritionSnapshot = NutritionFacts(item.calories, item.protein, item.carbs, item.fat).rounded(),
+                    notes = item.notes,
+                )
+            }
+        LoggedMeal(
+            id = meal.id,
+            timestamp = meal.timestamp,
+            name = meal.name,
+            notes = meal.notes,
+            items = mealItems,
+            totalNutrition = mealItems.fold(NutritionFacts.Zero) { acc, item -> acc + item.nutritionSnapshot }.rounded(),
+        )
+    }
+
     private data class RepositorySnapshot(
         val profile: UserProfile? = null,
         val routines: List<WorkoutRoutineEntity> = emptyList(),
@@ -584,8 +801,10 @@ class TrainIqRepository @Inject constructor(
         val workoutExercises: List<WorkoutExerciseEntity> = emptyList(),
         val sessions: List<WorkoutSessionEntity> = emptyList(),
         val sets: List<WorkoutSetEntity> = emptyList(),
-        val meals: List<Meal> = emptyList(),
+        val foods: List<FoodItem> = emptyList(),
+        val recipes: List<Recipe> = emptyList(),
+        val meals: List<LoggedMeal> = emptyList(),
         val measurements: List<BodyMeasurement> = emptyList(),
-        val scannedMealItems: List<MealScanItem> = emptyList(),
+        val scannedMealResult: MealAnalysisResult? = null,
     )
 }

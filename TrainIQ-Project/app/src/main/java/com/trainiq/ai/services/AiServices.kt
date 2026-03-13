@@ -1,11 +1,15 @@
 package com.trainiq.ai.services
 
 import android.util.Base64
+import com.google.gson.Gson
+import com.google.gson.JsonParser
 import com.trainiq.ai.prompts.GeminiPrompts
 import com.trainiq.data.model.GeminiRequest
 import com.trainiq.data.remote.GeminiApi
 import com.trainiq.domain.model.GoalAdvice
+import com.trainiq.domain.model.MealAnalysisResult
 import com.trainiq.domain.model.MealScanItem
+import com.trainiq.domain.model.NutritionFacts
 import com.trainiq.domain.model.WorkoutDebrief
 import java.io.File
 import javax.inject.Inject
@@ -16,7 +20,9 @@ class MealAnalysisService @Inject constructor(
     private val api: GeminiApi,
     private val aiUsageGate: AiUsageGate,
 ) {
-    suspend fun analyzeMealImage(path: String): List<MealScanItem> =
+    private val gson = Gson()
+
+    suspend fun analyzeMealImage(path: String, userContext: String): MealAnalysisResult =
         runCatching {
             val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return fallbackMealScan()
             val file = File(path)
@@ -27,7 +33,7 @@ class MealAnalysisService @Inject constructor(
                     contents = listOf(
                         GeminiRequest.Content(
                             parts = listOf(
-                                GeminiRequest.Part(text = GeminiPrompts.mealScanner()),
+                                GeminiRequest.Part(text = GeminiPrompts.mealScanner(userContext)),
                                 GeminiRequest.Part(
                                     inlineData = GeminiRequest.InlineData(
                                         mimeType = "image/jpeg",
@@ -40,11 +46,56 @@ class MealAnalysisService @Inject constructor(
                 ),
             )
             val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
-            if (text.isBlank()) listOf(MealScanItem("Meal estimate", 500, 35, 45, 18))
-            else listOf(MealScanItem(text.take(28), 520, 34, 48, 16))
+            parseMealScan(text)
         }.getOrElse { fallbackMealScan() }
 
-    private fun fallbackMealScan(): List<MealScanItem> = emptyList()
+    private fun parseMealScan(text: String): MealAnalysisResult {
+        if (text.isBlank()) return fallbackMealScan()
+        return runCatching {
+            val root = JsonParser.parseString(text).asJsonObject
+            val items = root.getAsJsonArray("items")?.mapNotNull { element ->
+                val obj = element.asJsonObject
+                val name = obj.get("name")?.asString?.trim().orEmpty()
+                if (name.isBlank()) return@mapNotNull null
+                MealScanItem(
+                    name = name,
+                    estimatedGrams = obj.get("estimatedGrams")?.asDouble ?: 100.0,
+                    nutrition = NutritionFacts(
+                        calories = obj.get("calories")?.asDouble ?: 0.0,
+                        protein = obj.get("protein")?.asDouble ?: 0.0,
+                        carbs = obj.get("carbs")?.asDouble ?: 0.0,
+                        fat = obj.get("fat")?.asDouble ?: 0.0,
+                    ),
+                    confidence = obj.get("confidence")?.asString,
+                    notes = obj.get("notes")?.asString,
+                )
+            }.orEmpty()
+            MealAnalysisResult(
+                items = items,
+                notes = root.get("notes")?.asString,
+                rawResponse = text,
+            )
+        }.getOrElse {
+            MealAnalysisResult(
+                items = listOf(
+                    MealScanItem(
+                        name = text.lineSequence().firstOrNull()?.take(40).orEmpty().ifBlank { "Meal estimate" },
+                        estimatedGrams = 100.0,
+                        nutrition = NutritionFacts(0.0, 0.0, 0.0, 0.0),
+                        confidence = "low",
+                        notes = "The AI response was not structured, so review and edit before saving.",
+                    ),
+                ),
+                notes = "Structured parsing failed. Please review the estimate carefully.",
+                rawResponse = text,
+            )
+        }
+    }
+
+    private fun fallbackMealScan(): MealAnalysisResult = MealAnalysisResult(
+        items = emptyList(),
+        notes = "AI meal analysis is unavailable right now. You can still add the meal manually.",
+    )
 }
 
 @Singleton

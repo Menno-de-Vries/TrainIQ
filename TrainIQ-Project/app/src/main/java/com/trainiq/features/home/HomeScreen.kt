@@ -16,6 +16,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
@@ -37,7 +38,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.trainiq.core.util.MetricCard
 import com.trainiq.core.util.ProgressCard
-import com.trainiq.domain.model.HealthConnectAvailability
+import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
 import com.trainiq.domain.model.HomeDashboard
 import com.trainiq.domain.usecase.GetHealthConnectStatusUseCase
@@ -61,7 +62,7 @@ class HomeViewModel @Inject constructor(
 
     private val _healthConnectStatus = MutableStateFlow(
         HealthConnectStatus(
-            availability = HealthConnectAvailability.UNAVAILABLE,
+            state = HealthConnectState.ERROR,
             message = "Health Connect status wordt geladen.",
         ),
     )
@@ -83,6 +84,7 @@ fun HomeRoute(
     onStartWorkout: (Long) -> Unit,
     onOpenCoach: () -> Unit,
     onOpenTrain: () -> Unit,
+    onOpenSettings: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val dashboard by viewModel.dashboard.collectAsStateWithLifecycle()
@@ -111,6 +113,7 @@ fun HomeRoute(
         onStartWorkout = onStartWorkout,
         onOpenCoach = onOpenCoach,
         onOpenTrain = onOpenTrain,
+        onOpenSettings = onOpenSettings,
         onRequestHealthPermission = {
             permissionLauncher.launch(setOf(HealthPermission.getReadPermission(StepsRecord::class)))
         },
@@ -125,6 +128,7 @@ fun HomeScreen(
     onStartWorkout: (Long) -> Unit,
     onOpenCoach: () -> Unit,
     onOpenTrain: () -> Unit,
+    onOpenSettings: () -> Unit,
     onRequestHealthPermission: () -> Unit,
     onRefreshHealth: () -> Unit,
 ) {
@@ -134,7 +138,12 @@ fun HomeScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item { Text("TrainIQ", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold) }
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("TrainIQ", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                TextButton(onClick = onOpenSettings) { Text("Settings") }
+            }
+        }
 
         if (state?.profile == null) {
             item {
@@ -177,7 +186,10 @@ fun HomeScreen(
                 )
                 MetricCard(
                     title = "Steps",
-                    value = healthConnectStatus.stepsToday?.toString() ?: "Not connected",
+                    value = when (healthConnectStatus.state) {
+                        HealthConnectState.CONNECTED, HealthConnectState.NO_DATA -> "${healthConnectStatus.stepsToday ?: 0}"
+                        else -> "Unavailable"
+                    },
                     subtitle = healthConnectStatus.message,
                     modifier = Modifier.weight(1f),
                 )
@@ -245,12 +257,12 @@ private fun HealthConnectCard(
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Health Connect", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(status.message)
-            when (status.availability) {
-                HealthConnectAvailability.NEEDS_INSTALL -> Button(onClick = onOpenInstall) { Text("Install or update") }
-                HealthConnectAvailability.NEEDS_PERMISSION -> Button(onClick = onRequestPermission) { Text("Grant access") }
-                HealthConnectAvailability.CONNECTED -> OutlinedButton(onClick = onOpenSettings) { Text("Open Health Connect") }
-                HealthConnectAvailability.ERROR -> OutlinedButton(onClick = onRefresh) { Text("Retry") }
-                HealthConnectAvailability.UNAVAILABLE -> Text("Deze telefoon ondersteunt Health Connect niet.")
+            when (status.state) {
+                HealthConnectState.PROVIDER_MISSING -> Button(onClick = onOpenInstall) { Text("Install or update") }
+                HealthConnectState.PERMISSION_REQUIRED -> Button(onClick = onRequestPermission) { Text("Grant access") }
+                HealthConnectState.CONNECTED, HealthConnectState.NO_DATA -> OutlinedButton(onClick = onOpenSettings) { Text("Open Health Connect") }
+                HealthConnectState.ERROR -> OutlinedButton(onClick = onRefresh) { Text("Retry") }
+                HealthConnectState.UNSUPPORTED -> Text("This device does not support Health Connect.")
             }
         }
     }
