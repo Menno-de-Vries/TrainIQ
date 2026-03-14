@@ -16,7 +16,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -78,6 +82,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+enum class ScanTarget { FOOD_EDITOR, RECIPE_DRAFT }
+
 sealed interface NutritionUiState {
     data object Loading : NutritionUiState
     data class Success(
@@ -86,6 +92,7 @@ sealed interface NutritionUiState {
         val scanResult: MealAnalysisResult? = null,
         val message: String? = null,
         val isAnalyzing: Boolean = false,
+        val scanTarget: ScanTarget = ScanTarget.FOOD_EDITOR,
     ) : NutritionUiState
     data class Error(val message: String) : NutritionUiState
 }
@@ -107,6 +114,7 @@ class NutritionViewModel @Inject constructor(
         val scanResult: MealAnalysisResult? = null,
         val message: String? = null,
         val isAnalyzing: Boolean = false,
+        val scanTarget: ScanTarget = ScanTarget.FOOD_EDITOR,
     )
 
     private val overview: StateFlow<NutritionOverview?> = observeNutritionUseCase()
@@ -124,6 +132,7 @@ class NutritionViewModel @Inject constructor(
                 scanResult = temp.scanResult ?: currentOverview.scannedResult,
                 message = temp.message,
                 isAnalyzing = temp.isAnalyzing,
+                scanTarget = temp.scanTarget,
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), NutritionUiState.Loading)
@@ -237,6 +246,10 @@ class NutritionViewModel @Inject constructor(
         ephemeral.update { it.copy(scanResult = result) }
         if (result == null) clearLastScanResultUseCase()
     }
+
+    fun setScanTarget(target: ScanTarget) {
+        ephemeral.update { it.copy(scanTarget = target) }
+    }
 }
 
 @Composable
@@ -257,6 +270,7 @@ fun NutritionRoute(
         onDeleteFood = viewModel::deleteFood,
         onDeleteRecipe = viewModel::deleteRecipe,
         onSetScanResult = viewModel::setScanResult,
+        onSetScanTarget = viewModel::setScanTarget,
         onDismissMessage = { viewModel.setMessage(null) },
         onOpenAiScanner = onOpenAiScanner,
         onOpenBarcodeScanner = onOpenBarcodeScanner,
@@ -275,6 +289,7 @@ fun NutritionScreen(
     onDeleteFood: (Long) -> Unit,
     onDeleteRecipe: (Long) -> Unit,
     onSetScanResult: (MealAnalysisResult?) -> Unit,
+    onSetScanTarget: (ScanTarget) -> Unit = {},
     onDismissMessage: () -> Unit,
     onOpenAiScanner: (String) -> Unit,
     onOpenBarcodeScanner: () -> Unit,
@@ -288,6 +303,8 @@ fun NutritionScreen(
     val message = successState?.message
     val isAnalyzing = successState?.isAnalyzing == true
     val haptics = LocalHapticFeedback.current
+    var selectedTab by remember { mutableStateOf(0) }
+    var aiScanForRecipe by remember { mutableStateOf(false) }
     var selectedFoodId by remember { mutableStateOf<Long?>(null) }
     var selectedRecipeId by remember { mutableStateOf<Long?>(null) }
     val selectedFood = overview?.foods?.firstOrNull { it.id == selectedFoodId }
@@ -304,6 +321,7 @@ fun NutritionScreen(
     var recipeNotes by remember { mutableStateOf("") }
     var recipeCookedGrams by remember { mutableStateOf("") }
     var ingredientGrams by remember { mutableStateOf("100") }
+    var recipeAiContext by remember { mutableStateOf("") }
     val recipeDraft = remember { mutableStateListOf<Pair<Long, Double>>() }
 
     var mealType by remember { mutableStateOf(MealType.LUNCH) }
@@ -319,6 +337,10 @@ fun NutritionScreen(
     LaunchedEffect(pendingBarcode) {
         if (pendingBarcode != null) {
             barcode = pendingBarcode
+            if (successState?.scanTarget == ScanTarget.RECIPE_DRAFT) {
+                selectedTab = 1  // Switch to Foods so user can save the scanned food
+            }
+            onSetScanTarget(ScanTarget.FOOD_EDITOR)
             onBarcodeClear()
         }
     }
@@ -347,13 +369,19 @@ fun NutritionScreen(
     LaunchedEffect(scanResult) {
         editableAiItems.clear()
         scanResult?.items?.forEach { editableAiItems += EditableAiItem.from(it) }
-        scanResult?.suggestedMealType?.let {
-            mealType = it
-            if (mealName in listOf("Breakfast", "Lunch", "Dinner", "Snack")) {
-                mealName = it.label
+        if (!aiScanForRecipe) {
+            scanResult?.suggestedMealType?.let {
+                mealType = it
+                if (mealName in listOf("Breakfast", "Lunch", "Dinner", "Snack")) {
+                    mealName = it.label
+                }
             }
+        } else if (editableAiItems.isNotEmpty()) {
+            selectedTab = 2  // Switch to Recipes tab to show RecipeAiResultsCard
         }
     }
+
+    val tabs = listOf("Meals", "Foods", "Recipes", "History")
 
     Box(modifier = Modifier.fillMaxSize()) {
         AnimatedContent(
@@ -382,186 +410,259 @@ fun NutritionScreen(
                 }
                 return@AnimatedContent
             }
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(MaterialTheme.spacing.medium),
-                verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
-            ) {
-                item { ScreenHeader(title = "Nutrition") }
-                message?.let {
-                    item { MessageCard(message = it, onDismiss = onDismissMessage) }
+            Column(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier.padding(
+                        horizontal = MaterialTheme.spacing.medium,
+                        vertical = MaterialTheme.spacing.small,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+                ) {
+                    ScreenHeader(title = "Nutrition")
+                    message?.let { MessageCard(message = it, onDismiss = onDismissMessage) }
+                    SummaryCard(overview)
                 }
-                item { SummaryCard(overview) }
-                item { QuickDraftCard(mealType, selectedFood, selectedRecipe, mealDraft.size, recipeDraft.size) }
-                item {
-                    FoodEditorCard(
-                        foodName = foodName,
-                        barcode = barcode,
-                        calories = calories,
-                        protein = protein,
-                        carbs = carbs,
-                        fat = fat,
-                        onFoodNameChange = { foodName = it },
-                        onBarcodeChange = { barcode = it },
-                        onCaloriesChange = { calories = it },
-                        onProteinChange = { protein = it },
-                        onCarbsChange = { carbs = it },
-                        onFatChange = { fat = it },
-                        onScanBarcode = onOpenBarcodeScanner,
-                        onSave = {
-                            onSaveFood(foodName, barcode, calories, protein, carbs, fat, if (barcode.isBlank()) FoodSourceType.MANUAL else FoodSourceType.BARCODE) {
-                                selectedFoodId = it.id
-                                foodName = ""
-                                barcode = ""
-                                calories = ""
-                                protein = ""
-                                carbs = ""
-                                fat = ""
-                            }
-                        },
-                    )
+                Surface(tonalElevation = 2.dp) {
+                    TabRow(selectedTabIndex = selectedTab) {
+                        tabs.forEachIndexed { index, title ->
+                            Tab(
+                                selected = selectedTab == index,
+                                onClick = { selectedTab = index },
+                                text = { Text(title) },
+                            )
+                        }
+                    }
                 }
-                item {
-                    SavedFoodsCard(
-                        foods = overview?.foods.orEmpty(),
-                        selectedFoodId = selectedFoodId,
-                        onSelect = { selectedFoodId = it },
-                        onQuickAdd = { food -> mealDraft += MealEntryRequest(MealEntryType.FOOD, food.id, mealFoodGrams.toDoubleOrNull() ?: 100.0) },
-                        onDelete = onDeleteFood,
-                    )
-                }
-                item {
-                    RecipeEditorCard(
-                        recipeName = recipeName,
-                        recipeNotes = recipeNotes,
-                        recipeCookedGrams = recipeCookedGrams,
-                        ingredientGrams = ingredientGrams,
-                        selectedFood = selectedFood,
-                        draft = recipeDraft.toList(),
-                        foods = overview?.foods.orEmpty(),
-                        onRecipeNameChange = { recipeName = it },
-                        onRecipeNotesChange = { recipeNotes = it },
-                        onRecipeCookedGramsChange = { recipeCookedGrams = it },
-                        onIngredientGramsChange = { ingredientGrams = it },
-                        onAddIngredient = {
-                            val grams = ingredientGrams.toDoubleOrNull()
-                            val foodId = selectedFoodId
-                            if (grams != null && foodId != null) {
-                                recipeDraft += foodId to grams
-                                ingredientGrams = ""
-                            }
-                        },
-                        onRemoveIngredient = { index -> recipeDraft.removeAt(index) },
-                        onSave = {
-                            onSaveRecipe(recipeName, recipeNotes, recipeCookedGrams, recipeDraft.toList())
-                            selectedRecipeId = null
-                            recipeName = ""
-                            recipeNotes = ""
-                            recipeCookedGrams = ""
-                            recipeDraft.clear()
-                        },
-                    )
-                }
-                item {
-                    SavedRecipesCard(
-                        recipes = overview?.recipes.orEmpty(),
-                        selectedRecipeId = selectedRecipeId,
-                        onSelect = { selectedRecipeId = it },
-                        onUseInMeal = { recipe -> mealDraft += MealEntryRequest(MealEntryType.RECIPE, recipe.id, mealRecipeGrams.toDoubleOrNull() ?: 150.0) },
-                        onDelete = onDeleteRecipe,
-                    )
-                }
-                item {
-                    MealLoggerCard(
-                        mealType = mealType,
-                        mealName = mealName,
-                        mealNotes = mealNotes,
-                        mealFoodGrams = mealFoodGrams,
-                        mealRecipeGrams = mealRecipeGrams,
-                        selectedFood = selectedFood,
-                        selectedRecipe = selectedRecipe,
-                        mealDraft = mealDraft.toList(),
-                        foods = overview?.foods.orEmpty(),
-                        recipes = overview?.recipes.orEmpty(),
-                        onMealTypeChange = { mealType = it },
-                        onMealNameChange = { mealName = it },
-                        onMealNotesChange = { mealNotes = it },
-                        onMealFoodGramsChange = { mealFoodGrams = it },
-                        onMealRecipeGramsChange = { mealRecipeGrams = it },
-                        onAddFood = {
-                            val foodId = selectedFoodId
-                            val grams = mealFoodGrams.toDoubleOrNull()
-                            if (foodId != null && grams != null) mealDraft += MealEntryRequest(MealEntryType.FOOD, foodId, grams)
-                        },
-                        onAddRecipe = {
-                            val recipeId = selectedRecipeId
-                            val grams = mealRecipeGrams.toDoubleOrNull()
-                            if (recipeId != null && grams != null) mealDraft += MealEntryRequest(MealEntryType.RECIPE, recipeId, grams)
-                        },
-                        onRemoveDraftItem = { index -> mealDraft.removeAt(index) },
-                        onSave = {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onSaveMeal(mealType, mealName, mealNotes, mealDraft.toList()) {
-                                mealNotes = ""
-                                mealDraft.clear()
-                                onSetScanResult(null)
-                            }
-                        },
-                    )
-                }
-                item {
-                    AiMealAnalysisCard(
-                        aiPreferences = aiPreferences,
-                        aiContext = aiContext,
-                        editableItems = editableAiItems,
-                        isAnalyzing = isAnalyzing,
-                        onContextChange = { aiContext = it },
-                        onOpenCamera = {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onOpenAiScanner(aiContext)
-                        },
-                        onChangeItem = { index, item -> editableAiItems[index] = item },
-                        onDeleteItem = { index -> editableAiItems.removeAt(index) },
-                        onSaveToDraft = {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            editableAiItems.forEach { item ->
-                                val grams = item.grams.toDoubleOrNull() ?: 100.0
-                                onSaveFood(
-                                    item.name,
-                                    null,
-                                    per100Value(item.calories, grams),
-                                    per100Value(item.protein, grams),
-                                    per100Value(item.carbs, grams),
-                                    per100Value(item.fat, grams),
-                                    FoodSourceType.AI,
-                                ) { saved -> mealDraft += MealEntryRequest(MealEntryType.FOOD, saved.id, grams) }
-                            }
-                            editableAiItems.clear()
-                            onSetScanResult(null)
-                        },
-                    )
-                }
-                item {
-                    MealHistoryCard(
-                        meals = overview?.meals.orEmpty(),
-                        foods = overview?.foods.orEmpty(),
-                        recipes = overview?.recipes.orEmpty(),
-                        onReuseMeal = { meal ->
-                            mealType = meal.mealType
-                            mealName = meal.name
-                            mealNotes = meal.notes.orEmpty()
-                            mealDraft.clear()
-                            mealDraft.addAll(meal.items.map {
-                                MealEntryRequest(
-                                    itemType = if (it.itemType.name == "FOOD") MealEntryType.FOOD else MealEntryType.RECIPE,
-                                    referenceId = it.referenceId,
-                                    gramsUsed = it.gramsUsed,
-                                    notes = it.notes,
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(MaterialTheme.spacing.medium),
+                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
+                ) {
+                    when (selectedTab) {
+                        0 -> {
+                            item {
+                                MealLoggerCard(
+                                    mealType = mealType,
+                                    mealName = mealName,
+                                    mealNotes = mealNotes,
+                                    mealFoodGrams = mealFoodGrams,
+                                    mealRecipeGrams = mealRecipeGrams,
+                                    selectedFood = selectedFood,
+                                    selectedRecipe = selectedRecipe,
+                                    mealDraft = mealDraft.toList(),
+                                    foods = overview?.foods.orEmpty(),
+                                    recipes = overview?.recipes.orEmpty(),
+                                    onMealTypeChange = { mealType = it },
+                                    onMealNameChange = { mealName = it },
+                                    onMealNotesChange = { mealNotes = it },
+                                    onMealFoodGramsChange = { mealFoodGrams = it },
+                                    onMealRecipeGramsChange = { mealRecipeGrams = it },
+                                    onAddFood = {
+                                        val foodId = selectedFoodId
+                                        val grams = mealFoodGrams.toDoubleOrNull()
+                                        if (foodId != null && grams != null) mealDraft += MealEntryRequest(MealEntryType.FOOD, foodId, grams)
+                                    },
+                                    onAddRecipe = {
+                                        val recipeId = selectedRecipeId
+                                        val grams = mealRecipeGrams.toDoubleOrNull()
+                                        if (recipeId != null && grams != null) mealDraft += MealEntryRequest(MealEntryType.RECIPE, recipeId, grams)
+                                    },
+                                    onRemoveDraftItem = { index -> mealDraft.removeAt(index) },
+                                    onSave = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        onSaveMeal(mealType, mealName, mealNotes, mealDraft.toList()) {
+                                            mealNotes = ""
+                                            mealDraft.clear()
+                                            onSetScanResult(null)
+                                        }
+                                    },
                                 )
-                            })
-                        },
-                        onDeleteMeal = onDeleteMeal,
-                    )
+                            }
+                            item {
+                                AiMealAnalysisCard(
+                                    aiPreferences = aiPreferences,
+                                    aiContext = aiContext,
+                                    editableItems = if (aiScanForRecipe) emptyList() else editableAiItems.toList(),
+                                    isAnalyzing = isAnalyzing,
+                                    onContextChange = { aiContext = it },
+                                    onOpenCamera = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        aiScanForRecipe = false
+                                        onOpenAiScanner(aiContext)
+                                    },
+                                    onChangeItem = { index, item -> editableAiItems[index] = item },
+                                    onDeleteItem = { index -> editableAiItems.removeAt(index) },
+                                    onSaveToDraft = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        editableAiItems.forEach { item ->
+                                            val grams = item.grams.toDoubleOrNull() ?: 100.0
+                                            onSaveFood(
+                                                item.name,
+                                                null,
+                                                per100Value(item.calories, grams),
+                                                per100Value(item.protein, grams),
+                                                per100Value(item.carbs, grams),
+                                                per100Value(item.fat, grams),
+                                                FoodSourceType.AI,
+                                            ) { saved -> mealDraft += MealEntryRequest(MealEntryType.FOOD, saved.id, grams) }
+                                        }
+                                        editableAiItems.clear()
+                                        onSetScanResult(null)
+                                    },
+                                )
+                            }
+                        }
+                        1 -> {
+                            item {
+                                FoodEditorCard(
+                                    foodName = foodName,
+                                    barcode = barcode,
+                                    calories = calories,
+                                    protein = protein,
+                                    carbs = carbs,
+                                    fat = fat,
+                                    onFoodNameChange = { foodName = it },
+                                    onBarcodeChange = { barcode = it },
+                                    onCaloriesChange = { calories = it },
+                                    onProteinChange = { protein = it },
+                                    onCarbsChange = { carbs = it },
+                                    onFatChange = { fat = it },
+                                    onScanBarcode = onOpenBarcodeScanner,
+                                    onSave = {
+                                        onSaveFood(foodName, barcode, calories, protein, carbs, fat, if (barcode.isBlank()) FoodSourceType.MANUAL else FoodSourceType.BARCODE) {
+                                            selectedFoodId = it.id
+                                            foodName = ""
+                                            barcode = ""
+                                            calories = ""
+                                            protein = ""
+                                            carbs = ""
+                                            fat = ""
+                                        }
+                                    },
+                                )
+                            }
+                            item {
+                                SavedFoodsCard(
+                                    foods = overview?.foods.orEmpty(),
+                                    selectedFoodId = selectedFoodId,
+                                    onSelect = { selectedFoodId = it },
+                                    onQuickAdd = { food -> mealDraft += MealEntryRequest(MealEntryType.FOOD, food.id, mealFoodGrams.toDoubleOrNull() ?: 100.0) },
+                                    onDelete = onDeleteFood,
+                                )
+                            }
+                        }
+                        2 -> {
+                            item {
+                                RecipeEditorCard(
+                                    recipeName = recipeName,
+                                    recipeNotes = recipeNotes,
+                                    recipeCookedGrams = recipeCookedGrams,
+                                    ingredientGrams = ingredientGrams,
+                                    selectedFood = selectedFood,
+                                    draft = recipeDraft.toList(),
+                                    foods = overview?.foods.orEmpty(),
+                                    recipeAiContext = recipeAiContext,
+                                    aiEnabled = aiPreferences.enabled && aiPreferences.apiKey.isNotBlank(),
+                                    onRecipeNameChange = { recipeName = it },
+                                    onRecipeNotesChange = { recipeNotes = it },
+                                    onRecipeCookedGramsChange = { recipeCookedGrams = it },
+                                    onIngredientGramsChange = { ingredientGrams = it },
+                                    onRecipeAiContextChange = { recipeAiContext = it },
+                                    onAddIngredient = {
+                                        val grams = ingredientGrams.toDoubleOrNull()
+                                        val foodId = selectedFoodId
+                                        if (grams != null && foodId != null) {
+                                            recipeDraft += foodId to grams
+                                            ingredientGrams = ""
+                                        }
+                                    },
+                                    onRemoveIngredient = { index -> recipeDraft.removeAt(index) },
+                                    onSave = {
+                                        onSaveRecipe(recipeName, recipeNotes, recipeCookedGrams, recipeDraft.toList())
+                                        selectedRecipeId = null
+                                        recipeName = ""
+                                        recipeNotes = ""
+                                        recipeCookedGrams = ""
+                                        recipeDraft.clear()
+                                    },
+                                    onScanBarcodeForRecipe = {
+                                        onSetScanTarget(ScanTarget.RECIPE_DRAFT)
+                                        onOpenBarcodeScanner()
+                                    },
+                                    onAiVisionForRecipe = {
+                                        aiScanForRecipe = true
+                                        onOpenAiScanner(recipeAiContext)
+                                    },
+                                )
+                            }
+                            if (aiScanForRecipe && editableAiItems.isNotEmpty()) {
+                                item {
+                                    RecipeAiResultsCard(
+                                        editableItems = editableAiItems.toList(),
+                                        onChangeItem = { index, item -> editableAiItems[index] = item },
+                                        onDeleteItem = { index -> editableAiItems.removeAt(index) },
+                                        onAddAsIngredients = {
+                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            editableAiItems.forEach { item ->
+                                                val grams = item.grams.toDoubleOrNull() ?: 100.0
+                                                onSaveFood(
+                                                    item.name,
+                                                    null,
+                                                    per100Value(item.calories, grams),
+                                                    per100Value(item.protein, grams),
+                                                    per100Value(item.carbs, grams),
+                                                    per100Value(item.fat, grams),
+                                                    FoodSourceType.AI,
+                                                ) { saved -> recipeDraft += saved.id to grams }
+                                            }
+                                            editableAiItems.clear()
+                                            aiScanForRecipe = false
+                                            onSetScanResult(null)
+                                        },
+                                        onDismiss = {
+                                            editableAiItems.clear()
+                                            aiScanForRecipe = false
+                                            onSetScanResult(null)
+                                        },
+                                    )
+                                }
+                            }
+                            item {
+                                SavedRecipesCard(
+                                    recipes = overview?.recipes.orEmpty(),
+                                    selectedRecipeId = selectedRecipeId,
+                                    onSelect = { selectedRecipeId = it },
+                                    onUseInMeal = { recipe -> mealDraft += MealEntryRequest(MealEntryType.RECIPE, recipe.id, mealRecipeGrams.toDoubleOrNull() ?: 150.0) },
+                                    onDelete = onDeleteRecipe,
+                                )
+                            }
+                        }
+                        3 -> {
+                            item {
+                                MealHistoryCard(
+                                    meals = overview?.meals.orEmpty(),
+                                    foods = overview?.foods.orEmpty(),
+                                    recipes = overview?.recipes.orEmpty(),
+                                    onReuseMeal = { meal ->
+                                        mealType = meal.mealType
+                                        mealName = meal.name
+                                        mealNotes = meal.notes.orEmpty()
+                                        mealDraft.clear()
+                                        mealDraft.addAll(meal.items.map {
+                                            MealEntryRequest(
+                                                itemType = if (it.itemType.name == "FOOD") MealEntryType.FOOD else MealEntryType.RECIPE,
+                                                referenceId = it.referenceId,
+                                                gramsUsed = it.gramsUsed,
+                                                notes = it.notes,
+                                            )
+                                        })
+                                        selectedTab = 0
+                                    },
+                                    onDeleteMeal = onDeleteMeal,
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -588,25 +689,6 @@ private fun SummaryCard(overview: NutritionOverview?) {
                     Text("${mealType.label}: ${meals.size} logged")
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun QuickDraftCard(
-    mealType: MealType,
-    selectedFood: FoodItem?,
-    selectedRecipe: Recipe?,
-    mealDraftCount: Int,
-    recipeDraftCount: Int,
-) {
-    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Current selection", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text("Meal type: ${mealType.label}")
-            Text("Food: ${selectedFood?.name ?: "None selected"}")
-            Text("Recipe: ${selectedRecipe?.name ?: "None selected"}")
-            Text("Recipe draft items: $recipeDraftCount • Meal draft items: $mealDraftCount")
         }
     }
 }
@@ -698,13 +780,18 @@ private fun RecipeEditorCard(
     selectedFood: FoodItem?,
     draft: List<Pair<Long, Double>>,
     foods: List<FoodItem>,
+    recipeAiContext: String,
+    aiEnabled: Boolean,
     onRecipeNameChange: (String) -> Unit,
     onRecipeNotesChange: (String) -> Unit,
     onRecipeCookedGramsChange: (String) -> Unit,
     onIngredientGramsChange: (String) -> Unit,
+    onRecipeAiContextChange: (String) -> Unit,
     onAddIngredient: () -> Unit,
     onRemoveIngredient: (Int) -> Unit,
     onSave: () -> Unit,
+    onScanBarcodeForRecipe: () -> Unit,
+    onAiVisionForRecipe: () -> Unit,
 ) {
     val totalCalories = draft.sumOf { (foodId, grams) -> foods.firstOrNull { it.id == foodId }?.let { food -> food.caloriesPer100g * grams / 100.0 } ?: 0.0 }
     Card(
@@ -734,7 +821,16 @@ private fun RecipeEditorCard(
                 }
                 Text("Estimated total: ${formatNumber(totalCalories)} kcal")
             }
-            Button(onClick = onSave, enabled = draft.isNotEmpty()) { Text("Save recipe") }
+            Button(onClick = onSave, enabled = draft.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Save recipe") }
+            HorizontalDivider()
+            Text("Scan ingredients", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (aiEnabled) {
+                OutlinedTextField(value = recipeAiContext, onValueChange = onRecipeAiContextChange, label = { Text("AI context (optional)") }, modifier = Modifier.fillMaxWidth())
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = onScanBarcodeForRecipe, modifier = Modifier.weight(1f)) { Text("Scan Barcode") }
+                OutlinedButton(onClick = onAiVisionForRecipe, enabled = aiEnabled, modifier = Modifier.weight(1f)) { Text("Use AI Vision") }
+            }
         }
     }
 }
@@ -892,6 +988,33 @@ private fun AiMealAnalysisCard(
             }
             if (editableItems.isNotEmpty()) {
                 Button(onClick = onSaveToDraft) { Text("Add AI items to meal draft") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecipeAiResultsCard(
+    editableItems: List<EditableAiItem>,
+    onChangeItem: (Int, EditableAiItem) -> Unit,
+    onDeleteItem: (Int) -> Unit,
+    onAddAsIngredients: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        Column(modifier = Modifier.padding(MaterialTheme.spacing.medium), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+            Text("AI-detected ingredients", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Review each item, then add them to your recipe.", style = MaterialTheme.typography.bodyMedium)
+            editableItems.forEachIndexed { index, item ->
+                EditableAiItemCard(item = item, onChange = { onChangeItem(index, it) }, onDelete = { onDeleteItem(index) })
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onAddAsIngredients) { Text("Add as ingredients") }
+                TextButton(onClick = onDismiss) { Text("Dismiss") }
             }
         }
     }

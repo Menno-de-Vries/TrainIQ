@@ -2,6 +2,7 @@ package com.trainiq.data.repository
 
 import com.trainiq.ai.services.GoalAdvisorService
 import com.trainiq.ai.services.MealAnalysisService
+import com.trainiq.ai.services.RoutineGeneratorService
 import com.trainiq.ai.services.WeeklyReportService
 import com.trainiq.ai.services.WorkoutDebriefService
 import com.trainiq.analytics.AnalyticsEngine
@@ -88,6 +89,7 @@ class TrainIqRepository @Inject constructor(
     private val workoutDebriefService: WorkoutDebriefService,
     private val goalAdvisorService: GoalAdvisorService,
     private val weeklyReportService: WeeklyReportService,
+    private val routineGeneratorService: RoutineGeneratorService,
 ) : HomeRepository, WorkoutRepository, NutritionRepository, ProgressRepository, CoachRepository {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -335,6 +337,87 @@ class TrainIqRepository @Inject constructor(
             state.copy(
                 sessions = state.sessions.filterNot { it.id == sessionId },
                 workoutSets = state.workoutSets.filterNot { it.sessionId == sessionId },
+            )
+        }
+    }
+
+    override suspend fun generateAiRoutine(daysPerWeek: Int, equipment: String, targetFocus: String) {
+        val profile = snapshotState.value.profile
+            ?: error("User profile is required to generate an AI routine. Please complete your profile first.")
+        val generated = routineGeneratorService.generateRoutine(
+            goal = profile.goal,
+            targetFocus = targetFocus.ifBlank { profile.trainingFocus },
+            daysPerWeek = daysPerWeek,
+            equipment = equipment,
+        ) ?: error("The AI did not return a routine. Check your API key or try again.")
+
+        check(generated.days.isNotEmpty()) {
+            "The AI returned a routine with no workout days. Try a more specific training focus."
+        }
+        check(generated.days.none { it.exercises.isEmpty() }) {
+            "The AI returned a day with no exercises. Try again with different equipment or focus."
+        }
+
+        localStore.update { state ->
+            val routineId = (state.routines.maxOfOrNull { it.id } ?: 0L) + 1L
+            val newRoutine = WorkoutRoutineEntity(
+                id = routineId,
+                name = generated.routineName,
+                description = generated.routineDescription,
+                active = state.routines.isEmpty(),
+            )
+
+            var nextDayId = (state.days.maxOfOrNull { it.id } ?: 0L) + 1L
+            var nextExerciseId = (state.exercises.maxOfOrNull { it.id } ?: 0L) + 1L
+            var nextWorkoutExerciseId = (state.workoutExercises.maxOfOrNull { it.id } ?: 0L) + 1L
+
+            val newDays = mutableListOf<WorkoutDayEntity>()
+            val newExercises = mutableListOf<ExerciseEntity>()
+            val newWorkoutExercises = mutableListOf<WorkoutExerciseEntity>()
+            // mutable copy so we can track newly added exercises within this transaction
+            val allExercises = state.exercises.toMutableList()
+
+            generated.days.forEachIndexed { orderIndex, generatedDay ->
+                val dayId = nextDayId++
+                newDays += WorkoutDayEntity(
+                    id = dayId,
+                    routineId = routineId,
+                    name = generatedDay.dayName,
+                    orderIndex = orderIndex,
+                )
+                generatedDay.exercises.forEach { generatedExercise ->
+                    val existing = allExercises.firstOrNull {
+                        it.name.equals(generatedExercise.exerciseName, ignoreCase = true) &&
+                            it.equipment.equals(generatedExercise.equipment, ignoreCase = true)
+                    }
+                    val exerciseId = existing?.id ?: run {
+                        val newId = nextExerciseId++
+                        val newExercise = ExerciseEntity(
+                            id = newId,
+                            name = generatedExercise.exerciseName,
+                            muscleGroup = generatedExercise.muscleGroup,
+                            equipment = generatedExercise.equipment,
+                        )
+                        newExercises += newExercise
+                        allExercises += newExercise
+                        newId
+                    }
+                    newWorkoutExercises += WorkoutExerciseEntity(
+                        id = nextWorkoutExerciseId++,
+                        dayId = dayId,
+                        exerciseId = exerciseId,
+                        targetSets = generatedExercise.targetSets,
+                        repRange = generatedExercise.repRange,
+                        restSeconds = generatedExercise.restSeconds,
+                    )
+                }
+            }
+
+            state.copy(
+                routines = state.routines + newRoutine,
+                days = state.days + newDays,
+                exercises = state.exercises + newExercises,
+                workoutExercises = state.workoutExercises + newWorkoutExercises,
             )
         }
     }

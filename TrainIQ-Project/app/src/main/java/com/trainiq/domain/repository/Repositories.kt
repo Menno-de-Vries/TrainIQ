@@ -50,6 +50,7 @@ interface WorkoutRepository {
     )
     suspend fun removeExerciseFromDay(workoutExerciseId: Long)
     suspend fun deleteWorkoutSession(sessionId: Long)
+    suspend fun generateAiRoutine(daysPerWeek: Int, equipment: String, targetFocus: String)
 }
 
 interface NutritionRepository {

@@ -9,9 +9,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -25,8 +28,10 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -48,6 +53,7 @@ import com.trainiq.domain.usecase.CreateRoutineUseCase
 import com.trainiq.domain.usecase.DeleteRoutineUseCase
 import com.trainiq.domain.usecase.DeleteWorkoutSessionUseCase
 import com.trainiq.domain.usecase.FinishWorkoutUseCase
+import com.trainiq.domain.usecase.GenerateAiRoutineUseCase
 import com.trainiq.domain.usecase.GetWorkoutDayUseCase
 import com.trainiq.domain.usecase.ObserveWorkoutOverviewUseCase
 import com.trainiq.domain.usecase.RemoveExerciseFromDayUseCase
@@ -77,6 +83,7 @@ class WorkoutViewModel @Inject constructor(
     private val removeWorkoutDayUseCase: RemoveWorkoutDayUseCase,
     private val addExerciseToDayUseCase: AddExerciseToDayUseCase,
     private val removeExerciseFromDayUseCase: RemoveExerciseFromDayUseCase,
+    private val generateAiRoutineUseCase: GenerateAiRoutineUseCase,
 ) : ViewModel() {
     val overview: StateFlow<WorkoutOverview?> = observeWorkoutOverviewUseCase()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -106,6 +113,15 @@ class WorkoutViewModel @Inject constructor(
         viewModelScope.launch {
             createRoutineUseCase(name.trim(), description.trim())
             _message.value = "Routine created."
+        }
+    }
+
+    fun generateAiRoutine(daysPerWeek: Int, equipment: String, targetFocus: String) {
+        _message.value = "Generating AI routine..."
+        viewModelScope.launch {
+            runCatching { generateAiRoutineUseCase(daysPerWeek, equipment, targetFocus) }
+                .onSuccess { _message.value = "Routine generated!" }
+                .onFailure { _message.value = it.message ?: "Failed to generate routine." }
         }
     }
 
@@ -208,6 +224,7 @@ fun WorkoutRoute(onStartWorkout: (Long) -> Unit, viewModel: WorkoutViewModel = h
         onDismissMessage = viewModel::clearMessage,
         onStartWorkout = onStartWorkout,
         onCreateRoutine = viewModel::createRoutine,
+        onGenerateAiRoutine = { days, equipment, focus -> viewModel.generateAiRoutine(days, equipment, focus) },
         onUpdateRoutine = viewModel::updateRoutine,
         onDeleteRoutine = viewModel::deleteRoutine,
         onSetActiveRoutine = viewModel::setActiveRoutine,
@@ -226,6 +243,7 @@ fun WorkoutScreen(
     onDismissMessage: () -> Unit,
     onStartWorkout: (Long) -> Unit,
     onCreateRoutine: (String, String) -> Unit,
+    onGenerateAiRoutine: (Int, String, String) -> Unit,
     onUpdateRoutine: (Long, String, String) -> Unit,
     onDeleteRoutine: (Long) -> Unit,
     onSetActiveRoutine: (Long) -> Unit,
@@ -235,8 +253,51 @@ fun WorkoutScreen(
     onRemoveExercise: (Long) -> Unit,
     onDeleteWorkoutSession: (Long) -> Unit,
 ) {
-    var routineName by remember { mutableStateOf("") }
-    var routineDescription by remember { mutableStateOf("") }
+    var showAiDialog by remember { mutableStateOf(false) }
+    var aiDaysPerWeek by remember { mutableStateOf("3") }
+    var aiEquipment by remember { mutableStateOf("") }
+    var aiTargetFocus by remember { mutableStateOf("") }
+
+    if (showAiDialog) {
+        AlertDialog(
+            onDismissRequest = { showAiDialog = false },
+            title = { Text("Generate AI Routine") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = aiTargetFocus,
+                        onValueChange = { aiTargetFocus = it },
+                        label = { Text("Training focus / split") },
+                        placeholder = { Text("e.g. Full Body, Upper/Lower, Hypertrophy") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = aiDaysPerWeek,
+                        onValueChange = { aiDaysPerWeek = it },
+                        label = { Text("Days per week") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = aiEquipment,
+                        onValueChange = { aiEquipment = it },
+                        label = { Text("Available equipment") },
+                        placeholder = { Text("e.g. Barbells, dumbbells, cables") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    onGenerateAiRoutine(aiDaysPerWeek.toIntOrNull() ?: 3, aiEquipment, aiTargetFocus)
+                    showAiDialog = false
+                }) { Text("Generate") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAiDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -258,18 +319,25 @@ fun WorkoutScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Create routine", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    OutlinedTextField(value = routineName, onValueChange = { routineName = it }, label = { Text("Routine name") }, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(
-                        value = routineDescription,
-                        onValueChange = { routineDescription = it },
-                        label = { Text("Description") },
-                        modifier = Modifier.fillMaxWidth(),
+                    Text(
+                        "Start with a blank template and add days and exercises manually, or let AI build a complete routine from your profile.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Button(onClick = {
-                        onCreateRoutine(routineName, routineDescription)
-                        routineName = ""
-                        routineDescription = ""
-                    }) { Text("Create routine") }
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Button(
+                            onClick = { onCreateRoutine("New Routine", "") },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Create blank routine") }
+                        Button(
+                            onClick = { showAiDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Generate with AI") }
+                    }
                 }
             }
         }
@@ -378,7 +446,13 @@ private fun RoutineCard(
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(value = editName, onValueChange = { editName = it }, label = { Text("Routine name") }, modifier = Modifier.fillMaxWidth())
+            // ── Edit section ────────────────────────────────────────────────
+            OutlinedTextField(
+                value = editName,
+                onValueChange = { editName = it },
+                label = { Text("Routine name") },
+                modifier = Modifier.fillMaxWidth(),
+            )
             OutlinedTextField(
                 value = editDescription,
                 onValueChange = { editDescription = it },
@@ -387,10 +461,24 @@ private fun RoutineCard(
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { onUpdateRoutine(routine.id, editName, editDescription) }) { Text("Save") }
+                Button(onClick = { onSetActiveRoutine(routine.id) }) {
+                    Text(if (routine.active) "Active" else "Set active")
+                }
+                TextButton(onClick = { onDeleteRoutine(routine.id) }) { Text("Delete") }
+            }
+
+            HorizontalDivider()
+
+            // ── Add day section ─────────────────────────────────────────────
+            Text("Add workout day", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 OutlinedTextField(
                     value = dayName,
                     onValueChange = { dayName = it },
-                    label = { Text("Add day") },
+                    label = { Text("Day name") },
                     modifier = Modifier.weight(1f),
                 )
                 Button(onClick = {
@@ -398,14 +486,14 @@ private fun RoutineCard(
                     dayName = ""
                 }) { Text("Add") }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { onSetActiveRoutine(routine.id) }) {
-                    Text(if (routine.active) "Active" else "Set active")
-                }
-                TextButton(onClick = { onDeleteRoutine(routine.id) }) { Text("Delete") }
-            }
+
+            // ── Existing days ───────────────────────────────────────────────
             if (routine.days.isEmpty()) {
-                Text("No workout days yet. Add a day to start building this routine.")
+                Text(
+                    "No workout days yet. Add a day to start building this routine.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             } else {
                 routine.days.forEach { day ->
                     WorkoutDayEditor(
@@ -438,53 +526,108 @@ private fun WorkoutDayEditor(
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            // ── Day header ──────────────────────────────────────────────────
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Column {
                     Text(day.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("${day.exercises.size} exercises")
+                    Text("${day.exercises.size} exercise${if (day.exercises.size == 1) "" else "s"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(onClick = { onStartWorkout(day.id) }) { Text("Start") }
                     TextButton(onClick = { onRemoveDay(day.id) }) { Text("Remove") }
                 }
             }
+
+            // ── Exercise list ───────────────────────────────────────────────
             if (day.exercises.isEmpty()) {
-                Text("No exercises yet. Add at least one to make this workout usable.")
+                Text(
+                    "No exercises yet. Add at least one to make this workout usable.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             } else {
                 day.exercises.forEach { plan ->
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(plan.exercise.name, fontWeight = FontWeight.SemiBold)
-                                Text("${plan.exercise.muscleGroup} • ${plan.targetSets} sets • ${plan.repRange}")
+                                Text(
+                                    "${plan.exercise.muscleGroup} • ${plan.targetSets} sets • ${plan.repRange}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                             TextButton(onClick = { onRemoveExercise(plan.id) }) { Text("Remove") }
                         }
                     }
                 }
             }
-            OutlinedTextField(value = exerciseName, onValueChange = { exerciseName = it }, label = { Text("Exercise name") }, modifier = Modifier.fillMaxWidth())
+
+            // ── Add exercise form ───────────────────────────────────────────
+            HorizontalDivider()
+            Text("Add exercise", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(
+                value = exerciseName,
+                onValueChange = { exerciseName = it },
+                label = { Text("Exercise name") },
+                modifier = Modifier.fillMaxWidth(),
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(value = muscleGroup, onValueChange = { muscleGroup = it }, label = { Text("Muscle") }, modifier = Modifier.weight(1f))
-                OutlinedTextField(value = equipment, onValueChange = { equipment = it }, label = { Text("Equipment") }, modifier = Modifier.weight(1f))
+                OutlinedTextField(
+                    value = muscleGroup,
+                    onValueChange = { muscleGroup = it },
+                    label = { Text("Muscle group") },
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedTextField(
+                    value = equipment,
+                    onValueChange = { equipment = it },
+                    label = { Text("Equipment") },
+                    modifier = Modifier.weight(1f),
+                )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(value = targetSets, onValueChange = { targetSets = it }, label = { Text("Sets") }, modifier = Modifier.weight(1f))
-                OutlinedTextField(value = repRange, onValueChange = { repRange = it }, label = { Text("Rep range") }, modifier = Modifier.weight(1f))
-                OutlinedTextField(value = restSeconds, onValueChange = { restSeconds = it }, label = { Text("Rest") }, modifier = Modifier.weight(1f))
+                OutlinedTextField(
+                    value = targetSets,
+                    onValueChange = { targetSets = it },
+                    label = { Text("Sets") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedTextField(
+                    value = repRange,
+                    onValueChange = { repRange = it },
+                    label = { Text("Rep range") },
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedTextField(
+                    value = restSeconds,
+                    onValueChange = { restSeconds = it },
+                    label = { Text("Rest (s)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                )
             }
-            Button(onClick = {
-                onAddExercise(day.id, exerciseName, muscleGroup, equipment, targetSets, repRange, restSeconds)
-                exerciseName = ""
-                muscleGroup = ""
-                equipment = ""
-                targetSets = "3"
-                repRange = "8-12"
-                restSeconds = "90"
-            }) { Text("Add exercise") }
+            Button(
+                onClick = {
+                    onAddExercise(day.id, exerciseName, muscleGroup, equipment, targetSets, repRange, restSeconds)
+                    exerciseName = ""
+                    muscleGroup = ""
+                    equipment = ""
+                    targetSets = "3"
+                    repRange = "8-12"
+                    restSeconds = "90"
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Add exercise") }
         }
     }
 }

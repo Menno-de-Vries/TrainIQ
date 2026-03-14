@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "Bash(find d:GitHubTrainIQ -maxdepth 2 -type f -name README* -o -name .gradle* -o -name settings.gradle*)",
-      "Bash(grep -E \"\\\\.\\(gradle|kts|sh|bat\\)$\")"
+      "Bash(grep -E \"\\\\.\\(gradle|kts|sh|bat\\)$\")",
+      "Bash(gradlew.bat assembleDebug)",
+      "Bash(cmd.exe /c \"gradlew.bat assembleDebug 2>&1\")",
+      "Bash(cmd.exe /c \"cd /d D:\\\\GitHub\\\\TrainIQ\\\\TrainIQ-Project && gradlew.bat assembleDebug\")",
+      "Bash(cmd.exe /c \"cd /d D:\\\\GitHub\\\\TrainIQ\\\\TrainIQ-Project && gradlew.bat :app:compileDebugKotlin 2>&1\")",
+      "Bash(tasklist /fi \"imagename eq java.exe\")",
+      "Bash(powershell -Command \"cd D:/GitHub/TrainIQ/TrainIQ-Project; ./gradlew :app:compileDebugKotlin 2>&1\")"
     ]
   }
 }

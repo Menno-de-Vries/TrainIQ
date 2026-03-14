@@ -84,6 +84,11 @@ class DeleteWorkoutSessionUseCase @Inject constructor(private val repository: Wo
     suspend operator fun invoke(sessionId: Long) = repository.deleteWorkoutSession(sessionId)
 }
 
+class GenerateAiRoutineUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(daysPerWeek: Int, equipment: String, targetFocus: String) =
+        repository.generateAiRoutine(daysPerWeek, equipment, targetFocus)
+}
+
 class ObserveNutritionUseCase @Inject constructor(private val repository: NutritionRepository) {
     operator fun invoke() = repository.observeNutritionOverview()
 }

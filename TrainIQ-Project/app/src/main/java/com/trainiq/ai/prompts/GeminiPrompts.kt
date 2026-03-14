@@ -87,4 +87,38 @@ object GeminiPrompts {
           "thinkingProcess": ["short reasoning step"]
         }
     """.trimIndent()
+
+    fun routineGenerator(goal: String, targetFocus: String, daysPerWeek: Int, equipment: String) = """
+        You are a senior strength coach. Design a complete, periodized workout routine tailored to the user's goal.
+        Goal: $goal
+        Requested training split / focus: $targetFocus
+        Days per week: $daysPerWeek
+        Available equipment: $equipment
+        Rules:
+        - Create exactly $daysPerWeek workout days.
+        - Each day should have 4–7 exercises appropriate for the available equipment.
+        - Use evidence-based set/rep schemes (e.g., 3x8-12 for hypertrophy, 4x4-6 for strength).
+        - Rest periods should match intensity (60–90 s hypertrophy, 2–3 min strength).
+        - Balance muscle groups across the week to avoid overtraining.
+        Return JSON only with no markdown fences:
+        {
+          "routineName": "string",
+          "routineDescription": "string",
+          "days": [
+            {
+              "dayName": "string",
+              "exercises": [
+                {
+                  "exerciseName": "string",
+                  "muscleGroup": "string",
+                  "equipment": "string",
+                  "targetSets": 3,
+                  "repRange": "8-12",
+                  "restSeconds": 90
+                }
+              ]
+            }
+          ]
+        }
+    """.trimIndent()
 }
