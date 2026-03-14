@@ -24,6 +24,7 @@ data class AiPreferences(
 data class HealthConnectSyncPreferences(
     val changesToken: String,
     val cacheStateJson: String,
+    val lastSyncedAt: Long,
 )
 
 @Singleton
@@ -36,6 +37,7 @@ class UserPreferencesRepository @Inject constructor(
     private val geminiApiKey = stringPreferencesKey("gemini_api_key")
     private val healthChangesTokenKey = stringPreferencesKey("health_connect_changes_token")
     private val healthCacheStateKey = stringPreferencesKey("health_connect_cache_state")
+    private val healthLastSyncedAtKey = stringPreferencesKey("health_connect_last_synced_at")
 
     val streakCount: Flow<Int> = context.dataStore.data.map { preferences -> preferences[streakKey] ?: 0 }
     val themeMode: Flow<ThemeMode> = context.dataStore.data.map { preferences ->
@@ -73,13 +75,15 @@ class UserPreferencesRepository @Inject constructor(
         return HealthConnectSyncPreferences(
             changesToken = preferences[healthChangesTokenKey].orEmpty(),
             cacheStateJson = preferences[healthCacheStateKey].orEmpty(),
+            lastSyncedAt = preferences[healthLastSyncedAtKey]?.toLongOrNull() ?: 0L,
         )
     }
 
-    suspend fun saveHealthConnectSyncPreferences(changesToken: String, cacheStateJson: String) {
+    suspend fun saveHealthConnectSyncPreferences(changesToken: String, cacheStateJson: String, lastSyncedAt: Long) {
         context.dataStore.edit { preferences ->
             preferences[healthChangesTokenKey] = changesToken
             preferences[healthCacheStateKey] = cacheStateJson
+            preferences[healthLastSyncedAtKey] = lastSyncedAt.toString()
         }
     }
 
@@ -87,6 +91,7 @@ class UserPreferencesRepository @Inject constructor(
         context.dataStore.edit { preferences ->
             preferences.remove(healthChangesTokenKey)
             preferences.remove(healthCacheStateKey)
+            preferences.remove(healthLastSyncedAtKey)
         }
     }
 }

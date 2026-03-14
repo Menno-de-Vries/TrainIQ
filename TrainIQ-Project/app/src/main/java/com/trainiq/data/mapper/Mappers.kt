@@ -8,10 +8,13 @@ import com.trainiq.core.database.WorkoutExerciseEntity
 import com.trainiq.core.database.WorkoutRoutineEntity
 import com.trainiq.core.database.WorkoutSessionEntity
 import com.trainiq.data.datasource.CachedHeartRateRecord
+import com.trainiq.data.datasource.CachedCaloriesBurnedRecord
 import com.trainiq.data.datasource.CachedSleepSessionRecord
 import com.trainiq.data.datasource.CachedStepRecord
+import com.trainiq.data.datasource.CachedWeightRecord
 import com.trainiq.data.datasource.HealthConnectCacheState
 import com.trainiq.domain.model.BodyMeasurement
+import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.Exercise
 import com.trainiq.domain.model.HealthConnectMetrics
 import com.trainiq.domain.model.UserProfile
@@ -22,12 +25,16 @@ import com.trainiq.domain.model.WorkoutSessionSummary
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
+import androidx.health.connect.client.records.WeightRecord
 import java.time.Duration
 import kotlin.math.roundToInt
 
 fun UserProfileEntity.toDomain() = UserProfile(
     id = id,
     name = name,
+    age = age,
+    sex = runCatching { BiologicalSex.valueOf(sex) }.getOrDefault(BiologicalSex.MALE),
     height = height,
     weight = weight,
     bodyFat = bodyFat,
@@ -44,7 +51,7 @@ fun ExerciseEntity.toDomain() = Exercise(id, name, muscleGroup, equipment)
 
 fun BodyMeasurementEntity.toDomain() = BodyMeasurement(id, date, weight, bodyFat, muscleMass)
 
-fun WorkoutSessionEntity.toDomain(totalVolume: Double) = WorkoutSessionSummary(id, date, duration, totalVolume)
+fun WorkoutSessionEntity.toDomain(totalVolume: Double) = WorkoutSessionSummary(id, date, duration, caloriesBurned, totalVolume)
 
 fun WorkoutDayEntity.toDomain(exercises: List<WorkoutExercisePlan>) = WorkoutDay(id, routineId, name, orderIndex, exercises)
 
@@ -84,8 +91,24 @@ internal fun SleepSessionRecord.toCachedSleepSessionRecord() = CachedSleepSessio
     durationMinutes = Duration.between(startTime, endTime).toMinutes(),
 )
 
+internal fun TotalCaloriesBurnedRecord.toCachedCaloriesBurnedRecord() = CachedCaloriesBurnedRecord(
+    recordId = metadata.id,
+    startTimeMillis = startTime.toEpochMilli(),
+    endTimeMillis = endTime.toEpochMilli(),
+    kcal = energy.inKilocalories,
+)
+
+internal fun WeightRecord.toCachedWeightRecord() = CachedWeightRecord(
+    recordId = metadata.id,
+    timeMillis = time.toEpochMilli(),
+    weightKg = weight.inKilograms,
+)
+
 internal fun HealthConnectCacheState.toDomainMetrics(): HealthConnectMetrics = HealthConnectMetrics(
-    stepsToday = stepRecords.sumOf(CachedStepRecord::count),
+    // Prefer the aggregate API result (deduplication-aware). Fall back to the manual sum only
+    // for old DataStore caches that predate the aggregate field (aggregatedStepsToday == 0).
+    stepsToday = if (aggregatedStepsToday > 0) aggregatedStepsToday.toInt()
+                 else stepRecords.sumOf(CachedStepRecord::count),
     averageHeartRateBpm = heartRateRecords
         .takeIf { it.isNotEmpty() }
         ?.let { records ->
@@ -104,4 +127,6 @@ internal fun HealthConnectCacheState.toDomainMetrics(): HealthConnectMetrics = H
         ?.latestBeatsPerMinute,
     sleepMinutes = sleepSessionRecords.sumOf(CachedSleepSessionRecord::durationMinutes),
     sleepSessionCount = sleepSessionRecords.size,
+    caloriesBurnedToday = caloriesBurnedRecords.takeIf { it.isNotEmpty() }?.sumOf(CachedCaloriesBurnedRecord::kcal),
+    latestWeightKg = weightRecords.maxByOrNull(CachedWeightRecord::timeMillis)?.weightKg,
 )

@@ -1,0 +1,5 @@
+HSPLcom/trainiq/MainActivity;
+HSPLcom/trainiq/MainViewModel;
+HSPLcom/trainiq/navigation/TrainIqNavKt;
+HSPLcom/trainiq/data/repository/TrainIqRepository;
+HSPLcom/trainiq/ai/services/AiServicesKt;

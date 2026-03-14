@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find d:GitHubTrainIQ -maxdepth 2 -type f -name README* -o -name .gradle* -o -name settings.gradle*)",
+      "Bash(grep -E \"\\\\.\\(gradle|kts|sh|bat\\)$\")"
+    ]
+  }
+}

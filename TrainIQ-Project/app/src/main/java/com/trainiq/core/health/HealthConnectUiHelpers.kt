@@ -8,14 +8,18 @@ import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
+import androidx.health.connect.client.records.WeightRecord
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 
-private val healthPermissions = setOf(
+internal val HealthConnectReadPermissions = setOf(
     HealthPermission.getReadPermission(StepsRecord::class),
     HealthPermission.getReadPermission(HeartRateRecord::class),
     HealthPermission.getReadPermission(SleepSessionRecord::class),
+    HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class),
+    HealthPermission.getReadPermission(WeightRecord::class),
 )
 
 @Composable
@@ -23,7 +27,7 @@ fun rememberHealthConnectPermissionRequester(onPermissionsResult: () -> Unit): (
     val launcher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract(),
     ) { onPermissionsResult() }
-    return { launcher.launch(healthPermissions) }
+    return { launcher.launch(HealthConnectReadPermissions) }
 }
 
 @Composable

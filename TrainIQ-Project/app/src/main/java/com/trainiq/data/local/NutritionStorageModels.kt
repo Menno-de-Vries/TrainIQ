@@ -2,6 +2,7 @@ package com.trainiq.data.local
 
 import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.model.LoggedMealItemType
+import com.trainiq.domain.model.MealType
 
 data class FoodItemStorage(
     val id: Long = 0L,
@@ -35,6 +36,7 @@ data class RecipeIngredientStorage(
 data class LoggedMealStorage(
     val id: Long = 0L,
     val timestamp: Long = 0L,
+    val mealType: MealType = MealType.LUNCH,
     val name: String = "",
     val notes: String? = null,
 )

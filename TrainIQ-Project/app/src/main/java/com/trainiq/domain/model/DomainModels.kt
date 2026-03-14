@@ -3,6 +3,8 @@ package com.trainiq.domain.model
 data class UserProfile(
     val id: Long,
     val name: String,
+    val age: Int,
+    val sex: BiologicalSex,
     val height: Double,
     val weight: Double,
     val bodyFat: Double,
@@ -50,6 +52,7 @@ data class WorkoutSessionSummary(
     val id: Long,
     val date: Long,
     val duration: Long,
+    val caloriesBurned: Int,
     val totalVolume: Double,
 )
 
@@ -143,6 +146,7 @@ data class LoggedMealItem(
 data class LoggedMeal(
     val id: Long,
     val timestamp: Long,
+    val mealType: MealType,
     val name: String,
     val notes: String? = null,
     val items: List<LoggedMealItem>,
@@ -159,7 +163,17 @@ data class MealScanItem(
 
 data class MealAnalysisResult(
     val items: List<MealScanItem>,
+    val suggestedMealType: MealType? = null,
     val notes: String? = null,
+    val rawResponse: String? = null,
+)
+
+data class WeeklyReportResult(
+    val summary: String,
+    val wins: List<String>,
+    val risks: List<String>,
+    val nextWeekFocus: String,
+    val thinkingProcess: List<String> = emptyList(),
     val rawResponse: String? = null,
 )
 
@@ -167,11 +181,15 @@ data class NutritionOverview(
     val foods: List<FoodItem>,
     val recipes: List<Recipe>,
     val meals: List<LoggedMeal>,
+    val todaysNutrition: NutritionFacts,
     val todaysCalories: Double,
     val todaysProtein: Double,
     val todaysCarbs: Double,
     val todaysFat: Double,
     val todaysMeals: List<LoggedMeal>,
+    val todaysMealsByType: Map<MealType, List<LoggedMeal>>,
+    val todaysWorkoutCalories: Int,
+    val energyBalance: EnergyBalanceSnapshot? = null,
     val scannedResult: MealAnalysisResult? = null,
 )
 
@@ -185,10 +203,16 @@ data class BodyMeasurement(
 
 data class HomeDashboard(
     val profile: UserProfile?,
-    val calorieProgress: Int,
+    val energyBalance: EnergyBalanceSnapshot?,
     val calorieTarget: Int,
+    val calorieProgress: Int,
     val proteinProgress: Int,
     val proteinTarget: Int,
+    val carbsProgress: Int,
+    val carbsTarget: Int,
+    val fatProgress: Int,
+    val fatTarget: Int,
+    val todaysWorkoutCalories: Int,
     val steps: Int?,
     val nextWorkout: WorkoutDay?,
     val streak: Int,
@@ -213,12 +237,16 @@ data class CoachOverview(
 )
 
 data class GoalAdvice(
+    val bmr: Int,
+    val maintenanceCalories: Int,
+    val activityMultiplier: Double,
     val calorieTarget: Int,
     val proteinTarget: Int,
     val carbsTarget: Int,
     val fatTarget: Int,
     val trainingFocus: String,
     val summary: String,
+    val rawResponse: String? = null,
 )
 
 data class WorkoutDebrief(
@@ -249,6 +277,8 @@ data class HealthConnectMetrics(
     val latestHeartRateBpm: Int? = null,
     val sleepMinutes: Long = 0L,
     val sleepSessionCount: Int = 0,
+    val caloriesBurnedToday: Double? = null,
+    val latestWeightKg: Double? = null,
 )
 
 data class HealthConnectStatus(
@@ -271,6 +301,12 @@ data class HealthConnectStatus(
 
     val sleepSessionCount: Int
         get() = metrics?.sleepSessionCount ?: 0
+
+    val caloriesBurnedToday: Double?
+        get() = metrics?.caloriesBurnedToday
+
+    val latestWeightKg: Double?
+        get() = metrics?.latestWeightKg
 }
 
 data class ChartPoint(

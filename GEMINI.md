@@ -76,6 +76,7 @@ This document is the **authoritative source of truth** for all engineering decis
 1.  **Research:** Always check `Entities.kt` and `DomainModels.kt` before adding fields.
 2.  **Act:** Use `replace` for surgical precision. Propose 2.5 Flash parameters in all new AI calls.
 3.  **Validate:** Compile check is minimum. Propose unit tests for business logic.
+4.  **Prompts:** Wanneer het woord 'prompt' voorkomt in een verzoek, dien je een prompt voor Codex te genereren op basis van de vraag in plaats van de acties zelf uit te voeren.
 
 ---
 

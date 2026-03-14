@@ -1,6 +1,7 @@
 package com.trainiq.domain.repository
 
 import com.trainiq.domain.model.CoachOverview
+import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.FoodItem
 import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.model.GoalAdvice
@@ -8,11 +9,13 @@ import com.trainiq.domain.model.HealthConnectStatus
 import com.trainiq.domain.model.HomeDashboard
 import com.trainiq.domain.model.LoggedSet
 import com.trainiq.domain.model.MealAnalysisResult
+import com.trainiq.domain.model.MealType
 import com.trainiq.domain.model.NutritionFacts
 import com.trainiq.domain.model.NutritionOverview
 import com.trainiq.domain.model.ProgressOverview
 import com.trainiq.domain.model.Recipe
 import com.trainiq.domain.model.UserProfile
+import com.trainiq.domain.model.WeeklyReportResult
 import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutDebrief
 import com.trainiq.domain.model.WorkoutOverview
@@ -21,6 +24,8 @@ import kotlinx.coroutines.flow.Flow
 interface HomeRepository {
     fun observeDashboard(): Flow<HomeDashboard>
     suspend fun getHealthConnectStatus(): HealthConnectStatus
+    /** Fetches today's steps from the Health Connect aggregate API and updates the dashboard flow. Falls back to the DataStore cache when HC is unavailable. */
+    suspend fun refreshDashboardData()
 }
 
 interface WorkoutRepository {
@@ -49,7 +54,8 @@ interface WorkoutRepository {
 
 interface NutritionRepository {
     fun observeNutritionOverview(): Flow<NutritionOverview>
-    suspend fun analyzeMealPhoto(path: String, context: String): MealAnalysisResult
+    suspend fun analyzeMealPhoto(path: String, context: String, capturedAtMillis: Long): MealAnalysisResult
+    fun clearLastScanResult()
     suspend fun saveFoodItem(
         id: Long?,
         name: String,
@@ -69,6 +75,7 @@ interface NutritionRepository {
     ): Recipe
     suspend fun saveMeal(
         id: Long?,
+        mealType: MealType,
         name: String,
         notes: String?,
         items: List<MealEntryRequest>,
@@ -98,8 +105,16 @@ interface ProgressRepository {
 
 interface CoachRepository {
     fun observeCoachOverview(): Flow<CoachOverview>
-    suspend fun generateGoalAdvice(height: Double, weight: Double, bodyFat: Double, goal: String): GoalAdvice
-    suspend fun generateWeeklyReport(): String
+    suspend fun generateGoalAdvice(
+        height: Double,
+        weight: Double,
+        bodyFat: Double,
+        age: Int,
+        sex: BiologicalSex,
+        activityLevel: String,
+        goal: String,
+    ): GoalAdvice
+    suspend fun generateWeeklyReport(): WeeklyReportResult
     fun observeUserProfile(): Flow<UserProfile?>
     suspend fun saveProfile(profile: UserProfile)
 }

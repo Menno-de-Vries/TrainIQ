@@ -11,6 +11,9 @@ import com.trainiq.core.database.WorkoutExerciseEntity
 import com.trainiq.core.database.WorkoutRoutineEntity
 import com.trainiq.core.database.WorkoutSessionEntity
 import com.trainiq.core.database.WorkoutSetEntity
+import com.trainiq.domain.model.MealType
+import com.trainiq.domain.model.estimateStrengthTrainingCalories
+import com.trainiq.domain.model.suggestMealType
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -62,7 +65,7 @@ class TrainIqLocalStore @Inject constructor(
         return runCatching {
             val raw = storageFile.readText()
             val parsed = gson.fromJson(raw, TrainIqStorageState::class.java) ?: TrainIqStorageState()
-            migrateLegacyMeals(parsed, raw)
+            migrateProfileAndWorkoutDefaults(migrateLegacyMeals(parsed, raw))
         }.getOrElse { TrainIqStorageState() }
     }
 
@@ -79,6 +82,7 @@ class TrainIqLocalStore @Inject constructor(
             migratedMeals += LoggedMealStorage(
                 id = mealId,
                 timestamp = obj.get("date")?.asLong ?: 0L,
+                mealType = suggestMealType(obj.get("date")?.asLong ?: 0L),
                 name = "Imported meal",
             )
             migratedItems += LoggedMealItemStorage(
@@ -93,6 +97,31 @@ class TrainIqLocalStore @Inject constructor(
             )
         }
         return state.copy(meals = migratedMeals, mealItems = migratedItems)
+    }
+
+    private fun migrateProfileAndWorkoutDefaults(state: TrainIqStorageState): TrainIqStorageState {
+        val migratedProfile = state.profile?.copy(
+            age = state.profile.age.takeIf { it > 0 } ?: 30,
+            sex = state.profile.sex.takeIf { it.isNotBlank() } ?: "MALE",
+        )
+        val migratedSessions = state.sessions.map { session ->
+            if (session.caloriesBurned > 0) {
+                session
+            } else {
+                session.copy(caloriesBurned = estimateStrengthTrainingCalories(session.duration))
+            }
+        }
+        val migratedMeals = state.meals.map { meal ->
+            meal.copy(
+                mealType = meal.mealType.takeIf { it in MealType.entries } ?: suggestMealType(meal.timestamp),
+                name = meal.name.ifBlank { meal.mealType.label },
+            )
+        }
+        return state.copy(
+            profile = migratedProfile,
+            sessions = migratedSessions,
+            meals = migratedMeals,
+        )
     }
 }
 

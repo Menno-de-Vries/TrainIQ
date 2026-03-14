@@ -7,6 +7,8 @@ import androidx.room.PrimaryKey
 data class UserProfileEntity(
     @PrimaryKey val id: Long,
     val name: String,
+    val age: Int = 30,
+    val sex: String = "MALE",
     val height: Double,
     val weight: Double,
     val bodyFat: Double,
@@ -58,6 +60,7 @@ data class WorkoutSessionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val date: Long,
     val duration: Long,
+    val caloriesBurned: Int = 0,
 )
 
 @Entity(tableName = "workout_sets")
@@ -74,6 +77,9 @@ data class WorkoutSetEntity(
 data class MealEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val date: Long,
+    val mealType: String = "LUNCH",
+    val name: String = "",
+    val notes: String? = null,
     val calories: Int,
     val protein: Int,
     val carbs: Int,

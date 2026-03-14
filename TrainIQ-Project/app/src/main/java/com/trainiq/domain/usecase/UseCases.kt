@@ -1,7 +1,10 @@
 package com.trainiq.domain.usecase
 
 import com.trainiq.domain.model.LoggedSet
+import com.trainiq.domain.model.BiologicalSex
+import com.trainiq.domain.model.MealType
 import com.trainiq.domain.model.UserProfile
+import com.trainiq.domain.model.WeeklyReportResult
 import com.trainiq.domain.repository.MealEntryRequest
 import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.repository.CoachRepository
@@ -17,6 +20,10 @@ class ObserveHomeDashboardUseCase @Inject constructor(private val repository: Ho
 
 class GetHealthConnectStatusUseCase @Inject constructor(private val repository: HomeRepository) {
     suspend operator fun invoke() = repository.getHealthConnectStatus()
+}
+
+class RefreshDashboardDataUseCase @Inject constructor(private val repository: HomeRepository) {
+    suspend operator fun invoke() = repository.refreshDashboardData()
 }
 
 class ObserveWorkoutOverviewUseCase @Inject constructor(private val repository: WorkoutRepository) {
@@ -82,7 +89,8 @@ class ObserveNutritionUseCase @Inject constructor(private val repository: Nutrit
 }
 
 class AnalyzeMealUseCase @Inject constructor(private val repository: NutritionRepository) {
-    suspend operator fun invoke(path: String, context: String) = repository.analyzeMealPhoto(path, context)
+    suspend operator fun invoke(path: String, context: String, capturedAtMillis: Long) =
+        repository.analyzeMealPhoto(path, context, capturedAtMillis)
 }
 
 class SaveFoodItemUseCase @Inject constructor(private val repository: NutritionRepository) {
@@ -111,10 +119,11 @@ class SaveRecipeUseCase @Inject constructor(private val repository: NutritionRep
 class SaveMealUseCase @Inject constructor(private val repository: NutritionRepository) {
     suspend operator fun invoke(
         id: Long?,
+        mealType: MealType,
         name: String,
         notes: String?,
         items: List<MealEntryRequest>,
-    ) = repository.saveMeal(id, name, notes, items)
+    ) = repository.saveMeal(id, mealType, name, notes, items)
 }
 
 class DeleteMealUseCase @Inject constructor(private val repository: NutritionRepository) {
@@ -127,6 +136,10 @@ class DeleteFoodUseCase @Inject constructor(private val repository: NutritionRep
 
 class DeleteRecipeUseCase @Inject constructor(private val repository: NutritionRepository) {
     suspend operator fun invoke(recipeId: Long) = repository.deleteRecipe(recipeId)
+}
+
+class ClearLastScanResultUseCase @Inject constructor(private val repository: NutritionRepository) {
+    operator fun invoke() = repository.clearLastScanResult()
 }
 
 class ObserveProgressUseCase @Inject constructor(private val repository: ProgressRepository) {
@@ -147,12 +160,19 @@ class ObserveCoachUseCase @Inject constructor(private val repository: CoachRepos
 }
 
 class GenerateGoalAdviceUseCase @Inject constructor(private val repository: CoachRepository) {
-    suspend operator fun invoke(height: Double, weight: Double, bodyFat: Double, goal: String) =
-        repository.generateGoalAdvice(height, weight, bodyFat, goal)
+    suspend operator fun invoke(
+        height: Double,
+        weight: Double,
+        bodyFat: Double,
+        age: Int,
+        sex: BiologicalSex,
+        activityLevel: String,
+        goal: String,
+    ) = repository.generateGoalAdvice(height, weight, bodyFat, age, sex, activityLevel, goal)
 }
 
 class GenerateWeeklyReportUseCase @Inject constructor(private val repository: CoachRepository) {
-    suspend operator fun invoke() = repository.generateWeeklyReport()
+    suspend operator fun invoke(): WeeklyReportResult = repository.generateWeeklyReport()
 }
 
 class ObserveUserProfileUseCase @Inject constructor(private val repository: CoachRepository) {

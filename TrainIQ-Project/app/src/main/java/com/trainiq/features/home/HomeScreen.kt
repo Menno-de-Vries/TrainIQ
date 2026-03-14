@@ -2,18 +2,35 @@ package com.trainiq.features.home
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -21,7 +38,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.HealthConnectClient
@@ -31,47 +53,98 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.trainiq.core.health.HealthConnectRefreshOnResume
 import com.trainiq.core.health.rememberHealthConnectPermissionRequester
+import com.trainiq.core.theme.spacing
+import com.trainiq.core.ui.PermissionManagerCard
 import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.ShimmerCardPlaceholder
+import com.trainiq.core.util.EnergyBalanceCard
+import com.trainiq.core.util.MacroBreakdownCard
 import com.trainiq.core.util.MetricCard
-import com.trainiq.core.util.ProgressCard
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
 import com.trainiq.domain.model.HomeDashboard
+import com.trainiq.domain.model.buildEnergyBalance
 import com.trainiq.domain.usecase.GetHealthConnectStatusUseCase
 import com.trainiq.domain.usecase.ObserveHomeDashboardUseCase
+import com.trainiq.domain.usecase.RefreshDashboardDataUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+sealed interface HomeUiState {
+    data object Loading : HomeUiState
+    data class Success(
+        val dashboard: HomeDashboard,
+        val healthConnectStatus: HealthConnectStatus,
+    ) : HomeUiState
+    data class Error(val message: String) : HomeUiState
+}
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     observeHomeDashboardUseCase: ObserveHomeDashboardUseCase,
     private val getHealthConnectStatusUseCase: GetHealthConnectStatusUseCase,
+    private val refreshDashboardDataUseCase: RefreshDashboardDataUseCase,
 ) : ViewModel() {
-    val dashboard: StateFlow<HomeDashboard?> = observeHomeDashboardUseCase()
+    private val dashboard = observeHomeDashboardUseCase()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    private val _healthConnectStatus = MutableStateFlow(
+    private val healthConnectStatus = MutableStateFlow(
         HealthConnectStatus(
             state = HealthConnectState.ERROR,
-            message = "Health Connect status wordt geladen.",
+            message = "Loading Health Connect status.",
         ),
     )
-    val healthConnectStatus: StateFlow<HealthConnectStatus> = _healthConnectStatus.asStateFlow()
+
+    val uiState: StateFlow<HomeUiState> = combine(dashboard, healthConnectStatus) { home, health ->
+        when {
+            home == null -> HomeUiState.Loading
+            else -> HomeUiState.Success(
+                home.copy(
+                    steps = health.stepsToday,
+                    energyBalance = home.profile?.let { profile ->
+                        buildEnergyBalance(
+                            profile = profile,
+                            caloriesIn = home.calorieProgress.toDouble(),
+                            steps = health.stepsToday ?: 0,
+                            workoutCalories = home.todaysWorkoutCalories,
+                        )
+                    },
+                ),
+                health,
+            )
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState.Loading)
 
     init {
+        // Immediate: hit the HC aggregate API for a fresh step count.
+        viewModelScope.launch { refreshDashboardDataUseCase() }
+        // Parallel: full incremental sync updates _cachedSteps AND the HC state card.
         refreshHealthConnectStatus()
+        // Periodic: refresh steps every 60 s while the ViewModel is active so the
+        // dashboard stays current without requiring the user to leave and return.
+        viewModelScope.launch {
+            while (true) {
+                delay(60_000L)
+                refreshDashboardDataUseCase()
+            }
+        }
     }
 
     fun refreshHealthConnectStatus() {
         viewModelScope.launch {
-            _healthConnectStatus.value = getHealthConnectStatusUseCase()
+            healthConnectStatus.value = runCatching { getHealthConnectStatusUseCase() }.getOrElse {
+                HealthConnectStatus(
+                    state = HealthConnectState.ERROR,
+                    message = "Unable to refresh Health Connect right now.",
+                )
+            }
         }
     }
 }
@@ -84,8 +157,7 @@ fun HomeRoute(
     onOpenSettings: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
-    val dashboard by viewModel.dashboard.collectAsStateWithLifecycle()
-    val healthConnectStatus by viewModel.healthConnectStatus.collectAsStateWithLifecycle()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val requestHealthPermission = rememberHealthConnectPermissionRequester(viewModel::refreshHealthConnectStatus)
 
     LaunchedEffect(Unit) {
@@ -94,8 +166,7 @@ fun HomeRoute(
     HealthConnectRefreshOnResume(viewModel::refreshHealthConnectStatus)
 
     HomeScreen(
-        state = dashboard,
-        healthConnectStatus = healthConnectStatus,
+        uiState = uiState,
         onStartWorkout = onStartWorkout,
         onOpenCoach = onOpenCoach,
         onOpenTrain = onOpenTrain,
@@ -107,8 +178,7 @@ fun HomeRoute(
 
 @Composable
 fun HomeScreen(
-    state: HomeDashboard?,
-    healthConnectStatus: HealthConnectStatus,
+    uiState: HomeUiState,
     onStartWorkout: (Long) -> Unit,
     onOpenCoach: () -> Unit,
     onOpenTrain: () -> Unit,
@@ -117,122 +187,150 @@ fun HomeScreen(
     onRefreshHealth: () -> Unit,
 ) {
     val context = LocalContext.current
-    val dashboard = state
+    val haptics = LocalHapticFeedback.current
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        item { ScreenHeader(title = "TrainIQ", actionIcon = Icons.Default.Settings, actionContentDescription = "Open settings", onActionClick = onOpenSettings) }
-
-        if (dashboard == null) {
-            item { ShimmerCardPlaceholder(lineCount = 4) }
-            item { ShimmerCardPlaceholder(lineCount = 3) }
-            item { ShimmerCardPlaceholder(lineCount = 4) }
-            return@LazyColumn
-        }
-
-        if (dashboard.profile == null) {
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Rond je setup af", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Text("Voeg je profiel, doel en macrodoelen toe om je dashboard persoonlijk te maken.")
-                        Button(onClick = onOpenCoach) { Text("Open Coach & Setup") }
+    AnimatedContent(
+        targetState = uiState,
+        label = "home-ui-state",
+    ) { state ->
+        when (state) {
+            HomeUiState.Loading -> {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(MaterialTheme.spacing.medium),
+                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
+                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
+                ) {
+                    item(span = { GridItemSpan(2) }) {
+                        ScreenHeader(title = "TrainIQ", actionIcon = Icons.Default.Settings, actionContentDescription = "Open settings", onActionClick = onOpenSettings)
                     }
+                    items(4) { ShimmerCardPlaceholder(lineCount = 4, modifier = Modifier.height(170.dp)) }
                 }
             }
-        } else {
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                    ProgressCard(
-                        title = "Calorie progress",
-                        progress = dashboard.calorieProgress / dashboard.calorieTarget.coerceAtLeast(1).toFloat(),
-                        current = "${dashboard.calorieProgress} kcal",
-                        target = "${dashboard.calorieTarget} kcal",
-                        modifier = Modifier.weight(1f),
-                    )
-                    ProgressCard(
-                        title = "Protein progress",
-                        progress = dashboard.proteinProgress / dashboard.proteinTarget.coerceAtLeast(1).toFloat(),
-                        current = "${dashboard.proteinProgress} g",
-                        target = "${dashboard.proteinTarget} g",
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-        }
 
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                MetricCard(
-                    title = "Streak",
-                    value = "${dashboard.streak} days",
-                    subtitle = if (dashboard.streak > 0) "Opeenvolgende dagen met activiteit" else "Log een training of maaltijd om te starten",
-                    modifier = Modifier.weight(1f),
-                )
-                MetricCard(
-                    title = "Steps",
-                    value = when (healthConnectStatus.state) {
-                        HealthConnectState.CONNECTED, HealthConnectState.NO_DATA -> "${healthConnectStatus.stepsToday ?: 0}"
-                        else -> "Unavailable"
-                    },
-                    subtitle = buildString {
-                        append(healthConnectStatus.message)
-                        healthConnectStatus.averageHeartRateBpm?.let { append(" • Avg HR $it bpm") }
-                        healthConnectStatus.sleepMinutes?.takeIf { it > 0 }?.let {
-                            append(" • Sleep ${it / 60}h ${it % 60}m")
+            is HomeUiState.Error -> {
+                Box(modifier = Modifier.fillMaxSize().padding(MaterialTheme.spacing.medium)) {
+                    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier.padding(MaterialTheme.spacing.large),
+                            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+                        ) {
+                            Text("Home unavailable", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                            Text(state.message, style = MaterialTheme.typography.bodyMedium)
+                            OutlinedButton(onClick = onRefreshHealth) { Text("Retry") }
                         }
-                    },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-
-        item {
-            HealthConnectCard(
-                status = healthConnectStatus,
-                onRequestPermission = onRequestHealthPermission,
-                onOpenInstall = {
-                    val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata"))
-                    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata"))
-                    val intent = if (marketIntent.resolveActivity(context.packageManager) != null) marketIntent else webIntent
-                    context.startActivity(intent)
-                },
-                onOpenSettings = {
-                    val settingsIntent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
-                    if (settingsIntent.resolveActivity(context.packageManager) != null) {
-                        context.startActivity(settingsIntent)
-                    } else {
-                        onRefreshHealth()
-                    }
-                },
-                onRefresh = onRefreshHealth,
-            )
-        }
-
-        item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Next workout", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    if (dashboard.nextWorkout == null) {
-                        Text("Er is nog geen actieve routine of trainingsdag ingesteld.")
-                        Button(onClick = onOpenTrain) { Text("Open Train") }
-                    } else {
-                        Text(dashboard.nextWorkout.name)
-                        Text(dashboard.nextWorkout.exercises.joinToString { it.exercise.name }.ifBlank { "Voeg oefeningen toe aan deze dag." })
-                        Button(onClick = { onStartWorkout(dashboard.nextWorkout.id) }) { Text("Start workout") }
                     }
                 }
             }
-        }
 
-        item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Coach insight", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(dashboard.aiInsight)
+            is HomeUiState.Success -> {
+                val dashboard = state.dashboard
+                val healthConnectStatus = state.healthConnectStatus
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(MaterialTheme.spacing.medium),
+                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
+                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
+                ) {
+                    item(span = { GridItemSpan(2) }) {
+                        ScreenHeader(title = "TrainIQ", actionIcon = Icons.Default.Settings, actionContentDescription = "Open settings", onActionClick = onOpenSettings)
+                    }
+                    if (dashboard.profile == null) {
+                        item(span = { GridItemSpan(2) }) {
+                            DiscoveryCard(onOpenCoach = onOpenCoach)
+                        }
+                    }
+                    item(span = { GridItemSpan(2) }) {
+                        EnergyBalanceCard(
+                            energyBalance = dashboard.energyBalance,
+                            calorieTarget = dashboard.calorieTarget,
+                            modifier = Modifier.height(280.dp),
+                        )
+                    }
+                    item(span = { GridItemSpan(2) }) {
+                        MacroBreakdownCard(
+                            protein = dashboard.proteinProgress,
+                            proteinTarget = dashboard.proteinTarget,
+                            carbs = dashboard.carbsProgress,
+                            carbsTarget = dashboard.carbsTarget,
+                            fat = dashboard.fatProgress,
+                            fatTarget = dashboard.fatTarget,
+                            modifier = Modifier.height(220.dp),
+                        )
+                    }
+                    item {
+                        MetricCard(
+                            title = "Streak",
+                            value = "${dashboard.streak} days",
+                            subtitle = if (dashboard.streak > 0) "Mechanical consistency is locked in" else "Log a workout or meal to start momentum",
+                            modifier = Modifier.height(170.dp),
+                        )
+                    }
+                    item {
+                        MetricCard(
+                            title = "Recovery stream",
+                            value = when (healthConnectStatus.state) {
+                                HealthConnectState.CONNECTED, HealthConnectState.NO_DATA -> "${healthConnectStatus.stepsToday ?: 0}"
+                                else -> "Offline"
+                            },
+                            subtitle = buildString {
+                                append("Steps")
+                                healthConnectStatus.averageHeartRateBpm?.let { append(" • Avg HR $it") }
+                                append(" • Lift ${dashboard.todaysWorkoutCalories} kcal")
+                            },
+                            modifier = Modifier.height(170.dp),
+                        )
+                    }
+                    item(span = { GridItemSpan(2) }) {
+                        PermissionManagerCard(
+                            status = healthConnectStatus,
+                            onRequestPermission = {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onRequestHealthPermission()
+                            },
+                            onOpenInstall = {
+                                val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata"))
+                                val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata"))
+                                val intent = if (marketIntent.resolveActivity(context.packageManager) != null) marketIntent else webIntent
+                                context.startActivity(intent)
+                            },
+                            onOpenSettings = {
+                                val settingsIntent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
+                                if (settingsIntent.resolveActivity(context.packageManager) != null) {
+                                    context.startActivity(settingsIntent)
+                                } else {
+                                    onRefreshHealth()
+                                }
+                            },
+                            onRefresh = {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onRefreshHealth()
+                            },
+                        )
+                    }
+                    if (healthConnectStatus.state != HealthConnectState.CONNECTED) {
+                        item(span = { GridItemSpan(2) }) {
+                            WelcomeConnectCard(onRequestHealthPermission = onRequestHealthPermission)
+                        }
+                    }
+                    item(span = { GridItemSpan(2) }) {
+                        NextWorkoutCard(
+                            dashboard = dashboard,
+                            onOpenTrain = onOpenTrain,
+                            onStartWorkout = {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onStartWorkout(it)
+                            },
+                        )
+                    }
+                    item(span = { GridItemSpan(2) }) {
+                        CoachInsightCard(
+                            insight = dashboard.aiInsight,
+                            onOpenCoach = onOpenCoach,
+                        )
+                    }
                 }
             }
         }
@@ -240,24 +338,133 @@ fun HomeScreen(
 }
 
 @Composable
-private fun HealthConnectCard(
-    status: HealthConnectStatus,
-    onRequestPermission: () -> Unit,
-    onOpenInstall: () -> Unit,
-    onOpenSettings: () -> Unit,
-    onRefresh: () -> Unit,
-) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Health Connect", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(status.message)
-            when (status.state) {
-                HealthConnectState.PROVIDER_MISSING -> Button(onClick = onOpenInstall) { Text("Install or update") }
-                HealthConnectState.PERMISSION_REQUIRED -> Button(onClick = onRequestPermission) { Text("Grant access") }
-                HealthConnectState.CONNECTED, HealthConnectState.NO_DATA -> OutlinedButton(onClick = onOpenSettings) { Text("Open Health Connect") }
-                HealthConnectState.ERROR -> OutlinedButton(onClick = onRefresh) { Text("Retry") }
-                HealthConnectState.UNSUPPORTED -> Text("This device does not support Health Connect.")
+private fun DiscoveryCard(onOpenCoach: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.extraLarge),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.35f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(32.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.secondaryContainer,
+                            MaterialTheme.colorScheme.tertiaryContainer,
+                        ),
+                    ),
+                )
+                .padding(MaterialTheme.spacing.large),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+        ) {
+            Text("Discovery mode", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Welcome to your Invisible Coach. Add your profile once, and TrainIQ will start shaping recovery, nutrition, and training guidance around you.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Button(
+                onClick = onOpenCoach,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+            ) {
+                Text("Begin setup")
             }
+        }
+    }
+}
+
+@Composable
+private fun NextWorkoutCard(
+    dashboard: HomeDashboard,
+    onOpenTrain: () -> Unit,
+    onStartWorkout: (Long) -> Unit,
+) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(32.dp)) {
+        Column(
+            modifier = Modifier.padding(MaterialTheme.spacing.large),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+        ) {
+            Text("Primary action", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            Text("Start workout", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            if (dashboard.nextWorkout == null) {
+                Text("No active training day is ready yet. Open Train to configure the first session.", style = MaterialTheme.typography.bodyMedium)
+                Button(onClick = onOpenTrain) { Text("Open Train") }
+            } else {
+                Text(dashboard.nextWorkout.name, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    dashboard.nextWorkout.exercises.joinToString { it.exercise.name }.ifBlank { "Add exercises to this day." },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Button(onClick = { onStartWorkout(dashboard.nextWorkout.id) }) { Text("Start workout") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CoachInsightCard(
+    insight: String,
+    onOpenCoach: () -> Unit,
+) {
+    val transition = rememberInfiniteTransition(label = "coach-pulse")
+    val glow by transition.animateFloat(
+        initialValue = 0.16f,
+        targetValue = 0.42f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1600),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "coach-glow",
+    )
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = glow)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(32.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.surface,
+                            MaterialTheme.colorScheme.primary.copy(alpha = glow * 0.16f),
+                            MaterialTheme.colorScheme.secondary.copy(alpha = glow * 0.10f),
+                        ),
+                    ),
+                )
+                .padding(MaterialTheme.spacing.large),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+        ) {
+            Text("Coach insight", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text(insight, style = MaterialTheme.typography.bodyMedium)
+            Button(onClick = onOpenCoach) { Text("Open Coach") }
+        }
+    }
+}
+
+@Composable
+private fun WelcomeConnectCard(onRequestHealthPermission: () -> Unit) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(32.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(MaterialTheme.spacing.large),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+        ) {
+            Text("Welcome & Connect", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Connect Health Connect to let TrainIQ quietly track movement, recovery, and sleep so the coach feels one step ahead without extra manual work.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Button(onClick = onRequestHealthPermission) { Text("Connect Health") }
         }
     }
 }

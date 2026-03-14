@@ -6,14 +6,22 @@ import com.google.gson.JsonParser
 import com.trainiq.ai.prompts.GeminiPrompts
 import com.trainiq.data.model.GeminiRequest
 import com.trainiq.data.remote.GeminiApi
+import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.GoalAdvice
 import com.trainiq.domain.model.MealAnalysisResult
 import com.trainiq.domain.model.MealScanItem
+import com.trainiq.domain.model.MealType
 import com.trainiq.domain.model.NutritionFacts
+import com.trainiq.domain.model.WeeklyReportResult
 import com.trainiq.domain.model.WorkoutDebrief
 import java.io.File
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.trainiq.domain.model.buildGoalBaseline
+import com.trainiq.domain.model.suggestMealType
 
 private const val GeminiFlashModel = "gemini-2.5-flash"
 
@@ -23,11 +31,21 @@ class MealAnalysisService @Inject constructor(
     private val aiUsageGate: AiUsageGate,
 ) {
     private val gson = Gson()
+    private val captureTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
-    suspend fun analyzeMealImage(path: String, userContext: String): MealAnalysisResult =
+    suspend fun analyzeMealImage(path: String, userContext: String, capturedAtMillis: Long): MealAnalysisResult =
         runCatching {
             val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return fallbackMealScan()
             val file = File(path)
+            val suggestedMealType = suggestMealType(capturedAtMillis)
+            val captureTime = Instant.ofEpochMilli(capturedAtMillis)
+                .atZone(ZoneId.systemDefault())
+                .format(captureTimeFormatter)
+            val scanContext = buildString {
+                append("User took this photo at $captureTime. ")
+                append("Suggested meal type: ${suggestedMealType.label}. ")
+                append(userContext.ifBlank { "Identify the food, estimate portion sizes, and return exact macros." })
+            }
             val response = api.generateContent(
                 model = GeminiFlashModel,
                 apiKey = apiKey,
@@ -35,7 +53,7 @@ class MealAnalysisService @Inject constructor(
                     contents = listOf(
                         GeminiRequest.Content(
                             parts = listOf(
-                                GeminiRequest.Part(text = GeminiPrompts.mealScanner(userContext)),
+                                GeminiRequest.Part(text = GeminiPrompts.mealScanner(scanContext)),
                                 GeminiRequest.Part(
                                     inlineData = GeminiRequest.InlineData(
                                         mimeType = "image/jpeg",
@@ -44,14 +62,15 @@ class MealAnalysisService @Inject constructor(
                                 ),
                             ),
                         ),
-                    ),
+                ),
+                    generationConfig = GeminiRequest.GenerationConfig(),
                 ),
             )
             val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
-            parseMealScan(text)
+            parseMealScan(text, suggestedMealType)
         }.getOrElse { fallbackMealScan() }
 
-    private fun parseMealScan(text: String): MealAnalysisResult {
+    private fun parseMealScan(text: String, fallbackMealType: MealType): MealAnalysisResult {
         if (text.isBlank()) return fallbackMealScan()
         return runCatching {
             val root = JsonParser.parseString(text).asJsonObject
@@ -74,6 +93,12 @@ class MealAnalysisService @Inject constructor(
             }.orEmpty()
             MealAnalysisResult(
                 items = items,
+                suggestedMealType = root.get("suggestedMealType")
+                    ?.asString
+                    ?.trim()
+                    ?.uppercase()
+                    ?.let { raw -> MealType.entries.firstOrNull { it.name == raw } }
+                    ?: fallbackMealType,
                 notes = root.get("notes")?.asString,
                 rawResponse = text,
             )
@@ -88,6 +113,7 @@ class MealAnalysisService @Inject constructor(
                         notes = "The AI response was not structured, so review and edit before saving.",
                     ),
                 ),
+                suggestedMealType = fallbackMealType,
                 notes = "Structured parsing failed. Please review the estimate carefully.",
                 rawResponse = text,
             )
@@ -119,17 +145,21 @@ class WorkoutDebriefService @Inject constructor(
                             ),
                         ),
                     ),
+                    generationConfig = GeminiRequest.GenerationConfig(),
                 ),
             )
-            val lines = response.candidates.firstOrNull()?.content?.parts
-                ?.joinToString(" ") { it.text }
-                .orEmpty()
-                .lines()
-                .filter { it.isNotBlank() }
+            val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
+            parseWorkoutDebrief(text, totalVolume, progression)
+        }.getOrElse { fallbackWorkoutDebrief(totalVolume, progression) }
+
+    private fun parseWorkoutDebrief(text: String, totalVolume: Double, progression: Double): WorkoutDebrief =
+        runCatching {
+            val root = JsonParser.parseString(text).asJsonObject
             WorkoutDebrief(
-                summary = lines.getOrElse(0) { "Great session." },
-                progressionFeedback = lines.getOrElse(1) { "Progression remained stable." },
-                recommendation = lines.getOrElse(2) { "Repeat this session and aim for one extra rep on main lifts." },
+                summary = root.get("summary")?.asString ?: "Great session.",
+                progressionFeedback = root.get("progressionFeedback")?.asString ?: "Progression remained stable.",
+                recommendation = root.get("recommendation")?.asString
+                    ?: "Repeat this session and aim for one extra rep on main lifts.",
             )
         }.getOrElse { fallbackWorkoutDebrief(totalVolume, progression) }
 
@@ -145,59 +175,115 @@ class GoalAdvisorService @Inject constructor(
     private val api: GeminiApi,
     private val aiUsageGate: AiUsageGate,
 ) {
-    suspend fun generateGoalAdvice(height: Double, weight: Double, bodyFat: Double, goal: String): GoalAdvice =
+    suspend fun generateGoalAdvice(
+        height: Double,
+        weight: Double,
+        bodyFat: Double,
+        age: Int,
+        sex: BiologicalSex,
+        activityLevel: String,
+        goal: String,
+    ): GoalAdvice =
         runCatching {
-            val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return deterministicGoalAdvice(height, weight, bodyFat, goal)
+            val baseline = deterministicGoalAdvice(
+                height = height,
+                weight = weight,
+                bodyFat = bodyFat,
+                age = age,
+                sex = sex,
+                activityLevel = activityLevel,
+                goal = goal,
+            )
+            val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return baseline
             val response = api.generateContent(
                 model = GeminiFlashModel,
                 apiKey = apiKey,
                 request = GeminiRequest(
                     contents = listOf(
                         GeminiRequest.Content(
-                            parts = listOf(GeminiRequest.Part(text = GeminiPrompts.goalAdvisor(height, weight, bodyFat, goal))),
+                            parts = listOf(
+                                GeminiRequest.Part(
+                                    text = GeminiPrompts.goalAdvisor(
+                                        height = height,
+                                        weight = weight,
+                                        bodyFat = bodyFat,
+                                        age = age,
+                                        sex = sex,
+                                        activityLevel = activityLevel,
+                                        goal = goal,
+                                        baseline = baseline,
+                                    ),
+                                ),
+                            ),
                         ),
                     ),
                     thinkingConfig = GeminiRequest.ThinkingConfig(
                         includeThoughts = false,
                         thinkingBudget = 1000,
                     ),
+                    generationConfig = GeminiRequest.GenerationConfig(),
                 ),
             )
-            GoalAdvice(
-                calorieTarget = 2700,
-                proteinTarget = (weight * 2.1).toInt(),
-                carbsTarget = (weight * 3.4).toInt(),
-                fatTarget = (weight * 0.8).toInt(),
-                trainingFocus = "Upper chest, back thickness, and weekly step consistency",
-                summary = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }
-                    ?: "Structured nutrition and progressive training will support your goal.",
+            val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
+            parseGoalAdvice(text, baseline)
+        }.getOrElse {
+            deterministicGoalAdvice(
+                height = height,
+                weight = weight,
+                bodyFat = bodyFat,
+                age = age,
+                sex = sex,
+                activityLevel = activityLevel,
+                goal = goal,
             )
-        }.getOrElse { deterministicGoalAdvice(height, weight, bodyFat, goal) }
-
-    fun deterministicGoalAdvice(height: Double, weight: Double, bodyFat: Double, goal: String): GoalAdvice {
-        val isCut = goal.contains("cut", ignoreCase = true) || goal.contains("fat", ignoreCase = true)
-        val calories = if (isCut) {
-            (weight * 27).toInt().coerceAtLeast(1800)
-        } else {
-            (weight * 35).toInt().coerceAtLeast(2200)
         }
-        val protein = (weight * 2.2).toInt().coerceAtLeast(120)
-        val fat = (weight * 0.8).toInt().coerceAtLeast(45)
-        val carbs = (calories - protein * 4 - fat * 9).div(4).coerceAtLeast(120)
+
+    private fun parseGoalAdvice(text: String, baseline: GoalAdvice): GoalAdvice =
+        runCatching {
+            val root = JsonParser.parseString(text).asJsonObject
+            baseline.copy(
+                trainingFocus = root.get("trainingFocus")?.asString ?: baseline.trainingFocus,
+                summary = root.get("summary")?.asString ?: baseline.summary,
+                rawResponse = text,
+            )
+        }.getOrElse { baseline }
+
+    fun deterministicGoalAdvice(
+        height: Double,
+        weight: Double,
+        bodyFat: Double,
+        age: Int,
+        sex: BiologicalSex,
+        activityLevel: String,
+        goal: String,
+    ): GoalAdvice {
+        val baseline = buildGoalBaseline(
+            heightCm = height,
+            weightKg = weight,
+            bodyFat = bodyFat,
+            age = age,
+            sex = sex,
+            activityLevel = activityLevel,
+            goal = goal,
+        )
         val trainingFocus = when {
             goal.contains("bulk", ignoreCase = true) -> "Progressive overload on compounds"
-            goal.contains("cut", ignoreCase = true) -> "High adherence, steps, and recovery"
+            goal.contains("cut", ignoreCase = true) || goal.contains("fat", ignoreCase = true) -> "High adherence, steps, and recovery"
             bodyFat > 20 -> "Body recomposition with consistent strength work"
             height > 0 && weight / ((height / 100.0) * (height / 100.0)) < 22 -> "Build muscle with steady weekly volume"
             else -> "Balanced strength and recovery"
         }
         return GoalAdvice(
-            calorieTarget = calories,
-            proteinTarget = protein,
-            carbsTarget = carbs,
-            fatTarget = fat,
+            bmr = baseline.bmr,
+            maintenanceCalories = baseline.maintenanceCalories,
+            activityMultiplier = baseline.activityMultiplier,
+            calorieTarget = baseline.targetCalories,
+            proteinTarget = baseline.proteinTarget,
+            carbsTarget = baseline.carbsTarget,
+            fatTarget = baseline.fatTarget,
             trainingFocus = trainingFocus,
-            summary = "Aim for $calories kcal with $protein g protein and keep training focused on $trainingFocus.",
+            summary = "Baseline: BMR ${baseline.bmr} kcal, maintenance ${baseline.maintenanceCalories} kcal, target ${baseline.targetCalories} kcal. Aim for ${baseline.proteinTarget} g protein and keep training focused on $trainingFocus.",
+            rawResponse = null,
         )
     }
 }
@@ -207,7 +293,7 @@ class WeeklyReportService @Inject constructor(
     private val api: GeminiApi,
     private val aiUsageGate: AiUsageGate,
 ) {
-    suspend fun generateWeeklyReport(volume: Double, weightTrend: Double, adherence: Int): String =
+    suspend fun generateWeeklyReport(volume: Double, weightTrend: Double, adherence: Int): WeeklyReportResult =
         runCatching {
             val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return fallbackWeeklyReport(adherence)
             val response = api.generateContent(
@@ -219,12 +305,35 @@ class WeeklyReportService @Inject constructor(
                             parts = listOf(GeminiRequest.Part(text = GeminiPrompts.weeklyReport(volume, weightTrend, adherence))),
                         ),
                     ),
+                    thinkingConfig = GeminiRequest.ThinkingConfig(
+                        includeThoughts = false,
+                        thinkingBudget = 1000,
+                    ),
+                    generationConfig = GeminiRequest.GenerationConfig(),
                 ),
             )
-            response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }
-                ?: fallbackWeeklyReport(adherence)
+            val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
+            parseWeeklyReport(text, adherence)
         }.getOrElse { fallbackWeeklyReport(adherence) }
 
-    private fun fallbackWeeklyReport(adherence: Int): String =
-        "Weekly report: training volume is trending up, body weight is stable, and adherence is $adherence%. Prioritize sleep before increasing volume again."
+    private fun parseWeeklyReport(text: String, adherence: Int): WeeklyReportResult =
+        runCatching {
+            val root = JsonParser.parseString(text).asJsonObject
+            WeeklyReportResult(
+                summary = root.get("summary")?.asString ?: fallbackWeeklyReport(adherence).summary,
+                wins = root.getAsJsonArray("wins")?.map { it.asString }.orEmpty(),
+                risks = root.getAsJsonArray("risks")?.map { it.asString }.orEmpty(),
+                nextWeekFocus = root.get("nextWeekFocus")?.asString ?: "Protect recovery before adding more volume.",
+                thinkingProcess = root.getAsJsonArray("thinkingProcess")?.map { it.asString }.orEmpty(),
+                rawResponse = text,
+            )
+        }.getOrElse { fallbackWeeklyReport(adherence) }
+
+    private fun fallbackWeeklyReport(adherence: Int): WeeklyReportResult =
+        WeeklyReportResult(
+            summary = "Weekly report: training volume is trending up, body weight is stable, and adherence is $adherence%. Prioritize sleep before increasing volume again.",
+            wins = listOf("Training consistency is improving."),
+            risks = listOf("Recovery may limit progress if sleep stays low."),
+            nextWeekFocus = "Hold volume steady and improve sleep quality before pushing load.",
+        )
 }

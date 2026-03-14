@@ -11,6 +11,9 @@ import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
+import androidx.health.connect.client.records.WeightRecord
+import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.request.ChangesTokenRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
@@ -18,8 +21,10 @@ import com.google.gson.Gson
 import com.trainiq.core.datastore.HealthConnectSyncPreferences
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.data.mapper.toCachedHeartRateRecord
+import com.trainiq.data.mapper.toCachedCaloriesBurnedRecord
 import com.trainiq.data.mapper.toCachedSleepSessionRecord
 import com.trainiq.data.mapper.toCachedStepRecord
+import com.trainiq.data.mapper.toCachedWeightRecord
 import com.trainiq.data.mapper.toDomainMetrics
 import com.trainiq.domain.model.HealthConnectMetrics
 import com.trainiq.domain.model.HealthConnectState
@@ -43,12 +48,16 @@ class HealthConnectDataSource @Inject constructor(
         HealthPermission.getReadPermission(StepsRecord::class),
         HealthPermission.getReadPermission(HeartRateRecord::class),
         HealthPermission.getReadPermission(SleepSessionRecord::class),
+        HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class),
+        HealthPermission.getReadPermission(WeightRecord::class),
     )
 
     private val trackedRecordTypes: Set<KClass<out androidx.health.connect.client.records.Record>> = setOf(
         StepsRecord::class,
         HeartRateRecord::class,
         SleepSessionRecord::class,
+        TotalCaloriesBurnedRecord::class,
+        WeightRecord::class,
     )
 
     fun permissions(): Set<String> = readPermissions
@@ -87,13 +96,14 @@ class HealthConnectDataSource @Inject constructor(
             if (!grantedPermissions.containsAll(readPermissions)) {
                 HealthConnectStatus(
                     state = HealthConnectState.PERMISSION_REQUIRED,
-                    message = "Grant step, heart rate, and sleep permissions to connect Health Connect.",
+                    message = "Grant steps, heart rate, sleep, calories burned, and weight permissions to connect Health Connect.",
                 )
             } else {
                 val syncPayload = syncTrackedMetrics(client)
                 preferencesRepository.saveHealthConnectSyncPreferences(
                     changesToken = syncPayload.nextChangesToken,
                     cacheStateJson = gson.toJson(syncPayload.cacheState),
+                    lastSyncedAt = syncPayload.lastSyncedAt,
                 )
                 syncPayload.toStatus()
             }
@@ -122,15 +132,19 @@ class HealthConnectDataSource @Inject constructor(
         return performIncrementalSync(client, storedState, cachedState)
     }
 
+    private suspend fun aggregateStepsToday(client: HealthConnectClient): Long = runCatching {
+        client.aggregate(
+            AggregateRequest(
+                metrics = setOf(StepsRecord.COUNT_TOTAL),
+                timeRangeFilter = TimeRangeFilter.between(startOfToday(), Instant.now()),
+            )
+        )[StepsRecord.COUNT_TOTAL] ?: 0L
+    }.getOrElse { 0L }
+
     private suspend fun performFullSync(client: HealthConnectClient): SyncPayload {
         val now = Instant.now()
         val cacheState = HealthConnectCacheState(
-            stepRecords = client.readRecords(
-                ReadRecordsRequest(
-                    recordType = StepsRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(startOfToday(), now),
-                ),
-            ).records.map(StepsRecord::toCachedStepRecord),
+            aggregatedStepsToday = aggregateStepsToday(client),
             heartRateRecords = client.readRecords(
                 ReadRecordsRequest(
                     recordType = HeartRateRecord::class,
@@ -143,6 +157,18 @@ class HealthConnectDataSource @Inject constructor(
                     timeRangeFilter = TimeRangeFilter.between(startOfSleepWindow(), now),
                 ),
             ).records.map(SleepSessionRecord::toCachedSleepSessionRecord),
+            caloriesBurnedRecords = client.readRecords(
+                ReadRecordsRequest(
+                    recordType = TotalCaloriesBurnedRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(startOfToday(), now),
+                ),
+            ).records.map(TotalCaloriesBurnedRecord::toCachedCaloriesBurnedRecord),
+            weightRecords = client.readRecords(
+                ReadRecordsRequest(
+                    recordType = WeightRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(startOfSleepWindow(), now),
+                ),
+            ).records.map(WeightRecord::toCachedWeightRecord),
         ).prune(now)
 
         return SyncPayload(
@@ -170,11 +196,18 @@ class HealthConnectDataSource @Inject constructor(
             cacheState = applyChanges(cacheState, changesResponse.changes)
             hasMore = changesResponse.hasMore
         }
+        val normalizedCacheState = cacheState.prune(Instant.now())
+        val hasNewUiData = normalizedCacheState != initialCacheState
+
+        // Always re-aggregate: the call is a single cheap round-trip and guarantees
+        // deduplication-correct results. We cannot safely reuse the cached value because
+        // older DataStore entries have aggregatedStepsToday == 0 (pre-migration).
+        val freshSteps = aggregateStepsToday(client)
 
         return SyncPayload(
-            cacheState = cacheState.prune(Instant.now()),
+            cacheState = normalizedCacheState.copy(aggregatedStepsToday = freshSteps),
             nextChangesToken = currentToken,
-            lastSyncedAt = System.currentTimeMillis(),
+            lastSyncedAt = if (hasNewUiData) System.currentTimeMillis() else storedState.lastSyncedAt,
         )
     }
 
@@ -220,6 +253,22 @@ class HealthConnectDataSource @Inject constructor(
                 ).prune(now)
             }
 
+            is TotalCaloriesBurnedRecord -> {
+                val mapped = record.toCachedCaloriesBurnedRecord()
+                copy(
+                    caloriesBurnedRecords = caloriesBurnedRecords.filterNot { it.recordId == mapped.recordId } +
+                        listOfNotNull(mapped.takeIf { it.endTimeMillis >= startOfToday().toEpochMilli() }),
+                ).prune(now)
+            }
+
+            is WeightRecord -> {
+                val mapped = record.toCachedWeightRecord()
+                copy(
+                    weightRecords = weightRecords.filterNot { it.recordId == mapped.recordId } +
+                        listOfNotNull(mapped.takeIf { it.timeMillis >= startOfSleepWindow().toEpochMilli() }),
+                ).prune(now)
+            }
+
             else -> this
         }
     }
@@ -228,6 +277,8 @@ class HealthConnectDataSource @Inject constructor(
         stepRecords = stepRecords.filterNot { it.recordId == recordId },
         heartRateRecords = heartRateRecords.filterNot { it.recordId == recordId },
         sleepSessionRecords = sleepSessionRecords.filterNot { it.recordId == recordId },
+        caloriesBurnedRecords = caloriesBurnedRecords.filterNot { it.recordId == recordId },
+        weightRecords = weightRecords.filterNot { it.recordId == recordId },
     )
 
     private fun HealthConnectCacheState.prune(now: Instant): HealthConnectCacheState {
@@ -238,6 +289,8 @@ class HealthConnectDataSource @Inject constructor(
             stepRecords = stepRecords.filter { it.endTimeMillis in todayStartMillis..nowMillis },
             heartRateRecords = heartRateRecords.filter { it.endTimeMillis in todayStartMillis..nowMillis },
             sleepSessionRecords = sleepSessionRecords.filter { it.endTimeMillis in sleepWindowStartMillis..nowMillis },
+            caloriesBurnedRecords = caloriesBurnedRecords.filter { it.endTimeMillis in todayStartMillis..nowMillis },
+            weightRecords = weightRecords.filter { it.timeMillis in sleepWindowStartMillis..nowMillis },
         )
     }
 
@@ -254,7 +307,7 @@ class HealthConnectDataSource @Inject constructor(
 
     private fun buildMessage(metrics: HealthConnectMetrics, state: HealthConnectState): String {
         if (state == HealthConnectState.NO_DATA) {
-            return "Health Connect is connected, but no recent step, heart rate, or sleep data is available yet."
+            return "Health Connect is connected, but no recent step, heart rate, sleep, calorie, or weight data is available yet."
         }
         val parts = buildList {
             add("${metrics.stepsToday} steps")
@@ -262,12 +315,43 @@ class HealthConnectDataSource @Inject constructor(
             if (metrics.sleepSessionCount > 0) {
                 add("${metrics.sleepMinutes} min sleep")
             }
+            metrics.caloriesBurnedToday?.let { add("${it.toInt()} kcal burned") }
+            metrics.latestWeightKg?.let { add("${"%.1f".format(it)} kg latest weight") }
         }
         return "Health Connect synced ${parts.joinToString(", ")}."
     }
 
     private fun HealthConnectMetrics.hasAnyData(): Boolean =
-        stepsToday > 0 || averageHeartRateBpm != null || sleepSessionCount > 0
+        stepsToday > 0 || averageHeartRateBpm != null || sleepSessionCount > 0 || caloriesBurnedToday != null || latestWeightKg != null
+
+    /**
+     * Fetches today's step count directly from the Health Connect aggregate API.
+     * Lightweight — only checks SDK status, permissions, and runs one aggregate query.
+     * Returns 0 when HC is unavailable or permissions are not granted.
+     */
+    suspend fun getTodayStepsLive(): Int {
+        if (HealthConnectClient.getSdkStatus(context) != HealthConnectClient.SDK_AVAILABLE) return 0
+        return runCatching {
+            val client = HealthConnectClient.getOrCreate(context)
+            val granted = client.permissionController.getGrantedPermissions()
+            if (!granted.contains(HealthPermission.getReadPermission(StepsRecord::class))) return@runCatching 0
+            aggregateStepsToday(client).toInt()
+        }.getOrElse { 0 }
+    }
+
+    /**
+     * Reads today's step count from the DataStore cache written by the last full/incremental sync.
+     * Does not touch the HealthConnectClient — safe to call at repository init time.
+     */
+    suspend fun getStepsFromPersistedCache(): Int {
+        val storedState = preferencesRepository.getHealthConnectSyncPreferences()
+        if (storedState.cacheStateJson.isBlank()) return 0
+        return runCatching {
+            val cacheState = gson.fromJson(storedState.cacheStateJson, HealthConnectCacheState::class.java)
+                ?: return@runCatching 0
+            cacheState.prune(Instant.now()).toDomainMetrics().stepsToday
+        }.getOrElse { 0 }
+    }
 
     private fun startOfToday(): Instant =
         LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant()
@@ -300,13 +384,35 @@ internal data class CachedSleepSessionRecord(
     val durationMinutes: Long,
 )
 
+internal data class CachedCaloriesBurnedRecord(
+    val recordId: String,
+    val startTimeMillis: Long,
+    val endTimeMillis: Long,
+    val kcal: Double,
+)
+
+internal data class CachedWeightRecord(
+    val recordId: String,
+    val timeMillis: Long,
+    val weightKg: Double,
+)
+
 internal data class HealthConnectCacheState(
+    /** Authoritative step count from the Health Connect aggregate API (deduplication-aware). */
+    val aggregatedStepsToday: Long = 0L,
+    /** Kept for backward-compatible JSON deserialization of older caches. Not used for step counting. */
     val stepRecords: List<CachedStepRecord> = emptyList(),
     val heartRateRecords: List<CachedHeartRateRecord> = emptyList(),
     val sleepSessionRecords: List<CachedSleepSessionRecord> = emptyList(),
+    val caloriesBurnedRecords: List<CachedCaloriesBurnedRecord> = emptyList(),
+    val weightRecords: List<CachedWeightRecord> = emptyList(),
 ) {
     fun isEmpty(): Boolean =
-        stepRecords.isEmpty() && heartRateRecords.isEmpty() && sleepSessionRecords.isEmpty()
+        aggregatedStepsToday == 0L &&
+            heartRateRecords.isEmpty() &&
+            sleepSessionRecords.isEmpty() &&
+            caloriesBurnedRecords.isEmpty() &&
+            weightRecords.isEmpty()
 }
 
 private data class SyncPayload(

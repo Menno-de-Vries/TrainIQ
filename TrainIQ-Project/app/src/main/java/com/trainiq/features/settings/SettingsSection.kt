@@ -26,10 +26,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.trainiq.core.theme.spacing
 import androidx.health.connect.client.HealthConnectClient
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -46,6 +48,7 @@ import com.trainiq.core.ui.SectionCard
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.theme.ThemeMode
 import com.trainiq.data.local.TrainIqLocalStore
+import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
 import com.trainiq.domain.model.UserProfile
@@ -140,12 +143,25 @@ class SettingsViewModel @Inject constructor(
             _message.value = "Complete all profile fields with valid values."
             return
         }
-        val advice = goalAdvisorService.deterministicGoalAdvice(parsedHeight, parsedWeight, parsedBodyFat, goal)
+        val currentProfile = profile.value
+        val age = currentProfile?.age ?: 30
+        val sex = currentProfile?.sex ?: BiologicalSex.MALE
+        val advice = goalAdvisorService.deterministicGoalAdvice(
+            height = parsedHeight,
+            weight = parsedWeight,
+            bodyFat = parsedBodyFat,
+            age = age,
+            sex = sex,
+            activityLevel = activityLevel,
+            goal = goal,
+        )
         viewModelScope.launch {
             saveUserProfileUseCase(
                 UserProfile(
                     id = 1L,
                     name = name.trim(),
+                    age = age,
+                    sex = sex,
                     height = parsedHeight,
                     weight = parsedWeight,
                     bodyFat = parsedBodyFat,
@@ -276,8 +292,8 @@ fun SettingsScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(MaterialTheme.spacing.medium),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.large),
     ) {
         item { ScreenHeader(title = "Settings") }
         item {
@@ -307,7 +323,11 @@ fun SettingsScreen(
         item {
             SectionCard(title = "AI / Gemini") {
                 Text("AI is always opt-in. TrainIQ does not make background AI calls.")
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("Enable AI features", fontWeight = FontWeight.SemiBold)
                         Text("Only explicit actions like meal analysis, goal advice, AI report, and workout debrief can trigger requests.")
@@ -316,7 +336,7 @@ fun SettingsScreen(
                 }
                 Text("Current key: $maskedApiKey")
                 OutlinedTextField(value = apiKey, onValueChange = { apiKey = it }, label = { Text("Gemini API key") }, modifier = Modifier.fillMaxWidth())
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                     Button(onClick = {
                         onSaveApiKey(apiKey)
                         apiKey = ""
@@ -352,13 +372,13 @@ fun SettingsScreen(
                     HealthConnectState.PROVIDER_MISSING -> Text("Install or update Health Connect first, then return here and refresh.")
                     else -> Unit
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small), verticalAlignment = Alignment.CenterVertically) {
                     when (healthStatus.state) {
                         HealthConnectState.PROVIDER_MISSING -> Button(onClick = onOpenHealthInstall) { Text("Install / update") }
                         HealthConnectState.PERMISSION_REQUIRED -> Button(onClick = onRequestHealthPermission) { Text("Grant access") }
                         HealthConnectState.CONNECTED, HealthConnectState.NO_DATA -> Button(onClick = onOpenHealthSettings) { Text("Open Health Connect") }
-                        HealthConnectState.UNSUPPORTED -> Text("Not supported on this device.")
-                        HealthConnectState.ERROR -> Text("Unable to read Health Connect right now.")
+                        HealthConnectState.UNSUPPORTED -> Text("Not supported on this device.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        HealthConnectState.ERROR -> Text("Unable to read Health Connect right now.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     TextButton(onClick = onRefreshHealth) { Text("Refresh") }
                 }
@@ -372,8 +392,11 @@ fun SettingsScreen(
                 OutlinedTextField(value = bodyFat, onValueChange = { bodyFat = it }, label = { Text("Body fat %") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = activityLevel, onValueChange = { activityLevel = it }, label = { Text("Activity level") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = goal, onValueChange = { goal = it }, label = { Text("Primary goal") }, modifier = Modifier.fillMaxWidth())
-                Button(onClick = { onSaveProfile(name, height, weight, bodyFat, activityLevel, goal) }) { Text("Save profile") }
-                TextButton(onClick = onResetProfile) { Text("Reset profile") }
+                Button(
+                    onClick = { onSaveProfile(name, height, weight, bodyFat, activityLevel, goal) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Save profile") }
+                TextButton(onClick = onResetProfile, modifier = Modifier.fillMaxWidth()) { Text("Reset profile") }
                 profile?.let {
                     Text("Current dashboard targets: ${it.calorieTarget} kcal and ${it.proteinTarget} g protein.")
                 }
@@ -384,7 +407,7 @@ fun SettingsScreen(
                 Text("Storage mode: Local JSON store")
                 Text("AI key storage: local app preferences")
                 Text("Health Connect cache: persisted change token plus lightweight sync snapshot")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                     TextButton(onClick = onClearApiKey) { Text("Clear AI key") }
                     TextButton(onClick = onClearAllData) { Text("Clear local data") }
                 }

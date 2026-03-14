@@ -24,11 +24,13 @@ import com.trainiq.data.local.RecipeStorage
 import com.trainiq.data.local.TrainIqLocalStore
 import com.trainiq.data.mapper.toDomain
 import com.trainiq.domain.model.BodyMeasurement
+import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.ChartPoint
 import com.trainiq.domain.model.CoachOverview
 import com.trainiq.domain.model.FoodItem
 import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.model.GoalAdvice
+import com.trainiq.domain.model.HealthConnectStatus
 import com.trainiq.domain.model.HomeDashboard
 import com.trainiq.domain.model.LoggedMeal
 import com.trainiq.domain.model.LoggedMealItem
@@ -36,17 +38,23 @@ import com.trainiq.domain.model.LoggedMealItemType
 import com.trainiq.domain.model.LoggedSet
 import com.trainiq.domain.model.MealAnalysisResult
 import com.trainiq.domain.model.MealScanItem
+import com.trainiq.domain.model.MealType
 import com.trainiq.domain.model.NutritionFacts
 import com.trainiq.domain.model.NutritionOverview
 import com.trainiq.domain.model.ProgressOverview
 import com.trainiq.domain.model.Recipe
 import com.trainiq.domain.model.RecipeIngredient
 import com.trainiq.domain.model.UserProfile
+import com.trainiq.domain.model.WeeklyReportResult
 import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutDebrief
 import com.trainiq.domain.model.WorkoutOverview
+import com.trainiq.domain.model.buildEnergyBalance
+import com.trainiq.domain.model.buildGoalBaseline
+import com.trainiq.domain.model.estimateStrengthTrainingCalories
 import com.trainiq.domain.model.nutritionForGrams
 import com.trainiq.domain.model.rounded
+import com.trainiq.domain.model.suggestMealType
 import com.trainiq.domain.repository.CoachRepository
 import com.trainiq.domain.repository.HomeRepository
 import com.trainiq.domain.repository.MealEntryRequest
@@ -84,6 +92,7 @@ class TrainIqRepository @Inject constructor(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val scannedMealResult = MutableStateFlow<MealAnalysisResult?>(null)
+    private val _cachedSteps = MutableStateFlow(0)
 
     private val snapshotState: StateFlow<RepositorySnapshot> = combine(localStore.state, scannedMealResult) { state, scanned ->
         RepositorySnapshot(
@@ -104,28 +113,63 @@ class TrainIqRepository @Inject constructor(
 
     init {
         scope.launch { ensureExerciseLibrary() }
+        scope.launch {
+            val persisted = healthConnectDataSource.getStepsFromPersistedCache()
+            if (persisted > 0) _cachedSteps.value = persisted
+        }
     }
 
-    override fun observeDashboard(): Flow<HomeDashboard> = snapshotState.map { snapshot ->
+    override fun observeDashboard(): Flow<HomeDashboard> = combine(snapshotState, _cachedSteps) { snapshot, steps ->
         val activeRoutine = buildWorkoutOverview(snapshot).activeRoutine
         val nextWorkout = activeRoutine?.days?.minByOrNull { it.orderIndex }
         val todaysMeals = snapshot.meals.filter { it.timestamp >= todayEpochMillis() }
         val todaysNutrition = todaysMeals.fold(NutritionFacts.Zero) { acc, meal -> acc + meal.totalNutrition }
         val profile = snapshot.profile
+        val todaysWorkoutCalories = snapshot.sessions
+            .filter { normalizeToDay(it.date) == todayEpochMillis() }
+            .sumOf { it.caloriesBurned }
         HomeDashboard(
             profile = profile,
-            calorieProgress = todaysNutrition.calories.toInt(),
+            energyBalance = profile?.let {
+                buildEnergyBalance(
+                    profile = it,
+                    caloriesIn = todaysNutrition.calories,
+                    steps = steps,
+                    workoutCalories = todaysWorkoutCalories,
+                )
+            },
             calorieTarget = profile?.calorieTarget ?: 0,
+            calorieProgress = todaysNutrition.calories.toInt(),
             proteinProgress = todaysNutrition.protein.toInt(),
             proteinTarget = profile?.proteinTarget ?: 0,
-            steps = null,
+            carbsProgress = todaysNutrition.carbs.toInt(),
+            carbsTarget = profile?.carbsTarget ?: 0,
+            fatProgress = todaysNutrition.fat.toInt(),
+            fatTarget = profile?.fatTarget ?: 0,
+            todaysWorkoutCalories = todaysWorkoutCalories,
+            steps = steps.takeIf { it > 0 },
             nextWorkout = nextWorkout,
             streak = computeStreak(snapshot.sessions, snapshot.meals),
             aiInsight = buildDashboardInsight(snapshot, nextWorkout),
         )
     }
 
-    override suspend fun getHealthConnectStatus() = healthConnectDataSource.getStatus()
+    override suspend fun getHealthConnectStatus(): HealthConnectStatus {
+        val status = healthConnectDataSource.getStatus()
+        status.metrics?.stepsToday?.let { _cachedSteps.value = it }
+        return status
+    }
+
+    override suspend fun refreshDashboardData() {
+        val live = healthConnectDataSource.getTodayStepsLive()
+        if (live > 0) {
+            _cachedSteps.value = live
+        } else {
+            // HC unavailable or permissions not granted — fall back to the last persisted snapshot.
+            val cached = healthConnectDataSource.getStepsFromPersistedCache()
+            if (cached > 0) _cachedSteps.value = cached
+        }
+    }
 
     override fun observeWorkoutOverview(): Flow<WorkoutOverview> = snapshotState.map(::buildWorkoutOverview)
 
@@ -151,7 +195,12 @@ class TrainIqRepository @Inject constructor(
 
         val current = localStore.state.value
         val sessionId = (current.sessions.maxOfOrNull { it.id } ?: 0L) + 1L
-        val newSession = WorkoutSessionEntity(id = sessionId, date = System.currentTimeMillis(), duration = durationSeconds)
+        val newSession = WorkoutSessionEntity(
+            id = sessionId,
+            date = System.currentTimeMillis(),
+            duration = durationSeconds,
+            caloriesBurned = estimateStrengthTrainingCalories(durationSeconds),
+        )
         val newSets = loggedSets.mapIndexed { index, set ->
             WorkoutSetEntity(
                 id = (current.workoutSets.maxOfOrNull { it.id } ?: 0L) + index + 1L,
@@ -290,12 +339,21 @@ class TrainIqRepository @Inject constructor(
         }
     }
 
-    override fun observeNutritionOverview(): Flow<NutritionOverview> = snapshotState.map(::buildNutritionOverview)
+    override fun observeNutritionOverview(): Flow<NutritionOverview> =
+        combine(snapshotState, _cachedSteps) { snapshot, steps -> buildNutritionOverview(snapshot, steps) }
 
-    override suspend fun analyzeMealPhoto(path: String, context: String): MealAnalysisResult {
-        val result = mealAnalysisService.analyzeMealImage(path, context)
+    override suspend fun analyzeMealPhoto(path: String, context: String, capturedAtMillis: Long): MealAnalysisResult {
+        val result = mealAnalysisService.analyzeMealImage(
+            path = path,
+            userContext = context,
+            capturedAtMillis = capturedAtMillis,
+        )
         scannedMealResult.value = result
         return result
+    }
+
+    override fun clearLastScanResult() {
+        scannedMealResult.value = null
     }
 
     override suspend fun saveFoodItem(
@@ -370,7 +428,13 @@ class TrainIqRepository @Inject constructor(
             .first { it.id == recipeId }
     }
 
-    override suspend fun saveMeal(id: Long?, name: String, notes: String?, items: List<MealEntryRequest>): Long {
+    override suspend fun saveMeal(
+        id: Long?,
+        mealType: MealType,
+        name: String,
+        notes: String?,
+        items: List<MealEntryRequest>,
+    ): Long {
         val snapshot = snapshotState.value
         val current = localStore.state.value
         val mealId = id ?: ((current.meals.maxOfOrNull { it.id } ?: 0L) + 1L)
@@ -378,7 +442,8 @@ class TrainIqRepository @Inject constructor(
         val mealStorage = LoggedMealStorage(
             id = mealId,
             timestamp = timestamp,
-            name = name.trim(),
+            mealType = mealType,
+            name = name.trim().ifBlank { mealType.label },
             notes = notes?.trim()?.takeIf { it.isNotBlank() },
         )
         val startItemId = current.mealItems.maxOfOrNull { it.id } ?: 0L
@@ -500,14 +565,34 @@ class TrainIqRepository @Inject constructor(
         )
     }
 
-    override suspend fun generateGoalAdvice(height: Double, weight: Double, bodyFat: Double, goal: String): GoalAdvice =
-        goalAdvisorService.generateGoalAdvice(height, weight, bodyFat, goal)
+    override suspend fun generateGoalAdvice(
+        height: Double,
+        weight: Double,
+        bodyFat: Double,
+        age: Int,
+        sex: BiologicalSex,
+        activityLevel: String,
+        goal: String,
+    ): GoalAdvice = goalAdvisorService.generateGoalAdvice(
+        height = height,
+        weight = weight,
+        bodyFat = bodyFat,
+        age = age,
+        sex = sex,
+        activityLevel = activityLevel,
+        goal = goal,
+    )
 
-    override suspend fun generateWeeklyReport(): String {
+    override suspend fun generateWeeklyReport(): WeeklyReportResult {
         val snapshot = snapshotState.value
         val progress = buildProgressOverview(snapshot)
         return if (snapshot.sessions.isEmpty() && snapshot.meals.isEmpty()) {
-            "Log je eerste training of maaltijd om een wekelijkse coachsamenvatting te krijgen."
+            WeeklyReportResult(
+                summary = "Log je eerste training of maaltijd om een wekelijkse coachsamenvatting te krijgen.",
+                wins = emptyList(),
+                risks = emptyList(),
+                nextWeekFocus = "Voltooi eerst een training of maaltijdlog.",
+            )
         } else {
             weeklyReportService.generateWeeklyReport(
                 volume = progress.volumeTrend.takeLast(7).sumOf { it.value },
@@ -525,6 +610,8 @@ class TrainIqRepository @Inject constructor(
                 profile = UserProfileEntity(
                     id = profile.id,
                     name = profile.name,
+                    age = profile.age,
+                    sex = profile.sex.name,
                     height = profile.height,
                     weight = profile.weight,
                     bodyFat = profile.bodyFat,
@@ -591,11 +678,14 @@ class TrainIqRepository @Inject constructor(
         if (nutrition.meals.isEmpty()) {
             return "Voeg je eerste maaltijd toe om te zien hoe je intake zich verhoudt tot ${profile.calorieTarget} kcal."
         }
-        val remainingCalories = profile.calorieTarget - nutrition.todaysCalories
-        return if (remainingCalories > 0) {
+        val energyBalance = nutrition.energyBalance
+        val remainingCalories = profile.calorieTarget - nutrition.todaysCalories.toInt()
+        return if (energyBalance == null) {
             "Je zit vandaag nog $remainingCalories kcal onder je doel. Richt je vooral op eiwitten en volwaardige koolhydraten."
+        } else if (remainingCalories > 0) {
+            "Je intake ligt nog ${remainingCalories.coerceAtLeast(0)} kcal onder je target. TEF is ${energyBalance.tefCalories} kcal en je energiebalans staat op ${energyBalance.balance} kcal."
         } else {
-            "Je caloriedoel is vandaag gehaald. Houd je eiwitten hoog en plan je volgende maaltijd licht."
+            "Je caloriedoel is vandaag gehaald. Houd je eiwitten hoog; je actuele energiebalans staat op ${energyBalance.balance} kcal."
         }
     }
 
@@ -633,18 +723,35 @@ class TrainIqRepository @Inject constructor(
         return day.toDomain(exercisePlans)
     }
 
-    private fun buildNutritionOverview(snapshot: RepositorySnapshot): NutritionOverview {
+    private fun buildNutritionOverview(snapshot: RepositorySnapshot, steps: Int = 0): NutritionOverview {
         val todaysMeals = snapshot.meals.filter { it.timestamp >= todayEpochMillis() }.sortedByDescending { it.timestamp }
         val totals = todaysMeals.fold(NutritionFacts.Zero) { acc, meal -> acc + meal.totalNutrition }
+        val todaysMealsByType = MealType.entries.associateWith { mealType ->
+            todaysMeals.filter { it.mealType == mealType }
+        }
+        val todaysWorkoutCalories = snapshot.sessions
+            .filter { normalizeToDay(it.date) == todayEpochMillis() }
+            .sumOf { it.caloriesBurned }
         return NutritionOverview(
             foods = snapshot.foods.sortedBy { it.name.lowercase() },
             recipes = snapshot.recipes.sortedBy { it.name.lowercase() },
             meals = snapshot.meals.sortedByDescending { it.timestamp },
+            todaysNutrition = totals,
             todaysCalories = totals.calories,
             todaysProtein = totals.protein,
             todaysCarbs = totals.carbs,
             todaysFat = totals.fat,
             todaysMeals = todaysMeals,
+            todaysMealsByType = todaysMealsByType,
+            todaysWorkoutCalories = todaysWorkoutCalories,
+            energyBalance = snapshot.profile?.let {
+                buildEnergyBalance(
+                    profile = it,
+                    caloriesIn = totals.calories,
+                    steps = steps,
+                    workoutCalories = todaysWorkoutCalories,
+                )
+            },
             scannedResult = snapshot.scannedMealResult,
         )
     }
@@ -683,9 +790,12 @@ class TrainIqRepository @Inject constructor(
             .filter { it.timestamp >= todayEpochMillis() }
             .sumOf { it.totalNutrition.protein }
         val proteinGap = profile.proteinTarget - todaysProtein.toInt()
+        val todaysWorkoutCalories = snapshot.sessions
+            .filter { normalizeToDay(it.date) == todayEpochMillis() }
+            .sumOf { it.caloriesBurned }
         return when {
             snapshot.sessions.isEmpty() -> "Je bent klaar om te starten. Plan ${nextWorkout.name} als eerste sessie voor je doel '${profile.goal}'."
-            proteinGap > 20 -> "Je volgende workout is ${nextWorkout.name}. Voeg vandaag nog ongeveer $proteinGap g eiwit toe voor beter herstel."
+            proteinGap > 20 -> "Je volgende workout is ${nextWorkout.name}. Voeg vandaag nog ongeveer $proteinGap g eiwit toe en houd rekening met ${todaysWorkoutCalories} kcal strength work."
             else -> "Je ligt op koers voor ${profile.goal}. Volgende training: ${nextWorkout.name}. Focus op ${profile.trainingFocus.lowercase()}."
         }
     }
@@ -786,6 +896,7 @@ class TrainIqRepository @Inject constructor(
         LoggedMeal(
             id = meal.id,
             timestamp = meal.timestamp,
+            mealType = meal.mealType,
             name = meal.name,
             notes = meal.notes,
             items = mealItems,

@@ -1,5 +1,9 @@
 package com.trainiq.core.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -16,23 +20,30 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.trainiq.core.theme.spacing
+import com.trainiq.domain.model.HealthConnectState
+import com.trainiq.domain.model.HealthConnectStatus
 
 @Composable
 fun ScreenHeader(
@@ -41,14 +52,26 @@ fun ScreenHeader(
     actionContentDescription: String? = null,
     onActionClick: (() -> Unit)? = null,
 ) {
-    Row(
+    Card(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        shape = RoundedCornerShape(32.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
     ) {
-        Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        if (actionIcon != null && onActionClick != null && actionContentDescription != null) {
-            IconButton(onClick = onActionClick) {
-                Icon(imageVector = actionIcon, contentDescription = actionContentDescription)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = MaterialTheme.spacing.medium, vertical = MaterialTheme.spacing.small),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            if (actionIcon != null && onActionClick != null && actionContentDescription != null) {
+                IconButton(onClick = onActionClick) {
+                    Icon(imageVector = actionIcon, contentDescription = actionContentDescription)
+                }
             }
         }
     }
@@ -56,9 +79,16 @@ fun ScreenHeader(
 
 @Composable
 fun MessageCard(message: String, onDismiss: (() -> Unit)? = null) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        ),
+    ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(MaterialTheme.spacing.medium),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(message, modifier = Modifier.weight(1f))
@@ -71,10 +101,17 @@ fun MessageCard(message: String, onDismiss: (() -> Unit)? = null) {
 
 @Composable
 fun SectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+    ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(MaterialTheme.spacing.medium),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
             Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             content()
@@ -110,9 +147,13 @@ fun ShimmerCardPlaceholder(
     modifier: Modifier = Modifier,
     lineCount: Int = 3,
 ) {
-    Card(modifier = modifier.fillMaxWidth()) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(MaterialTheme.spacing.medium),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             repeat(lineCount) { index ->
@@ -130,6 +171,59 @@ fun ShimmerCardPlaceholder(
                 )
             }
             Spacer(modifier = Modifier.height(4.dp))
+        }
+    }
+}
+
+@Composable
+fun AnimatedScreenState(
+    targetState: Any?,
+    modifier: Modifier = Modifier,
+    content: @Composable (Any?) -> Unit,
+) {
+    AnimatedContent(
+        targetState = targetState,
+        modifier = modifier,
+        transitionSpec = { fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(180)) },
+        label = "screen-state",
+    ) { state ->
+        content(state)
+    }
+}
+
+@Composable
+fun PermissionManagerCard(
+    status: HealthConnectStatus,
+    onRequestPermission: () -> Unit,
+    onOpenInstall: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(MaterialTheme.spacing.medium),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+        ) {
+            Text("Health Connect", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text(status.message, style = MaterialTheme.typography.bodyMedium)
+            when (status.state) {
+                HealthConnectState.PROVIDER_MISSING -> FilledTonalButton(onClick = onOpenInstall) { Text("Install or update") }
+                HealthConnectState.PERMISSION_REQUIRED -> FilledTonalButton(onClick = onRequestPermission) { Text("Grant access") }
+                HealthConnectState.CONNECTED, HealthConnectState.NO_DATA -> OutlinedButton(onClick = onOpenSettings) { Text("Open Health Connect") }
+                HealthConnectState.ERROR -> OutlinedButton(onClick = onRefresh) { Text("Retry") }
+                HealthConnectState.UNSUPPORTED -> Text("This device does not support Health Connect.", style = MaterialTheme.typography.bodyMedium)
+            }
+            status.lastSyncedAt?.let {
+                Text("Last sync: $it", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }
