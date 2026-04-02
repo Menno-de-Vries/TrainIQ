@@ -43,6 +43,8 @@ import com.trainiq.domain.model.MealType
 import com.trainiq.domain.model.NutritionFacts
 import com.trainiq.domain.model.NutritionOverview
 import com.trainiq.domain.model.ProgressOverview
+import com.trainiq.domain.model.ProgressionSuggestion
+import com.trainiq.domain.model.ReadinessLevel
 import com.trainiq.domain.model.Recipe
 import com.trainiq.domain.model.RecipeIngredient
 import com.trainiq.domain.model.UserProfile
@@ -78,6 +80,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @Singleton
@@ -177,6 +180,48 @@ class TrainIqRepository @Inject constructor(
 
     override suspend fun getWorkoutDay(dayId: Long): WorkoutDay? = buildWorkoutDay(snapshotState.value, dayId)
 
+    override suspend fun getProgressionSuggestions(dayId: Long): List<ProgressionSuggestion> = withContext(Dispatchers.IO) {
+        val snapshot = snapshotState.value
+        val day = buildWorkoutDay(snapshot, dayId) ?: return@withContext emptyList()
+        val sessionsById = snapshot.sessions.associateBy { it.id }
+        val targetRepsByExerciseId = day.exercises.associate { it.exercise.id to parseTargetRepTarget(it.repRange) }
+        day.exercises.mapNotNull { plan ->
+            val exerciseSessions = snapshot.sets
+                .filter { it.exerciseId == plan.exercise.id }
+                .groupBy { it.sessionId }
+                .mapNotNull { (sessionId, sets) ->
+                    val session = sessionsById[sessionId] ?: return@mapNotNull null
+                    ExerciseSessionSnapshot(session.date, sets.sortedByDescending { it.weight * it.reps })
+                }
+                .sortedByDescending { it.date }
+                .take(3)
+            val lastSession = exerciseSessions.firstOrNull() ?: return@mapNotNull null
+            val lastSessionAvgRpe = lastSession.sets.map { it.rpe }.average().takeIf { !it.isNaN() }?.toFloat()
+            val completedRecentSessions = exerciseSessions
+                .take(2)
+                .takeIf { it.size == 2 }
+                ?.all { session ->
+                    session.sets.isNotEmpty() && session.sets.all { it.reps >= (targetRepsByExerciseId[plan.exercise.id] ?: 0) }
+                }
+                ?: false
+            val referenceWeight = lastSession.sets.maxOfOrNull { it.weight } ?: 0.0
+            val readiness = resolveReadiness(lastSessionAvgRpe, completedRecentSessions)
+            val suggestedWeight = when (readiness) {
+                ReadinessLevel.INCREASE -> referenceWeight + 2.5
+                ReadinessLevel.DELOAD -> referenceWeight * 0.9
+                ReadinessLevel.MAINTAIN -> referenceWeight
+            }
+            ProgressionSuggestion(
+                exerciseId = plan.exercise.id,
+                exerciseName = plan.exercise.name,
+                suggestedWeightKg = suggestedWeight.coerceAtLeast(0.0),
+                suggestedReps = plan.repRange,
+                lastSessionAvgRpe = lastSessionAvgRpe,
+                readinessSignal = readiness,
+            )
+        }
+    }
+
     override suspend fun getNextWorkoutDay(): WorkoutDay? =
         buildWorkoutOverview(snapshotState.value).activeRoutine?.days?.minByOrNull { it.orderIndex }
 
@@ -192,9 +237,13 @@ class TrainIqRepository @Inject constructor(
                 summary = "Geen sets gelogd.",
                 progressionFeedback = "Log minimaal een set om voortgang op te slaan.",
                 recommendation = "Voeg tijdens je training sets toe voordat je afrondt.",
+                nextSessionFocus = "Maintain current weights",
+                recoveryScore = 75,
+                intensitySignal = "MAINTAIN",
             )
         }
 
+        val beforeSnapshot = snapshotState.value
         val current = localStore.state.value
         val sessionId = (current.sessions.maxOfOrNull { it.id } ?: 0L) + 1L
         val newSession = WorkoutSessionEntity(
@@ -220,22 +269,47 @@ class TrainIqRepository @Inject constructor(
             )
         }
 
-        val snapshot = snapshotState.value
         val currentVolume = loggedSets.sumOf { it.weight * it.reps }
-        val previousVolume = snapshot.sessions
+        val previousVolume = beforeSnapshot.sessions
             .firstOrNull()
             ?.let { latest ->
-                snapshot.sets.filter { it.sessionId == latest.id }.sumOf { it.weight * it.reps }
+                beforeSnapshot.sets.filter { it.sessionId == latest.id }.sumOf { it.weight * it.reps }
             }
             ?.takeIf { it > 0.0 }
             ?: currentVolume
         val progression = if (previousVolume == 0.0) 0.0 else ((currentVolume - previousVolume) / previousVolume) * 100
-        val distribution = buildWorkoutDay(snapshot, dayId)?.exercises
+        val distribution = buildWorkoutDay(beforeSnapshot, dayId)?.exercises
             ?.groupBy { it.exercise.muscleGroup }
             ?.map { "${it.key} ${it.value.size}" }
             ?.joinToString()
             .orEmpty()
-        return workoutDebriefService.generateWorkoutDebrief(currentVolume, progression, distribution)
+        val avgRpe = loggedSets.map { it.rpe }.average().takeIf { !it.isNaN() }?.toFloat() ?: 0f
+        val exerciseNameById = buildWorkoutDay(beforeSnapshot, dayId)
+            ?.exercises
+            ?.associate { it.exercise.id to it.exercise.name }
+            .orEmpty()
+        val topExercises = loggedSets
+            .sortedByDescending { it.weight * it.reps }
+            .take(3)
+            .joinToString { set ->
+                val exerciseName = exerciseNameById[set.exerciseId] ?: "Exercise ${set.exerciseId}"
+                "${exerciseName} ${formatWeight(set.weight)}kgx${set.reps}"
+            }
+            .ifBlank { "No top sets logged" }
+        val sevenDaysAgo = System.currentTimeMillis() - (7 * 86_400_000L)
+        val weeklyFrequency = (beforeSnapshot.sessions + newSession)
+            .filter { it.date >= sevenDaysAgo }
+            .map { normalizeToDay(it.date) }
+            .distinct()
+            .count()
+        return workoutDebriefService.generateWorkoutDebrief(
+            totalVolume = currentVolume,
+            progression = progression,
+            distribution = distribution,
+            avgRpe = avgRpe,
+            topExercises = topExercises,
+            weeklyFrequency = weeklyFrequency,
+        )
     }
 
     override suspend fun createRoutine(name: String, description: String) {
@@ -341,7 +415,14 @@ class TrainIqRepository @Inject constructor(
         }
     }
 
-    override suspend fun generateAiRoutine(daysPerWeek: Int, equipment: String, targetFocus: String) {
+    override suspend fun generateAiRoutine(
+        daysPerWeek: Int,
+        equipment: String,
+        targetFocus: String,
+        experienceLevel: String,
+        sessionDurationMinutes: Int,
+        includeDeload: Boolean,
+    ) = withContext(Dispatchers.IO) {
         val profile = snapshotState.value.profile
             ?: error("User profile is required to generate an AI routine. Please complete your profile first.")
         val generated = routineGeneratorService.generateRoutine(
@@ -349,7 +430,10 @@ class TrainIqRepository @Inject constructor(
             targetFocus = targetFocus.ifBlank { profile.trainingFocus },
             daysPerWeek = daysPerWeek,
             equipment = equipment,
-        ) ?: error("The AI did not return a routine. Check your API key or try again.")
+            experienceLevel = experienceLevel,
+            sessionDurationMinutes = sessionDurationMinutes,
+            includeDeload = includeDeload,
+        )
 
         check(generated.days.isNotEmpty()) {
             "The AI returned a routine with no workout days. Try a more specific training focus."
@@ -363,7 +447,9 @@ class TrainIqRepository @Inject constructor(
             val newRoutine = WorkoutRoutineEntity(
                 id = routineId,
                 name = generated.routineName,
-                description = generated.routineDescription,
+                description = listOf(generated.routineDescription, generated.periodizationNote)
+                    .filter { it.isNotBlank() }
+                    .joinToString("\n\n"),
                 active = state.routines.isEmpty(),
             )
 
@@ -912,6 +998,14 @@ class TrainIqRepository @Inject constructor(
             .toInstant()
             .toEpochMilli()
 
+    private fun parseTargetRepTarget(repRange: String): Int =
+        repRange.substringAfter('-', repRange).trim().toIntOrNull()
+            ?: repRange.filter(Char::isDigit).toIntOrNull()
+            ?: 0
+
+    private fun formatWeight(weight: Double): String =
+        if (weight % 1.0 == 0.0) weight.toInt().toString() else "%.1f".format(weight)
+
     private fun mapFood(storage: FoodItemStorage): FoodItem = FoodItem(
         id = storage.id,
         name = storage.name,
@@ -1001,4 +1095,16 @@ class TrainIqRepository @Inject constructor(
         val measurements: List<BodyMeasurement> = emptyList(),
         val scannedMealResult: MealAnalysisResult? = null,
     )
+
+    private data class ExerciseSessionSnapshot(
+        val date: Long,
+        val sets: List<WorkoutSetEntity>,
+    )
 }
+
+internal fun resolveReadiness(lastSessionAvgRpe: Float?, completedRecentSessions: Boolean): ReadinessLevel =
+    when {
+        (lastSessionAvgRpe ?: 0f) > 9f -> ReadinessLevel.DELOAD
+        (lastSessionAvgRpe ?: 10f) < 7f && completedRecentSessions -> ReadinessLevel.INCREASE
+        else -> ReadinessLevel.MAINTAIN
+    }

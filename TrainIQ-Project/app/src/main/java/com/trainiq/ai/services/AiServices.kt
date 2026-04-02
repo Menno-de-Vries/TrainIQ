@@ -18,6 +18,7 @@ import java.io.File
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.trainiq.domain.model.buildGoalBaseline
@@ -35,6 +36,7 @@ class MealAnalysisService @Inject constructor(
 
     suspend fun analyzeMealImage(path: String, userContext: String, capturedAtMillis: Long): MealAnalysisResult =
         runCatching {
+            if (!aiUsageGate.isAiReady()) return fallbackMealScan()
             val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return fallbackMealScan()
             val file = File(path)
             val suggestedMealType = suggestMealType(capturedAtMillis)
@@ -63,7 +65,9 @@ class MealAnalysisService @Inject constructor(
                             ),
                         ),
                 ),
-                    generationConfig = GeminiRequest.GenerationConfig(),
+                    generationConfig = GeminiRequest.GenerationConfig(
+                        responseMimeType = "application/json",
+                    ),
                 ),
             )
             val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
@@ -127,13 +131,31 @@ class MealAnalysisService @Inject constructor(
 }
 
 @Singleton
-class WorkoutDebriefService @Inject constructor(
+class WorkoutDebriefService internal constructor(
     private val api: GeminiApi,
-    private val aiUsageGate: AiUsageGate,
+    private val apiKeyProvider: suspend () -> String?,
 ) {
-    suspend fun generateWorkoutDebrief(totalVolume: Double, progression: Double, distribution: String): WorkoutDebrief =
+    @Inject
+    constructor(
+        api: GeminiApi,
+        aiUsageGate: AiUsageGate,
+    ) : this(
+        api = api,
+        apiKeyProvider = {
+            if (aiUsageGate.isAiReady()) aiUsageGate.currentApiKeyOrNull() else null
+        },
+    )
+
+    suspend fun generateWorkoutDebrief(
+        totalVolume: Double,
+        progression: Double,
+        distribution: String,
+        avgRpe: Float,
+        topExercises: String,
+        weeklyFrequency: Int,
+    ): WorkoutDebrief =
         runCatching {
-            val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return fallbackWorkoutDebrief(totalVolume, progression)
+            val apiKey = apiKeyProvider() ?: return fallbackWorkoutDebriefResult(totalVolume, progression)
             val response = api.generateContent(
                 model = GeminiFlashModel,
                 apiKey = apiKey,
@@ -141,33 +163,27 @@ class WorkoutDebriefService @Inject constructor(
                     contents = listOf(
                         GeminiRequest.Content(
                             parts = listOf(
-                                GeminiRequest.Part(text = GeminiPrompts.workoutDebrief(totalVolume, progression, distribution)),
+                                GeminiRequest.Part(
+                                    text = GeminiPrompts.workoutDebrief(
+                                        totalVolume = totalVolume,
+                                        progression = progression,
+                                        distribution = distribution,
+                                        avgRpe = avgRpe,
+                                        topExercises = topExercises,
+                                        weeklyFrequency = weeklyFrequency,
+                                    ),
+                                ),
                             ),
                         ),
                     ),
-                    generationConfig = GeminiRequest.GenerationConfig(),
+                    generationConfig = GeminiRequest.GenerationConfig(
+                        responseMimeType = "application/json",
+                    ),
                 ),
             )
             val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
-            parseWorkoutDebrief(text, totalVolume, progression)
-        }.getOrElse { fallbackWorkoutDebrief(totalVolume, progression) }
-
-    private fun parseWorkoutDebrief(text: String, totalVolume: Double, progression: Double): WorkoutDebrief =
-        runCatching {
-            val root = JsonParser.parseString(text).asJsonObject
-            WorkoutDebrief(
-                summary = root.get("summary")?.asString ?: "Great session.",
-                progressionFeedback = root.get("progressionFeedback")?.asString ?: "Progression remained stable.",
-                recommendation = root.get("recommendation")?.asString
-                    ?: "Repeat this session and aim for one extra rep on main lifts.",
-            )
-        }.getOrElse { fallbackWorkoutDebrief(totalVolume, progression) }
-
-    private fun fallbackWorkoutDebrief(totalVolume: Double, progression: Double) = WorkoutDebrief(
-        summary = "Great session. Volume reached ${totalVolume.toInt()} kg.",
-        progressionFeedback = "Volume changed by ${"%.1f".format(progression)}% versus the previous session.",
-        recommendation = "Keep the same split and add load to the first compound lift next week.",
-    )
+            parseWorkoutDebriefResponse(text, totalVolume, progression)
+        }.getOrElse { fallbackWorkoutDebriefResult(totalVolume, progression) }
 }
 
 @Singleton
@@ -194,6 +210,7 @@ class GoalAdvisorService @Inject constructor(
                 activityLevel = activityLevel,
                 goal = goal,
             )
+            if (!aiUsageGate.isAiReady()) return baseline
             val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return baseline
             val response = api.generateContent(
                 model = GeminiFlashModel,
@@ -221,7 +238,9 @@ class GoalAdvisorService @Inject constructor(
                         includeThoughts = false,
                         thinkingBudget = 1000,
                     ),
-                    generationConfig = GeminiRequest.GenerationConfig(),
+                    generationConfig = GeminiRequest.GenerationConfig(
+                        responseMimeType = "application/json",
+                    ),
                 ),
             )
             val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
@@ -295,6 +314,7 @@ class WeeklyReportService @Inject constructor(
 ) {
     suspend fun generateWeeklyReport(volume: Double, weightTrend: Double, adherence: Int): WeeklyReportResult =
         runCatching {
+            if (!aiUsageGate.isAiReady()) return fallbackWeeklyReport(adherence)
             val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return fallbackWeeklyReport(adherence)
             val response = api.generateContent(
                 model = GeminiFlashModel,
@@ -309,7 +329,9 @@ class WeeklyReportService @Inject constructor(
                         includeThoughts = false,
                         thinkingBudget = 1000,
                     ),
-                    generationConfig = GeminiRequest.GenerationConfig(),
+                    generationConfig = GeminiRequest.GenerationConfig(
+                        responseMimeType = "application/json",
+                    ),
                 ),
             )
             val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
@@ -337,3 +359,31 @@ class WeeklyReportService @Inject constructor(
             nextWeekFocus = "Hold volume steady and improve sleep quality before pushing load.",
         )
 }
+
+internal fun parseWorkoutDebriefResponse(
+    text: String,
+    totalVolume: Double,
+    progression: Double,
+): WorkoutDebrief = runCatching {
+    val root = JsonParser.parseString(text).asJsonObject
+    WorkoutDebrief(
+        summary = root.get("summary")?.asString ?: "Great session.",
+        progressionFeedback = root.get("progressionFeedback")?.asString ?: "Progression remained stable.",
+        recommendation = root.get("recommendation")?.asString
+            ?: "Repeat this session and aim for one extra rep on main lifts.",
+        nextSessionFocus = root.get("nextSessionFocus")?.asString?.trim().orEmpty()
+            .ifBlank { "Maintain current weights" },
+        recoveryScore = (root.get("recoveryScore")?.asInt ?: 75).coerceIn(0, 100),
+        intensitySignal = root.get("intensitySignal")?.asString?.trim()?.uppercase().orEmpty()
+            .ifBlank { "MAINTAIN" },
+    )
+}.getOrElse { fallbackWorkoutDebriefResult(totalVolume, progression) }
+
+internal fun fallbackWorkoutDebriefResult(totalVolume: Double, progression: Double) = WorkoutDebrief(
+    summary = "Great session. Volume reached ${totalVolume.toInt()} kg.",
+    progressionFeedback = "Volume changed by ${String.format(Locale.US, "%.1f", progression)}% versus the previous session.",
+    recommendation = "Keep the same split and add load to the first compound lift next week.",
+    nextSessionFocus = "Maintain current weights",
+    recoveryScore = 75,
+    intensitySignal = "MAINTAIN",
+)

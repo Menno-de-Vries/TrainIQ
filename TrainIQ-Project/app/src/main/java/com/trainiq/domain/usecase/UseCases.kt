@@ -3,6 +3,7 @@ package com.trainiq.domain.usecase
 import com.trainiq.domain.model.LoggedSet
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.MealType
+import com.trainiq.domain.model.ProgressionSuggestion
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WeeklyReportResult
 import com.trainiq.domain.repository.MealEntryRequest
@@ -32,6 +33,11 @@ class ObserveWorkoutOverviewUseCase @Inject constructor(private val repository: 
 
 class GetWorkoutDayUseCase @Inject constructor(private val repository: WorkoutRepository) {
     suspend operator fun invoke(dayId: Long) = repository.getWorkoutDay(dayId)
+}
+
+class GetProgressionSuggestionsUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(dayId: Long): List<ProgressionSuggestion> =
+        repository.getProgressionSuggestions(dayId)
 }
 
 class FinishWorkoutUseCase @Inject constructor(private val repository: WorkoutRepository) {
@@ -85,8 +91,21 @@ class DeleteWorkoutSessionUseCase @Inject constructor(private val repository: Wo
 }
 
 class GenerateAiRoutineUseCase @Inject constructor(private val repository: WorkoutRepository) {
-    suspend operator fun invoke(daysPerWeek: Int, equipment: String, targetFocus: String) =
-        repository.generateAiRoutine(daysPerWeek, equipment, targetFocus)
+    suspend operator fun invoke(
+        daysPerWeek: Int,
+        equipment: String,
+        targetFocus: String,
+        experienceLevel: String,
+        sessionDurationMinutes: Int,
+        includeDeload: Boolean,
+    ) = repository.generateAiRoutine(
+        daysPerWeek = daysPerWeek,
+        equipment = equipment,
+        targetFocus = targetFocus,
+        experienceLevel = experienceLevel,
+        sessionDurationMinutes = sessionDurationMinutes,
+        includeDeload = includeDeload,
+    )
 }
 
 class ObserveNutritionUseCase @Inject constructor(private val repository: NutritionRepository) {

@@ -63,6 +63,21 @@ data class LoggedSet(
     val rpe: Double,
 )
 
+data class ProgressionSuggestion(
+    val exerciseId: Long,
+    val exerciseName: String,
+    val suggestedWeightKg: Double,
+    val suggestedReps: String,
+    val lastSessionAvgRpe: Float?,
+    val readinessSignal: ReadinessLevel,
+)
+
+enum class ReadinessLevel {
+    INCREASE,
+    MAINTAIN,
+    DELOAD,
+}
+
 data class NutritionFacts(
     val calories: Double,
     val protein: Double,
@@ -253,6 +268,9 @@ data class WorkoutDebrief(
     val summary: String,
     val progressionFeedback: String,
     val recommendation: String,
+    val nextSessionFocus: String,
+    val recoveryScore: Int,
+    val intensitySignal: String,
 )
 
 data class WorkoutOverview(

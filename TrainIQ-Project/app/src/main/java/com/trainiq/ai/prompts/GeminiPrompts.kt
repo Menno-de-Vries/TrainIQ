@@ -2,19 +2,40 @@ package com.trainiq.ai.prompts
 
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.GoalAdvice
+import java.util.Locale
 
 object GeminiPrompts {
-    fun workoutDebrief(totalVolume: Double, progression: Double, distribution: String) = """
+    fun workoutDebrief(
+        totalVolume: Double,
+        progression: Double,
+        distribution: String,
+        avgRpe: Float,
+        topExercises: String,
+        weeklyFrequency: Int,
+    ) = """
         You are a senior strength and longevity specialist. Be scientific, concise, data-driven, and supportive.
-        Analyze workout session data.
-        Total volume: $totalVolume
-        Progression vs last session: ${"%.1f".format(progression)}%
-        Muscle group distribution: $distribution
-        Return JSON only:
+
+        Session data:
+        - Total volume: ${totalVolume}kg
+        - Volume progression vs last session: ${String.format(Locale.US, "%.1f", progression)}%
+        - Muscle group distribution: $distribution
+        - Average RPE: $avgRpe / 10
+        - Key lifts: $topExercises
+        - Weekly training frequency: $weeklyFrequency days/week
+
+        Rules:
+        - If avg RPE > 8.5 and progression > 5%, warn about recovery
+        - If avg RPE < 6 and volume is up, suggest intensity increase
+        - nextSessionFocus must be specific (exercise + target weight/reps)
+
+        Return JSON only, no markdown:
         {
           "summary": "string",
           "progressionFeedback": "string",
-          "recommendation": "string"
+          "recommendation": "string",
+          "nextSessionFocus": "string",
+          "recoveryScore": 0,
+          "intensitySignal": "INCREASE|MAINTAIN|DELOAD"
         }
     """.trimIndent()
 
@@ -59,7 +80,7 @@ object GeminiPrompts {
         Strict baseline math:
         - BMR (Mifflin-St Jeor): ${baseline.bmr} kcal
         - Maintenance including TEF: ${baseline.maintenanceCalories} kcal
-        - Activity multiplier: ${"%.3f".format(baseline.activityMultiplier)}
+        - Activity multiplier: ${String.format(Locale.US, "%.3f", baseline.activityMultiplier)}
         - Target calories: ${baseline.calorieTarget} kcal
         - Protein: ${baseline.proteinTarget} g
         - Carbs: ${baseline.carbsTarget} g
@@ -88,25 +109,46 @@ object GeminiPrompts {
         }
     """.trimIndent()
 
-    fun routineGenerator(goal: String, targetFocus: String, daysPerWeek: Int, equipment: String) = """
-        You are a senior strength coach. Design a complete, periodized workout routine tailored to the user's goal.
-        Goal: $goal
-        Requested training split / focus: $targetFocus
-        Days per week: $daysPerWeek
-        Available equipment: $equipment
-        Rules:
-        - Create exactly $daysPerWeek workout days.
-        - Each day should have 4–7 exercises appropriate for the available equipment.
-        - Use evidence-based set/rep schemes (e.g., 3x8-12 for hypertrophy, 4x4-6 for strength).
-        - Rest periods should match intensity (60–90 s hypertrophy, 2–3 min strength).
-        - Balance muscle groups across the week to avoid overtraining.
-        Return JSON only with no markdown fences:
+    fun routineGenerator(
+        goal: String,
+        targetFocus: String,
+        daysPerWeek: Int,
+        equipment: String,
+        experienceLevel: String,
+        sessionDurationMinutes: Int,
+        includeDeload: Boolean,
+    ) = """
+        You are a senior strength coach and periodization specialist.
+
+        User profile:
+        - Goal: $goal
+        - Training split: $targetFocus
+        - Days per week: $daysPerWeek
+        - Equipment: $equipment
+        - Experience level: $experienceLevel
+        - Session duration: ~$sessionDurationMinutes minutes
+        - Include deload guidance: $includeDeload
+
+        Periodization rules by level:
+        - Beginner: linear progression, 3x8-12, full-body preferred
+        - Intermediate: upper/lower or PPL, add weekly progressive overload (+2.5kg/week)
+        - Advanced: undulating periodization, RPE-based loading (RPE 7-9), deload every 4th week
+
+        Exercise count per session:
+        - 30 min -> 3-4 exercises
+        - 45 min -> 4-5 exercises
+        - 60 min -> 5-6 exercises
+        - 90 min -> 6-8 exercises
+
+        Return JSON only, no markdown:
         {
           "routineName": "string",
           "routineDescription": "string",
+          "periodizationNote": "string",
           "days": [
             {
               "dayName": "string",
+              "estimatedDurationMinutes": 60,
               "exercises": [
                 {
                   "exerciseName": "string",
@@ -114,7 +156,8 @@ object GeminiPrompts {
                   "equipment": "string",
                   "targetSets": 3,
                   "repRange": "8-12",
-                  "restSeconds": 90
+                  "restSeconds": 90,
+                  "coachingCue": "string"
                 }
               ]
             }

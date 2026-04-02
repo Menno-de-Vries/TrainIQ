@@ -8,7 +8,8 @@
       "Bash(cmd.exe /c \"cd /d D:\\\\GitHub\\\\TrainIQ\\\\TrainIQ-Project && gradlew.bat assembleDebug\")",
       "Bash(cmd.exe /c \"cd /d D:\\\\GitHub\\\\TrainIQ\\\\TrainIQ-Project && gradlew.bat :app:compileDebugKotlin 2>&1\")",
       "Bash(tasklist /fi \"imagename eq java.exe\")",
-      "Bash(powershell -Command \"cd D:/GitHub/TrainIQ/TrainIQ-Project; ./gradlew :app:compileDebugKotlin 2>&1\")"
+      "Bash(powershell -Command \"cd D:/GitHub/TrainIQ/TrainIQ-Project; ./gradlew :app:compileDebugKotlin 2>&1\")",
+      "Bash(xargs grep:*)"
     ]
   }
 }

@@ -13,6 +13,7 @@ import com.trainiq.domain.model.MealType
 import com.trainiq.domain.model.NutritionFacts
 import com.trainiq.domain.model.NutritionOverview
 import com.trainiq.domain.model.ProgressOverview
+import com.trainiq.domain.model.ProgressionSuggestion
 import com.trainiq.domain.model.Recipe
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WeeklyReportResult
@@ -31,6 +32,7 @@ interface HomeRepository {
 interface WorkoutRepository {
     fun observeWorkoutOverview(): Flow<WorkoutOverview>
     suspend fun getWorkoutDay(dayId: Long): WorkoutDay?
+    suspend fun getProgressionSuggestions(dayId: Long): List<ProgressionSuggestion>
     suspend fun getNextWorkoutDay(): WorkoutDay?
     suspend fun setActiveRoutine(routineId: Long)
     suspend fun finishWorkout(dayId: Long, durationSeconds: Long, loggedSets: List<LoggedSet>): WorkoutDebrief
@@ -50,7 +52,14 @@ interface WorkoutRepository {
     )
     suspend fun removeExerciseFromDay(workoutExerciseId: Long)
     suspend fun deleteWorkoutSession(sessionId: Long)
-    suspend fun generateAiRoutine(daysPerWeek: Int, equipment: String, targetFocus: String)
+    suspend fun generateAiRoutine(
+        daysPerWeek: Int,
+        equipment: String,
+        targetFocus: String,
+        experienceLevel: String,
+        sessionDurationMinutes: Int,
+        includeDeload: Boolean,
+    )
 }
 
 interface NutritionRepository {

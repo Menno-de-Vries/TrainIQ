@@ -1,5 +1,6 @@
 package com.trainiq.features.workout
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -10,21 +11,30 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -40,11 +50,12 @@ import androidx.lifecycle.viewModelScope
 import com.trainiq.core.ui.MessageCard
 import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.ShimmerCardPlaceholder
-import com.trainiq.core.util.SetLogger
-import com.trainiq.core.util.WorkoutExerciseItem
 import com.trainiq.domain.model.LoggedSet
+import com.trainiq.domain.model.ProgressionSuggestion
+import com.trainiq.domain.model.ReadinessLevel
 import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutDebrief
+import com.trainiq.domain.model.WorkoutExercisePlan
 import com.trainiq.domain.model.WorkoutOverview
 import com.trainiq.domain.model.WorkoutRoutine
 import com.trainiq.domain.usecase.AddExerciseToDayUseCase
@@ -54,6 +65,7 @@ import com.trainiq.domain.usecase.DeleteRoutineUseCase
 import com.trainiq.domain.usecase.DeleteWorkoutSessionUseCase
 import com.trainiq.domain.usecase.FinishWorkoutUseCase
 import com.trainiq.domain.usecase.GenerateAiRoutineUseCase
+import com.trainiq.domain.usecase.GetProgressionSuggestionsUseCase
 import com.trainiq.domain.usecase.GetWorkoutDayUseCase
 import com.trainiq.domain.usecase.ObserveWorkoutOverviewUseCase
 import com.trainiq.domain.usecase.RemoveExerciseFromDayUseCase
@@ -62,6 +74,8 @@ import com.trainiq.domain.usecase.SetActiveRoutineUseCase
 import com.trainiq.domain.usecase.UpdateRoutineUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -69,10 +83,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+private data class SetInputDraft(
+    val weight: String = "",
+    val reps: String = "",
+    val rpe: String = "",
+)
+
 @HiltViewModel
 class WorkoutViewModel @Inject constructor(
     observeWorkoutOverviewUseCase: ObserveWorkoutOverviewUseCase,
     private val getWorkoutDayUseCase: GetWorkoutDayUseCase,
+    private val getProgressionSuggestionsUseCase: GetProgressionSuggestionsUseCase,
     private val finishWorkoutUseCase: FinishWorkoutUseCase,
     private val deleteWorkoutSessionUseCase: DeleteWorkoutSessionUseCase,
     private val createRoutineUseCase: CreateRoutineUseCase,
@@ -91,18 +112,58 @@ class WorkoutViewModel @Inject constructor(
     private val _activeWorkout = MutableStateFlow<WorkoutDay?>(null)
     val activeWorkout: StateFlow<WorkoutDay?> = _activeWorkout.asStateFlow()
 
+    private val _progressionSuggestions = MutableStateFlow<List<ProgressionSuggestion>>(emptyList())
+    val progressionSuggestions: StateFlow<List<ProgressionSuggestion>> = _progressionSuggestions.asStateFlow()
+
+    private val _loggedSetsThisSession = MutableStateFlow<Map<Long, List<LoggedSet>>>(emptyMap())
+    val loggedSetsThisSession: StateFlow<Map<Long, List<LoggedSet>>> = _loggedSetsThisSession.asStateFlow()
+
+    private val _restTimerSeconds = MutableStateFlow(0)
+    val restTimerSeconds: StateFlow<Int> = _restTimerSeconds.asStateFlow()
+
     private val _debrief = MutableStateFlow<WorkoutDebrief?>(null)
     val debrief: StateFlow<WorkoutDebrief?> = _debrief.asStateFlow()
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
 
+    private var restTimerJob: Job? = null
+
     fun loadWorkout(dayId: Long) {
-        viewModelScope.launch { _activeWorkout.value = getWorkoutDayUseCase(dayId) }
+        viewModelScope.launch {
+            stopRestTimer()
+            _debrief.value = null
+            _loggedSetsThisSession.value = emptyMap()
+            _activeWorkout.value = getWorkoutDayUseCase(dayId)
+            _progressionSuggestions.value = getProgressionSuggestionsUseCase(dayId)
+        }
     }
 
-    fun finishWorkout(dayId: Long, loggedSets: List<LoggedSet>) {
-        viewModelScope.launch { _debrief.value = finishWorkoutUseCase(dayId, 3_600, loggedSets) }
+    fun logSet(plan: WorkoutExercisePlan, weight: String, reps: String, rpe: String): Boolean {
+        val loggedSet = LoggedSet(
+            exerciseId = plan.exercise.id,
+            weight = weight.toDoubleOrNull() ?: 0.0,
+            reps = reps.toIntOrNull() ?: 0,
+            rpe = rpe.toDoubleOrNull() ?: 0.0,
+        )
+        if (loggedSet.weight <= 0.0 || loggedSet.reps <= 0) {
+            _message.value = "Voer gewicht en reps in om een set te loggen."
+            return false
+        }
+        val updated = _loggedSetsThisSession.value.toMutableMap()
+        updated[plan.exercise.id] = updated[plan.exercise.id].orEmpty() + loggedSet
+        _loggedSetsThisSession.value = updated
+        startRestTimer(plan.restSeconds)
+        return true
+    }
+
+    fun finishWorkout(dayId: Long) {
+        viewModelScope.launch {
+            stopRestTimer()
+            val sets = _loggedSetsThisSession.value.values.flatten()
+            _debrief.value = finishWorkoutUseCase(dayId, 3_600, sets)
+            _progressionSuggestions.value = getProgressionSuggestionsUseCase(dayId)
+        }
     }
 
     fun createRoutine(name: String, description: String) {
@@ -116,12 +177,30 @@ class WorkoutViewModel @Inject constructor(
         }
     }
 
-    fun generateAiRoutine(daysPerWeek: Int, equipment: String, targetFocus: String) {
+    fun generateAiRoutine(
+        daysPerWeek: Int,
+        equipment: String,
+        targetFocus: String,
+        experienceLevel: String,
+        sessionDurationMinutes: Int,
+        includeDeload: Boolean,
+    ) {
         _message.value = "Generating AI routine..."
         viewModelScope.launch {
-            runCatching { generateAiRoutineUseCase(daysPerWeek, equipment, targetFocus) }
-                .onSuccess { _message.value = "Routine generated!" }
-                .onFailure { _message.value = it.message ?: "Failed to generate routine." }
+            runCatching {
+                generateAiRoutineUseCase(
+                    daysPerWeek = daysPerWeek,
+                    equipment = equipment,
+                    targetFocus = targetFocus,
+                    experienceLevel = experienceLevel,
+                    sessionDurationMinutes = sessionDurationMinutes,
+                    includeDeload = includeDeload,
+                )
+            }.onSuccess {
+                _message.value = "Routine generated!"
+            }.onFailure {
+                _message.value = it.message ?: "Failed to generate routine."
+            }
         }
     }
 
@@ -212,6 +291,24 @@ class WorkoutViewModel @Inject constructor(
             _message.value = "Workout session deleted."
         }
     }
+
+    private fun startRestTimer(restSeconds: Int) {
+        stopRestTimer()
+        if (restSeconds <= 0) return
+        _restTimerSeconds.value = restSeconds
+        restTimerJob = viewModelScope.launch {
+            repeat(restSeconds) {
+                delay(1_000)
+                _restTimerSeconds.value = (_restTimerSeconds.value - 1).coerceAtLeast(0)
+            }
+        }
+    }
+
+    private fun stopRestTimer() {
+        restTimerJob?.cancel()
+        restTimerJob = null
+        _restTimerSeconds.value = 0
+    }
 }
 
 @Composable
@@ -224,7 +321,7 @@ fun WorkoutRoute(onStartWorkout: (Long) -> Unit, viewModel: WorkoutViewModel = h
         onDismissMessage = viewModel::clearMessage,
         onStartWorkout = onStartWorkout,
         onCreateRoutine = viewModel::createRoutine,
-        onGenerateAiRoutine = { days, equipment, focus -> viewModel.generateAiRoutine(days, equipment, focus) },
+        onGenerateAiRoutine = viewModel::generateAiRoutine,
         onUpdateRoutine = viewModel::updateRoutine,
         onDeleteRoutine = viewModel::deleteRoutine,
         onSetActiveRoutine = viewModel::setActiveRoutine,
@@ -236,6 +333,7 @@ fun WorkoutRoute(onStartWorkout: (Long) -> Unit, viewModel: WorkoutViewModel = h
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WorkoutScreen(
     overview: WorkoutOverview?,
@@ -243,7 +341,7 @@ fun WorkoutScreen(
     onDismissMessage: () -> Unit,
     onStartWorkout: (Long) -> Unit,
     onCreateRoutine: (String, String) -> Unit,
-    onGenerateAiRoutine: (Int, String, String) -> Unit,
+    onGenerateAiRoutine: (Int, String, String, String, Int, Boolean) -> Unit,
     onUpdateRoutine: (Long, String, String) -> Unit,
     onDeleteRoutine: (Long) -> Unit,
     onSetActiveRoutine: (Long) -> Unit,
@@ -254,47 +352,12 @@ fun WorkoutScreen(
     onDeleteWorkoutSession: (Long) -> Unit,
 ) {
     var showAiDialog by remember { mutableStateOf(false) }
-    var aiDaysPerWeek by remember { mutableStateOf("3") }
-    var aiEquipment by remember { mutableStateOf("") }
-    var aiTargetFocus by remember { mutableStateOf("") }
-
     if (showAiDialog) {
-        AlertDialog(
-            onDismissRequest = { showAiDialog = false },
-            title = { Text("Generate AI Routine") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = aiTargetFocus,
-                        onValueChange = { aiTargetFocus = it },
-                        label = { Text("Training focus / split") },
-                        placeholder = { Text("e.g. Full Body, Upper/Lower, Hypertrophy") },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    OutlinedTextField(
-                        value = aiDaysPerWeek,
-                        onValueChange = { aiDaysPerWeek = it },
-                        label = { Text("Days per week") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    OutlinedTextField(
-                        value = aiEquipment,
-                        onValueChange = { aiEquipment = it },
-                        label = { Text("Available equipment") },
-                        placeholder = { Text("e.g. Barbells, dumbbells, cables") },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    onGenerateAiRoutine(aiDaysPerWeek.toIntOrNull() ?: 3, aiEquipment, aiTargetFocus)
-                    showAiDialog = false
-                }) { Text("Generate") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAiDialog = false }) { Text("Cancel") }
+        RoutineGeneratorDialog(
+            onDismiss = { showAiDialog = false },
+            onGenerate = { days, equipment, focus, level, duration, includeDeload ->
+                onGenerateAiRoutine(days, equipment, focus, level, duration, includeDeload)
+                showAiDialog = false
             },
         )
     }
@@ -305,126 +368,203 @@ fun WorkoutScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item { ScreenHeader(title = "Train") }
-        message?.let {
-            item { MessageCard(message = it, onDismiss = onDismissMessage) }
-        }
+        if (message != null) item { MessageCard(message = message, onDismiss = onDismissMessage) }
         if (overview == null) {
             item { ShimmerCardPlaceholder(lineCount = 4) }
             item { ShimmerCardPlaceholder(lineCount = 3) }
             item { ShimmerCardPlaceholder(lineCount = 5) }
             return@LazyColumn
         }
-
-        item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Create routine", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "Start with a blank template and add days and exercises manually, or let AI build a complete routine from your profile.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Button(
-                            onClick = { onCreateRoutine("New Routine", "") },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text("Create blank routine") }
-                        Button(
-                            onClick = { showAiDialog = true },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text("Generate with AI") }
-                    }
-                }
-            }
-        }
-
-        item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Active Routine", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    if (overview.activeRoutine == null) {
-                        Text("No active routine yet. Create one below and mark it active.")
-                    } else {
-                        Text(overview.activeRoutine.name)
-                        Text(overview.activeRoutine.description.ifBlank { "No description yet." })
-                        overview.activeRoutine.days.firstOrNull()?.let { day ->
-                            Button(onClick = { onStartWorkout(day.id) }) { Text("Start ${day.name}") }
-                        }
-                    }
-                }
-            }
-        }
-
-        item { Text("Routines", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) }
+        item { RoutineCreationCard(onCreateRoutine = onCreateRoutine, onShowAiDialog = { showAiDialog = true }) }
+        item { ActiveRoutineCard(activeRoutine = overview.activeRoutine, onStartWorkout = onStartWorkout) }
+        item { SectionHeader("Routines") }
         if (overview.routines.isEmpty()) {
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("No routines yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Text("Create a routine, add workout days, and attach exercises to get started.")
-                    }
-                }
-            }
+            item { EmptyCard("No routines yet", "Create a routine, add workout days, and attach exercises to get started.") }
         } else {
             items(overview.routines, key = { it.id }) { routine ->
-                RoutineCard(
-                    routine = routine,
-                    onStartWorkout = onStartWorkout,
-                    onUpdateRoutine = onUpdateRoutine,
-                    onDeleteRoutine = onDeleteRoutine,
-                    onSetActiveRoutine = onSetActiveRoutine,
-                    onAddDay = onAddDay,
-                    onRemoveDay = onRemoveDay,
-                    onAddExercise = onAddExercise,
-                    onRemoveExercise = onRemoveExercise,
-                )
+                RoutineCard(routine, onStartWorkout, onUpdateRoutine, onDeleteRoutine, onSetActiveRoutine, onAddDay, onRemoveDay, onAddExercise, onRemoveExercise)
             }
         }
-
-        item { Text("Exercise Library", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) }
+        item { SectionHeader("Exercise Library") }
         if (overview.exercises.isEmpty()) {
             item { Text("No exercises available yet.") }
         } else {
             items(overview.exercises, key = { it.id }) { exercise ->
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(exercise.name, fontWeight = FontWeight.SemiBold)
-                        Text("${exercise.muscleGroup} • ${exercise.equipment}")
-                    }
-                }
+                ExerciseLibraryCard(exercise.name, exercise.muscleGroup, exercise.equipment)
             }
         }
-
-        item { Text("History", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) }
+        item { SectionHeader("History") }
         if (overview.history.isEmpty()) {
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("No workout history", fontWeight = FontWeight.SemiBold)
-                        Text("Complete a workout and your session history will appear here.")
-                    }
-                }
-            }
+            item { EmptyCard("No workout history", "Complete a workout and your session history will appear here.") }
         } else {
             items(overview.history, key = { it.id }) { session ->
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Session ${session.id}", fontWeight = FontWeight.SemiBold)
-                            Text("Volume ${session.totalVolume.toInt()} kg")
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("${session.duration / 60} min")
-                            TextButton(onClick = { onDeleteWorkoutSession(session.id) }) { Text("Delete") }
-                        }
-                    }
+                HistoryCard(session.id, session.totalVolume, session.duration, onDeleteWorkoutSession)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RoutineCreationCard(onCreateRoutine: (String, String) -> Unit, onShowAiDialog: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Create routine", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Start with a blank template and add days manually, or let AI build a routine around your level and schedule.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Button(onClick = { onCreateRoutine("New Routine", "") }, modifier = Modifier.fillMaxWidth()) {
+                Text("Create blank routine")
+            }
+            Button(onClick = onShowAiDialog, modifier = Modifier.fillMaxWidth()) {
+                Text("Generate with AI")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActiveRoutineCard(activeRoutine: WorkoutRoutine?, onStartWorkout: (Long) -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Active Routine", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            if (activeRoutine == null) {
+                Text("No active routine yet. Create one below and mark it active.")
+            } else {
+                Text(activeRoutine.name)
+                Text(activeRoutine.description.ifBlank { "No description yet." })
+                activeRoutine.days.firstOrNull()?.let { day ->
+                    Button(onClick = { onStartWorkout(day.id) }) { Text("Start ${day.name}") }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SectionHeader(title: String) {
+    Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+}
+
+@Composable
+private fun EmptyCard(title: String, body: String) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, fontWeight = FontWeight.SemiBold)
+            Text(body)
+        }
+    }
+}
+
+@Composable
+private fun ExerciseLibraryCard(name: String, muscleGroup: String, equipment: String) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(name, fontWeight = FontWeight.SemiBold)
+            Text("$muscleGroup - $equipment")
+        }
+    }
+}
+
+@Composable
+private fun HistoryCard(sessionId: Long, totalVolume: Double, durationSeconds: Long, onDelete: (Long) -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Session $sessionId", fontWeight = FontWeight.SemiBold)
+                Text("Volume ${totalVolume.toInt()} kg")
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("${durationSeconds / 60} min")
+                TextButton(onClick = { onDelete(sessionId) }) { Text("Delete") }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RoutineGeneratorDialog(
+    onDismiss: () -> Unit,
+    onGenerate: (Int, String, String, String, Int, Boolean) -> Unit,
+) {
+    var focus by remember { mutableStateOf("") }
+    var daysPerWeek by remember { mutableStateOf("3") }
+    var equipment by remember { mutableStateOf("") }
+    var experienceLevel by remember { mutableStateOf("intermediate") }
+    var sessionDuration by remember { mutableFloatStateOf(60f) }
+    var includeDeload by remember { mutableStateOf(true) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Generate AI Routine") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(focus, { focus = it }, label = { Text("Training focus / split") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    value = daysPerWeek,
+                    onValueChange = { daysPerWeek = it },
+                    label = { Text("Days per week") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(equipment, { equipment = it }, label = { Text("Available equipment") }, modifier = Modifier.fillMaxWidth())
+                ExperienceLevelSelector(experienceLevel, onSelected = { experienceLevel = it })
+                SessionDurationSlider(durationMinutes = sessionDuration.toInt(), onValueChange = { sessionDuration = it })
+                IncludeDeloadRow(enabled = includeDeload, onCheckedChange = { includeDeload = it })
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                onGenerate(daysPerWeek.toIntOrNull() ?: 3, equipment, focus, experienceLevel, sessionDuration.toInt(), includeDeload)
+            }) { Text("Generate") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun ExperienceLevelSelector(experienceLevel: String, onSelected: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Experience level", style = MaterialTheme.typography.labelMedium)
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            listOf("beginner", "intermediate", "advanced").forEachIndexed { index, option ->
+                SegmentedButton(
+                    shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(index = index, count = 3),
+                    onClick = { onSelected(option) },
+                    selected = option == experienceLevel,
+                ) {
+                    Text(option.replaceFirstChar { it.uppercase() })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SessionDurationSlider(durationMinutes: Int, onValueChange: (Float) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Session duration: $durationMinutes min", style = MaterialTheme.typography.labelMedium)
+        Slider(value = durationMinutes.toFloat(), onValueChange = onValueChange, valueRange = 30f..90f, steps = 3)
+    }
+}
+
+@Composable
+private fun IncludeDeloadRow(enabled: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Include deload guidance", style = MaterialTheme.typography.labelMedium)
+            Text("Adds recovery instructions for lower-stress weeks.", style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(checked = enabled, onCheckedChange = onCheckedChange)
     }
 }
 
@@ -446,63 +586,24 @@ private fun RoutineCard(
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            // ── Edit section ────────────────────────────────────────────────
-            OutlinedTextField(
-                value = editName,
-                onValueChange = { editName = it },
-                label = { Text("Routine name") },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = editDescription,
-                onValueChange = { editDescription = it },
-                label = { Text("Description") },
-                modifier = Modifier.fillMaxWidth(),
-            )
+            OutlinedTextField(editName, { editName = it }, label = { Text("Routine name") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(editDescription, { editDescription = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { onUpdateRoutine(routine.id, editName, editDescription) }) { Text("Save") }
-                Button(onClick = { onSetActiveRoutine(routine.id) }) {
-                    Text(if (routine.active) "Active" else "Set active")
-                }
+                Button(onClick = { onSetActiveRoutine(routine.id) }) { Text(if (routine.active) "Active" else "Set active") }
                 TextButton(onClick = { onDeleteRoutine(routine.id) }) { Text("Delete") }
             }
-
             HorizontalDivider()
-
-            // ── Add day section ─────────────────────────────────────────────
             Text("Add workout day", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                OutlinedTextField(
-                    value = dayName,
-                    onValueChange = { dayName = it },
-                    label = { Text("Day name") },
-                    modifier = Modifier.weight(1f),
-                )
-                Button(onClick = {
-                    onAddDay(routine.id, dayName)
-                    dayName = ""
-                }) { Text("Add") }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(dayName, { dayName = it }, label = { Text("Day name") }, modifier = Modifier.weight(1f))
+                Button(onClick = { onAddDay(routine.id, dayName); dayName = "" }) { Text("Add") }
             }
-
-            // ── Existing days ───────────────────────────────────────────────
             if (routine.days.isEmpty()) {
-                Text(
-                    "No workout days yet. Add a day to start building this routine.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Text("No workout days yet. Add a day to start building this routine.", style = MaterialTheme.typography.bodySmall)
             } else {
                 routine.days.forEach { day ->
-                    WorkoutDayEditor(
-                        day = day,
-                        onStartWorkout = onStartWorkout,
-                        onRemoveDay = onRemoveDay,
-                        onAddExercise = onAddExercise,
-                        onRemoveExercise = onRemoveExercise,
-                    )
+                    WorkoutDayEditor(day, onStartWorkout, onRemoveDay, onAddExercise, onRemoveExercise)
                 }
             }
         }
@@ -526,95 +627,37 @@ private fun WorkoutDayEditor(
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            // ── Day header ──────────────────────────────────────────────────
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column {
                     Text(day.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("${day.exercises.size} exercise${if (day.exercises.size == 1) "" else "s"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${day.exercises.size} exercise${if (day.exercises.size == 1) "" else "s"}", style = MaterialTheme.typography.bodySmall)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(onClick = { onStartWorkout(day.id) }) { Text("Start") }
                     TextButton(onClick = { onRemoveDay(day.id) }) { Text("Remove") }
                 }
             }
-
-            // ── Exercise list ───────────────────────────────────────────────
-            if (day.exercises.isEmpty()) {
-                Text(
-                    "No exercises yet. Add at least one to make this workout usable.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                day.exercises.forEach { plan ->
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(plan.exercise.name, fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    "${plan.exercise.muscleGroup} • ${plan.targetSets} sets • ${plan.repRange}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            TextButton(onClick = { onRemoveExercise(plan.id) }) { Text("Remove") }
+            day.exercises.forEach { plan ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(plan.exercise.name, fontWeight = FontWeight.SemiBold)
+                            Text("${plan.exercise.muscleGroup} - ${plan.targetSets} sets - ${plan.repRange}", style = MaterialTheme.typography.bodySmall)
                         }
+                        TextButton(onClick = { onRemoveExercise(plan.id) }) { Text("Remove") }
                     }
                 }
             }
-
-            // ── Add exercise form ───────────────────────────────────────────
             HorizontalDivider()
-            Text("Add exercise", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedTextField(
-                value = exerciseName,
-                onValueChange = { exerciseName = it },
-                label = { Text("Exercise name") },
-                modifier = Modifier.fillMaxWidth(),
-            )
+            OutlinedTextField(exerciseName, { exerciseName = it }, label = { Text("Exercise name") }, modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = muscleGroup,
-                    onValueChange = { muscleGroup = it },
-                    label = { Text("Muscle group") },
-                    modifier = Modifier.weight(1f),
-                )
-                OutlinedTextField(
-                    value = equipment,
-                    onValueChange = { equipment = it },
-                    label = { Text("Equipment") },
-                    modifier = Modifier.weight(1f),
-                )
+                OutlinedTextField(muscleGroup, { muscleGroup = it }, label = { Text("Muscle group") }, modifier = Modifier.weight(1f))
+                OutlinedTextField(equipment, { equipment = it }, label = { Text("Equipment") }, modifier = Modifier.weight(1f))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = targetSets,
-                    onValueChange = { targetSets = it },
-                    label = { Text("Sets") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f),
-                )
-                OutlinedTextField(
-                    value = repRange,
-                    onValueChange = { repRange = it },
-                    label = { Text("Rep range") },
-                    modifier = Modifier.weight(1f),
-                )
-                OutlinedTextField(
-                    value = restSeconds,
-                    onValueChange = { restSeconds = it },
-                    label = { Text("Rest (s)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f),
-                )
+                OutlinedTextField(targetSets, { targetSets = it }, label = { Text("Sets") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                OutlinedTextField(repRange, { repRange = it }, label = { Text("Rep range") }, modifier = Modifier.weight(1f))
+                OutlinedTextField(restSeconds, { restSeconds = it }, label = { Text("Rest (s)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
             }
             Button(
                 onClick = {
@@ -636,13 +679,22 @@ private fun WorkoutDayEditor(
 @Composable
 fun ActiveWorkoutRoute(dayId: Long, onBack: () -> Unit, viewModel: WorkoutViewModel = hiltViewModel()) {
     val workout by viewModel.activeWorkout.collectAsStateWithLifecycle()
+    val loggedSetsThisSession by viewModel.loggedSetsThisSession.collectAsStateWithLifecycle()
+    val progressionSuggestions by viewModel.progressionSuggestions.collectAsStateWithLifecycle()
+    val restTimerSeconds by viewModel.restTimerSeconds.collectAsStateWithLifecycle()
     val debrief by viewModel.debrief.collectAsStateWithLifecycle()
+
     LaunchedEffect(dayId) { viewModel.loadWorkout(dayId) }
+
     ActiveWorkoutScreen(
         workout = workout,
+        loggedSetsThisSession = loggedSetsThisSession,
+        progressionSuggestions = progressionSuggestions,
+        restTimerSeconds = restTimerSeconds,
         debrief = debrief,
         onBack = onBack,
-        onFinish = { sets -> viewModel.finishWorkout(dayId, sets) },
+        onLogSet = viewModel::logSet,
+        onFinish = { viewModel.finishWorkout(dayId) },
     )
 }
 
@@ -650,15 +702,15 @@ fun ActiveWorkoutRoute(dayId: Long, onBack: () -> Unit, viewModel: WorkoutViewMo
 @Composable
 fun ActiveWorkoutScreen(
     workout: WorkoutDay?,
+    loggedSetsThisSession: Map<Long, List<LoggedSet>>,
+    progressionSuggestions: List<ProgressionSuggestion>,
+    restTimerSeconds: Int,
     debrief: WorkoutDebrief?,
     onBack: () -> Unit,
-    onFinish: (List<LoggedSet>) -> Unit,
+    onLogSet: (WorkoutExercisePlan, String, String, String) -> Boolean,
+    onFinish: () -> Unit,
 ) {
-    val loggedSets = remember { mutableStateListOf<LoggedSet>() }
-    var weight by remember { mutableStateOf("") }
-    var reps by remember { mutableStateOf("") }
-    var rpe by remember { mutableStateOf("") }
-
+    val drafts = remember { mutableStateOf(mapOf<Long, SetInputDraft>()) }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -672,54 +724,138 @@ fun ActiveWorkoutScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            if (restTimerSeconds > 0) item { RestTimerCard(restTimerSeconds) }
             if (workout == null) {
-                item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Workout unavailable", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("This workout could not be loaded.")
+                item { EmptyCard("Workout unavailable", "This workout could not be loaded.") }
+                return@LazyColumn
+            }
+            items(workout.exercises, key = { it.id }) { plan ->
+                val draft = drafts.value[plan.exercise.id] ?: SetInputDraft()
+                ActiveExerciseCard(
+                    plan = plan,
+                    loggedSets = loggedSetsThisSession[plan.exercise.id].orEmpty(),
+                    suggestion = progressionSuggestions.firstOrNull { it.exerciseId == plan.exercise.id },
+                    draft = draft,
+                    onDraftChange = { next -> drafts.value = drafts.value.toMutableMap().apply { put(plan.exercise.id, next) } },
+                    onLogSet = {
+                        if (onLogSet(plan, draft.weight, draft.reps, draft.rpe)) {
+                            drafts.value = drafts.value.toMutableMap().apply { put(plan.exercise.id, SetInputDraft()) }
                         }
-                    }
-                }
+                    },
+                )
             }
-            items(workout?.exercises ?: emptyList(), key = { it.id }) { plan ->
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    WorkoutExerciseItem(plan = plan, loggedSetCount = loggedSets.count { it.exerciseId == plan.exercise.id })
-                    SetLogger(weight, reps, rpe, { weight = it }, { reps = it }, { rpe = it })
-                    Button(onClick = {
-                        loggedSets += LoggedSet(
-                            plan.exercise.id,
-                            weight.toDoubleOrNull() ?: 0.0,
-                            reps.toIntOrNull() ?: 0,
-                            rpe.toDoubleOrNull() ?: 0.0,
-                        )
-                        weight = ""
-                        reps = ""
-                        rpe = ""
-                    }) {
-                        Text("Log set")
-                    }
-                }
-            }
-            if (workout != null) {
-                item {
-                    Button(onClick = { onFinish(loggedSets.toList()) }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Finish workout")
-                    }
-                }
-            }
-            debrief?.let { result ->
-                item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("AI Workout Debrief", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text(result.summary)
-                            Text(result.progressionFeedback)
-                            Text(result.recommendation)
-                        }
-                    }
-                }
-            }
+            item { Button(onClick = onFinish, modifier = Modifier.fillMaxWidth()) { Text("Finish workout") } }
+            if (debrief != null) item { WorkoutDebriefCard(debrief) }
         }
     }
 }
+
+@Composable
+private fun RestTimerCard(restTimerSeconds: Int) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Rest timer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("$restTimerSeconds s remaining", style = MaterialTheme.typography.headlineSmall)
+        }
+    }
+}
+
+@Composable
+private fun ActiveExerciseCard(
+    plan: WorkoutExercisePlan,
+    loggedSets: List<LoggedSet>,
+    suggestion: ProgressionSuggestion?,
+    draft: SetInputDraft,
+    onDraftChange: (SetInputDraft) -> Unit,
+    onLogSet: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (suggestion != null) ExerciseProgressionHint(suggestion)
+            Text(plan.exercise.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("${plan.targetSets} sets - ${plan.repRange} reps - ${plan.restSeconds}s rest", style = MaterialTheme.typography.bodySmall)
+            repeat(plan.targetSets) { index ->
+                SetRow(
+                    index = index + 1,
+                    repRange = plan.repRange,
+                    loggedSet = loggedSets.getOrNull(index),
+                    isCurrent = index == loggedSets.size && loggedSets.size < plan.targetSets,
+                )
+            }
+            SetLoggerFields(draft = draft, onDraftChange = onDraftChange)
+            Button(onClick = onLogSet, modifier = Modifier.fillMaxWidth()) { Text("Log set") }
+        }
+    }
+}
+
+@Composable
+private fun SetLoggerFields(draft: SetInputDraft, onDraftChange: (SetInputDraft) -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(draft.weight, { onDraftChange(draft.copy(weight = it)) }, label = { Text("Weight") }, modifier = Modifier.weight(1f))
+        OutlinedTextField(draft.reps, { onDraftChange(draft.copy(reps = it)) }, label = { Text("Reps") }, modifier = Modifier.weight(1f))
+        OutlinedTextField(draft.rpe, { onDraftChange(draft.copy(rpe = it)) }, label = { Text("RPE") }, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun SetRow(index: Int, repRange: String, loggedSet: LoggedSet?, isCurrent: Boolean) {
+    val background = if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(background, MaterialTheme.shapes.medium)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (loggedSet != null && loggedSet.weight > 0.0 && loggedSet.reps > 0) {
+                Icon(Icons.Default.Check, contentDescription = "Completed set")
+            }
+            Text("Set $index")
+        }
+        Text(loggedSet?.let { "${formatWeight(it.weight)} kg x ${it.reps}" } ?: repRange)
+    }
+}
+
+@Composable
+private fun ExerciseProgressionHint(suggestion: ProgressionSuggestion) {
+    SuggestionChip(
+        onClick = {},
+        label = {
+            Text(
+                "Vorige sessie: ${formatWeight(previousWeight(suggestion))}kg x ${displayRepTarget(suggestion.suggestedReps)} | Suggestie: ${formatWeight(suggestion.suggestedWeightKg)}kg x ${displayRepTarget(suggestion.suggestedReps)}",
+            )
+        },
+    )
+}
+
+@Composable
+private fun WorkoutDebriefCard(result: WorkoutDebrief) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("AI Workout Debrief", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(result.summary)
+            Text(result.progressionFeedback)
+            Text(result.recommendation)
+            Text("Next session: ${result.nextSessionFocus}", fontWeight = FontWeight.Medium)
+            Text("Intensity signal: ${result.intensitySignal}")
+            LinearProgressIndicator(
+                progress = { result.recoveryScore.coerceIn(0, 100) / 100f },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text("Recovery score: ${result.recoveryScore}/100", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+private fun previousWeight(suggestion: ProgressionSuggestion): Double = when (suggestion.readinessSignal) {
+    ReadinessLevel.INCREASE -> (suggestion.suggestedWeightKg - 2.5).coerceAtLeast(0.0)
+    ReadinessLevel.DELOAD -> if (suggestion.suggestedWeightKg == 0.0) 0.0 else suggestion.suggestedWeightKg / 0.9
+    ReadinessLevel.MAINTAIN -> suggestion.suggestedWeightKg
+}
+
+private fun displayRepTarget(repRange: String): String = repRange.substringAfter('-', repRange)
+
+private fun formatWeight(weight: Double): String =
+    if (weight % 1.0 == 0.0) weight.toInt().toString() else "%.1f".format(weight)
