@@ -14,4 +14,13 @@ object TrainIqMigrations {
             db.execSQL("ALTER TABLE meals ADD COLUMN notes TEXT")
         }
     }
+
+    val Migration3To4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE workout_sets ADD COLUMN set_type TEXT NOT NULL DEFAULT 'WORKING'")
+            db.execSQL("ALTER TABLE workout_exercises ADD COLUMN set_type TEXT NOT NULL DEFAULT 'WORKING'")
+            db.execSQL("ALTER TABLE workout_exercises ADD COLUMN superset_group_id INTEGER")
+            db.execSQL("ALTER TABLE workout_exercises ADD COLUMN order_index INTEGER NOT NULL DEFAULT 0")
+        }
+    }
 }

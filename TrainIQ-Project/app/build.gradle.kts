@@ -86,6 +86,7 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.gson)
+    implementation(libs.reorderable)
     implementation(libs.okhttp.logging)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)

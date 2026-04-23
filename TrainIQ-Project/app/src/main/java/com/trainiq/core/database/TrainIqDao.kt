@@ -69,7 +69,7 @@ interface TrainIqDao {
     @Query("SELECT * FROM exercises ORDER BY name ASC")
     fun observeExercises(): Flow<List<ExerciseEntity>>
 
-    @Query("SELECT * FROM workout_exercises ORDER BY id ASC")
+    @Query("SELECT * FROM workout_exercises ORDER BY order_index ASC, id ASC")
     fun observeWorkoutExercises(): Flow<List<WorkoutExerciseEntity>>
 
     @Query("SELECT * FROM workout_sessions ORDER BY date DESC")
@@ -87,11 +87,23 @@ interface TrainIqDao {
     @Query("SELECT * FROM workout_days WHERE id = :dayId LIMIT 1")
     suspend fun getWorkoutDay(dayId: Long): WorkoutDayEntity?
 
-    @Query("SELECT * FROM workout_exercises WHERE dayId = :dayId ORDER BY id ASC")
+    @Query("SELECT * FROM workout_exercises WHERE dayId = :dayId ORDER BY order_index ASC, id ASC")
     suspend fun getWorkoutExercisesForDay(dayId: Long): List<WorkoutExerciseEntity>
 
     @Query("SELECT * FROM exercises WHERE id = :exerciseId LIMIT 1")
     suspend fun getExercise(exerciseId: Long): ExerciseEntity?
+
+    @Query(
+        """
+        SELECT * FROM exercises
+        WHERE :query = ''
+            OR name LIKE '%' || :query || '%'
+            OR muscleGroup LIKE '%' || :query || '%'
+            OR equipment LIKE '%' || :query || '%'
+        ORDER BY name ASC
+        """,
+    )
+    suspend fun searchExercises(query: String): List<ExerciseEntity>
 
     @Query("UPDATE workout_routines SET active = CASE WHEN id = :routineId THEN 1 ELSE 0 END")
     suspend fun setActiveRoutine(routineId: Long)
@@ -128,6 +140,16 @@ interface TrainIqDao {
 
     @Query("UPDATE workout_routines SET name = :name, description = :description WHERE id = :routineId")
     suspend fun updateRoutine(routineId: Long, name: String, description: String)
+
+    @Query("UPDATE workout_exercises SET order_index = :orderIndex WHERE dayId = :dayId AND id = :workoutExerciseId")
+    suspend fun updateWorkoutExerciseOrder(dayId: Long, workoutExerciseId: Long, orderIndex: Int)
+
+    @Transaction
+    suspend fun reorderExercises(dayId: Long, orderedIds: List<Long>) {
+        orderedIds.distinct().forEachIndexed { index, workoutExerciseId ->
+            updateWorkoutExerciseOrder(dayId, workoutExerciseId, index)
+        }
+    }
 
     @Transaction
     suspend fun deleteWorkoutDayCascade(dayId: Long) {

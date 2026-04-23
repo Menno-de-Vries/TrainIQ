@@ -24,8 +24,6 @@ import javax.inject.Singleton
 import com.trainiq.domain.model.buildGoalBaseline
 import com.trainiq.domain.model.suggestMealType
 
-private const val GeminiFlashModel = "gemini-2.5-flash"
-
 @Singleton
 class MealAnalysisService @Inject constructor(
     private val api: GeminiApi,
@@ -49,7 +47,7 @@ class MealAnalysisService @Inject constructor(
                 append(userContext.ifBlank { "Identify the food, estimate portion sizes, and return exact macros." })
             }
             val response = api.generateContent(
-                model = GeminiFlashModel,
+                model = GEMINI_FLASH_MODEL,
                 apiKey = apiKey,
                 request = GeminiRequest(
                     contents = listOf(
@@ -157,7 +155,7 @@ class WorkoutDebriefService internal constructor(
         runCatching {
             val apiKey = apiKeyProvider() ?: return fallbackWorkoutDebriefResult(totalVolume, progression)
             val response = api.generateContent(
-                model = GeminiFlashModel,
+                model = GEMINI_FLASH_MODEL,
                 apiKey = apiKey,
                 request = GeminiRequest(
                     contents = listOf(
@@ -213,7 +211,7 @@ class GoalAdvisorService @Inject constructor(
             if (!aiUsageGate.isAiReady()) return baseline
             val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return baseline
             val response = api.generateContent(
-                model = GeminiFlashModel,
+                model = GEMINI_FLASH_MODEL,
                 apiKey = apiKey,
                 request = GeminiRequest(
                     contents = listOf(
@@ -317,7 +315,7 @@ class WeeklyReportService @Inject constructor(
             if (!aiUsageGate.isAiReady()) return fallbackWeeklyReport(adherence)
             val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return fallbackWeeklyReport(adherence)
             val response = api.generateContent(
-                model = GeminiFlashModel,
+                model = GEMINI_FLASH_MODEL,
                 apiKey = apiKey,
                 request = GeminiRequest(
                     contents = listOf(
@@ -376,6 +374,10 @@ internal fun parseWorkoutDebriefResponse(
         recoveryScore = (root.get("recoveryScore")?.asInt ?: 75).coerceIn(0, 100),
         intensitySignal = root.get("intensitySignal")?.asString?.trim()?.uppercase().orEmpty()
             .ifBlank { "MAINTAIN" },
+        wins = root.getAsJsonArray("wins")?.map { it.asString }.orEmpty(),
+        risks = root.getAsJsonArray("risks")?.map { it.asString }.orEmpty(),
+        nextLoadTarget = root.get("nextLoadTarget")?.asString?.trim().orEmpty(),
+        recoveryAdvice = root.get("recoveryAdvice")?.asString?.trim().orEmpty(),
     )
 }.getOrElse { fallbackWorkoutDebriefResult(totalVolume, progression) }
 
@@ -386,4 +388,8 @@ internal fun fallbackWorkoutDebriefResult(totalVolume: Double, progression: Doub
     nextSessionFocus = "Maintain current weights",
     recoveryScore = 75,
     intensitySignal = "MAINTAIN",
+    wins = listOf("Training volume was captured locally."),
+    risks = if (progression > 5.0) listOf("Volume jumped more than 5%; watch recovery.") else emptyList(),
+    nextLoadTarget = "Repeat current working weights and add reps only if RPE stays under 8.",
+    recoveryAdvice = "Use sleep, steps, and soreness to decide whether to push or hold load.",
 )

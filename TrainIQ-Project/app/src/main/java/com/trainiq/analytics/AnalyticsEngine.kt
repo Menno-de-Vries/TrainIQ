@@ -2,6 +2,7 @@ package com.trainiq.analytics
 
 import com.trainiq.core.database.ExerciseEntity
 import com.trainiq.core.database.WorkoutSetEntity
+import com.trainiq.domain.model.StrengthCalculator
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -15,7 +16,7 @@ class AnalyticsEngine @Inject constructor() {
             .mapValues { (_, groupedSets) -> trainingVolume(groupedSets) }
     }
 
-    fun estimatedOneRepMax(weight: Double, reps: Int): Double = weight * (1 + reps / 30.0)
+    fun estimatedOneRepMax(weight: Double, reps: Int): Double = StrengthCalculator.estimateOneRepMax(weight, reps)
 
     fun fatigueIndex(weeklyVolume: Double, baselineVolume: Double): Double {
         if (baselineVolume == 0.0) return 1.0

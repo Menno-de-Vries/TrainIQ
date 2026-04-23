@@ -24,6 +24,7 @@ mlkitBarcode = "17.3.0"
 navigationCompose = "2.8.7"
 okhttpLogging = "4.12.0"
 room = "2.7.0"
+reorderable = "3.1.0"
 turbine = "1.1.0"
 
 [libraries]
@@ -68,6 +69,7 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttpLogging" }
 retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "gsonConverter" }
 retrofit-converter-gson = { group = "com.squareup.retrofit2", name = "converter-gson", version.ref = "gsonConverter" }
+reorderable = { group = "sh.calvin.reorderable", name = "reorderable", version.ref = "reorderable" }
 mlkit-barcode = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "mlkitBarcode" }
 app-cash-turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
 

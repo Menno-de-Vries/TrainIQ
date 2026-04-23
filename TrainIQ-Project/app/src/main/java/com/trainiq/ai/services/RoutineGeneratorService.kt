@@ -59,7 +59,7 @@ class RoutineGeneratorService @Inject constructor(
         experienceLevel: String,
         sessionDurationMinutes: Int,
         includeDeload: Boolean,
-    ): GeneratedRoutine = runCatching {
+    ): GeneratedRoutine {
         val fallback = fallbackGeneratedRoutine(
             goal = goal,
             targetFocus = targetFocus,
@@ -69,46 +69,46 @@ class RoutineGeneratorService @Inject constructor(
             sessionDurationMinutes = sessionDurationMinutes,
             includeDeload = includeDeload,
         )
-        if (!aiUsageGate.isAiReady()) return fallback
-        val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return fallback
-        val response = api.generateContent(
-            model = "gemini-2.5-flash",
-            apiKey = apiKey,
-            request = GeminiRequest(
-                contents = listOf(
-                    GeminiRequest.Content(
-                        parts = listOf(
-                            GeminiRequest.Part(
-                                text = GeminiPrompts.routineGenerator(
-                                    goal = goal,
-                                    targetFocus = targetFocus,
-                                    daysPerWeek = daysPerWeek,
-                                    equipment = equipment,
-                                    experienceLevel = experienceLevel,
-                                    sessionDurationMinutes = sessionDurationMinutes,
-                                    includeDeload = includeDeload,
+        return try {
+            if (!aiUsageGate.isAiReady()) return fallback
+            val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return fallback
+            val response = api.generateContent(
+                model = GEMINI_FLASH_MODEL,
+                apiKey = apiKey,
+                request = GeminiRequest(
+                    contents = listOf(
+                        GeminiRequest.Content(
+                            parts = listOf(
+                                GeminiRequest.Part(
+                                    text = GeminiPrompts.routineGenerator(
+                                        goal = goal,
+                                        targetFocus = targetFocus,
+                                        daysPerWeek = daysPerWeek,
+                                        equipment = equipment,
+                                        experienceLevel = experienceLevel,
+                                        sessionDurationMinutes = sessionDurationMinutes,
+                                        includeDeload = includeDeload,
+                                    ),
                                 ),
                             ),
                         ),
                     ),
+                    thinkingConfig = GeminiRequest.ThinkingConfig(
+                        includeThoughts = false,
+                        thinkingBudget = 1000,
+                    ),
+                    generationConfig = GeminiRequest.GenerationConfig(
+                        responseMimeType = "application/json",
+                    ),
                 ),
-                generationConfig = GeminiRequest.GenerationConfig(
-                    responseMimeType = "application/json",
-                ),
-            ),
-        )
-        val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
-        parseGeneratedRoutine(text, fallback)
-    }.getOrElse {
-        fallbackGeneratedRoutine(
-            goal = goal,
-            targetFocus = targetFocus,
-            daysPerWeek = daysPerWeek,
-            equipment = equipment,
-            experienceLevel = experienceLevel,
-            sessionDurationMinutes = sessionDurationMinutes,
-            includeDeload = includeDeload,
-        )
+            )
+            val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
+            parseGeneratedRoutine(text, fallback)
+        } catch (throwable: Throwable) {
+            val mapped = throwable.asAiRateLimitExceptionIfNeeded()
+            if (mapped is AiRateLimitException) throw mapped
+            fallback
+        }
     }
 }
 

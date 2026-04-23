@@ -27,6 +27,8 @@ object GeminiPrompts {
         - If avg RPE > 8.5 and progression > 5%, warn about recovery
         - If avg RPE < 6 and volume is up, suggest intensity increase
         - nextSessionFocus must be specific (exercise + target weight/reps)
+        - Never suggest aggressive load increases when avg RPE is 9-10 or volume jumped sharply
+        - nextLoadTarget must be a concrete exercise target, for example "Bench Press: 82.5 kg x 6-8 for 3 working sets"
 
         Return JSON only, no markdown:
         {
@@ -35,7 +37,11 @@ object GeminiPrompts {
           "recommendation": "string",
           "nextSessionFocus": "string",
           "recoveryScore": 0,
-          "intensitySignal": "INCREASE|MAINTAIN|DELOAD"
+          "intensitySignal": "INCREASE|MAINTAIN|DELOAD",
+          "wins": ["string"],
+          "risks": ["string"],
+          "nextLoadTarget": "string",
+          "recoveryAdvice": "string"
         }
     """.trimIndent()
 

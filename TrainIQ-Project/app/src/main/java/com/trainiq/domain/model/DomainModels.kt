@@ -30,6 +30,8 @@ data class WorkoutExercisePlan(
     val targetSets: Int,
     val repRange: String,
     val restSeconds: Int,
+    val setType: SetType = SetType.WORKING,
+    val supersetGroupId: Long? = null,
 )
 
 data class WorkoutDay(
@@ -61,6 +63,8 @@ data class LoggedSet(
     val weight: Double,
     val reps: Int,
     val rpe: Double,
+    val repsInReserve: Int? = null,
+    val setType: SetType = SetType.WORKING,
 )
 
 data class ProgressionSuggestion(
@@ -70,13 +74,47 @@ data class ProgressionSuggestion(
     val suggestedReps: String,
     val lastSessionAvgRpe: Float?,
     val readinessSignal: ReadinessLevel,
+    val lastLoggedWeightKg: Double? = null,
+    val lastLoggedReps: String? = null,
 )
+
+enum class SetType {
+    WARMUP,
+    WORKING,
+    TOP_SET,
+    BACKOFF,
+}
 
 enum class ReadinessLevel {
     INCREASE,
     MAINTAIN,
     DELOAD,
+    PLATEAU,
 }
+
+data class GeneratedRoutine(
+    val routineName: String,
+    val routineDescription: String,
+    val periodizationNote: String = "",
+    val estimatedDurationMinutes: Int = 0,
+    val days: List<GeneratedDay>,
+)
+
+data class GeneratedDay(
+    val dayName: String,
+    val estimatedDurationMinutes: Int = 60,
+    val exercises: List<GeneratedExercise>,
+)
+
+data class GeneratedExercise(
+    val exerciseName: String,
+    val muscleGroup: String,
+    val equipment: String,
+    val targetSets: Int,
+    val repRange: String,
+    val restSeconds: Int,
+    val coachingCue: String = "",
+)
 
 data class NutritionFacts(
     val calories: Double,
@@ -271,6 +309,10 @@ data class WorkoutDebrief(
     val nextSessionFocus: String,
     val recoveryScore: Int,
     val intensitySignal: String,
+    val wins: List<String> = emptyList(),
+    val risks: List<String> = emptyList(),
+    val nextLoadTarget: String = "",
+    val recoveryAdvice: String = "",
 )
 
 data class WorkoutOverview(

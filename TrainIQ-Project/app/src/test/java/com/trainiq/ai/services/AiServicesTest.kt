@@ -26,7 +26,11 @@ class AiServicesTest {
                                           "recommendation": "Keep the same load and chase one extra rep.",
                                           "nextSessionFocus": "Bench press 82.5kg x 8",
                                           "recoveryScore": 88,
-                                          "intensitySignal": "INCREASE"
+                                          "intensitySignal": "INCREASE",
+                                          "wins": ["Top set moved well."],
+                                          "risks": ["Volume jumped quickly."],
+                                          "nextLoadTarget": "Bench Press: 82.5 kg x 6-8 for 3 working sets",
+                                          "recoveryAdvice": "Keep sleep above 7 hours."
                                         }
                                     """.trimIndent(),
                                 ),
@@ -53,6 +57,10 @@ class AiServicesTest {
         assertEquals("Bench press 82.5kg x 8", result.nextSessionFocus)
         assertEquals(88, result.recoveryScore)
         assertEquals("INCREASE", result.intensitySignal)
+        assertEquals(listOf("Top set moved well."), result.wins)
+        assertEquals(listOf("Volume jumped quickly."), result.risks)
+        assertEquals("Bench Press: 82.5 kg x 6-8 for 3 working sets", result.nextLoadTarget)
+        assertEquals("Keep sleep above 7 hours.", result.recoveryAdvice)
         assertNotNull(api.lastRequest)
         assertEquals("application/json", api.lastRequest?.generationConfig?.responseMimeType)
     }

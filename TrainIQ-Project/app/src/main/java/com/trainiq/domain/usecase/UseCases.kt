@@ -2,6 +2,7 @@ package com.trainiq.domain.usecase
 
 import com.trainiq.domain.model.LoggedSet
 import com.trainiq.domain.model.BiologicalSex
+import com.trainiq.domain.model.GeneratedRoutine
 import com.trainiq.domain.model.MealType
 import com.trainiq.domain.model.ProgressionSuggestion
 import com.trainiq.domain.model.UserProfile
@@ -58,6 +59,19 @@ class DeleteRoutineUseCase @Inject constructor(private val repository: WorkoutRe
     suspend operator fun invoke(routineId: Long) = repository.deleteRoutine(routineId)
 }
 
+class SearchExercisesUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(query: String) = repository.searchExercises(query)
+}
+
+class ReorderExercisesUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(dayId: Long, orderedIds: List<Long>) = repository.reorderExercises(dayId, orderedIds)
+}
+
+class SetSupersetGroupUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(workoutExerciseIds: List<Long>, groupId: Long?) =
+        repository.setSupersetGroup(workoutExerciseIds, groupId)
+}
+
 class SetActiveRoutineUseCase @Inject constructor(private val repository: WorkoutRepository) {
     suspend operator fun invoke(routineId: Long) = repository.setActiveRoutine(routineId)
 }
@@ -80,6 +94,18 @@ class AddExerciseToDayUseCase @Inject constructor(private val repository: Workou
         repRange: String,
         restSeconds: Int,
     ) = repository.addExerciseToDay(dayId, name, muscleGroup, equipment, targetSets, repRange, restSeconds)
+}
+
+class AddExerciseToRoutineUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(
+        routineId: Long,
+        name: String,
+        muscleGroup: String,
+        equipment: String,
+        targetSets: Int,
+        repRange: String,
+        restSeconds: Int,
+    ) = repository.addExerciseToRoutine(routineId, name, muscleGroup, equipment, targetSets, repRange, restSeconds)
 }
 
 class RemoveExerciseFromDayUseCase @Inject constructor(private val repository: WorkoutRepository) {
@@ -106,6 +132,10 @@ class GenerateAiRoutineUseCase @Inject constructor(private val repository: Worko
         sessionDurationMinutes = sessionDurationMinutes,
         includeDeload = includeDeload,
     )
+}
+
+class SaveGeneratedRoutineUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(routine: GeneratedRoutine) = repository.saveGeneratedRoutine(routine)
 }
 
 class ObserveNutritionUseCase @Inject constructor(private val repository: NutritionRepository) {

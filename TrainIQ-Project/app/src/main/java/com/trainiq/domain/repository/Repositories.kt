@@ -2,8 +2,10 @@ package com.trainiq.domain.repository
 
 import com.trainiq.domain.model.CoachOverview
 import com.trainiq.domain.model.BiologicalSex
+import com.trainiq.domain.model.Exercise
 import com.trainiq.domain.model.FoodItem
 import com.trainiq.domain.model.FoodSourceType
+import com.trainiq.domain.model.GeneratedRoutine
 import com.trainiq.domain.model.GoalAdvice
 import com.trainiq.domain.model.HealthConnectStatus
 import com.trainiq.domain.model.HomeDashboard
@@ -39,10 +41,22 @@ interface WorkoutRepository {
     suspend fun createRoutine(name: String, description: String)
     suspend fun updateRoutine(routineId: Long, name: String, description: String)
     suspend fun deleteRoutine(routineId: Long)
+    suspend fun searchExercises(query: String): List<Exercise>
+    suspend fun reorderExercises(dayId: Long, orderedIds: List<Long>)
+    suspend fun setSupersetGroup(workoutExerciseIds: List<Long>, groupId: Long?)
     suspend fun addWorkoutDay(routineId: Long, name: String)
     suspend fun removeWorkoutDay(dayId: Long)
     suspend fun addExerciseToDay(
         dayId: Long,
+        name: String,
+        muscleGroup: String,
+        equipment: String,
+        targetSets: Int,
+        repRange: String,
+        restSeconds: Int,
+    )
+    suspend fun addExerciseToRoutine(
+        routineId: Long,
         name: String,
         muscleGroup: String,
         equipment: String,
@@ -59,7 +73,8 @@ interface WorkoutRepository {
         experienceLevel: String,
         sessionDurationMinutes: Int,
         includeDeload: Boolean,
-    )
+    ): GeneratedRoutine
+    suspend fun saveGeneratedRoutine(routine: GeneratedRoutine)
 }
 
 interface NutritionRepository {

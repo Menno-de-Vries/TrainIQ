@@ -17,6 +17,7 @@ import com.trainiq.domain.model.BodyMeasurement
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.Exercise
 import com.trainiq.domain.model.HealthConnectMetrics
+import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutExercisePlan
@@ -58,7 +59,18 @@ fun WorkoutDayEntity.toDomain(exercises: List<WorkoutExercisePlan>) = WorkoutDay
 fun WorkoutRoutineEntity.toDomain(days: List<WorkoutDay>) = WorkoutRoutine(id, name, description, active, days)
 
 fun WorkoutExerciseEntity.toDomain(exercise: Exercise) =
-    WorkoutExercisePlan(id, exercise, targetSets, repRange, restSeconds)
+    WorkoutExercisePlan(
+        id = id,
+        exercise = exercise,
+        targetSets = targetSets,
+        repRange = repRange,
+        restSeconds = restSeconds,
+        setType = parseSetType(setType),
+        supersetGroupId = supersetGroupId,
+    )
+
+fun parseSetType(value: String?): SetType =
+    runCatching { SetType.valueOf(value ?: SetType.WORKING.name) }.getOrDefault(SetType.WORKING)
 
 internal fun StepsRecord.toCachedStepRecord() = CachedStepRecord(
     recordId = metadata.id,

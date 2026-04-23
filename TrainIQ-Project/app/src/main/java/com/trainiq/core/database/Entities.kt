@@ -1,6 +1,7 @@
 package com.trainiq.core.database
 
 import androidx.room.Entity
+import androidx.room.ColumnInfo
 import androidx.room.PrimaryKey
 
 @Entity(tableName = "user_profile")
@@ -53,6 +54,9 @@ data class WorkoutExerciseEntity(
     val targetSets: Int,
     val repRange: String,
     val restSeconds: Int,
+    @ColumnInfo(name = "set_type", defaultValue = "WORKING") val setType: String = "WORKING",
+    @ColumnInfo(name = "superset_group_id") val supersetGroupId: Long? = null,
+    @ColumnInfo(name = "order_index", defaultValue = "0") val orderIndex: Int = 0,
 )
 
 @Entity(tableName = "workout_sessions")
@@ -71,6 +75,8 @@ data class WorkoutSetEntity(
     val weight: Double,
     val reps: Int,
     val rpe: Double,
+    val repsInReserve: Int? = null,
+    @ColumnInfo(name = "set_type", defaultValue = "WORKING") val setType: String = "WORKING",
 )
 
 @Entity(tableName = "meals")
