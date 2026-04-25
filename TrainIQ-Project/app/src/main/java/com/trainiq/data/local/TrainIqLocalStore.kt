@@ -5,12 +5,15 @@ import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.trainiq.core.database.BodyMeasurementEntity
 import com.trainiq.core.database.ExerciseEntity
+import com.trainiq.core.database.PerformedExerciseEntity
+import com.trainiq.core.database.RoutineSetEntity
 import com.trainiq.core.database.UserProfileEntity
 import com.trainiq.core.database.WorkoutDayEntity
 import com.trainiq.core.database.WorkoutExerciseEntity
 import com.trainiq.core.database.WorkoutRoutineEntity
 import com.trainiq.core.database.WorkoutSessionEntity
 import com.trainiq.core.database.WorkoutSetEntity
+import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.MealType
 import com.trainiq.domain.model.estimateStrengthTrainingCalories
 import com.trainiq.domain.model.suggestMealType
@@ -65,7 +68,7 @@ class TrainIqLocalStore @Inject constructor(
         return runCatching {
             val raw = storageFile.readText()
             val parsed = gson.fromJson(raw, TrainIqStorageState::class.java) ?: TrainIqStorageState()
-            migrateProfileAndWorkoutDefaults(migrateLegacyMeals(parsed, raw))
+            migrateRoutineSets(migrateProfileAndWorkoutDefaults(migrateLegacyMeals(parsed, raw)))
         }.getOrElse { TrainIqStorageState() }
     }
 
@@ -123,6 +126,29 @@ class TrainIqLocalStore @Inject constructor(
             meals = migratedMeals,
         )
     }
+
+    private fun migrateRoutineSets(state: TrainIqStorageState): TrainIqStorageState {
+        if (state.workoutExercises.isEmpty()) return state
+        val exercisesWithSets = state.routineSets.map { it.workoutExerciseId }.toSet()
+        val missingExercises = state.workoutExercises.filterNot { it.id in exercisesWithSets }
+        if (missingExercises.isEmpty()) return state
+        var nextSetId = (state.routineSets.maxOfOrNull { it.id } ?: 0L) + 1L
+        val migratedSets = missingExercises.flatMap { workoutExercise ->
+            List(workoutExercise.targetSets.coerceAtLeast(0)) { index ->
+                RoutineSetEntity(
+                    id = nextSetId++,
+                    workoutExerciseId = workoutExercise.id,
+                    orderIndex = index,
+                    setType = normalizeStoredSetType(workoutExercise.setType),
+                    targetReps = parseRepTarget(workoutExercise.repRange),
+                    targetWeightKg = workoutExercise.targetWeightKg.coerceAtLeast(0.0),
+                    restSeconds = workoutExercise.restSeconds.coerceAtLeast(0),
+                    targetRpe = workoutExercise.targetRpe.coerceIn(0.0, 10.0),
+                )
+            }
+        }
+        return state.copy(routineSets = state.routineSets + migratedSets)
+    }
 }
 
 data class TrainIqStorageState(
@@ -131,6 +157,7 @@ data class TrainIqStorageState(
     val days: List<WorkoutDayEntity> = emptyList(),
     val exercises: List<ExerciseEntity> = emptyList(),
     val workoutExercises: List<WorkoutExerciseEntity> = emptyList(),
+    val routineSets: List<RoutineSetEntity> = emptyList(),
     val foods: List<FoodItemStorage> = emptyList(),
     val recipes: List<RecipeStorage> = emptyList(),
     val recipeIngredients: List<RecipeIngredientStorage> = emptyList(),
@@ -138,5 +165,57 @@ data class TrainIqStorageState(
     val mealItems: List<LoggedMealItemStorage> = emptyList(),
     val measurements: List<BodyMeasurementEntity> = emptyList(),
     val sessions: List<WorkoutSessionEntity> = emptyList(),
+    val performedExercises: List<PerformedExerciseEntity> = emptyList(),
     val workoutSets: List<WorkoutSetEntity> = emptyList(),
+    val activeWorkoutSession: ActiveWorkoutSessionStorage? = null,
 )
+
+data class ActiveWorkoutSessionStorage(
+    val sessionId: Long = 0L,
+    val dayId: Long = 0L,
+    val routineId: Long? = null,
+    val startedAt: Long = 0L,
+    val updatedAt: Long = 0L,
+    val loggedSets: List<ActiveWorkoutSetStorage> = emptyList(),
+    val drafts: Map<Long, ActiveWorkoutDraftStorage> = emptyMap(),
+    val collapsedExerciseIds: Set<Long> = emptySet(),
+    val restTimerEndsAt: Long? = null,
+    val restTimerTotalSeconds: Int = 0,
+)
+
+data class ActiveWorkoutSetStorage(
+    val id: Long = 0L,
+    val exerciseId: Long = 0L,
+    val performedExerciseId: Long = 0L,
+    val sourceWorkoutExerciseId: Long? = null,
+    val weight: Double = 0.0,
+    val reps: Int = 0,
+    val rpe: Double = 0.0,
+    val repsInReserve: Int? = null,
+    val setType: SetType = SetType.NORMAL,
+    val restSeconds: Int = 0,
+    val orderIndex: Int = 0,
+    val completed: Boolean = true,
+    val loggedAt: Long = 0L,
+)
+
+data class ActiveWorkoutDraftStorage(
+    val weight: String = "",
+    val reps: String = "",
+    val rpe: String = "",
+    val setType: SetType = SetType.NORMAL,
+)
+
+private fun parseRepTarget(repRange: String): Int =
+    repRange.substringAfter('-', repRange).trim().toIntOrNull()
+        ?: repRange.filter(Char::isDigit).toIntOrNull()
+        ?: 0
+
+private fun normalizeStoredSetType(value: String?): String = when (value?.trim()?.uppercase()) {
+    "WARMUP", "WARM_UP" -> "WARM_UP"
+    "WORKING", "TOP_SET", "NORMAL" -> "NORMAL"
+    "BACKOFF", "BACKOFF_SET", "BACK_OFF" -> "BACK_OFF"
+    "DROP", "DROP_SET" -> "DROP_SET"
+    "FAILURE" -> "FAILURE"
+    else -> "NORMAL"
+}

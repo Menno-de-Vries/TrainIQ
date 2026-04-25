@@ -62,6 +62,7 @@ import com.trainiq.features.nutrition.ScannerMode
 import com.trainiq.features.progress.ProgressRoute
 import com.trainiq.features.settings.SettingsRoute
 import com.trainiq.features.workout.ActiveWorkoutRoute
+import com.trainiq.features.workout.ExerciseHistoryRoute
 import com.trainiq.features.workout.WorkoutRoute
 import kotlin.reflect.KClass
 import kotlinx.serialization.Serializable
@@ -86,6 +87,9 @@ data object Settings
 
 @Serializable
 data class ActiveWorkout(val dayId: Long)
+
+@Serializable
+data class ExerciseHistory(val exerciseId: Long)
 
 @Serializable
 data class CameraScanner(val contextHint: String = "", val scannerMode: String = ScannerMode.AI_MEAL.name)
@@ -230,7 +234,10 @@ private fun TrainIqNavHost(
             )
         }
         composable<Train> {
-            WorkoutRoute(onStartWorkout = { dayId -> navController.navigate(ActiveWorkout(dayId)) })
+            WorkoutRoute(
+                onStartWorkout = { dayId -> navController.navigate(ActiveWorkout(dayId)) },
+                onOpenExerciseHistory = { exerciseId -> navController.navigate(ExerciseHistory(exerciseId)) },
+            )
         }
         composable<Nutrition> { entry ->
             val pendingBarcode by entry.savedStateHandle
@@ -261,6 +268,13 @@ private fun TrainIqNavHost(
         composable<ActiveWorkout> { entry ->
             ActiveWorkoutRoute(
                 dayId = entry.toRoute<ActiveWorkout>().dayId,
+                onBack = { navController.popBackStack() },
+                onOpenExerciseHistory = { exerciseId -> navController.navigate(ExerciseHistory(exerciseId)) },
+            )
+        }
+        composable<ExerciseHistory> { entry ->
+            ExerciseHistoryRoute(
+                exerciseId = entry.toRoute<ExerciseHistory>().exerciseId,
                 onBack = { navController.popBackStack() },
             )
         }

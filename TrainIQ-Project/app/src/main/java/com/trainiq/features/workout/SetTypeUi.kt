@@ -13,40 +13,36 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 enum class WorkoutSetType {
-    WARMUP,
-    WORKING,
-    TOP_SET,
-    BACKOFF,
-    DROP,
+    WARM_UP,
+    NORMAL,
+    BACK_OFF,
+    DROP_SET,
     FAILURE,
 }
 
 fun WorkoutSetType.label(): String = when (this) {
-    WorkoutSetType.WARMUP -> "Warmup"
-    WorkoutSetType.WORKING -> "Working"
-    WorkoutSetType.TOP_SET -> "Top set"
-    WorkoutSetType.BACKOFF -> "Backoff"
-    WorkoutSetType.DROP -> "Drop"
+    WorkoutSetType.NORMAL -> "Normaal"
+    WorkoutSetType.WARM_UP -> "Warm-up"
+    WorkoutSetType.DROP_SET -> "Drop set"
     WorkoutSetType.FAILURE -> "Failure"
+    WorkoutSetType.BACK_OFF -> "Back-off"
 }
 
 @Composable
 fun setTypeContainerColor(type: WorkoutSetType): Color = when (type) {
-    WorkoutSetType.WARMUP -> MaterialTheme.colorScheme.tertiaryContainer
-    WorkoutSetType.WORKING -> MaterialTheme.colorScheme.primaryContainer
-    WorkoutSetType.TOP_SET -> MaterialTheme.colorScheme.secondaryContainer
-    WorkoutSetType.BACKOFF -> MaterialTheme.colorScheme.surfaceVariant
-    WorkoutSetType.DROP -> MaterialTheme.colorScheme.errorContainer
+    WorkoutSetType.WARM_UP -> MaterialTheme.colorScheme.tertiaryContainer
+    WorkoutSetType.NORMAL -> MaterialTheme.colorScheme.primaryContainer
+    WorkoutSetType.BACK_OFF -> MaterialTheme.colorScheme.surfaceVariant
+    WorkoutSetType.DROP_SET -> MaterialTheme.colorScheme.errorContainer
     WorkoutSetType.FAILURE -> MaterialTheme.colorScheme.errorContainer
 }
 
 @Composable
 fun setTypeContentColor(type: WorkoutSetType): Color = when (type) {
-    WorkoutSetType.WARMUP -> MaterialTheme.colorScheme.onTertiaryContainer
-    WorkoutSetType.WORKING -> MaterialTheme.colorScheme.onPrimaryContainer
-    WorkoutSetType.TOP_SET -> MaterialTheme.colorScheme.onSecondaryContainer
-    WorkoutSetType.BACKOFF -> MaterialTheme.colorScheme.onSurfaceVariant
-    WorkoutSetType.DROP -> MaterialTheme.colorScheme.onErrorContainer
+    WorkoutSetType.WARM_UP -> MaterialTheme.colorScheme.onTertiaryContainer
+    WorkoutSetType.NORMAL -> MaterialTheme.colorScheme.onPrimaryContainer
+    WorkoutSetType.BACK_OFF -> MaterialTheme.colorScheme.onSurfaceVariant
+    WorkoutSetType.DROP_SET -> MaterialTheme.colorScheme.onErrorContainer
     WorkoutSetType.FAILURE -> MaterialTheme.colorScheme.onErrorContainer
 }
 

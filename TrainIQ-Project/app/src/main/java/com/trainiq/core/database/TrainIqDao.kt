@@ -25,6 +25,9 @@ interface TrainIqDao {
     suspend fun insertWorkoutExercises(exercises: List<WorkoutExerciseEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRoutineSets(sets: List<RoutineSetEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMeals(meals: List<MealEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -44,6 +47,9 @@ interface TrainIqDao {
 
     @Insert
     suspend fun insertWorkoutSession(session: WorkoutSessionEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPerformedExercises(exercises: List<PerformedExerciseEntity>)
 
     @Insert
     suspend fun insertWorkoutSets(sets: List<WorkoutSetEntity>)
@@ -72,8 +78,17 @@ interface TrainIqDao {
     @Query("SELECT * FROM workout_exercises ORDER BY order_index ASC, id ASC")
     fun observeWorkoutExercises(): Flow<List<WorkoutExerciseEntity>>
 
+    @Query("SELECT * FROM routine_sets ORDER BY workoutExerciseId ASC, order_index ASC, id ASC")
+    fun observeRoutineSets(): Flow<List<RoutineSetEntity>>
+
     @Query("SELECT * FROM workout_sessions ORDER BY date DESC")
     fun observeWorkoutSessions(): Flow<List<WorkoutSessionEntity>>
+
+    @Query("SELECT * FROM performed_exercises ORDER BY session_id DESC, order_index ASC")
+    fun observePerformedExercises(): Flow<List<PerformedExerciseEntity>>
+
+    @Query("SELECT * FROM performed_exercises WHERE exercise_id = :exerciseId ORDER BY session_id DESC, order_index ASC")
+    fun observePerformedExercisesForExercise(exerciseId: Long): Flow<List<PerformedExerciseEntity>>
 
     @Query("SELECT * FROM workout_sets ORDER BY id DESC")
     fun observeWorkoutSets(): Flow<List<WorkoutSetEntity>>
@@ -126,8 +141,14 @@ interface TrainIqDao {
     @Query("DELETE FROM workout_exercises WHERE id = :workoutExerciseId")
     suspend fun deleteWorkoutExercise(workoutExerciseId: Long)
 
+    @Query("DELETE FROM routine_sets WHERE workoutExerciseId = :workoutExerciseId")
+    suspend fun deleteRoutineSetsForExercise(workoutExerciseId: Long)
+
     @Query("DELETE FROM workout_exercises WHERE dayId = :dayId")
     suspend fun deleteWorkoutExercisesForDay(dayId: Long)
+
+    @Query("DELETE FROM routine_sets WHERE workoutExerciseId IN (SELECT id FROM workout_exercises WHERE dayId = :dayId)")
+    suspend fun deleteRoutineSetsForDay(dayId: Long)
 
     @Query("DELETE FROM workout_days WHERE id = :dayId")
     suspend fun deleteWorkoutDay(dayId: Long)
@@ -153,6 +174,7 @@ interface TrainIqDao {
 
     @Transaction
     suspend fun deleteWorkoutDayCascade(dayId: Long) {
+        deleteRoutineSetsForDay(dayId)
         deleteWorkoutExercisesForDay(dayId)
         deleteWorkoutDay(dayId)
     }
@@ -160,6 +182,7 @@ interface TrainIqDao {
     @Transaction
     suspend fun deleteRoutineCascade(routineId: Long) {
         observeWorkoutDaysSnapshot(routineId).forEach { day ->
+            deleteRoutineSetsForDay(day.id)
             deleteWorkoutExercisesForDay(day.id)
         }
         deleteWorkoutDaysForRoutine(routineId)

@@ -2,6 +2,7 @@ package com.trainiq.data.mapper
 
 import com.trainiq.core.database.BodyMeasurementEntity
 import com.trainiq.core.database.ExerciseEntity
+import com.trainiq.core.database.RoutineSetEntity
 import com.trainiq.core.database.UserProfileEntity
 import com.trainiq.core.database.WorkoutDayEntity
 import com.trainiq.core.database.WorkoutExerciseEntity
@@ -17,6 +18,7 @@ import com.trainiq.domain.model.BodyMeasurement
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.Exercise
 import com.trainiq.domain.model.HealthConnectMetrics
+import com.trainiq.domain.model.RoutineSet
 import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WorkoutDay
@@ -52,25 +54,66 @@ fun ExerciseEntity.toDomain() = Exercise(id, name, muscleGroup, equipment)
 
 fun BodyMeasurementEntity.toDomain() = BodyMeasurement(id, date, weight, bodyFat, muscleMass)
 
-fun WorkoutSessionEntity.toDomain(totalVolume: Double) = WorkoutSessionSummary(id, date, duration, caloriesBurned, totalVolume)
+fun WorkoutSessionEntity.toDomain(totalVolume: Double) =
+    WorkoutSessionSummary(id, endedAt.takeIf { it > 0L } ?: date, duration, caloriesBurned, totalVolume)
 
 fun WorkoutDayEntity.toDomain(exercises: List<WorkoutExercisePlan>) = WorkoutDay(id, routineId, name, orderIndex, exercises)
 
 fun WorkoutRoutineEntity.toDomain(days: List<WorkoutDay>) = WorkoutRoutine(id, name, description, active, days)
 
-fun WorkoutExerciseEntity.toDomain(exercise: Exercise) =
+fun WorkoutExerciseEntity.toDomain(exercise: Exercise, routineSets: List<RoutineSet> = emptyList()) =
     WorkoutExercisePlan(
         id = id,
         exercise = exercise,
         targetSets = targetSets,
         repRange = repRange,
         restSeconds = restSeconds,
+        targetWeightKg = targetWeightKg,
+        targetRpe = targetRpe,
         setType = parseSetType(setType),
         supersetGroupId = supersetGroupId,
+        sets = routineSets.ifEmpty { legacyRoutineSets() },
     )
 
+fun RoutineSetEntity.toDomain() = RoutineSet(
+    id = id,
+    workoutExerciseId = workoutExerciseId,
+    orderIndex = orderIndex,
+    setType = parseSetType(setType),
+    targetReps = targetReps,
+    targetWeightKg = targetWeightKg,
+    restSeconds = restSeconds,
+    targetRpe = targetRpe,
+    targetRir = targetRir,
+)
+
 fun parseSetType(value: String?): SetType =
-    runCatching { SetType.valueOf(value ?: SetType.WORKING.name) }.getOrDefault(SetType.WORKING)
+    when (value?.trim()?.uppercase()) {
+        "WARMUP", "WARM_UP" -> SetType.WARM_UP
+        "WORKING", "TOP_SET", "NORMAL" -> SetType.NORMAL
+        "BACKOFF", "BACKOFF_SET", "BACK_OFF" -> SetType.BACK_OFF
+        "DROP", "DROP_SET" -> SetType.DROP_SET
+        "FAILURE" -> SetType.FAILURE
+        else -> SetType.NORMAL
+    }
+
+fun WorkoutExerciseEntity.legacyRoutineSets(): List<RoutineSet> {
+    val reps = repRange.substringAfter('-', repRange).trim().toIntOrNull()
+        ?: repRange.filter(Char::isDigit).toIntOrNull()
+        ?: 0
+    return List(targetSets.coerceAtLeast(0)) { index ->
+        RoutineSet(
+            id = -(id * 1_000L + index + 1L),
+            workoutExerciseId = id,
+            orderIndex = index,
+            setType = parseSetType(setType),
+            targetReps = reps,
+            targetWeightKg = targetWeightKg,
+            restSeconds = restSeconds,
+            targetRpe = targetRpe,
+        )
+    }
+}
 
 internal fun StepsRecord.toCachedStepRecord() = CachedStepRecord(
     recordId = metadata.id,

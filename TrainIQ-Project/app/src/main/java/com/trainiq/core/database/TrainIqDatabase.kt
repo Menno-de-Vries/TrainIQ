@@ -10,12 +10,14 @@ import androidx.room.RoomDatabase
         WorkoutDayEntity::class,
         ExerciseEntity::class,
         WorkoutExerciseEntity::class,
+        RoutineSetEntity::class,
         WorkoutSessionEntity::class,
+        PerformedExerciseEntity::class,
         WorkoutSetEntity::class,
         MealEntity::class,
         BodyMeasurementEntity::class,
     ],
-    version = 4,
+    version = 8,
     exportSchema = false,
 )
 abstract class TrainIqDatabase : RoomDatabase() {

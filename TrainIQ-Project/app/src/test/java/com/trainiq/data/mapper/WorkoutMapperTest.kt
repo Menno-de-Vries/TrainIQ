@@ -17,6 +17,8 @@ class WorkoutMapperTest {
             targetSets = 4,
             repRange = "6-8",
             restSeconds = 120,
+            targetWeightKg = 100.0,
+            targetRpe = 8.5,
             setType = "TOP_SET",
             supersetGroupId = 99L,
             orderIndex = 1,
@@ -25,8 +27,13 @@ class WorkoutMapperTest {
 
         val plan = entity.toDomain(exercise)
 
-        assertEquals(SetType.TOP_SET, plan.setType)
+        assertEquals(SetType.NORMAL, plan.setType)
         assertEquals(99L, plan.supersetGroupId)
+        assertEquals(100.0, plan.targetWeightKg, 0.0)
+        assertEquals(8.5, plan.targetRpe, 0.0)
+        assertEquals(4, plan.sets.size)
+        assertEquals(SetType.NORMAL, plan.sets.first().setType)
+        assertEquals(8, plan.sets.first().targetReps)
     }
 
     @Test
@@ -44,7 +51,17 @@ class WorkoutMapperTest {
 
         val plan = entity.toDomain(exercise)
 
-        assertEquals(SetType.WORKING, plan.setType)
+        assertEquals(SetType.NORMAL, plan.setType)
         assertNull(plan.supersetGroupId)
+    }
+
+    @Test
+    fun parseSetType_withLegacyAliases_mapsToCanonicalTypes() {
+        assertEquals(SetType.NORMAL, parseSetType("WORKING"))
+        assertEquals(SetType.NORMAL, parseSetType("TOP_SET"))
+        assertEquals(SetType.WARM_UP, parseSetType("WARMUP"))
+        assertEquals(SetType.BACK_OFF, parseSetType("BACKOFF"))
+        assertEquals(SetType.DROP_SET, parseSetType("DROP"))
+        assertEquals(SetType.FAILURE, parseSetType("FAILURE"))
     }
 }

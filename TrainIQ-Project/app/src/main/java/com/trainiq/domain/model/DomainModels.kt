@@ -30,8 +30,23 @@ data class WorkoutExercisePlan(
     val targetSets: Int,
     val repRange: String,
     val restSeconds: Int,
-    val setType: SetType = SetType.WORKING,
+    val targetWeightKg: Double = 0.0,
+    val targetRpe: Double = 0.0,
+    val setType: SetType = SetType.NORMAL,
     val supersetGroupId: Long? = null,
+    val sets: List<RoutineSet> = emptyList(),
+)
+
+data class RoutineSet(
+    val id: Long,
+    val workoutExerciseId: Long,
+    val orderIndex: Int,
+    val setType: SetType = SetType.NORMAL,
+    val targetReps: Int = 0,
+    val targetWeightKg: Double = 0.0,
+    val restSeconds: Int = 0,
+    val targetRpe: Double = 0.0,
+    val targetRir: Int? = null,
 )
 
 data class WorkoutDay(
@@ -58,13 +73,132 @@ data class WorkoutSessionSummary(
     val totalVolume: Double,
 )
 
+data class ExerciseHistory(
+    val exercise: Exercise?,
+    val stats: ExerciseStats,
+    val sessions: List<ExerciseHistorySession>,
+    val volumePoints: List<ChartPoint>,
+    val bestWeightPoints: List<ChartPoint>,
+    val estimatedOneRepMaxPoints: List<ChartPoint>,
+    val rank: ExerciseRankProgress,
+)
+
+data class ExerciseHistorySession(
+    val sessionId: Long,
+    val startedAt: Long,
+    val endedAt: Long,
+    val durationSeconds: Long,
+    val totalVolume: Double,
+    val bestWeightKg: Double,
+    val bestEstimatedOneRepMax: Double,
+    val averageRpe: Double?,
+    val sets: List<ExerciseHistorySet>,
+)
+
+data class ExerciseHistorySet(
+    val orderIndex: Int,
+    val reps: Int,
+    val weightKg: Double,
+    val setType: SetType,
+    val restSeconds: Int,
+    val rpe: Double,
+    val repsInReserve: Int?,
+    val completed: Boolean,
+)
+
+data class ExerciseStats(
+    val lastPerformedAt: Long?,
+    val completedSessions: Int,
+    val totalSets: Int,
+    val highestWeightKg: Double,
+    val mostReps: Int,
+    val bestEstimatedOneRepMax: Double,
+    val bestSetLabel: String,
+    val latestPerformanceLabel: String,
+    val averageRpe: Double?,
+    val totalVolume: Double,
+    val progressSincePreviousPercent: Double?,
+)
+
+data class ExerciseRankProgress(
+    val rank: ExerciseRank,
+    val score: Double,
+    val nextRank: ExerciseRank?,
+    val progressToNext: Float,
+    val pointsToNext: Double,
+    val message: String,
+)
+
+enum class ExerciseRank(val label: String, val threshold: Double) {
+    BEGINNER("Beginner", 0.0),
+    NOVICE("Novice", 75.0),
+    INTERMEDIATE("Intermediate", 150.0),
+    ADVANCED("Advanced", 300.0),
+    ELITE("Elite", 550.0),
+}
+
 data class LoggedSet(
     val exerciseId: Long,
     val weight: Double,
     val reps: Int,
     val rpe: Double,
     val repsInReserve: Int? = null,
-    val setType: SetType = SetType.WORKING,
+    val setType: SetType = SetType.NORMAL,
+    val restSeconds: Int = 0,
+    val orderIndex: Int = 0,
+    val completed: Boolean = true,
+    val performedExerciseId: Long = 0L,
+    val sourceWorkoutExerciseId: Long? = null,
+)
+
+data class ActiveWorkoutSetDraft(
+    val weight: String = "",
+    val reps: String = "",
+    val rpe: String = "",
+    val setType: SetType = SetType.NORMAL,
+)
+
+data class ActiveWorkoutSetEntry(
+    val id: Long,
+    val exerciseId: Long,
+    val weight: Double,
+    val reps: Int,
+    val rpe: Double,
+    val repsInReserve: Int? = null,
+    val setType: SetType = SetType.NORMAL,
+    val restSeconds: Int = 0,
+    val orderIndex: Int = 0,
+    val completed: Boolean = true,
+    val loggedAt: Long,
+    val performedExerciseId: Long = 0L,
+    val sourceWorkoutExerciseId: Long? = null,
+) {
+    fun toLoggedSet() = LoggedSet(
+        exerciseId = exerciseId,
+        performedExerciseId = performedExerciseId,
+        sourceWorkoutExerciseId = sourceWorkoutExerciseId,
+        weight = weight,
+        reps = reps,
+        rpe = rpe,
+        repsInReserve = repsInReserve,
+        setType = setType,
+        restSeconds = restSeconds,
+        orderIndex = orderIndex,
+        completed = completed,
+    )
+}
+
+data class ActiveWorkoutSession(
+    val sessionId: Long = 0L,
+    val dayId: Long,
+    val routineId: Long? = null,
+    val startedAt: Long,
+    val updatedAt: Long,
+    val loggedSets: List<ActiveWorkoutSetEntry>,
+    val drafts: Map<Long, ActiveWorkoutSetDraft>,
+    val collapsedExerciseIds: Set<Long>,
+    val restTimerEndsAt: Long?,
+    val restTimerTotalSeconds: Int,
 )
 
 data class ProgressionSuggestion(
@@ -79,10 +213,11 @@ data class ProgressionSuggestion(
 )
 
 enum class SetType {
-    WARMUP,
-    WORKING,
-    TOP_SET,
-    BACKOFF,
+    NORMAL,
+    WARM_UP,
+    DROP_SET,
+    FAILURE,
+    BACK_OFF,
 }
 
 enum class ReadinessLevel {

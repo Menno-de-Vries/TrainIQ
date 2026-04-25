@@ -1,10 +1,14 @@
 package com.trainiq.domain.usecase
 
 import com.trainiq.domain.model.LoggedSet
+import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.GeneratedRoutine
+import com.trainiq.domain.model.ExerciseHistory
 import com.trainiq.domain.model.MealType
 import com.trainiq.domain.model.ProgressionSuggestion
+import com.trainiq.domain.model.RoutineSet
+import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WeeklyReportResult
 import com.trainiq.domain.repository.MealEntryRequest
@@ -32,6 +36,11 @@ class ObserveWorkoutOverviewUseCase @Inject constructor(private val repository: 
     operator fun invoke() = repository.observeWorkoutOverview()
 }
 
+class ObserveExerciseHistoryUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    operator fun invoke(exerciseId: Long): kotlinx.coroutines.flow.Flow<ExerciseHistory> =
+        repository.observeExerciseHistory(exerciseId)
+}
+
 class GetWorkoutDayUseCase @Inject constructor(private val repository: WorkoutRepository) {
     suspend operator fun invoke(dayId: Long) = repository.getWorkoutDay(dayId)
 }
@@ -44,6 +53,49 @@ class GetProgressionSuggestionsUseCase @Inject constructor(private val repositor
 class FinishWorkoutUseCase @Inject constructor(private val repository: WorkoutRepository) {
     suspend operator fun invoke(dayId: Long, durationSeconds: Long, loggedSets: List<LoggedSet>) =
         repository.finishWorkout(dayId, durationSeconds, loggedSets)
+}
+
+class GetOrStartActiveWorkoutSessionUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(dayId: Long, initialDrafts: Map<Long, ActiveWorkoutSetDraft>) =
+        repository.getOrStartActiveWorkoutSession(dayId, initialDrafts)
+}
+
+class UpdateActiveWorkoutDraftUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(exerciseId: Long, draft: ActiveWorkoutSetDraft) =
+        repository.updateActiveWorkoutDraft(exerciseId, draft)
+}
+
+class LogActiveWorkoutSetUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(dayId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int) =
+        repository.logActiveWorkoutSet(dayId, set, draft, restSeconds)
+}
+
+class UpdateActiveWorkoutSetTypeUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(exerciseId: Long, setIndex: Int, setType: SetType) =
+        repository.updateActiveWorkoutSetType(exerciseId, setIndex, setType)
+}
+
+class DeleteActiveWorkoutSetUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(exerciseId: Long, setIndex: Int) =
+        repository.deleteActiveWorkoutSet(exerciseId, setIndex)
+}
+
+class SetActiveWorkoutCollapsedUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(exerciseId: Long, collapsed: Boolean) =
+        repository.setActiveWorkoutCollapsed(exerciseId, collapsed)
+}
+
+class UpdateActiveWorkoutRestTimerUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(endsAt: Long?, totalSeconds: Int) =
+        repository.updateActiveWorkoutRestTimer(endsAt, totalSeconds)
+}
+
+class FinishActiveWorkoutUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(dayId: Long) = repository.finishActiveWorkout(dayId)
+}
+
+class DiscardActiveWorkoutUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(dayId: Long) = repository.discardActiveWorkout(dayId)
 }
 
 class CreateRoutineUseCase @Inject constructor(private val repository: WorkoutRepository) {
@@ -72,6 +124,51 @@ class SetSupersetGroupUseCase @Inject constructor(private val repository: Workou
         repository.setSupersetGroup(workoutExerciseIds, groupId)
 }
 
+class UpdateWorkoutExercisePlanUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(
+        workoutExerciseId: Long,
+        targetSets: Int,
+        repRange: String,
+        restSeconds: Int,
+        targetWeightKg: Double,
+        targetRpe: Double,
+        setType: SetType,
+    ) = repository.updateWorkoutExercisePlan(workoutExerciseId, targetSets, repRange, restSeconds, targetWeightKg, targetRpe, setType)
+}
+
+class AddSetToExerciseUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(workoutExerciseId: Long) = repository.addSetToExercise(workoutExerciseId)
+}
+
+class UpdateRoutineSetUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(set: RoutineSet) = repository.updateRoutineSet(set)
+}
+
+class UpdateRoutineSetTypeUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(setId: Long, setType: SetType) = repository.updateRoutineSetType(setId, setType)
+}
+
+class UpdateRoutineSetRepsUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(setId: Long, targetReps: Int) = repository.updateRoutineSetReps(setId, targetReps)
+}
+
+class UpdateRoutineSetWeightUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(setId: Long, targetWeightKg: Double) = repository.updateRoutineSetWeight(setId, targetWeightKg)
+}
+
+class UpdateRoutineSetRestTimeUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(setId: Long, restSeconds: Int) = repository.updateRoutineSetRestTime(setId, restSeconds)
+}
+
+class DeleteRoutineSetUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(setId: Long) = repository.deleteRoutineSet(setId)
+}
+
+class MoveRoutineSetUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(workoutExerciseId: Long, orderedSetIds: List<Long>) =
+        repository.moveRoutineSet(workoutExerciseId, orderedSetIds)
+}
+
 class SetActiveRoutineUseCase @Inject constructor(private val repository: WorkoutRepository) {
     suspend operator fun invoke(routineId: Long) = repository.setActiveRoutine(routineId)
 }
@@ -93,7 +190,9 @@ class AddExerciseToDayUseCase @Inject constructor(private val repository: Workou
         targetSets: Int,
         repRange: String,
         restSeconds: Int,
-    ) = repository.addExerciseToDay(dayId, name, muscleGroup, equipment, targetSets, repRange, restSeconds)
+        targetWeightKg: Double,
+        targetRpe: Double,
+    ) = repository.addExerciseToDay(dayId, name, muscleGroup, equipment, targetSets, repRange, restSeconds, targetWeightKg, targetRpe)
 }
 
 class AddExerciseToRoutineUseCase @Inject constructor(private val repository: WorkoutRepository) {
@@ -105,7 +204,9 @@ class AddExerciseToRoutineUseCase @Inject constructor(private val repository: Wo
         targetSets: Int,
         repRange: String,
         restSeconds: Int,
-    ) = repository.addExerciseToRoutine(routineId, name, muscleGroup, equipment, targetSets, repRange, restSeconds)
+        targetWeightKg: Double,
+        targetRpe: Double,
+    ) = repository.addExerciseToRoutine(routineId, name, muscleGroup, equipment, targetSets, repRange, restSeconds, targetWeightKg, targetRpe)
 }
 
 class RemoveExerciseFromDayUseCase @Inject constructor(private val repository: WorkoutRepository) {

@@ -2,6 +2,7 @@ package com.trainiq.core.database
 
 import androidx.room.Entity
 import androidx.room.ColumnInfo
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 @Entity(tableName = "user_profile")
@@ -54,20 +55,74 @@ data class WorkoutExerciseEntity(
     val targetSets: Int,
     val repRange: String,
     val restSeconds: Int,
+    @ColumnInfo(name = "target_weight_kg", defaultValue = "0.0") val targetWeightKg: Double = 0.0,
+    @ColumnInfo(name = "target_rpe", defaultValue = "0.0") val targetRpe: Double = 0.0,
     @ColumnInfo(name = "set_type", defaultValue = "WORKING") val setType: String = "WORKING",
     @ColumnInfo(name = "superset_group_id") val supersetGroupId: Long? = null,
     @ColumnInfo(name = "order_index", defaultValue = "0") val orderIndex: Int = 0,
 )
 
-@Entity(tableName = "workout_sessions")
+@Entity(
+    tableName = "routine_sets",
+    indices = [Index(value = ["workoutExerciseId", "order_index"])],
+)
+data class RoutineSetEntity(
+    @PrimaryKey val id: Long,
+    val workoutExerciseId: Long,
+    @ColumnInfo(name = "order_index", defaultValue = "0") val orderIndex: Int,
+    @ColumnInfo(name = "set_type", defaultValue = "NORMAL") val setType: String = "NORMAL",
+    @ColumnInfo(name = "target_reps", defaultValue = "0") val targetReps: Int = 0,
+    @ColumnInfo(name = "target_weight_kg", defaultValue = "0.0") val targetWeightKg: Double = 0.0,
+    @ColumnInfo(name = "rest_seconds", defaultValue = "0") val restSeconds: Int = 0,
+    @ColumnInfo(name = "target_rpe", defaultValue = "0.0") val targetRpe: Double = 0.0,
+    @ColumnInfo(name = "target_rir") val targetRir: Int? = null,
+)
+
+@Entity(
+    tableName = "workout_sessions",
+    indices = [
+        Index(value = ["routine_id"]),
+        Index(value = ["workout_day_id"]),
+        Index(value = ["status", "date"]),
+    ],
+)
 data class WorkoutSessionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val date: Long,
     val duration: Long,
     val caloriesBurned: Int = 0,
+    @ColumnInfo(name = "routine_id") val routineId: Long? = null,
+    @ColumnInfo(name = "workout_day_id") val workoutDayId: Long? = null,
+    @ColumnInfo(name = "started_at", defaultValue = "0") val startedAt: Long = 0L,
+    @ColumnInfo(name = "ended_at", defaultValue = "0") val endedAt: Long = 0L,
+    @ColumnInfo(name = "status", defaultValue = "COMPLETED") val status: String = "COMPLETED",
+    @ColumnInfo(name = "completed", defaultValue = "1") val completed: Boolean = true,
 )
 
-@Entity(tableName = "workout_sets")
+@Entity(
+    tableName = "performed_exercises",
+    indices = [
+        Index(value = ["session_id", "order_index"]),
+        Index(value = ["exercise_id"]),
+        Index(value = ["source_workout_exercise_id"]),
+    ],
+)
+data class PerformedExerciseEntity(
+    @PrimaryKey val id: Long,
+    @ColumnInfo(name = "session_id") val sessionId: Long,
+    @ColumnInfo(name = "exercise_id") val exerciseId: Long,
+    @ColumnInfo(name = "source_workout_exercise_id") val sourceWorkoutExerciseId: Long? = null,
+    @ColumnInfo(name = "order_index", defaultValue = "0") val orderIndex: Int = 0,
+)
+
+@Entity(
+    tableName = "workout_sets",
+    indices = [
+        Index(value = ["sessionId", "order_index"]),
+        Index(value = ["exerciseId"]),
+        Index(value = ["performed_exercise_id", "order_index"]),
+    ],
+)
 data class WorkoutSetEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val sessionId: Long,
@@ -76,7 +131,13 @@ data class WorkoutSetEntity(
     val reps: Int,
     val rpe: Double,
     val repsInReserve: Int? = null,
+    @ColumnInfo(name = "performed_exercise_id", defaultValue = "0") val performedExerciseId: Long = 0L,
     @ColumnInfo(name = "set_type", defaultValue = "WORKING") val setType: String = "WORKING",
+    @ColumnInfo(name = "rest_seconds", defaultValue = "0") val restSeconds: Int = 0,
+    @ColumnInfo(name = "order_index", defaultValue = "0") val orderIndex: Int = 0,
+    @ColumnInfo(name = "completed", defaultValue = "1") val completed: Boolean = true,
+    @ColumnInfo(name = "logged_at", defaultValue = "0") val loggedAt: Long = 0L,
+    @ColumnInfo(name = "completed_at", defaultValue = "0") val completedAt: Long = 0L,
 )
 
 @Entity(tableName = "meals")

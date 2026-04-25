@@ -1,8 +1,11 @@
 package com.trainiq.domain.repository
 
 import com.trainiq.domain.model.CoachOverview
+import com.trainiq.domain.model.ActiveWorkoutSession
+import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.Exercise
+import com.trainiq.domain.model.ExerciseHistory
 import com.trainiq.domain.model.FoodItem
 import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.model.GeneratedRoutine
@@ -16,6 +19,8 @@ import com.trainiq.domain.model.NutritionFacts
 import com.trainiq.domain.model.NutritionOverview
 import com.trainiq.domain.model.ProgressOverview
 import com.trainiq.domain.model.ProgressionSuggestion
+import com.trainiq.domain.model.RoutineSet
+import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.Recipe
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WeeklyReportResult
@@ -33,9 +38,19 @@ interface HomeRepository {
 
 interface WorkoutRepository {
     fun observeWorkoutOverview(): Flow<WorkoutOverview>
+    fun observeExerciseHistory(exerciseId: Long): Flow<ExerciseHistory>
     suspend fun getWorkoutDay(dayId: Long): WorkoutDay?
     suspend fun getProgressionSuggestions(dayId: Long): List<ProgressionSuggestion>
     suspend fun getNextWorkoutDay(): WorkoutDay?
+    suspend fun getOrStartActiveWorkoutSession(dayId: Long, initialDrafts: Map<Long, ActiveWorkoutSetDraft>): ActiveWorkoutSession
+    suspend fun updateActiveWorkoutDraft(exerciseId: Long, draft: ActiveWorkoutSetDraft): ActiveWorkoutSession?
+    suspend fun logActiveWorkoutSet(dayId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int): ActiveWorkoutSession
+    suspend fun updateActiveWorkoutSetType(exerciseId: Long, setIndex: Int, setType: SetType): ActiveWorkoutSession?
+    suspend fun deleteActiveWorkoutSet(exerciseId: Long, setIndex: Int): ActiveWorkoutSession?
+    suspend fun setActiveWorkoutCollapsed(exerciseId: Long, collapsed: Boolean): ActiveWorkoutSession?
+    suspend fun updateActiveWorkoutRestTimer(endsAt: Long?, totalSeconds: Int): ActiveWorkoutSession?
+    suspend fun finishActiveWorkout(dayId: Long): WorkoutDebrief
+    suspend fun discardActiveWorkout(dayId: Long)
     suspend fun setActiveRoutine(routineId: Long)
     suspend fun finishWorkout(dayId: Long, durationSeconds: Long, loggedSets: List<LoggedSet>): WorkoutDebrief
     suspend fun createRoutine(name: String, description: String)
@@ -44,6 +59,23 @@ interface WorkoutRepository {
     suspend fun searchExercises(query: String): List<Exercise>
     suspend fun reorderExercises(dayId: Long, orderedIds: List<Long>)
     suspend fun setSupersetGroup(workoutExerciseIds: List<Long>, groupId: Long?)
+    suspend fun updateWorkoutExercisePlan(
+        workoutExerciseId: Long,
+        targetSets: Int,
+        repRange: String,
+        restSeconds: Int,
+        targetWeightKg: Double,
+        targetRpe: Double,
+        setType: SetType,
+    )
+    suspend fun addSetToExercise(workoutExerciseId: Long)
+    suspend fun updateRoutineSet(set: RoutineSet)
+    suspend fun updateRoutineSetType(setId: Long, setType: SetType)
+    suspend fun updateRoutineSetReps(setId: Long, targetReps: Int)
+    suspend fun updateRoutineSetWeight(setId: Long, targetWeightKg: Double)
+    suspend fun updateRoutineSetRestTime(setId: Long, restSeconds: Int)
+    suspend fun deleteRoutineSet(setId: Long)
+    suspend fun moveRoutineSet(workoutExerciseId: Long, orderedSetIds: List<Long>)
     suspend fun addWorkoutDay(routineId: Long, name: String)
     suspend fun removeWorkoutDay(dayId: Long)
     suspend fun addExerciseToDay(
@@ -54,6 +86,8 @@ interface WorkoutRepository {
         targetSets: Int,
         repRange: String,
         restSeconds: Int,
+        targetWeightKg: Double,
+        targetRpe: Double,
     )
     suspend fun addExerciseToRoutine(
         routineId: Long,
@@ -63,6 +97,8 @@ interface WorkoutRepository {
         targetSets: Int,
         repRange: String,
         restSeconds: Int,
+        targetWeightKg: Double,
+        targetRpe: Double,
     )
     suspend fun removeExerciseFromDay(workoutExerciseId: Long)
     suspend fun deleteWorkoutSession(sessionId: Long)
