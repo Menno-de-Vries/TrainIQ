@@ -42,56 +42,36 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.trainiq.core.theme.spacing
+import com.trainiq.core.theme.trainIqColors
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
 
 @Composable
 fun ScreenHeader(
     title: String,
+    subtitle: String? = null,
     actionIcon: ImageVector? = null,
     actionContentDescription: String? = null,
     onActionClick: (() -> Unit)? = null,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(32.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-        ),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = MaterialTheme.spacing.medium, vertical = MaterialTheme.spacing.small),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            if (actionIcon != null && onActionClick != null && actionContentDescription != null) {
-                IconButton(onClick = onActionClick) {
-                    Icon(imageVector = actionIcon, contentDescription = actionContentDescription)
-                }
-            }
-        }
-    }
+    AppScreenHeader(
+        title = title,
+        subtitle = subtitle,
+        actionIcon = actionIcon,
+        actionContentDescription = actionContentDescription,
+        onActionClick = onActionClick,
+    )
 }
 
 @Composable
 fun MessageCard(message: String, onDismiss: (() -> Unit)? = null) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-        ),
-    ) {
+    AppCard(accent = MaterialTheme.colorScheme.tertiary) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(MaterialTheme.spacing.medium),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(message, modifier = Modifier.weight(1f))
+            Text(message, modifier = Modifier.weight(1f), color = MaterialTheme.trainIqColors.mutedText)
             if (onDismiss != null) {
                 TextButton(onClick = onDismiss) { Text("Dismiss") }
             }
@@ -101,21 +81,9 @@ fun MessageCard(message: String, onDismiss: (() -> Unit)? = null) {
 
 @Composable
 fun SectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-        ),
-    ) {
-        Column(
-            modifier = Modifier.padding(MaterialTheme.spacing.medium),
-            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-        ) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            content()
-        }
+    AppCard {
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+        content()
     }
 }
 
@@ -132,7 +100,7 @@ fun Modifier.shimmer(): Modifier {
         label = "shimmer-progress",
     )
     val highlight = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f)
-    val surface = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+    val surface = MaterialTheme.trainIqColors.cardElevated
     return background(
         brush = Brush.linearGradient(
             colors = listOf(surface, highlight, surface),
@@ -147,13 +115,8 @@ fun ShimmerCardPlaceholder(
     modifier: Modifier = Modifier,
     lineCount: Int = 3,
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-    ) {
+    AppCard(modifier = modifier) {
         Column(
-            modifier = Modifier.padding(MaterialTheme.spacing.medium),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             repeat(lineCount) { index ->
@@ -200,16 +163,8 @@ fun PermissionManagerCard(
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-        ),
-    ) {
+    AppCard(modifier = modifier) {
         Column(
-            modifier = Modifier.padding(MaterialTheme.spacing.medium),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
             Text("Health Connect", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)

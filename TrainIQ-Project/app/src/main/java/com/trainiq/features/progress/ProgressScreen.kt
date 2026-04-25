@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -30,6 +32,13 @@ import androidx.lifecycle.viewModelScope
 import com.trainiq.core.ui.MessageCard
 import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.ShimmerCardPlaceholder
+import com.trainiq.core.ui.AppCard
+import com.trainiq.core.ui.AppChip
+import com.trainiq.core.ui.AppTextField
+import com.trainiq.core.ui.EmptyStateCard
+import com.trainiq.core.ui.PrimaryActionButton
+import com.trainiq.core.theme.spacing
+import com.trainiq.core.theme.trainIqColors
 import com.trainiq.core.util.ChartComposable
 import com.trainiq.core.util.MetricCard
 import com.trainiq.core.util.toReadableDate
@@ -114,11 +123,19 @@ fun ProgressScreen(
     var muscleMass by remember { mutableStateOf("") }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .navigationBarsPadding()
+            .imePadding(),
+        contentPadding = PaddingValues(
+            start = MaterialTheme.spacing.medium,
+            top = MaterialTheme.spacing.medium,
+            end = MaterialTheme.spacing.medium,
+            bottom = 132.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
     ) {
-        item { ScreenHeader(title = "Progress") }
+        item { ScreenHeader(title = "Progress", subtitle = "Metingen, grafieken en kracht-trends") }
         message?.let {
             item { MessageCard(message = it, onDismiss = onDismissMessage) }
         }
@@ -129,21 +146,21 @@ fun ProgressScreen(
             return@LazyColumn
         }
         item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Add measurement", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("Use manual entries to keep your body metrics up to date.")
+            AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.purple) {
+                Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+                    Text("Body composition", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                    Text("Vetpercentage, spiermassa en gewicht naast elkaar.", color = MaterialTheme.trainIqColors.mutedText)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        OutlinedTextField(value = weight, onValueChange = { weight = it }, label = { Text("Weight") }, modifier = Modifier.weight(1f))
-                        OutlinedTextField(value = bodyFat, onValueChange = { bodyFat = it }, label = { Text("Body fat %") }, modifier = Modifier.weight(1f))
+                        AppTextField(value = weight, onValueChange = { weight = it }, label = "Weight", modifier = Modifier.weight(1f))
+                        AppTextField(value = bodyFat, onValueChange = { bodyFat = it }, label = "Body fat %", modifier = Modifier.weight(1f))
                     }
-                    OutlinedTextField(value = muscleMass, onValueChange = { muscleMass = it }, label = { Text("Muscle mass") }, modifier = Modifier.fillMaxWidth())
-                    Button(onClick = {
+                    AppTextField(value = muscleMass, onValueChange = { muscleMass = it }, label = "Muscle mass", modifier = Modifier.fillMaxWidth())
+                    PrimaryActionButton(onClick = {
                         onAddMeasurement(weight, bodyFat, muscleMass)
                         weight = ""
                         bodyFat = ""
                         muscleMass = ""
-                    }) { Text("Save measurement") }
+                    }, accent = MaterialTheme.trainIqColors.purple) { Text("Save measurement") }
                 }
             }
         }
@@ -154,27 +171,26 @@ fun ProgressScreen(
             overview.volumeTrend.isEmpty()
         ) {
             item {
-                MetricCard(
+                EmptyStateCard(
                     title = "No progress data",
-                    value = "Start logging",
-                    subtitle = "Add body measurements and complete workouts to unlock progress analytics.",
+                    body = "Add body measurements and complete workouts to unlock progress analytics.",
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
         } else {
             item {
-                MetricCard("Estimated 1RM", "${overview.estimatedOneRepMax.toInt()} kg", "Calculated from your logged sets", Modifier.fillMaxWidth())
+                MetricCard("Strength score", "${overview.estimatedOneRepMax.toInt()} kg", "Volume en estimated 1RM samengevoegd", Modifier.fillMaxWidth())
             }
             item {
-                MetricCard("Fatigue Index", String.format("%.2f", overview.fatigueIndex), "Weekly volume versus baseline", Modifier.fillMaxWidth())
+                MetricCard("Fatigue index", String.format("%.2f", overview.fatigueIndex), "Waarschuwing bij snelle volume + RPE stijging", Modifier.fillMaxWidth())
             }
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Measurement history", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.purple) {
+                    Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+                        Text("Measurement history", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                         overview.measurements.forEach { measurement ->
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("${measurement.date.toReadableDate()}: ${measurement.weight} kg, ${measurement.bodyFat}% fat")
+                                Text("${measurement.date.toReadableDate()}: ${measurement.weight} kg, ${measurement.bodyFat}% fat", color = MaterialTheme.trainIqColors.mutedText)
                                 TextButton(onClick = { onDeleteMeasurement(measurement.id) }) { Text("Delete") }
                             }
                         }

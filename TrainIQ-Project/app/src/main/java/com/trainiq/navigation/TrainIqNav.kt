@@ -1,10 +1,14 @@
 package com.trainiq.navigation
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.AnimatedContent
@@ -15,6 +19,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,7 +37,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -39,10 +44,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -64,6 +71,10 @@ import com.trainiq.features.settings.SettingsRoute
 import com.trainiq.features.workout.ActiveWorkoutRoute
 import com.trainiq.features.workout.ExerciseHistoryRoute
 import com.trainiq.features.workout.WorkoutRoute
+import com.trainiq.core.theme.radii
+import com.trainiq.core.theme.trainIqColors
+import com.trainiq.core.ui.AppScaffold
+import kotlin.math.abs
 import kotlin.reflect.KClass
 import kotlinx.serialization.Serializable
 
@@ -115,6 +126,11 @@ fun TrainIqApp() {
     )
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+    val currentTopLevelIndex = items.indexOfFirst { screen ->
+        currentDestination?.hierarchy?.any { it.hasRoute(screen.routeClass) } == true
+    }.takeIf { it >= 0 }
+    val density = LocalDensity.current
+    val imeVisible = WindowInsets.ime.getBottom(density) > 0
     var navVisible by remember { mutableStateOf(false) }
     val navOffset by animateDpAsState(
         targetValue = if (navVisible) 0.dp else 28.dp,
@@ -126,14 +142,9 @@ fun TrainIqApp() {
         navVisible = true
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-    ) {
-        Scaffold(
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        AppScaffold(
             modifier = Modifier.fillMaxSize(),
-            containerColor = MaterialTheme.colorScheme.surface,
             bottomBar = {
                 if (
                     currentDestination?.hierarchy?.any {
@@ -142,17 +153,20 @@ fun TrainIqApp() {
                 ) {
                     Surface(
                         modifier = Modifier
+                            .fillMaxWidth()
                             .offset(y = navOffset)
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        tonalElevation = 8.dp,
+                            .padding(horizontal = 18.dp, vertical = 12.dp)
+                            .navigationBarsPadding(),
+                        color = MaterialTheme.trainIqColors.card,
+                        tonalElevation = 0.dp,
                         shadowElevation = 0.dp,
-                        shape = RoundedCornerShape(28.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.trainIqColors.cardBorder),
+                        shape = RoundedCornerShape(MaterialTheme.radii.nav),
                     ) {
                         NavigationBar(
-                            modifier = Modifier.height(90.dp),
-                            tonalElevation = 8.dp,
-                            containerColor = MaterialTheme.colorScheme.surface,
+                            modifier = Modifier.height(76.dp),
+                            tonalElevation = 0.dp,
+                            containerColor = androidx.compose.ui.graphics.Color.Transparent,
                         ) {
                             items.forEach { screen ->
                                 val selected = currentDestination?.hierarchy?.any { it.hasRoute(screen.routeClass) } == true
@@ -163,11 +177,7 @@ fun TrainIqApp() {
                                             if (screen.routeClass == Coach::class) HapticFeedbackType.LongPress else HapticFeedbackType.TextHandleMove,
                                         )
                                         if (selected) return@NavigationBarItem
-                                        navController.navigate(screen.route) {
-                                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
+                                        navController.navigateTopLevel(screen)
                                     },
                                     icon = {
                                         AnimatedContent(
@@ -178,27 +188,27 @@ fun TrainIqApp() {
                                             Box(
                                                 modifier = Modifier
                                                     .background(
-                                                        color = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                                                        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f) else Color.Transparent,
                                                         shape = CircleShape,
                                                     )
-                                                    .padding(12.dp),
+                                                    .padding(horizontal = 15.dp, vertical = 11.dp),
                                             ) {
                                                 Icon(
                                                     imageVector = screen.icon,
-                                                    contentDescription = null,
+                                                    contentDescription = screen.label,
                                                     modifier = Modifier
-                                                        .semantics { contentDescription = screen.label }
                                                         .scale(if (isSelected) 1.15f else 1f),
                                                 )
                                             }
                                         }
                                     },
-                                    label = null,
                                     alwaysShowLabel = false,
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = MaterialTheme.colorScheme.primary,
+                                        selectedTextColor = MaterialTheme.colorScheme.primary,
                                         indicatorColor = Color.Transparent,
-                                        unselectedIconColor = MaterialTheme.colorScheme.onSurface,
+                                        unselectedIconColor = MaterialTheme.trainIqColors.mutedText,
+                                        unselectedTextColor = MaterialTheme.trainIqColors.mutedText,
                                     ),
                                 )
                             }
@@ -209,8 +219,64 @@ fun TrainIqApp() {
         ) { padding ->
             TrainIqNavHost(
                 navController = navController,
-                modifier = Modifier.padding(padding),
+                modifier = Modifier
+                    .padding(padding)
+                    .topLevelTabSwipeNavigation(
+                        enabled = currentTopLevelIndex != null && !imeVisible,
+                        onSwipeLeft = {
+                            val currentIndex = currentTopLevelIndex ?: return@topLevelTabSwipeNavigation
+                            val next = items.getOrNull(currentIndex + 1) ?: return@topLevelTabSwipeNavigation
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            navController.navigateTopLevel(next)
+                        },
+                        onSwipeRight = {
+                            val currentIndex = currentTopLevelIndex ?: return@topLevelTabSwipeNavigation
+                            val previous = items.getOrNull(currentIndex - 1) ?: return@topLevelTabSwipeNavigation
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            navController.navigateTopLevel(previous)
+                        },
+                    ),
             )
+        }
+    }
+}
+
+private fun NavHostController.navigateTopLevel(screen: TopLevelDestination) {
+    navigate(screen.route) {
+        popUpTo(graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
+}
+
+private fun Modifier.topLevelTabSwipeNavigation(
+    enabled: Boolean,
+    onSwipeLeft: () -> Unit,
+    onSwipeRight: () -> Unit,
+): Modifier {
+    if (!enabled) return this
+    return pointerInput(onSwipeLeft, onSwipeRight) {
+        val threshold = 112.dp.toPx()
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Final)
+            var totalX = 0f
+            var totalY = 0f
+            var childConsumedGesture = false
+            do {
+                val event = awaitPointerEvent(pass = PointerEventPass.Final)
+                if (event.changes.any { it.isConsumed }) {
+                    childConsumedGesture = true
+                }
+                event.changes.forEach { change ->
+                    val delta = change.positionChange()
+                    totalX += delta.x
+                    totalY += delta.y
+                }
+            } while (event.changes.any { it.pressed })
+
+            if (!childConsumedGesture && abs(totalX) > threshold && abs(totalX) > abs(totalY) * 1.6f) {
+                if (totalX < 0f) onSwipeLeft() else onSwipeRight()
+            }
         }
     }
 }

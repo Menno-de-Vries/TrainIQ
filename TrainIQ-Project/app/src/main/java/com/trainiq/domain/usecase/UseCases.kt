@@ -124,6 +124,11 @@ class SetSupersetGroupUseCase @Inject constructor(private val repository: Workou
         repository.setSupersetGroup(workoutExerciseIds, groupId)
 }
 
+class ReplaceExerciseInPlanUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(workoutExerciseId: Long, newExerciseId: Long) =
+        repository.replaceExerciseInPlan(workoutExerciseId, newExerciseId)
+}
+
 class UpdateWorkoutExercisePlanUseCase @Inject constructor(private val repository: WorkoutRepository) {
     suspend operator fun invoke(
         workoutExerciseId: Long,

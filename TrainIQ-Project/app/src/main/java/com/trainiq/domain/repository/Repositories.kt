@@ -59,6 +59,7 @@ interface WorkoutRepository {
     suspend fun searchExercises(query: String): List<Exercise>
     suspend fun reorderExercises(dayId: Long, orderedIds: List<Long>)
     suspend fun setSupersetGroup(workoutExerciseIds: List<Long>, groupId: Long?)
+    suspend fun replaceExerciseInPlan(workoutExerciseId: Long, newExerciseId: Long)
     suspend fun updateWorkoutExercisePlan(
         workoutExerciseId: Long,
         targetSets: Int,

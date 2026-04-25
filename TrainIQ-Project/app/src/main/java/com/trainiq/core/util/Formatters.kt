@@ -1,32 +1,21 @@
 package com.trainiq.core.util
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.trainiq.core.theme.spacing
+import com.trainiq.core.theme.trainIqColors
+import com.trainiq.core.ui.AppCard
+import com.trainiq.core.ui.AppChip
+import com.trainiq.core.ui.AppLinearProgress
+import com.trainiq.core.ui.ChartCard
 import com.trainiq.domain.model.ChartPoint
 import com.trainiq.domain.model.EnergyBalanceSnapshot
 import com.trainiq.domain.model.LoggedSet
@@ -44,46 +33,24 @@ fun Long.toReadableDate(): String =
 fun todayEpochMillis(): Long =
     LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
-private val cardShape = RoundedCornerShape(24.dp)
-
 @Composable
 fun MetricCard(title: String, value: String, subtitle: String, modifier: Modifier = Modifier) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        shape = cardShape,
-    ) {
-        Column(modifier = Modifier.padding(MaterialTheme.spacing.medium), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-            Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+    AppCard(modifier = modifier) {
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+        Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+        Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
     }
 }
 
 @Composable
 fun ProgressCard(title: String, progress: Float, current: String, target: String, modifier: Modifier = Modifier) {
-    Card(
+    com.trainiq.core.ui.ProgressCard(
+        title = title,
+        subtitle = current,
+        value = target,
+        progress = progress,
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        shape = cardShape,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(MaterialTheme.spacing.medium),
-            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-        ) {
-            Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-            Text(current, style = MaterialTheme.typography.bodyMedium)
-            LinearProgressIndicator(
-                progress = { progress.coerceIn(0f, 1f) },
-                modifier = Modifier.fillMaxWidth().height(10.dp),
-                strokeCap = StrokeCap.Round,
-            )
-            Text("Target: $target", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
+    )
 }
 
 @Composable
@@ -92,56 +59,33 @@ fun EnergyBalanceCard(
     calorieTarget: Int,
     modifier: Modifier = Modifier,
 ) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        shape = cardShape,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(MaterialTheme.spacing.medium),
-            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-        ) {
-            Text("Energy balance", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-            if (energyBalance == null) {
-                Text("Complete your profile to unlock BMR, TEF, NEAT, and training energy math.", style = MaterialTheme.typography.bodyMedium)
-            } else {
-                val trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                val progressColor = MaterialTheme.colorScheme.primary
-                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                    Canvas(modifier = Modifier.size(156.dp)) {
-                        val stroke = 18.dp.toPx()
-                        val startAngle = 150f
-                        val sweep = 240f
-                        val targetProgress = if (calorieTarget <= 0) 0f else (energyBalance.caloriesIn / calorieTarget.toFloat()).coerceIn(0f, 1.2f)
-                        drawArc(
-                            color = trackColor,
-                            startAngle = startAngle,
-                            sweepAngle = sweep,
-                            useCenter = false,
-                            style = Stroke(width = stroke, cap = StrokeCap.Round),
-                        )
-                        drawArc(
-                            color = progressColor,
-                            startAngle = startAngle,
-                            sweepAngle = sweep * targetProgress.coerceAtMost(1f),
-                            useCenter = false,
-                            style = Stroke(width = stroke, cap = StrokeCap.Round),
-                        )
-                    }
-                    Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
-                        Text("${energyBalance.balance} kcal", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                        Text("Balance", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-                Text("In ${energyBalance.caloriesIn} • Out ${energyBalance.caloriesOut} • Target $calorieTarget", style = MaterialTheme.typography.bodyMedium)
+    val progress = if (calorieTarget > 0 && energyBalance != null) {
+        (energyBalance.caloriesIn / calorieTarget.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    AppCard(modifier = modifier) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            androidx.compose.foundation.layout.Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall)) {
+                Text("Energy balance", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                 Text(
-                    "BMR ${energyBalance.bmr} • TEF ${energyBalance.tefCalories} • NEAT ${energyBalance.neatCalories} • EAT ${energyBalance.workoutCalories}",
+                    energyBalance?.let { "Inname, verbranding en stappen live bij elkaar" }
+                        ?: "Complete your profile to unlock BMR, TEF, NEAT, and training energy math.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.trainIqColors.mutedText,
                 )
             }
+            energyBalance?.let {
+                Text("${it.balance}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+        AppLinearProgress(progress = progress)
+        energyBalance?.let {
+            Text(
+                "In ${it.caloriesIn} • Out ${it.caloriesOut} • Target $calorieTarget",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.trainIqColors.mutedText,
+            )
         }
     }
 }
@@ -156,22 +100,16 @@ fun MacroBreakdownCard(
     fatTarget: Int,
     modifier: Modifier = Modifier,
 ) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        shape = cardShape,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(MaterialTheme.spacing.medium),
-            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-        ) {
-            Text("Macro breakdown", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-            MacroProgressRow("Protein", protein, proteinTarget, MaterialTheme.colorScheme.primary)
-            MacroProgressRow("Carbs", carbs, carbsTarget, MaterialTheme.colorScheme.secondary)
-            MacroProgressRow("Fat", fat, fatTarget, MaterialTheme.colorScheme.tertiary)
-        }
+    AppCard(modifier = modifier) {
+        Text("Macro targets", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+        Text(
+            "Eiwit $protein/$proteinTarget g • carbs $carbs/$carbsTarget g • fat $fat/$fatTarget g",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.trainIqColors.mutedText,
+        )
+        MacroProgressRow("Protein", protein, proteinTarget, MaterialTheme.colorScheme.primary)
+        MacroProgressRow("Carbs", carbs, carbsTarget, MaterialTheme.colorScheme.tertiary)
+        MacroProgressRow("Fat", fat, fatTarget, MaterialTheme.colorScheme.secondary)
     }
 }
 
@@ -182,37 +120,26 @@ private fun MacroProgressRow(
     target: Int,
     color: androidx.compose.ui.graphics.Color,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    androidx.compose.foundation.layout.Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(label, style = MaterialTheme.typography.labelLarge)
-            Text("$current / ${target.coerceAtLeast(0)} g", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("$current / ${target.coerceAtLeast(0)} g", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.mutedText)
         }
-        LinearProgressIndicator(
-            progress = { if (target <= 0) 0f else (current / target.toFloat()).coerceIn(0f, 1f) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(10.dp),
-            color = color,
-            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-            strokeCap = StrokeCap.Round,
+        AppLinearProgress(
+            progress = if (target <= 0) 0f else (current / target.toFloat()).coerceIn(0f, 1f),
+            accent = color,
         )
     }
 }
 
 @Composable
 fun WorkoutExerciseItem(plan: WorkoutExercisePlan, loggedSetCount: Int, modifier: Modifier = Modifier) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        shape = cardShape,
-    ) {
-        Column(modifier = Modifier.padding(MaterialTheme.spacing.medium), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-            Text(plan.exercise.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text("${plan.targetSets} sets • ${plan.repRange} reps • ${plan.restSeconds}s rest", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-                AssistChip(onClick = {}, label = { Text(plan.exercise.muscleGroup) })
-                AssistChip(onClick = {}, label = { Text("$loggedSetCount logged") })
-            }
+    AppCard(modifier = modifier) {
+        Text(plan.exercise.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+        Text("${plan.targetSets} sets • ${plan.repRange} reps • ${plan.restSeconds}s rest", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
+        Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+            AppChip(label = plan.exercise.muscleGroup)
+            AppChip(label = "$loggedSetCount logged")
         }
     }
 }
@@ -236,35 +163,7 @@ fun SetLogger(
 
 @Composable
 fun ChartComposable(title: String, points: List<ChartPoint>, modifier: Modifier = Modifier) {
-    val primaryColor = MaterialTheme.colorScheme.primary
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        shape = cardShape,
-    ) {
-        Column(modifier = Modifier.padding(MaterialTheme.spacing.medium), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            if (points.isEmpty()) {
-                Text("No data yet", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                Canvas(modifier = Modifier.fillMaxWidth().height(160.dp)) {
-                    val maxValue = points.maxOf { it.value.toFloat() }.coerceAtLeast(1f)
-                    val stepX = if (points.size == 1) size.width else size.width / (points.size - 1)
-                    val path = Path()
-                    points.forEachIndexed { index, point ->
-                        val x = index * stepX
-                        val y = size.height - ((point.value.toFloat() / maxValue) * size.height)
-                        if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                        drawCircle(primaryColor, radius = 6f, center = Offset(x, y))
-                    }
-                    drawPath(path = path, color = primaryColor, style = Stroke(width = 6f, cap = StrokeCap.Round))
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    points.take(4).forEach { Text(it.label, style = MaterialTheme.typography.labelSmall) }
-                }
-            }
-        }
-    }
+    ChartCard(title = title, subtitle = "${points.size} metingen", points = points, modifier = modifier)
 }
 
 fun LoggedSet.volume(): Double = weight * reps

@@ -657,6 +657,12 @@ class TrainIqRepository @Inject constructor(
         }
     }
 
+    override suspend fun replaceExerciseInPlan(workoutExerciseId: Long, newExerciseId: Long) {
+        localStore.update { state ->
+            state.withExerciseReplacedInPlan(workoutExerciseId, newExerciseId)
+        }
+    }
+
     override suspend fun updateWorkoutExercisePlan(
         workoutExerciseId: Long,
         targetSets: Int,
@@ -1958,6 +1964,22 @@ internal fun TrainIqStorageState.withRoutineSetAdded(workoutExerciseId: Long): T
         targetRpe = workoutExercise.targetRpe.coerceIn(0.0, 10.0),
     )
     return copy(routineSets = routineSets + nextSet).withWorkoutExerciseTargetsSynced(workoutExerciseId)
+}
+
+internal fun TrainIqStorageState.withExerciseReplacedInPlan(
+    workoutExerciseId: Long,
+    newExerciseId: Long,
+): TrainIqStorageState {
+    if (exercises.none { it.id == newExerciseId }) return this
+    return copy(
+        workoutExercises = workoutExercises.map { workoutExercise ->
+            if (workoutExercise.id == workoutExerciseId) {
+                workoutExercise.copy(exerciseId = newExerciseId)
+            } else {
+                workoutExercise
+            }
+        },
+    )
 }
 
 internal fun TrainIqStorageState.updateRoutineSet(

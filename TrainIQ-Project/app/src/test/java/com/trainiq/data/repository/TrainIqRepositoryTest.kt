@@ -200,6 +200,72 @@ class TrainIqRepositoryTest {
     }
 
     @Test
+    fun withExerciseReplacedInPlan_preservesPlanSetsOrderSupersetAndHistory() {
+        val completedSession = WorkoutSessionEntity(
+            id = 30L,
+            date = 1_000L,
+            duration = 1_800L,
+            startedAt = 1_000L,
+            endedAt = 2_800L,
+            status = "COMPLETED",
+            completed = true,
+        )
+        val state = TrainIqStorageState(
+            exercises = listOf(
+                ExerciseEntity(id = 3L, name = "Bench Press", muscleGroup = "Chest", equipment = "Barbell"),
+                ExerciseEntity(id = 9L, name = "Incline Press", muscleGroup = "Chest", equipment = "Dumbbell"),
+            ),
+            workoutExercises = listOf(
+                WorkoutExerciseEntity(
+                    id = 4L,
+                    dayId = 7L,
+                    exerciseId = 3L,
+                    targetSets = 2,
+                    repRange = "8-12",
+                    restSeconds = 90,
+                    supersetGroupId = 11L,
+                    orderIndex = 2,
+                ),
+            ),
+            routineSets = listOf(
+                RoutineSetEntity(id = 10L, workoutExerciseId = 4L, orderIndex = 0, targetReps = 8),
+                RoutineSetEntity(id = 11L, workoutExerciseId = 4L, orderIndex = 1, targetReps = 10),
+            ),
+            sessions = listOf(completedSession),
+            performedExercises = listOf(
+                PerformedExerciseEntity(id = 21L, sessionId = 30L, exerciseId = 3L, sourceWorkoutExerciseId = 4L, orderIndex = 0),
+            ),
+            workoutSets = listOf(
+                WorkoutSetEntity(
+                    id = 40L,
+                    sessionId = 30L,
+                    exerciseId = 3L,
+                    performedExerciseId = 21L,
+                    weight = 80.0,
+                    reps = 8,
+                    rpe = 8.0,
+                    setType = SetType.NORMAL.name,
+                    completed = true,
+                ),
+            ),
+        )
+
+        val updated = state.withExerciseReplacedInPlan(workoutExerciseId = 4L, newExerciseId = 9L)
+
+        val plan = updated.workoutExercises.single()
+        assertEquals(4L, plan.id)
+        assertEquals(9L, plan.exerciseId)
+        assertEquals(7L, plan.dayId)
+        assertEquals(2, plan.orderIndex)
+        assertEquals(11L, plan.supersetGroupId)
+        assertEquals(listOf(10L, 11L), updated.routineSets.map { it.id })
+        assertEquals(listOf(4L, 4L), updated.routineSets.map { it.workoutExerciseId })
+        assertEquals(state.sessions, updated.sessions)
+        assertEquals(state.performedExercises, updated.performedExercises)
+        assertEquals(state.workoutSets, updated.workoutSets)
+    }
+
+    @Test
     fun updateRoutineSetAndRenumber_afterDeleteKeepsExerciseTargetsInSync() {
         val state = TrainIqStorageState(
             workoutExercises = listOf(

@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
@@ -40,11 +42,13 @@ import androidx.lifecycle.viewModelScope
 import com.trainiq.BuildConfig
 import com.trainiq.ai.services.GoalAdvisorService
 import com.trainiq.core.datastore.AiPreferences
+import com.trainiq.core.datastore.WorkoutFeedbackPreferences
 import com.trainiq.core.health.HealthConnectRefreshOnResume
 import com.trainiq.core.health.rememberHealthConnectPermissionRequester
 import com.trainiq.core.ui.MessageCard
 import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.SectionCard
+import com.trainiq.core.ui.bringIntoViewOnFocus
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.theme.ThemeMode
 import com.trainiq.data.local.TrainIqLocalStore
@@ -77,6 +81,8 @@ class SettingsViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ThemeMode.SYSTEM)
     val aiPreferences: StateFlow<AiPreferences> = preferencesRepository.aiPreferences
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AiPreferences(false, ""))
+    val workoutFeedbackPreferences: StateFlow<WorkoutFeedbackPreferences> = preferencesRepository.workoutFeedbackPreferences
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WorkoutFeedbackPreferences())
     val profile: StateFlow<UserProfile?> = observeUserProfileUseCase()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
@@ -126,6 +132,20 @@ class SettingsViewModel @Inject constructor(
             preferencesRepository.clearGeminiApiKey()
             preferencesRepository.setAiEnabled(false)
             _message.value = "Gemini API key removed and AI disabled."
+        }
+    }
+
+    fun setRestTimerSoundEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setRestTimerSoundEnabled(enabled)
+            _message.value = if (enabled) "Rest timer sound enabled." else "Rest timer sound disabled."
+        }
+    }
+
+    fun setWorkoutHapticsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setWorkoutHapticsEnabled(enabled)
+            _message.value = if (enabled) "Workout haptics enabled." else "Workout haptics disabled."
         }
     }
 
@@ -208,6 +228,7 @@ fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
     val context = LocalContext.current
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     val aiPreferences by viewModel.aiPreferences.collectAsStateWithLifecycle()
+    val workoutFeedbackPreferences by viewModel.workoutFeedbackPreferences.collectAsStateWithLifecycle()
     val profile by viewModel.profile.collectAsStateWithLifecycle()
     val healthStatus by viewModel.healthStatus.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
@@ -221,12 +242,15 @@ fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
     SettingsScreen(
         themeMode = themeMode,
         aiPreferences = aiPreferences,
+        workoutFeedbackPreferences = workoutFeedbackPreferences,
         maskedApiKey = viewModel.maskedKey(),
         profile = profile,
         healthStatus = healthStatus,
         message = message,
         onThemeSelected = viewModel::setThemeMode,
         onToggleAi = viewModel::setAiEnabled,
+        onToggleRestTimerSound = viewModel::setRestTimerSoundEnabled,
+        onToggleWorkoutHaptics = viewModel::setWorkoutHapticsEnabled,
         onSaveApiKey = viewModel::saveGeminiKey,
         onClearApiKey = viewModel::clearGeminiKey,
         onSaveProfile = viewModel::saveProfile,
@@ -256,12 +280,15 @@ fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
 fun SettingsScreen(
     themeMode: ThemeMode,
     aiPreferences: AiPreferences,
+    workoutFeedbackPreferences: WorkoutFeedbackPreferences,
     maskedApiKey: String,
     profile: UserProfile?,
     healthStatus: HealthConnectStatus,
     message: String?,
     onThemeSelected: (ThemeMode) -> Unit,
     onToggleAi: (Boolean) -> Unit,
+    onToggleRestTimerSound: (Boolean) -> Unit,
+    onToggleWorkoutHaptics: (Boolean) -> Unit,
     onSaveApiKey: (String) -> Unit,
     onClearApiKey: () -> Unit,
     onSaveProfile: (String, String, String, String, String, String) -> Unit,
@@ -291,11 +318,19 @@ fun SettingsScreen(
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(MaterialTheme.spacing.medium),
+        modifier = Modifier
+            .fillMaxSize()
+            .navigationBarsPadding()
+            .imePadding(),
+        contentPadding = PaddingValues(
+            start = MaterialTheme.spacing.medium,
+            top = MaterialTheme.spacing.medium,
+            end = MaterialTheme.spacing.medium,
+            bottom = 132.dp,
+        ),
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.large),
     ) {
-        item { ScreenHeader(title = "Settings") }
+        item { ScreenHeader(title = "Settings", subtitle = "Profiel, Health Connect en voorkeuren") }
         item {
             SectionCard(title = "Quick Status") {
                 Text("Theme: ${themeMode.name.lowercase().replaceFirstChar(Char::titlecase)}")
@@ -321,6 +356,22 @@ fun SettingsScreen(
             }
         }
         item {
+            SectionCard(title = "Workout feedback") {
+                FeedbackToggleRow(
+                    title = "Rest timer sound",
+                    body = "Play a short sound when rest reaches zero.",
+                    checked = workoutFeedbackPreferences.restTimerSoundEnabled,
+                    onCheckedChange = onToggleRestTimerSound,
+                )
+                FeedbackToggleRow(
+                    title = "Workout haptics",
+                    body = "Use subtle vibration when sets are completed or rest finishes.",
+                    checked = workoutFeedbackPreferences.workoutHapticsEnabled,
+                    onCheckedChange = onToggleWorkoutHaptics,
+                )
+            }
+        }
+        item {
             SectionCard(title = "AI / Gemini") {
                 Text("AI is always opt-in. TrainIQ does not make background AI calls.")
                 Row(
@@ -335,7 +386,7 @@ fun SettingsScreen(
                     Switch(checked = aiPreferences.enabled, onCheckedChange = onToggleAi)
                 }
                 Text("Current key: $maskedApiKey")
-                OutlinedTextField(value = apiKey, onValueChange = { apiKey = it }, label = { Text("Gemini API key") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = apiKey, onValueChange = { apiKey = it }, label = { Text("Gemini API key") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
                 Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                     Button(onClick = {
                         onSaveApiKey(apiKey)
@@ -386,12 +437,12 @@ fun SettingsScreen(
         }
         item {
             SectionCard(title = "Profile & Goals") {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = height, onValueChange = { height = it }, label = { Text("Height (cm)") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = weight, onValueChange = { weight = it }, label = { Text("Weight (kg)") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = bodyFat, onValueChange = { bodyFat = it }, label = { Text("Body fat %") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = activityLevel, onValueChange = { activityLevel = it }, label = { Text("Activity level") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = goal, onValueChange = { goal = it }, label = { Text("Primary goal") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                OutlinedTextField(value = height, onValueChange = { height = it }, label = { Text("Height (cm)") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                OutlinedTextField(value = weight, onValueChange = { weight = it }, label = { Text("Weight (kg)") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                OutlinedTextField(value = bodyFat, onValueChange = { bodyFat = it }, label = { Text("Body fat %") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                OutlinedTextField(value = activityLevel, onValueChange = { activityLevel = it }, label = { Text("Activity level") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                OutlinedTextField(value = goal, onValueChange = { goal = it }, label = { Text("Primary goal") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
                 Button(
                     onClick = { onSaveProfile(name, height, weight, bodyFat, activityLevel, goal) },
                     modifier = Modifier.fillMaxWidth(),
@@ -421,6 +472,26 @@ fun SettingsScreen(
                 Text("Designed as a manual-first training and nutrition MVP.")
             }
         }
+    }
+}
+
+@Composable
+private fun FeedbackToggleRow(
+    title: String,
+    body: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall)) {
+            Text(title, fontWeight = FontWeight.SemiBold)
+            Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

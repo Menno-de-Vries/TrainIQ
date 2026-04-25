@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.rememberScrollState
@@ -38,6 +40,7 @@ import com.trainiq.core.theme.spacing
 import com.trainiq.core.ui.MessageCard
 import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.ShimmerCardPlaceholder
+import com.trainiq.core.ui.bringIntoViewOnFocus
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.CoachOverview
 import com.trainiq.domain.model.GoalAdvice
@@ -259,11 +262,19 @@ fun CoachScreen(
 
     AnimatedContent(targetState = uiState, label = "coach-ui-state") { state ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(MaterialTheme.spacing.medium),
+            modifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
+                .imePadding(),
+            contentPadding = PaddingValues(
+                start = MaterialTheme.spacing.medium,
+                top = MaterialTheme.spacing.medium,
+                end = MaterialTheme.spacing.medium,
+                bottom = 132.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
         ) {
-            item { ScreenHeader(title = "Coach") }
+            item { ScreenHeader(title = "Coach", subtitle = "AI feedback die echt met je data werkt") }
 
             when (state) {
                 CoachUiState.Loading -> {
@@ -353,8 +364,8 @@ fun CoachScreen(
                                 verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
                             ) {
                                 Text("Goal advisor", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
-                                OutlinedTextField(value = age, onValueChange = { age = it }, label = { Text("Age") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+        OutlinedTextField(value = age, onValueChange = { age = it }, label = { Text("Age") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
                                 Text("Biological sex", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                 Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                                     BiologicalSex.entries.forEach { option ->
@@ -365,9 +376,9 @@ fun CoachScreen(
                                         )
                                     }
                                 }
-                                OutlinedTextField(value = height, onValueChange = { height = it }, label = { Text("Height (cm)") }, modifier = Modifier.fillMaxWidth())
-                                OutlinedTextField(value = weight, onValueChange = { weight = it }, label = { Text("Weight (kg)") }, modifier = Modifier.fillMaxWidth())
-                                OutlinedTextField(value = bodyFat, onValueChange = { bodyFat = it }, label = { Text("Body fat %") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = height, onValueChange = { height = it }, label = { Text("Height (cm)") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+        OutlinedTextField(value = weight, onValueChange = { weight = it }, label = { Text("Weight (kg)") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+        OutlinedTextField(value = bodyFat, onValueChange = { bodyFat = it }, label = { Text("Body fat %") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
                                 Text("Activity level", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                 Row(
                                     modifier = Modifier
@@ -383,7 +394,7 @@ fun CoachScreen(
                                         )
                                     }
                                 }
-                                OutlinedTextField(value = goal, onValueChange = { goal = it }, label = { Text("Goal") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = goal, onValueChange = { goal = it }, label = { Text("Goal") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
                                 Button(
                                     onClick = {
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)

@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.trainiq.features.workout
 
 import android.app.Activity
@@ -18,16 +20,21 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imeNestedScroll
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DragHandle
@@ -35,9 +42,11 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -59,6 +68,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -85,11 +96,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -99,7 +114,19 @@ import androidx.lifecycle.viewModelScope
 import com.trainiq.core.ui.MessageCard
 import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.ShimmerCardPlaceholder
+import com.trainiq.core.ui.AppCard
+import com.trainiq.core.ui.AppChip
+import com.trainiq.core.ui.AppLinearProgress
+import com.trainiq.core.ui.clearFocusOnTapOutside
+import com.trainiq.core.ui.EmptyStateCard
+import com.trainiq.core.ui.PrimaryActionButton
+import com.trainiq.core.ui.SecondaryActionButton
+import com.trainiq.core.ui.bringIntoViewOnFocus
+import com.trainiq.core.audio.RestTimerSoundPlayer
+import com.trainiq.core.datastore.UserPreferencesRepository
+import com.trainiq.core.datastore.WorkoutFeedbackPreferences
 import com.trainiq.core.theme.spacing
+import com.trainiq.core.theme.trainIqColors
 import com.trainiq.domain.model.ActiveWorkoutSession
 import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.ChartPoint
@@ -141,6 +168,7 @@ import com.trainiq.domain.usecase.ObserveExerciseHistoryUseCase
 import com.trainiq.domain.usecase.RemoveExerciseFromDayUseCase
 import com.trainiq.domain.usecase.RemoveWorkoutDayUseCase
 import com.trainiq.domain.usecase.MoveRoutineSetUseCase
+import com.trainiq.domain.usecase.ReplaceExerciseInPlanUseCase
 import com.trainiq.domain.usecase.ReorderExercisesUseCase
 import com.trainiq.domain.usecase.SaveGeneratedRoutineUseCase
 import com.trainiq.domain.usecase.SetActiveRoutineUseCase
@@ -161,11 +189,14 @@ import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import sh.calvin.reorderable.ReorderableColumn
@@ -197,6 +228,22 @@ data class ActiveWorkoutUiState(
     val message: String? = null,
 )
 
+sealed interface WorkoutUiEvent {
+    val id: Long
+
+    data class RestTimerFinished(
+        override val id: Long,
+        val message: String,
+    ) : WorkoutUiEvent
+}
+
+private val BuilderActionWidth = 40.dp
+private val BuilderRowActionWidth = 44.dp
+private val ActiveSetActionWidth = 80.dp
+private val ActiveSetLeadingWidth = 96.dp
+private val TopLevelBottomContentPadding = 132.dp
+private val ActiveWorkoutBottomContentPadding = 96.dp
+
 private data class RoutineGenerationRequest(
     val daysPerWeek: Int,
     val equipment: String,
@@ -209,6 +256,7 @@ private data class RoutineGenerationRequest(
 @HiltViewModel
 class WorkoutViewModel @Inject constructor(
     observeWorkoutOverviewUseCase: ObserveWorkoutOverviewUseCase,
+    private val preferencesRepository: UserPreferencesRepository,
     private val observeExerciseHistoryUseCase: ObserveExerciseHistoryUseCase,
     private val getWorkoutDayUseCase: GetWorkoutDayUseCase,
     private val getProgressionSuggestionsUseCase: GetProgressionSuggestionsUseCase,
@@ -235,6 +283,7 @@ class WorkoutViewModel @Inject constructor(
     private val saveGeneratedRoutineUseCase: SaveGeneratedRoutineUseCase,
     private val reorderExercisesUseCase: ReorderExercisesUseCase,
     private val setSupersetGroupUseCase: SetSupersetGroupUseCase,
+    private val replaceExerciseInPlanUseCase: ReplaceExerciseInPlanUseCase,
     private val updateWorkoutExercisePlanUseCase: UpdateWorkoutExercisePlanUseCase,
     private val addSetToExerciseUseCase: AddSetToExerciseUseCase,
     private val updateRoutineSetUseCase: UpdateRoutineSetUseCase,
@@ -243,6 +292,8 @@ class WorkoutViewModel @Inject constructor(
 ) : ViewModel() {
     val overview: StateFlow<WorkoutOverview?> = observeWorkoutOverviewUseCase()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    val workoutFeedbackPreferences: StateFlow<WorkoutFeedbackPreferences> = preferencesRepository.workoutFeedbackPreferences
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WorkoutFeedbackPreferences())
 
     private val _activeWorkout = MutableStateFlow<WorkoutDay?>(null)
     val activeWorkout: StateFlow<WorkoutDay?> = _activeWorkout.asStateFlow()
@@ -269,6 +320,9 @@ class WorkoutViewModel @Inject constructor(
 
     private val _pendingGeneratedRoutine = MutableStateFlow<GeneratedRoutine?>(null)
     val pendingGeneratedRoutine: StateFlow<GeneratedRoutine?> = _pendingGeneratedRoutine.asStateFlow()
+
+    private val _events = MutableSharedFlow<WorkoutUiEvent>(extraBufferCapacity = 1)
+    val events: SharedFlow<WorkoutUiEvent> = _events.asSharedFlow()
 
     val activeWorkoutUiState: StateFlow<ActiveWorkoutUiState> = combine(
         _activeWorkout,
@@ -307,6 +361,10 @@ class WorkoutViewModel @Inject constructor(
     private var restTimerJob: Job? = null
     private var sessionStartTime: Long = 0L
     private var lastGenerationRequest: RoutineGenerationRequest? = null
+    private var observedRestTimerEndsAt: Long? = null
+    private var restTimerFinishHandled = true
+    private var restTimerClearRequested = false
+    private var eventId = 0L
 
     fun observeExerciseHistory(exerciseId: Long): StateFlow<ExerciseHistory?> =
         observeExerciseHistoryUseCase(exerciseId)
@@ -653,6 +711,13 @@ class WorkoutViewModel @Inject constructor(
         }
     }
 
+    fun replaceExerciseInPlan(workoutExerciseId: Long, exercise: Exercise) {
+        viewModelScope.launch {
+            replaceExerciseInPlanUseCase(workoutExerciseId, exercise.id)
+            _message.value = "Exercise replaced with ${exercise.name}."
+        }
+    }
+
     fun updateWorkoutExercisePlan(
         workoutExerciseId: Long,
         targetSets: String,
@@ -731,6 +796,9 @@ class WorkoutViewModel @Inject constructor(
     private fun startRestTimer(restSeconds: Int) {
         if (restSeconds <= 0) return
         val endsAt = System.currentTimeMillis() + restSeconds * 1_000L
+        observedRestTimerEndsAt = endsAt
+        restTimerFinishHandled = false
+        restTimerClearRequested = false
         viewModelScope.launch {
             updateActiveWorkoutRestTimerUseCase(endsAt, restSeconds)?.let(::applyActiveSession)
         }
@@ -739,6 +807,9 @@ class WorkoutViewModel @Inject constructor(
     private fun stopRestTimer(persist: Boolean = false) {
         _restTimerSeconds.value = 0
         _restTimerTotalSeconds.value = 0
+        observedRestTimerEndsAt = null
+        restTimerFinishHandled = true
+        restTimerClearRequested = true
         if (persist) {
             viewModelScope.launch {
                 updateActiveWorkoutRestTimerUseCase(null, 0)?.let(::applyActiveSession)
@@ -749,10 +820,13 @@ class WorkoutViewModel @Inject constructor(
     fun adjustRestTimer(deltaSeconds: Int) {
         val next = (_restTimerSeconds.value + deltaSeconds).coerceAtLeast(0)
         if (next == 0) {
-            stopRestTimer()
+            stopRestTimer(persist = true)
             return
         }
         val endsAt = System.currentTimeMillis() + next * 1_000L
+        observedRestTimerEndsAt = endsAt
+        restTimerFinishHandled = false
+        restTimerClearRequested = false
         viewModelScope.launch {
             updateActiveWorkoutRestTimerUseCase(endsAt, next)?.let(::applyActiveSession)
         }
@@ -797,8 +871,33 @@ class WorkoutViewModel @Inject constructor(
         val active = _activeSession.value
         val endsAt = active?.restTimerEndsAt
         val remaining = endsAt?.let { ((it - System.currentTimeMillis()) / 1_000).toInt().coerceAtLeast(0) } ?: 0
+        val previousRemaining = _restTimerSeconds.value
+        if (endsAt != observedRestTimerEndsAt) {
+            observedRestTimerEndsAt = endsAt
+            restTimerFinishHandled = remaining == 0
+            restTimerClearRequested = endsAt == null
+        }
         _restTimerSeconds.value = remaining
         _restTimerTotalSeconds.value = if (remaining > 0) active?.restTimerTotalSeconds ?: 0 else 0
+        if (endsAt != null && previousRemaining > 0 && remaining == 0 && !restTimerFinishHandled) {
+            restTimerFinishHandled = true
+            restTimerClearRequested = true
+            _message.value = "Rusttijd klaar - volgende set ready"
+            _events.tryEmit(
+                WorkoutUiEvent.RestTimerFinished(
+                    id = ++eventId,
+                    message = "Rusttijd klaar - volgende set ready",
+                ),
+            )
+            viewModelScope.launch {
+                updateActiveWorkoutRestTimerUseCase(null, 0)?.let(::applyActiveSession)
+            }
+        } else if (endsAt != null && remaining == 0 && !restTimerClearRequested) {
+            restTimerClearRequested = true
+            viewModelScope.launch {
+                updateActiveWorkoutRestTimerUseCase(null, 0)?.let(::applyActiveSession)
+            }
+        }
     }
 }
 
@@ -833,6 +932,7 @@ fun WorkoutRoute(
         onRemoveExercise = viewModel::removeExercise,
         onReorderExercises = viewModel::reorderExercises,
         onSetSupersetGroup = viewModel::setSupersetGroup,
+        onReplaceExercise = viewModel::replaceExerciseInPlan,
         onUpdateWorkoutExercisePlan = viewModel::updateWorkoutExercisePlan,
         onAddSetToExercise = viewModel::addSetToExercise,
         onUpdateRoutineSet = viewModel::updateRoutineSet,
@@ -866,6 +966,7 @@ fun WorkoutScreen(
     onRemoveExercise: (Long) -> Unit,
     onReorderExercises: (Long, List<Long>) -> Unit,
     onSetSupersetGroup: (List<Long>, Long?) -> Unit,
+    onReplaceExercise: (Long, Exercise) -> Unit,
     onUpdateWorkoutExercisePlan: (Long, String, String, String, String, String, SetType) -> Unit,
     onAddSetToExercise: (Long) -> Unit,
     onUpdateRoutineSet: (RoutineSet) -> Unit,
@@ -915,11 +1016,20 @@ fun WorkoutScreen(
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .imeNestedScroll()
+            .navigationBarsPadding()
+            .imePadding(),
+        contentPadding = PaddingValues(
+            start = MaterialTheme.spacing.medium,
+            top = MaterialTheme.spacing.medium,
+            end = MaterialTheme.spacing.medium,
+            bottom = TopLevelBottomContentPadding,
+        ),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item { ScreenHeader(title = "Train") }
+        item { ScreenHeader(title = "Train", subtitle = "Routines, progressie en actieve sessies") }
         if (message != null) item { MessageCard(message = message, onDismiss = onDismissMessage) }
         if (overview == null) {
             item { ShimmerCardPlaceholder(lineCount = 4) }
@@ -949,6 +1059,7 @@ fun WorkoutScreen(
                     onRemoveExercise = onRemoveExercise,
                     onReorderExercises = onReorderExercises,
                     onSetSupersetGroup = onSetSupersetGroup,
+                    onReplaceExercise = onReplaceExercise,
                     onUpdateWorkoutExercisePlan = onUpdateWorkoutExercisePlan,
                     onAddSetToExercise = onAddSetToExercise,
                     onUpdateRoutineSet = onUpdateRoutineSet,
@@ -996,7 +1107,8 @@ private fun CreateRoutineDialog(onConfirm: (String) -> Unit, onDismiss: () -> Un
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .focusRequester(focusRequester),
+                    .focusRequester(focusRequester)
+                    .bringIntoViewOnFocus(),
             )
         },
         confirmButton = {
@@ -1053,42 +1165,36 @@ private fun ActiveRoutineCard(activeRoutine: WorkoutRoutine?, onStartWorkout: (L
 
 @Composable
 private fun SectionHeader(title: String) {
-    Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+    com.trainiq.core.ui.SectionHeader(title = title)
 }
 
 @Composable
 private fun EmptyCard(title: String, body: String) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, fontWeight = FontWeight.SemiBold)
-            Text(body)
-        }
-    }
+    EmptyStateCard(title = title, body = body, modifier = Modifier.fillMaxWidth())
 }
 
 @Composable
 private fun ExerciseLibraryCard(name: String, muscleGroup: String, equipment: String) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(name, fontWeight = FontWeight.SemiBold)
-            Text("$muscleGroup - $equipment")
-        }
+    AppCard(modifier = Modifier.fillMaxWidth()) {
+        Text(name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+        Text("$muscleGroup • $equipment", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
     }
 }
 
 @Composable
 private fun HistoryCard(sessionId: Long, totalVolume: Double, durationSeconds: Long, onDelete: (Long) -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.blue) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("Session $sessionId", fontWeight = FontWeight.SemiBold)
-                Text("Volume ${totalVolume.toInt()} kg")
+                Text("Session $sessionId", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                Text("Volume ${totalVolume.toInt()} kg", color = MaterialTheme.trainIqColors.mutedText)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("${durationSeconds / 60} min")
+                AppChip(label = "${durationSeconds / 60} min", accent = MaterialTheme.trainIqColors.blue)
                 TextButton(onClick = { onDelete(sessionId) }) { Text("Delete") }
             }
         }
@@ -1212,6 +1318,7 @@ private fun RoutineCard(
     onRemoveExercise: (Long) -> Unit,
     onReorderExercises: (Long, List<Long>) -> Unit,
     onSetSupersetGroup: (List<Long>, Long?) -> Unit,
+    onReplaceExercise: (Long, Exercise) -> Unit,
     onUpdateWorkoutExercisePlan: (Long, String, String, String, String, String, SetType) -> Unit,
     onAddSetToExercise: (Long) -> Unit,
     onUpdateRoutineSet: (RoutineSet) -> Unit,
@@ -1301,11 +1408,11 @@ private fun RoutineCard(
         )
     }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.primary) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (isEditing) {
-                OutlinedTextField(editName, { editName = it }, label = { Text("Routine name") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(editDescription, { editDescription = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(editName, { editName = it }, label = { Text("Routine name") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                OutlinedTextField(editDescription, { editDescription = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         onClick = {
@@ -1328,26 +1435,42 @@ private fun RoutineCard(
             } else {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(routine.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text("Routine builder", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
                         Text(
-                            routine.description.ifBlank { "No description yet." },
+                            "${routineFocusLabel(routine)} focus · ${routineExerciseCount(routine)} oefeningen · ±${routineEstimatedMinutes(routine)} min",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.trainIqColors.mutedText,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            routine.name + routine.description.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty(),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.trainIqColors.mutedText,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    IconButton(onClick = { isEditing = true }) {
-                        Icon(Icons.Rounded.Edit, contentDescription = "Edit routine")
+                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (routine.days.firstOrNull() != null) {
+                            PrimaryActionButton(onClick = { onStartWorkout(routine.days.first().id) }) {
+                                Text("Start")
+                            }
+                        }
+                        IconButton(onClick = { isEditing = true }) {
+                            Icon(Icons.Rounded.Edit, contentDescription = "Routine bewerken")
+                        }
                     }
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { onSetActiveRoutine(routine.id) }) { Text(if (routine.active) "Active" else "Set active") }
-                TextButton(onClick = { showDeleteRoutineConfirm = true }) { Text("Delete") }
+                SecondaryActionButton(onClick = { onSetActiveRoutine(routine.id) }) { Text(if (routine.active) "Actief" else "Actief maken") }
+                TextButton(onClick = { showDeleteRoutineConfirm = true }) { Text("Verwijderen") }
             }
             HorizontalDivider()
             Text("Add session", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(dayName, { dayName = it }, label = { Text("Session name (optional)") }, modifier = Modifier.weight(1f))
+                OutlinedTextField(dayName, { dayName = it }, label = { Text("Session name (optional)") }, modifier = Modifier.weight(1f).bringIntoViewOnFocus())
                 Button(onClick = { onAddDay(routine.id, dayName); dayName = "" }) { Text("Add") }
             }
             if (routine.days.isEmpty()) {
@@ -1372,6 +1495,7 @@ private fun RoutineCard(
                         onRemoveExercise = onRemoveExercise,
                         onReorderExercises = onReorderExercises,
                         onSetSupersetGroup = onSetSupersetGroup,
+                        onReplaceExercise = onReplaceExercise,
                         onUpdateWorkoutExercisePlan = onUpdateWorkoutExercisePlan,
                         onAddSetToExercise = onAddSetToExercise,
                         onUpdateRoutineSet = onUpdateRoutineSet,
@@ -1396,6 +1520,7 @@ private fun WorkoutDayEditor(
     onRemoveExercise: (Long) -> Unit,
     onReorderExercises: (Long, List<Long>) -> Unit,
     onSetSupersetGroup: (List<Long>, Long?) -> Unit,
+    onReplaceExercise: (Long, Exercise) -> Unit,
     onUpdateWorkoutExercisePlan: (Long, String, String, String, String, String, SetType) -> Unit,
     onAddSetToExercise: (Long) -> Unit,
     onUpdateRoutineSet: (RoutineSet) -> Unit,
@@ -1410,7 +1535,9 @@ private fun WorkoutDayEditor(
     var showExercisePicker by remember(day.id) { mutableStateOf(false) }
     var showCustomExerciseDialog by remember(day.id) { mutableStateOf(false) }
     var showRemoveDayConfirm by remember(day.id) { mutableStateOf(false) }
+    var sessionMenuExpanded by remember(day.id) { mutableStateOf(false) }
     var pendingRemoveExercise by remember(day.id) { mutableStateOf<WorkoutExercisePlan?>(null) }
+    var replacingPlan by remember(day.id) { mutableStateOf<WorkoutExercisePlan?>(null) }
     var editingPlan by remember(day.id) { mutableStateOf<WorkoutExercisePlan?>(null) }
     var orderedPlans by remember(day.id, day.exercises) { mutableStateOf(day.exercises) }
 
@@ -1457,6 +1584,29 @@ private fun WorkoutDayEditor(
             onDismiss = { showCustomExerciseDialog = false },
         )
     }
+    replacingPlan?.let { plan ->
+        ExercisePickerSheet(
+            exercises = exerciseLibrary,
+            title = "Oefening vervangen",
+            showDefaults = false,
+            targetSets = plan.targetSets.toString(),
+            repRange = plan.repRange,
+            restSeconds = plan.restSeconds.toString(),
+            targetWeightKg = plan.targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty(),
+            targetRpe = plan.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty(),
+            onTargetSetsChange = {},
+            onRepRangeChange = {},
+            onRestSecondsChange = {},
+            onTargetWeightChange = {},
+            onTargetRpeChange = {},
+            onSelect = { exercise ->
+                replacingPlan = null
+                onReplaceExercise(plan.id, exercise)
+            },
+            onCustomExercise = {},
+            onDismiss = { replacingPlan = null },
+        )
+    }
     if (showRemoveDayConfirm) {
         AlertDialog(
             onDismissRequest = { showRemoveDayConfirm = false },
@@ -1500,51 +1650,67 @@ private fun WorkoutDayEditor(
         )
     }
 
-    Card(
+    AppCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        accent = MaterialTheme.trainIqColors.cyan,
+        elevated = true,
+        contentPadding = PaddingValues(MaterialTheme.spacing.medium),
     ) {
-        Column(modifier = Modifier.padding(MaterialTheme.spacing.medium), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        val sessionMeta = "${dayFocusLabel(day)} - ${day.exercises.size} ${if (day.exercises.size == 1) "oefening" else "oefeningen"} - ±${dayEstimatedMinutes(day)} min"
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
                         day.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.ExtraBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        "${day.exercises.size} oefening${if (day.exercises.size == 1) "" else "en"}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        sessionMeta,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.trainIqColors.mutedText,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { showRemoveDayConfirm = true }) { Text("Remove") }
-                    Button(onClick = { onStartWorkout(day.id) }) { Text("Start") }
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PrimaryActionButton(onClick = { onStartWorkout(day.id) }) { Text("Start") }
+                    Box {
+                        IconButton(onClick = { sessionMenuExpanded = true }) {
+                            Icon(Icons.Rounded.MoreVert, contentDescription = "Sessie acties")
+                        }
+                        DropdownMenu(
+                            expanded = sessionMenuExpanded,
+                            onDismissRequest = { sessionMenuExpanded = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Sessie verwijderen") },
+                                onClick = {
+                                    sessionMenuExpanded = false
+                                    showRemoveDayConfirm = true
+                                },
+                            )
+                        }
+                    }
                 }
             }
             if (orderedPlans.isNotEmpty()) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
             }
             if (orderedPlans.isEmpty()) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                    shape = MaterialTheme.shapes.medium,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        "Nog geen oefeningen. Voeg een oefening toe om sets te plannen.",
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                EmptyStateCard(
+                    title = "Nog geen oefeningen",
+                    body = "Voeg een oefening toe om sets, rust en targets te plannen.",
+                    actionLabel = "Oefening toevoegen",
+                    onAction = { showExercisePicker = true },
+                )
             } else {
                 ReorderableColumn(
                     list = orderedPlans,
@@ -1564,6 +1730,7 @@ private fun WorkoutDayEditor(
                                 exerciseDragHandle = Modifier.draggableHandle(),
                                 canSuperset = orderedPlans.size > 1,
                                 onEditExercise = { editingPlan = plan },
+                                onReplaceExercise = { replacingPlan = plan },
                                 onRemoveExercise = { pendingRemoveExercise = plan },
                                 onToggleSuperset = { toggleSupersetGroup(orderedPlans, plan, onSetSupersetGroup) },
                                 onAddSet = { onAddSetToExercise(plan.id) },
@@ -1576,7 +1743,7 @@ private fun WorkoutDayEditor(
                 }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
-            Button(onClick = { showExercisePicker = true }, modifier = Modifier.fillMaxWidth()) {
+            SecondaryActionButton(onClick = { showExercisePicker = true }, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Rounded.Add, contentDescription = null)
                 Text("Oefening toevoegen")
             }
@@ -1592,6 +1759,7 @@ private fun RoutineExerciseCard(
     exerciseDragHandle: Modifier,
     canSuperset: Boolean,
     onEditExercise: () -> Unit,
+    onReplaceExercise: () -> Unit,
     onRemoveExercise: () -> Unit,
     onToggleSuperset: () -> Unit,
     onAddSet: () -> Unit,
@@ -1601,6 +1769,8 @@ private fun RoutineExerciseCard(
 ) {
     var collapsed by remember(plan.id) { mutableStateOf(false) }
     var pendingDeleteSet by remember(plan.id) { mutableStateOf<RoutineSet?>(null) }
+    var editingSet by remember(plan.id) { mutableStateOf<RoutineSet?>(null) }
+    var menuExpanded by remember(plan.id) { mutableStateOf(false) }
     var orderedSets by remember(plan.id, plan.sets) {
         mutableStateOf(plan.sets.sortedWith(compareBy<RoutineSet> { it.orderIndex }.thenBy { it.id }))
     }
@@ -1621,19 +1791,31 @@ private fun RoutineExerciseCard(
             dismissButton = { TextButton(onClick = { pendingDeleteSet = null }) { Text("Annuleren") } },
         )
     }
+    editingSet?.let { set ->
+        EditSetBottomSheet(
+            set = set,
+            setNumber = orderedSets.indexOfFirst { it.id == set.id }.takeIf { it >= 0 }?.plus(1) ?: 1,
+            onSave = { updated ->
+                editingSet = null
+                onUpdateSet(updated)
+            },
+            onDismiss = { editingSet = null },
+        )
+    }
 
-    Card(
+    AppCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        accent = if (plan.supersetGroupId != null) MaterialTheme.trainIqColors.purple else MaterialTheme.colorScheme.primary,
+        elevated = false,
+        contentPadding = PaddingValues(MaterialTheme.spacing.compact),
     ) {
-        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(modifier = exerciseDragHandle.size(40.dp), onClick = {}) {
+                IconButton(modifier = exerciseDragHandle.size(BuilderActionWidth), onClick = {}) {
                     Icon(Icons.Rounded.DragHandle, contentDescription = "Oefening verplaatsen")
                 }
                 Column(
@@ -1644,9 +1826,10 @@ private fun RoutineExerciseCard(
                 ) {
                     Text(
                         plan.exercise.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 2,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        softWrap = false,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
@@ -1656,30 +1839,59 @@ private fun RoutineExerciseCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        SuggestionChip(onClick = {}, label = { Text("${plan.plannedSetCount()} sets") })
-                        plan.supersetGroupId?.let { SuggestionChip(onClick = {}, label = { Text("Superset $it") }) }
-                    }
+                    ExerciseSummaryMetaRow(plan)
                 }
-                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { collapsed = !collapsed }) {
                         Icon(
                             if (collapsed) Icons.Rounded.ExpandMore else Icons.Rounded.ExpandLess,
                             contentDescription = if (collapsed) "Open oefening" else "Klap oefening in",
                         )
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        IconButton(modifier = Modifier.size(40.dp), onClick = onEditExercise) {
-                            Icon(Icons.Rounded.Edit, contentDescription = "Oefening bewerken")
+                    Box {
+                        IconButton(onClick = { menuExpanded = true }) {
+                            Icon(Icons.Rounded.MoreVert, contentDescription = "Oefening acties")
                         }
-                        IconButton(modifier = Modifier.size(40.dp), onClick = onRemoveExercise) {
-                            Icon(
-                                Icons.Rounded.Delete,
-                                contentDescription = "Oefening verwijderen",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Geschiedenis") },
+                                onClick = {
+                                    menuExpanded = false
+                                    onOpenHistory()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Oefening vervangen") },
+                                leadingIcon = { Icon(Icons.Rounded.SwapHoriz, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onReplaceExercise()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Bewerken") },
+                                onClick = {
+                                    menuExpanded = false
+                                    onEditExercise()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (plan.supersetGroupId != null) "Superset ontkoppelen" else "Superset koppelen") },
+                                enabled = canSuperset,
+                                onClick = {
+                                    menuExpanded = false
+                                    onToggleSuperset()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Verwijderen") },
+                                onClick = {
+                                    menuExpanded = false
+                                    onRemoveExercise()
+                                },
                             )
                         }
                     }
@@ -1688,20 +1900,14 @@ private fun RoutineExerciseCard(
             if (collapsed) return@Column
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.14f))
             if (orderedSets.isEmpty()) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                    shape = MaterialTheme.shapes.medium,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        "Nog geen sets. Voeg een warm-up of werkset toe.",
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                EmptyStateCard(
+                    title = "Nog geen sets",
+                    body = "Voeg een warm-up of werkset toe.",
+                    actionLabel = "Set toevoegen",
+                    onAction = onAddSet,
+                )
             } else {
-                SetColumnHeaderRow()
+                RoutineSetHeaderRow()
                 ReorderableColumn(
                     list = orderedSets,
                     onSettle = { fromIndex, toIndex ->
@@ -1716,21 +1922,32 @@ private fun RoutineExerciseCard(
                                 index = index + 1,
                                 set = set,
                                 dragHandle = Modifier.draggableHandle(),
-                                onUpdateSet = onUpdateSet,
+                                onEdit = { editingSet = set },
                                 onDelete = { pendingDeleteSet = set },
                             )
                         }
                     }
                 }
             }
-            ExerciseActionRow(
-                supersetLinked = plan.supersetGroupId != null,
-                canSuperset = canSuperset,
-                onToggleSuperset = onToggleSuperset,
-                onAddSet = onAddSet,
-            )
+            SecondaryActionButton(onClick = onAddSet, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Rounded.Add, contentDescription = null)
+                Text("Set toevoegen")
+            }
         }
     }
+}
+
+@Composable
+private fun ExerciseSummaryMetaRow(plan: WorkoutExercisePlan, modifier: Modifier = Modifier) {
+    Text(
+        text = exerciseSummaryMeta(plan),
+        modifier = modifier.fillMaxWidth(),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.trainIqColors.mutedText,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -1768,48 +1985,40 @@ private fun ExerciseActionRow(
 }
 
 @Composable
-private fun SetColumnHeaderRow() {
+private fun RoutineSetHeaderRow() {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
         shape = MaterialTheme.shapes.small,
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+        Row(
+            modifier = Modifier.padding(horizontal = MaterialTheme.spacing.small, vertical = MaterialTheme.spacing.small),
+            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                HeaderLabel("Set", Modifier.width(92.dp))
-                HeaderLabel("Type", Modifier.weight(1f))
-                RpeInfoButton(compactText = true)
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                HeaderLabel("Reps", Modifier.weight(1f))
-                HeaderLabel("Gewicht", Modifier.weight(1f))
-                HeaderLabel("Rust", Modifier.weight(1f))
-                HeaderLabel("RPE", Modifier.weight(1f))
-            }
+            Spacer(modifier = Modifier.width(BuilderRowActionWidth))
+            HeaderLabel("Sets", Modifier.weight(1f))
+            HeaderLabel("Reps - Kg - Rest - RPE", textAlign = TextAlign.End)
+            Spacer(modifier = Modifier.width(BuilderRowActionWidth))
         }
     }
 }
 
 @Composable
-private fun HeaderLabel(text: String, modifier: Modifier = Modifier) {
+private fun HeaderLabel(
+    text: String,
+    modifier: Modifier = Modifier,
+    textAlign: TextAlign = TextAlign.Start,
+) {
     Text(
         text,
         modifier = modifier,
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         maxLines = 1,
+        softWrap = false,
         overflow = TextOverflow.Ellipsis,
+        textAlign = textAlign,
     )
 }
 
@@ -1818,108 +2027,64 @@ private fun RoutineSetRow(
     index: Int,
     set: RoutineSet,
     dragHandle: Modifier,
-    onUpdateSet: (RoutineSet) -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val invalidReps = set.targetReps < 0
-    val invalidWeight = set.targetWeightKg < 0.0
-    val invalidRest = set.restSeconds < 0
-    val invalidRpe = set.targetRpe !in 0.0..10.0
-    Column(
+    val detail = routineSetDetailText(set)
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f), MaterialTheme.shapes.medium)
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.50f), MaterialTheme.shapes.medium)
+            .clickable(onClick = onEdit)
+            .padding(horizontal = MaterialTheme.spacing.small, vertical = MaterialTheme.spacing.compact),
+        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(modifier = dragHandle.size(40.dp), onClick = {}) {
-                Icon(
-                    Icons.Rounded.DragHandle,
-                    contentDescription = "Set verplaatsen",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Surface(
-                color = MaterialTheme.colorScheme.surface,
-                shape = MaterialTheme.shapes.small,
-                tonalElevation = 1.dp,
-            ) {
-                Text(
-                    "#$index",
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-            SetTypeSelector(
-                selectedType = set.setType,
-                compact = true,
-                modifier = Modifier.weight(1f),
-                onSelectedTypeChange = { onUpdateSet(set.copy(setType = it)) },
-            )
-            IconButton(modifier = Modifier.size(40.dp), onClick = onDelete) {
-                Icon(
-                    Icons.Rounded.Delete,
-                    contentDescription = "Set verwijderen",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            CompactSetNumberField(
-                value = set.targetReps.takeIf { it > 0 }?.toString().orEmpty(),
-                label = "Reps",
-                suffix = "reps",
-                keyboardType = KeyboardType.Number,
-                modifier = Modifier.weight(1f),
-                isError = invalidReps,
-                onValueChange = { onUpdateSet(set.copy(targetReps = it.toIntOrNull() ?: 0)) },
-            )
-            CompactSetNumberField(
-                value = set.targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty(),
-                label = "Gewicht",
-                suffix = "kg",
-                keyboardType = KeyboardType.Decimal,
-                modifier = Modifier.weight(1f),
-                isError = invalidWeight,
-                onValueChange = { onUpdateSet(set.copy(targetWeightKg = it.replace(',', '.').toDoubleOrNull() ?: 0.0)) },
+        IconButton(modifier = dragHandle.size(BuilderRowActionWidth), onClick = {}) {
+            Icon(
+                Icons.Rounded.DragHandle,
+                contentDescription = "Set verplaatsen",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.Top,
+        Column(
+            modifier = Modifier.weight(1.2f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            CompactSetNumberField(
-                value = set.restSeconds.takeIf { it > 0 }?.toString().orEmpty(),
-                label = "Rust",
-                suffix = "sec",
-                keyboardType = KeyboardType.Number,
-                modifier = Modifier.weight(1f),
-                isError = invalidRest,
-                onValueChange = { onUpdateSet(set.copy(restSeconds = it.toIntOrNull() ?: 0)) },
+            Text(
+                "#$index - ${set.setType.label()}",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
             )
-            CompactSetNumberField(
-                value = set.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty(),
-                label = "RPE (zwaarte)",
-                suffix = null,
-                keyboardType = KeyboardType.Decimal,
-                modifier = Modifier.weight(1f),
-                isError = invalidRpe,
-                onValueChange = { onUpdateSet(set.copy(targetRpe = it.replace(',', '.').toDoubleOrNull() ?: 0.0)) },
+            Text(
+                detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        IconButton(modifier = Modifier.size(BuilderRowActionWidth), onClick = onDelete) {
+            Icon(
+                Icons.Rounded.Delete,
+                contentDescription = "Set verwijderen",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
 }
+
+private fun routineSetDetailText(set: RoutineSet): String = listOf(
+    set.targetReps.takeIf { it > 0 }?.let { "$it reps" } ?: "Reps -",
+    set.targetWeightKg.takeIf { it > 0.0 }?.let { "${formatWeight(it)} kg" } ?: "Kg -",
+    set.restSeconds.takeIf { it > 0 }?.let { "${it}s rest" } ?: "Rest -",
+    set.targetRpe.takeIf { it > 0.0 }?.let { "RPE ${formatWeight(it)}" } ?: "RPE -",
+).joinToString(" - ")
 
 @Composable
 private fun RpeInfoButton(
@@ -1955,6 +2120,203 @@ private fun RpeInfoButton(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun EditSetBottomSheet(
+    set: RoutineSet,
+    setNumber: Int,
+    onSave: (RoutineSet) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var selectedType by remember(set.id) { mutableStateOf(set.setType) }
+    var reps by remember(set.id) { mutableStateOf(set.targetReps.takeIf { it > 0 }?.toString().orEmpty()) }
+    var weight by remember(set.id) { mutableStateOf(set.targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
+    var rest by remember(set.id) { mutableStateOf(set.restSeconds.takeIf { it > 0 }?.toString().orEmpty()) }
+    var rpe by remember(set.id) { mutableStateOf(set.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.trainIqColors.card,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Set #$setNumber bewerken", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+                    Text("Pas alleen de geplande waarden aan.", color = MaterialTheme.trainIqColors.mutedText)
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Rounded.Close, contentDescription = "Sluiten", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Text("Type", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.mutedText)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SetType.entries.forEach { type ->
+                    AppChip(
+                        label = type.label(),
+                        selected = selectedType == type,
+                        onClick = { selectedType = type },
+                    )
+                }
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                SheetNumberField(
+                    value = reps,
+                    label = "Reps",
+                    keyboardType = KeyboardType.Number,
+                    step = 1.0,
+                    modifier = Modifier.weight(1f),
+                    onValueChange = { reps = it },
+                )
+                SheetNumberField(
+                    value = weight,
+                    label = "Gewicht",
+                    suffix = "kg",
+                    keyboardType = KeyboardType.Decimal,
+                    step = 2.5,
+                    modifier = Modifier.weight(1f),
+                    onValueChange = { weight = it },
+                )
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                SheetNumberField(
+                    value = rest,
+                    label = "Rust",
+                    suffix = "s",
+                    keyboardType = KeyboardType.Number,
+                    step = 15.0,
+                    modifier = Modifier.weight(1f),
+                    onValueChange = { rest = it },
+                )
+                SheetNumberField(
+                    value = rpe,
+                    label = "RPE",
+                    keyboardType = KeyboardType.Decimal,
+                    step = 0.5,
+                    modifier = Modifier.weight(1f),
+                    onValueChange = { rpe = it },
+                )
+            }
+            PrimaryActionButton(
+                onClick = {
+                    onSave(
+                        set.copy(
+                            setType = selectedType,
+                            targetReps = reps.toIntOrNull() ?: 0,
+                            targetWeightKg = weight.normalizedDecimal().toDoubleOrNull() ?: 0.0,
+                            restSeconds = rest.toIntOrNull() ?: 0,
+                            targetRpe = rpe.normalizedDecimal().toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 0.0,
+                        ),
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Set opslaan")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun SheetNumberField(
+    value: String,
+    label: String,
+    keyboardType: KeyboardType,
+    step: Double,
+    modifier: Modifier = Modifier,
+    suffix: String? = null,
+    onValueChange: (String) -> Unit,
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = { Text(label) },
+            suffix = suffix?.let { { Text(it) } },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
+            modifier = Modifier
+                .fillMaxWidth()
+                .bringIntoViewOnFocus(),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+            SecondaryActionButton(
+                onClick = { onValueChange(adjustNumberText(value, -step)) },
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(vertical = 8.dp),
+            ) {
+                Icon(Icons.Rounded.Remove, contentDescription = "$label verlagen")
+            }
+            SecondaryActionButton(
+                onClick = { onValueChange(adjustNumberText(value, step)) },
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(vertical = 8.dp),
+            ) {
+                Icon(Icons.Rounded.Add, contentDescription = "$label verhogen")
+            }
+        }
+    }
+}
+
+@Composable
+private fun CommittingSetNumberField(
+    fieldKey: Any,
+    value: String,
+    label: String,
+    suffix: String?,
+    keyboardType: KeyboardType,
+    modifier: Modifier = Modifier,
+    isError: Boolean = false,
+    onValueCommit: (String) -> Unit,
+) {
+    val focusManager = LocalFocusManager.current
+    var text by remember(fieldKey) { mutableStateOf(value) }
+    var isFocused by remember(fieldKey) { mutableStateOf(false) }
+    val commit = {
+        val committed = if (keyboardType == KeyboardType.Decimal) text.normalizedDecimal() else text
+        if (committed != text) text = committed
+        onValueCommit(committed)
+    }
+
+    LaunchedEffect(value) {
+        if (!isFocused && value != text) {
+            text = value
+        }
+    }
+
+    CompactSetNumberField(
+        value = text,
+        label = label,
+        suffix = suffix,
+        keyboardType = keyboardType,
+        modifier = modifier.onFocusChanged { focusState ->
+            if (isFocused && !focusState.isFocused) {
+                commit()
+            }
+            isFocused = focusState.isFocused
+        },
+        isError = isError,
+        imeAction = ImeAction.Done,
+        keyboardActions = KeyboardActions(
+            onDone = {
+                commit()
+                focusManager.clearFocus(force = true)
+            },
+        ),
+        onValueChange = { text = it },
+    )
+}
+
 @Composable
 private fun CompactSetNumberField(
     value: String,
@@ -1963,24 +2325,29 @@ private fun CompactSetNumberField(
     keyboardType: KeyboardType,
     modifier: Modifier = Modifier,
     isError: Boolean = false,
+    imeAction: ImeAction = ImeAction.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
     onValueChange: (String) -> Unit,
 ) {
     OutlinedTextField(
         value = value,
-        onValueChange = { onValueChange(it.replace(',', '.')) },
+        onValueChange = onValueChange,
         label = { Text(label) },
         placeholder = { Text("0") },
         suffix = suffix?.let { { Text(it, style = MaterialTheme.typography.labelSmall) } },
         isError = isError,
         singleLine = true,
         textStyle = MaterialTheme.typography.bodyMedium,
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
+        keyboardActions = keyboardActions,
         colors = OutlinedTextFieldDefaults.colors(
             unfocusedContainerColor = MaterialTheme.colorScheme.surface,
             focusedContainerColor = MaterialTheme.colorScheme.surface,
             unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
         ),
-        modifier = modifier.defaultMinSize(minHeight = 58.dp),
+        modifier = modifier
+            .defaultMinSize(minHeight = 58.dp)
+            .bringIntoViewOnFocus(),
     )
 }
 
@@ -2005,6 +2372,8 @@ private fun ExercisePrescriptionChips(plan: WorkoutExercisePlan) {
 @Composable
 private fun ExercisePickerSheet(
     exercises: List<Exercise>,
+    title: String = "Oefening toevoegen",
+    showDefaults: Boolean = true,
     targetSets: String,
     repRange: String,
     restSeconds: String,
@@ -2039,62 +2408,31 @@ private fun ExercisePickerSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .navigationBarsPadding()
+                .imePadding()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Oefening toevoegen", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
                 label = { Text("Oefening zoeken") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                shape = MaterialTheme.shapes.medium,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Defaults voor deze oefening", style = MaterialTheme.typography.labelLarge)
-                            Text(
-                                "Worden toegepast wanneer je een oefening kiest.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        RpeInfoButton(compactText = true)
-                    }
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        CompactSetNumberField(targetSets, "Sets", null, KeyboardType.Number, Modifier.weight(1f), onValueChange = onTargetSetsChange)
-                        CompactSetNumberField(repRange, "Reps", null, KeyboardType.Text, Modifier.weight(1f), onValueChange = onRepRangeChange)
-                        CompactSetNumberField(restSeconds, "Rust", "sec", KeyboardType.Number, Modifier.weight(1f), onValueChange = onRestSecondsChange)
-                        CompactSetNumberField(targetWeightKg, "Gewicht", "kg", KeyboardType.Decimal, Modifier.weight(1f), onValueChange = { onTargetWeightChange(it.replace(',', '.')) })
-                        CompactSetNumberField(targetRpe, "RPE", null, KeyboardType.Decimal, Modifier.weight(1f), onValueChange = { onTargetRpeChange(it.replace(',', '.')) })
-                    }
-                }
-            }
-            LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(360.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(filteredExercises, key = { it.id }) { exercise ->
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    .bringIntoViewOnFocus(),
+            )
+            if (showDefaults) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -2102,17 +2440,57 @@ private fun ExercisePickerSheet(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(exercise.name, fontWeight = FontWeight.SemiBold)
-                                Text("${exercise.muscleGroup} - ${exercise.equipment}", style = MaterialTheme.typography.bodySmall)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Defaults voor deze oefening", style = MaterialTheme.typography.labelLarge)
+                                Text(
+                                    "Worden toegepast wanneer je een oefening kiest.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
-                            TextButton(onClick = { onSelect(exercise) }) { Text("Toevoegen") }
+                            RpeInfoButton(compactText = true)
+                        }
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            CompactSetNumberField(targetSets, "Sets", null, KeyboardType.Number, Modifier.weight(1f), onValueChange = onTargetSetsChange)
+                            CompactSetNumberField(repRange, "Reps", null, KeyboardType.Text, Modifier.weight(1f), onValueChange = onRepRangeChange)
+                            CompactSetNumberField(restSeconds, "Rust", "sec", KeyboardType.Number, Modifier.weight(1f), onValueChange = onRestSecondsChange)
+                            CompactSetNumberField(targetWeightKg, "Gewicht", "kg", KeyboardType.Decimal, Modifier.weight(1f), onValueChange = onTargetWeightChange)
+                            CompactSetNumberField(targetRpe, "RPE", null, KeyboardType.Decimal, Modifier.weight(1f), onValueChange = onTargetRpeChange)
                         }
                     }
                 }
-                item {
-                    TextButton(onClick = onCustomExercise, modifier = Modifier.fillMaxWidth()) {
-                        Text("Voeg eigen oefening toe")
+            }
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(if (showDefaults) 360.dp else 440.dp),
+                contentPadding = PaddingValues(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(filteredExercises, key = { it.id }) { exercise ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(exercise.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("${exercise.muscleGroup} - ${exercise.equipment}", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            TextButton(onClick = { onSelect(exercise) }) { Text(if (showDefaults) "Toevoegen" else "Vervangen") }
+                        }
+                    }
+                }
+                if (showDefaults) {
+                    item {
+                        TextButton(onClick = onCustomExercise, modifier = Modifier.fillMaxWidth()) {
+                            Text("Voeg eigen oefening toe")
+                        }
                     }
                 }
             }
@@ -2145,9 +2523,9 @@ private fun CustomExerciseDialog(
         title = { Text("Voeg eigen oefening toe") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(exerciseName, { exerciseName = it }, label = { Text("Oefening") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(muscleGroup, { muscleGroup = it }, label = { Text("Spiergroep") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(equipment, { equipment = it }, label = { Text("Equipment") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(exerciseName, { exerciseName = it }, label = { Text("Oefening") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                OutlinedTextField(muscleGroup, { muscleGroup = it }, label = { Text("Spiergroep") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                OutlinedTextField(equipment, { equipment = it }, label = { Text("Equipment") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -2164,8 +2542,8 @@ private fun CustomExerciseDialog(
                     CompactSetNumberField(targetSets, "Sets", null, KeyboardType.Number, Modifier.weight(1f), onValueChange = onTargetSetsChange)
                     CompactSetNumberField(repRange, "Reps", null, KeyboardType.Text, Modifier.weight(1f), onValueChange = onRepRangeChange)
                     CompactSetNumberField(restSeconds, "Rust", "sec", KeyboardType.Number, Modifier.weight(1f), onValueChange = onRestSecondsChange)
-                    CompactSetNumberField(targetWeightKg, "Gewicht", "kg", KeyboardType.Decimal, Modifier.weight(1f), onValueChange = { onTargetWeightChange(it.replace(',', '.')) })
-                    CompactSetNumberField(targetRpe, "RPE", null, KeyboardType.Decimal, Modifier.weight(1f), onValueChange = { onTargetRpeChange(it.replace(',', '.')) })
+                    CompactSetNumberField(targetWeightKg, "Gewicht", "kg", KeyboardType.Decimal, Modifier.weight(1f), onValueChange = onTargetWeightChange)
+                    CompactSetNumberField(targetRpe, "RPE", null, KeyboardType.Decimal, Modifier.weight(1f), onValueChange = onTargetRpeChange)
                 }
             }
         },
@@ -2200,13 +2578,13 @@ private fun ExercisePlanEditDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(targetSets, { targetSets = it }, label = { Text("Sets") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
-                    OutlinedTextField(repRange, { repRange = it }, label = { Text("Reps") }, modifier = Modifier.weight(1f))
+                    OutlinedTextField(targetSets, { targetSets = it }, label = { Text("Sets") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).bringIntoViewOnFocus())
+                    OutlinedTextField(repRange, { repRange = it }, label = { Text("Reps") }, modifier = Modifier.weight(1f).bringIntoViewOnFocus())
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(restSeconds, { restSeconds = it }, label = { Text("Rest s") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
-                    OutlinedTextField(targetWeightKg, { targetWeightKg = it.replace(',', '.') }, label = { Text("Kg") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
-                    OutlinedTextField(targetRpe, { targetRpe = it.replace(',', '.') }, label = { Text("RPE") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
+                    OutlinedTextField(restSeconds, { restSeconds = it }, label = { Text("Rest s") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).bringIntoViewOnFocus())
+                    OutlinedTextField(targetWeightKg, { targetWeightKg = it }, label = { Text("Kg") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f).bringIntoViewOnFocus())
+                    OutlinedTextField(targetRpe, { targetRpe = it }, label = { Text("RPE") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f).bringIntoViewOnFocus())
                 }
                 SetTypeSelector(
                     selectedType = setType,
@@ -2242,6 +2620,7 @@ private fun ExerciseHistoryScreen(
     onBack: () -> Unit,
 ) {
     Scaffold(
+        modifier = Modifier.clearFocusOnTapOutside(),
         topBar = {
             TopAppBar(
                 title = {
@@ -2573,17 +2952,42 @@ fun ActiveWorkoutRoute(
     viewModel: WorkoutViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.activeWorkoutUiState.collectAsStateWithLifecycle()
+    val workoutFeedbackPreferences by viewModel.workoutFeedbackPreferences.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val soundPlayer = remember { RestTimerSoundPlayer() }
+    val currentFeedbackPreferences by rememberUpdatedState(workoutFeedbackPreferences)
 
     LaunchedEffect(dayId) { viewModel.loadWorkout(dayId) }
+    LaunchedEffect(Unit) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is WorkoutUiEvent.RestTimerFinished -> {
+                    if (currentFeedbackPreferences.restTimerSoundEnabled) {
+                        soundPlayer.play()
+                    }
+                    if (currentFeedbackPreferences.workoutHapticsEnabled) {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    }
+                    snackbarHostState.showSnackbar(event.message)
+                }
+            }
+        }
+    }
     DisposableEffect(context) {
         val window = (context as? Activity)?.window
         window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
+    DisposableEffect(soundPlayer) {
+        onDispose { soundPlayer.release() }
+    }
 
     ActiveWorkoutScreen(
         uiState = uiState,
+        snackbarHostState = snackbarHostState,
+        workoutHapticsEnabled = workoutFeedbackPreferences.workoutHapticsEnabled,
         onBack = onBack,
         onOpenExerciseHistory = onOpenExerciseHistory,
         onDraftChange = viewModel::updateSetDraft,
@@ -2606,6 +3010,8 @@ fun ActiveWorkoutRoute(
 @Composable
 fun ActiveWorkoutScreen(
     uiState: ActiveWorkoutUiState,
+    snackbarHostState: SnackbarHostState,
+    workoutHapticsEnabled: Boolean,
     onBack: () -> Unit,
     onOpenExerciseHistory: (Long) -> Unit,
     onDraftChange: (Long, SetInputDraft) -> Unit,
@@ -2623,31 +3029,24 @@ fun ActiveWorkoutScreen(
     onDiscard: () -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
-    var previousRestTimerSeconds by remember { mutableStateOf(uiState.restTimerSeconds) }
     var showFinishConfirm by remember { mutableStateOf(false) }
     var showDiscardConfirm by remember { mutableStateOf(false) }
     val currentOnDismissMessage by rememberUpdatedState(onDismissMessage)
 
-    LaunchedEffect(uiState.restTimerSeconds) {
-        if (uiState.restTimerSeconds > 0 && uiState.restTimerSeconds % 10 == 0 && uiState.restTimerSeconds != previousRestTimerSeconds) {
-            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        }
-        if (previousRestTimerSeconds > 0 && uiState.restTimerSeconds == 0) {
-            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-        }
-        previousRestTimerSeconds = uiState.restTimerSeconds
-    }
-
     Scaffold(
+        modifier = Modifier.clearFocusOnTapOutside(),
+        containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            Column {
-                TopAppBar(
-                    title = { Text(uiState.workout?.name ?: "Workout") },
-                    navigationIcon = { TextButton(onClick = onBack) { Text("Pause") } },
-                    actions = {
-                        TextButton(onClick = { showDiscardConfirm = true }) { Text("Discard") }
-                    },
+            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                ScreenHeader(
+                    title = "Actieve training",
+                    subtitle = "${uiState.workout?.name ?: "Workout"} · ${formatTimer(uiState.elapsedSeconds.toInt())}",
                 )
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SecondaryActionButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Pauze") }
+                    SecondaryActionButton(onClick = { showDiscardConfirm = true }, modifier = Modifier.weight(1f), accent = MaterialTheme.colorScheme.error) { Text("Weggooien") }
+                }
                 ActiveWorkoutStickyStatus(uiState)
             }
         },
@@ -2661,8 +3060,18 @@ fun ActiveWorkoutScreen(
         },
     ) { padding ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(16.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .imeNestedScroll()
+                    .padding(padding)
+                    .navigationBarsPadding()
+                    .imePadding(),
+            contentPadding = PaddingValues(
+                start = MaterialTheme.spacing.medium,
+                top = MaterialTheme.spacing.medium,
+                end = MaterialTheme.spacing.medium,
+                bottom = ActiveWorkoutBottomContentPadding,
+            ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             uiState.message?.let { message ->
@@ -2708,7 +3117,9 @@ fun ActiveWorkoutScreen(
                                 plan = plan,
                                 uiState = uiState,
                                 isResting = uiState.restTimerSeconds > 0,
-                                hapticOnSuccess = { haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
+                                hapticOnSuccess = {
+                                    if (workoutHapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                },
                                 onOpenHistory = { onOpenExerciseHistory(plan.exercise.id) },
                                 onDraftChange = onDraftChange,
                                 onSetTypeChange = onSetTypeChange,
@@ -2725,7 +3136,9 @@ fun ActiveWorkoutScreen(
                         plan = group.first(),
                         uiState = uiState,
                         isResting = uiState.restTimerSeconds > 0,
-                        hapticOnSuccess = { haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
+                        hapticOnSuccess = {
+                            if (workoutHapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        },
                         onOpenHistory = { onOpenExerciseHistory(group.first().exercise.id) },
                         onDraftChange = onDraftChange,
                         onSetTypeChange = onSetTypeChange,
@@ -2795,41 +3208,52 @@ private fun ActiveWorkoutStickyStatus(uiState: ActiveWorkoutUiState) {
     } else {
         0f
     }
-    Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                StatusMetric("Tijd", formatTimer(uiState.elapsedSeconds.toInt()))
-                StatusMetric("Sets", "${uiState.completedSets}/${uiState.targetSets}")
-                StatusMetric("Volume", "${uiState.totalVolume.toInt()} kg")
-                StatusMetric("Rust", if (uiState.restTimerSeconds > 0) formatTimer(uiState.restTimerSeconds) else "Klaar")
+    AppCard(modifier = Modifier.padding(top = 12.dp), accent = MaterialTheme.colorScheme.primary) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                StatusMetric("Tijd", formatTimer(uiState.elapsedSeconds.toInt()), Modifier.weight(1f))
+                StatusMetric("Sets", "${uiState.completedSets}/${uiState.targetSets}", Modifier.weight(1f))
+                StatusMetric("Volume", "${uiState.totalVolume.toInt()} kg", Modifier.weight(1f))
+                StatusMetric("Rust", if (uiState.restTimerSeconds > 0) formatTimer(uiState.restTimerSeconds) else "Klaar", Modifier.weight(1f))
             }
-            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+            AppLinearProgress(progress = progress)
         }
     }
 }
 
 @Composable
 private fun ActiveWorkoutBottomBar(uiState: ActiveWorkoutUiState, onFinishClick: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 8.dp) {
+    Surface(color = MaterialTheme.colorScheme.background, tonalElevation = 0.dp) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     if (uiState.restTimerSeconds > 0) "Rust ${formatTimer(uiState.restTimerSeconds)}" else "Klaar voor volgende set",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     "${uiState.completedSets} sets gelogd",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            Button(onClick = onFinishClick, enabled = uiState.workout != null) {
-                Text("Finish")
+            PrimaryActionButton(onClick = onFinishClick, enabled = uiState.workout != null, modifier = Modifier.weight(1f)) {
+                Text("Training afronden")
             }
         }
     }
@@ -2892,25 +3316,52 @@ private fun RestTimerCard(
     onSkip: () -> Unit,
     onRestart: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Rest timer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(if (restTimerSeconds <= 15) "Bijna klaar" else "Herstel", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-            }
-            Text(formatTimer(restTimerSeconds), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
-            LinearProgressIndicator(
-                progress = { if (totalSeconds > 0) (restTimerSeconds / totalSeconds.toFloat()).coerceIn(0f, 1f) else 0f },
+    AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber, elevated = true) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
                 modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Rusttimer",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    if (restTimerSeconds <= 15) "Bijna klaar" else "Herstel",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.trainIqColors.amber,
+                    maxLines = 1,
+                )
+            }
+            Text(
+                formatTimer(restTimerSeconds),
+                modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.trainIqColors.amber,
+                textAlign = TextAlign.Center,
             )
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                IconButton(onClick = { onAdjust(-30) }) { Icon(Icons.Rounded.Remove, contentDescription = "Min 30 seconds") }
-                IconButton(onClick = { onAdjust(30) }) { Icon(Icons.Rounded.Add, contentDescription = "Plus 30 seconds") }
-                IconButton(onClick = onRestart) { Icon(Icons.Rounded.Replay, contentDescription = "Restart timer") }
+            AppLinearProgress(
+                progress = if (totalSeconds > 0) (restTimerSeconds / totalSeconds.toFloat()).coerceIn(0f, 1f) else 0f,
+                accent = MaterialTheme.trainIqColors.amber,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = { onAdjust(-30) }) { Icon(Icons.Rounded.Remove, contentDescription = "30 seconden minder") }
+                IconButton(onClick = { onAdjust(30) }) { Icon(Icons.Rounded.Add, contentDescription = "30 seconden meer") }
+                IconButton(onClick = onRestart) { Icon(Icons.Rounded.Replay, contentDescription = "Timer opnieuw starten") }
                 Spacer(modifier = Modifier.weight(1f))
                 TextButton(onClick = onSkip) {
                     Icon(Icons.Rounded.SkipNext, contentDescription = null)
-                    Text("Skip")
+                    Text("Overslaan")
                 }
             }
         }
@@ -2944,9 +3395,16 @@ private fun ActiveExerciseCard(
             if (weight > 0.0 && reps > 0) StrengthCalculator.estimateOneRepMax(weight, reps) else null
         }
     }
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+    AppCard(
+        modifier = Modifier.fillMaxWidth(),
+        accent = if (loggedSets.size >= plan.plannedSetCount()) MaterialTheme.trainIqColors.mint else MaterialTheme.colorScheme.primary,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -2955,15 +3413,19 @@ private fun ActiveExerciseCard(
                 ) {
                     Text(
                         plan.exercise.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 2,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        softWrap = false,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         "${loggedSets.size}/${plan.plannedSetCount()} sets - ${plan.repRange} reps - ${plan.restSeconds}s rust",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.trainIqColors.mutedText,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 IconButton(onClick = onToggleCollapsed) {
@@ -2974,6 +3436,7 @@ private fun ActiveExerciseCard(
                 }
             }
             suggestion?.let { CompactPreviousPerformance(it) } ?: PlannedPerformanceFallback(plan)
+            ExerciseSummaryMetaRow(plan)
             val visibleSetRows = maxOf(plan.plannedSetCount(), loggedSets.size + 1)
             val plannedSets = plan.sets.sortedWith(compareBy<RoutineSet> { it.orderIndex }.thenBy { it.id })
             repeat(visibleSetRows) { index ->
@@ -3009,7 +3472,7 @@ private fun ActiveExerciseCard(
                         "Vul je volgende set in."
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.trainIqColors.mutedText,
                 )
             }
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -3030,9 +3493,10 @@ private fun ActiveExerciseCard(
                     )
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    IconButton(
+                    SecondaryActionButton(
                         onClick = onCopyLastSet,
                         enabled = loggedSets.isNotEmpty(),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                     ) {
                         Icon(Icons.Rounded.ContentCopy, contentDescription = "Copy vorige set")
                     }
@@ -3042,8 +3506,8 @@ private fun ActiveExerciseCard(
                     ) {
                         Text("Zelfde opnieuw")
                     }
-                    Button(onClick = onLogSet, modifier = Modifier.weight(1f)) {
-                        Text(if (loggedSets.size >= plan.plannedSetCount()) "Add set" else "Log set")
+                    PrimaryActionButton(onClick = onLogSet, modifier = Modifier.weight(1f)) {
+                        Text(if (loggedSets.size >= plan.plannedSetCount()) "Extra set" else "Set loggen")
                     }
                 }
             }
@@ -3153,14 +3617,18 @@ private fun QuickNumberField(
     modifier: Modifier = Modifier,
     onValueChange: (String) -> Unit,
 ) {
+    val focusManager = LocalFocusManager.current
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         OutlinedTextField(
             value = value,
-            onValueChange = { onValueChange(it.replace(',', '.')) },
+            onValueChange = onValueChange,
             label = { Text(if (suffix.isBlank()) label else "$label ($suffix)") },
             placeholder = { Text(fallback.orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)) },
-            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-            modifier = Modifier.defaultMinSize(minHeight = 64.dp),
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(force = true) }),
+            modifier = Modifier
+                .defaultMinSize(minHeight = 64.dp)
+                .bringIntoViewOnFocus(),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
             IconButton(onClick = { onValueChange(adjustNumberText(value.ifBlank { fallback.orEmpty() }, -step)) }) {
@@ -3208,45 +3676,68 @@ private fun SetRow(
             .fillMaxWidth()
             .background(rpeColor, MaterialTheme.shapes.medium)
             .padding(horizontal = 12.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (loggedSet != null && loggedSet.weight > 0.0 && loggedSet.reps > 0) {
-                Icon(Icons.Default.Check, contentDescription = "Completed set")
+        Row(
+            modifier = Modifier.width(ActiveSetLeadingWidth),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(modifier = Modifier.size(20.dp), contentAlignment = Alignment.Center) {
+                if (loggedSet != null && loggedSet.weight > 0.0 && loggedSet.reps > 0) {
+                    Icon(Icons.Default.Check, contentDescription = "Completed set", modifier = Modifier.size(18.dp))
+                }
             }
-            Text("Set $index")
-            (loggedSet?.setType ?: plannedSet?.setType)?.let { type ->
-                FilterChip(
-                    selected = true,
-                    onClick = onCycleType,
-                    label = { Text(type.label()) },
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    "Set $index",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
+                (loggedSet?.setType ?: plannedSet?.setType)?.let { type ->
+                    Text(
+                        type.label(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.clickable(enabled = loggedSet != null, onClick = onCycleType),
+                    )
+                }
             }
         }
         Text(
             loggedSet?.let {
                 buildString {
                     append("${formatWeight(it.weight)} kg x ${it.reps}")
-                    if (it.rpe > 0.0) append(" | RPE ${formatWeight(it.rpe)}")
-                    if (it.repsInReserve != null) append(" | RIR ${it.repsInReserve}")
+                    if (it.rpe > 0.0) append(" - RPE ${formatWeight(it.rpe)}")
+                    if (it.repsInReserve != null) append(" - RIR ${it.repsInReserve}")
                 }
             } ?: plannedSet?.let {
                 buildString {
                     append(if (it.targetReps > 0) "${it.targetReps} reps" else repRange)
-                    if (it.targetWeightKg > 0.0) append(" | ${formatWeight(it.targetWeightKg)} kg")
-                    if (it.restSeconds > 0) append(" | ${it.restSeconds}s")
-                    if (it.targetRpe > 0.0) append(" | RPE ${formatWeight(it.targetRpe)}")
+                    if (it.targetWeightKg > 0.0) append(" - ${formatWeight(it.targetWeightKg)} kg")
+                    if (it.restSeconds > 0) append(" - ${it.restSeconds}s")
+                    if (it.targetRpe > 0.0) append(" - RPE ${formatWeight(it.targetRpe)}")
                 }
             } ?: repRange,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
-        loggedSet?.let {
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                IconButton(onClick = onEdit) {
-                    Icon(Icons.Rounded.Edit, contentDescription = "Edit set")
-                }
-                IconButton(onClick = { showDeleteConfirm = true }) {
-                    Icon(Icons.Rounded.Delete, contentDescription = "Delete set")
+        Box(modifier = Modifier.width(ActiveSetActionWidth), contentAlignment = Alignment.CenterEnd) {
+            if (loggedSet != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    IconButton(onClick = onEdit) {
+                        Icon(Icons.Rounded.Edit, contentDescription = "Edit set")
+                    }
+                    IconButton(onClick = { showDeleteConfirm = true }) {
+                        Icon(Icons.Rounded.Delete, contentDescription = "Delete set")
+                    }
                 }
             }
         }
@@ -3270,18 +3761,24 @@ private fun CompactPreviousPerformance(suggestion: ProgressionSuggestion) {
     val previous = suggestion.toLastSessionDraft()
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             previous?.let { "Vorige: ${it.weight} kg x ${it.reps}" } ?: "Nog geen vorige prestatie",
+            modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         Text(
             "Doel: ${formatWeight(suggestion.suggestedWeightKg)} kg x ${displayRepTarget(suggestion.suggestedReps)}",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.primary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.End,
         )
     }
 }
@@ -3359,10 +3856,16 @@ private fun WorkoutSessionStatusCard(uiState: ActiveWorkoutUiState) {
 }
 
 @Composable
-private fun StatusMetric(label: String, value: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+private fun StatusMetric(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(
+            value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -3410,6 +3913,37 @@ private fun previousWeight(suggestion: ProgressionSuggestion): Double = when (su
 }
 
 private fun displayRepTarget(repRange: String): String = repRange.substringAfter('-', repRange)
+
+private fun routineExerciseCount(routine: WorkoutRoutine): Int = routine.days.sumOf { it.exercises.size }
+
+private fun routineEstimatedMinutes(routine: WorkoutRoutine): Int =
+    routine.days.firstOrNull()?.let(::dayEstimatedMinutes) ?: 0
+
+private fun routineFocusLabel(routine: WorkoutRoutine): String =
+    routine.days.flatMap { it.exercises }.focusLabel()
+
+private fun dayEstimatedMinutes(day: WorkoutDay): Int {
+    val seconds = day.exercises.sumOf { plan ->
+        val setCount = plan.plannedSetCount().coerceAtLeast(1)
+        (setCount * 75) + (setCount * plan.restSeconds.coerceAtLeast(45))
+    }
+    return (seconds / 60).coerceAtLeast(if (day.exercises.isEmpty()) 0 else 10)
+}
+
+private fun dayFocusLabel(day: WorkoutDay): String = day.exercises.focusLabel()
+
+private fun List<WorkoutExercisePlan>.focusLabel(): String {
+    val groups = map { it.exercise.muscleGroup.trim() }
+        .filter { it.isNotBlank() }
+        .groupingBy { it }
+        .eachCount()
+        .entries
+        .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+        .map { it.key }
+    return groups.take(2).joinToString(" + ").ifBlank { "Full body" }
+}
+
+private fun String.normalizedDecimal(): String = trim().replace(',', '.')
 
 private fun toggleSupersetGroup(
     plans: List<WorkoutExercisePlan>,
@@ -3505,6 +4039,12 @@ private fun ActiveWorkoutSetDraft.toUiDraft() = SetInputDraft(
     rpe = rpe,
     setType = setType,
 )
+
+private fun exerciseSummaryMeta(plan: WorkoutExercisePlan): String {
+    val rpe = plan.targetRpe.takeIf { it > 0.0 }?.let { "RPE ${formatWeight(it)}" } ?: "RPE -"
+    val superset = plan.supersetGroupId?.let { " · Superset $it" }.orEmpty()
+    return "${plan.plannedSetCount()} sets · ${plan.repRange} reps · ${plan.restSeconds}s rest · $rpe$superset"
+}
 
 private fun WorkoutExercisePlan.plannedSetCount(): Int = sets.size.takeIf { it > 0 } ?: targetSets
 

@@ -21,6 +21,11 @@ data class AiPreferences(
     val apiKey: String,
 )
 
+data class WorkoutFeedbackPreferences(
+    val restTimerSoundEnabled: Boolean = true,
+    val workoutHapticsEnabled: Boolean = true,
+)
+
 data class HealthConnectSyncPreferences(
     val changesToken: String,
     val cacheStateJson: String,
@@ -35,6 +40,8 @@ class UserPreferencesRepository @Inject constructor(
     private val themeModeKey = stringPreferencesKey("theme_mode")
     private val aiEnabledKey = booleanPreferencesKey("ai_enabled")
     private val geminiApiKey = stringPreferencesKey("gemini_api_key")
+    private val restTimerSoundEnabledKey = booleanPreferencesKey("rest_timer_sound_enabled")
+    private val workoutHapticsEnabledKey = booleanPreferencesKey("workout_haptics_enabled")
     private val healthChangesTokenKey = stringPreferencesKey("health_connect_changes_token")
     private val healthCacheStateKey = stringPreferencesKey("health_connect_cache_state")
     private val healthLastSyncedAtKey = stringPreferencesKey("health_connect_last_synced_at")
@@ -47,6 +54,12 @@ class UserPreferencesRepository @Inject constructor(
         AiPreferences(
             enabled = preferences[aiEnabledKey] ?: false,
             apiKey = preferences[geminiApiKey].orEmpty(),
+        )
+    }
+    val workoutFeedbackPreferences: Flow<WorkoutFeedbackPreferences> = context.dataStore.data.map { preferences ->
+        WorkoutFeedbackPreferences(
+            restTimerSoundEnabled = preferences[restTimerSoundEnabledKey] ?: true,
+            workoutHapticsEnabled = preferences[workoutHapticsEnabledKey] ?: true,
         )
     }
 
@@ -68,6 +81,14 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun clearGeminiApiKey() {
         context.dataStore.edit { preferences -> preferences.remove(geminiApiKey) }
+    }
+
+    suspend fun setRestTimerSoundEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[restTimerSoundEnabledKey] = enabled }
+    }
+
+    suspend fun setWorkoutHapticsEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[workoutHapticsEnabledKey] = enabled }
     }
 
     suspend fun getHealthConnectSyncPreferences(): HealthConnectSyncPreferences {

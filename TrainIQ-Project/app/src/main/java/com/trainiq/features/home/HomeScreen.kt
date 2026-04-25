@@ -57,6 +57,11 @@ import com.trainiq.core.theme.spacing
 import com.trainiq.core.ui.PermissionManagerCard
 import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.ShimmerCardPlaceholder
+import com.trainiq.core.ui.AppCard
+import com.trainiq.core.ui.AppChip
+import com.trainiq.core.ui.PrimaryActionButton
+import com.trainiq.core.ui.SecondaryActionButton
+import com.trainiq.core.theme.trainIqColors
 import com.trainiq.core.util.EnergyBalanceCard
 import com.trainiq.core.util.MacroBreakdownCard
 import com.trainiq.core.util.MetricCard
@@ -203,7 +208,7 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                 ) {
                     item(span = { GridItemSpan(2) }) {
-                        ScreenHeader(title = "TrainIQ", actionIcon = Icons.Default.Settings, actionContentDescription = "Open settings", onActionClick = onOpenSettings)
+                        ScreenHeader(title = "TrainIQ", subtitle = "Vandaag in een slimme cockpit", actionIcon = Icons.Default.Settings, actionContentDescription = "Open settings", onActionClick = onOpenSettings)
                     }
                     items(4) { ShimmerCardPlaceholder(lineCount = 4, modifier = Modifier.height(170.dp)) }
                 }
@@ -235,7 +240,7 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                 ) {
                     item(span = { GridItemSpan(2) }) {
-                        ScreenHeader(title = "TrainIQ", actionIcon = Icons.Default.Settings, actionContentDescription = "Open settings", onActionClick = onOpenSettings)
+                        ScreenHeader(title = "TrainIQ", subtitle = "Vandaag in een slimme cockpit", actionIcon = Icons.Default.Settings, actionContentDescription = "Open settings", onActionClick = onOpenSettings)
                     }
                     if (dashboard.profile == null) {
                         item(span = { GridItemSpan(2) }) {
@@ -243,22 +248,22 @@ fun HomeScreen(
                         }
                     }
                     item(span = { GridItemSpan(2) }) {
-                        EnergyBalanceCard(
-                            energyBalance = dashboard.energyBalance,
-                            calorieTarget = dashboard.calorieTarget,
-                            modifier = Modifier.height(280.dp),
-                        )
+                            EnergyBalanceCard(
+                                energyBalance = dashboard.energyBalance,
+                                calorieTarget = dashboard.calorieTarget,
+                                modifier = Modifier,
+                            )
                     }
                     item(span = { GridItemSpan(2) }) {
-                        MacroBreakdownCard(
+                            MacroBreakdownCard(
                             protein = dashboard.proteinProgress,
                             proteinTarget = dashboard.proteinTarget,
                             carbs = dashboard.carbsProgress,
                             carbsTarget = dashboard.carbsTarget,
                             fat = dashboard.fatProgress,
                             fatTarget = dashboard.fatTarget,
-                            modifier = Modifier.height(220.dp),
-                        )
+                                modifier = Modifier,
+                            )
                     }
                     item {
                         MetricCard(
@@ -339,14 +344,7 @@ fun HomeScreen(
 
 @Composable
 private fun DiscoveryCard(onOpenCoach: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.extraLarge),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.35f)),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(32.dp),
-    ) {
+    AppCard(accent = MaterialTheme.colorScheme.tertiary) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -357,21 +355,16 @@ private fun DiscoveryCard(onOpenCoach: () -> Unit) {
                             MaterialTheme.colorScheme.tertiaryContainer,
                         ),
                     ),
-                )
-                .padding(MaterialTheme.spacing.large),
+                ),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
-            Text("Discovery mode", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text("Discovery mode", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
             Text(
                 "Welcome to your Invisible Coach. Add your profile once, and TrainIQ will start shaping recovery, nutrition, and training guidance around you.",
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.trainIqColors.mutedText,
             )
-            Button(
-                onClick = onOpenCoach,
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-            ) {
-                Text("Begin setup")
-            }
+            PrimaryActionButton(onClick = onOpenCoach) { Text("Begin setup") }
         }
     }
 }
@@ -382,23 +375,26 @@ private fun NextWorkoutCard(
     onOpenTrain: () -> Unit,
     onStartWorkout: (Long) -> Unit,
 ) {
-    ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(32.dp)) {
+    AppCard(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(MaterialTheme.spacing.large),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
-            Text("Primary action", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-            Text("Start workout", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text("Volgende training", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
             if (dashboard.nextWorkout == null) {
-                Text("No active training day is ready yet. Open Train to configure the first session.", style = MaterialTheme.typography.bodyMedium)
-                Button(onClick = onOpenTrain) { Text("Open Train") }
+                Text("No active training day is ready yet. Open Train to configure the first session.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
+                SecondaryActionButton(onClick = onOpenTrain) { Text("Open Train") }
             } else {
-                Text(dashboard.nextWorkout.name, style = MaterialTheme.typography.bodyMedium)
+                Text(dashboard.nextWorkout.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
                 Text(
                     dashboard.nextWorkout.exercises.joinToString { it.exercise.name }.ifBlank { "Add exercises to this day." },
                     style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.trainIqColors.mutedText,
                 )
-                Button(onClick = { onStartWorkout(dashboard.nextWorkout.id) }) { Text("Start workout") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AppChip(label = "Start workout")
+                    AppChip(label = "RPE 8")
+                }
+                PrimaryActionButton(onClick = { onStartWorkout(dashboard.nextWorkout.id) }) { Text("Start workout") }
             }
         }
     }
@@ -419,12 +415,7 @@ private fun CoachInsightCard(
         ),
         label = "coach-glow",
     )
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = glow)),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(32.dp),
-    ) {
+    AppCard(accent = MaterialTheme.colorScheme.primary) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -436,35 +427,31 @@ private fun CoachInsightCard(
                             MaterialTheme.colorScheme.secondary.copy(alpha = glow * 0.10f),
                         ),
                     ),
-                )
-                .padding(MaterialTheme.spacing.large),
+                ),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
-            Text("Coach insight", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-            Text(insight, style = MaterialTheme.typography.bodyMedium)
-            Button(onClick = onOpenCoach) { Text("Open Coach") }
+            Text("AI insight", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+            Text(insight, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
+            SecondaryActionButton(onClick = onOpenCoach) { Text("Open Coach") }
         }
     }
 }
 
 @Composable
 private fun WelcomeConnectCard(onRequestHealthPermission: () -> Unit) {
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(32.dp),
-    ) {
+    AppCard(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(MaterialTheme.spacing.large),
+                .fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
-            Text("Welcome & Connect", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text("Welcome & Connect", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
             Text(
                 "Connect Health Connect to let TrainIQ quietly track movement, recovery, and sleep so the coach feels one step ahead without extra manual work.",
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.trainIqColors.mutedText,
             )
-            Button(onClick = onRequestHealthPermission) { Text("Connect Health") }
+            PrimaryActionButton(onClick = onRequestHealthPermission) { Text("Connect Health") }
         }
     }
 }

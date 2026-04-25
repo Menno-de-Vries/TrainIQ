@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.trainiq.domain.model.Exercise
+import com.trainiq.core.ui.bringIntoViewOnFocus
 
 data class CustomExerciseDraft(
     val name: String,
@@ -102,7 +103,7 @@ fun ExercisePickerSheet(
             )
             OutlinedButton(
                 onClick = { showCustomForm = !showCustomForm },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
             ) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Text(if (showCustomForm) "Hide custom exercise" else "Add custom exercise")
@@ -114,7 +115,7 @@ fun ExercisePickerSheet(
                 )
             }
             LazyColumn(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (filteredExercises.isEmpty()) {
@@ -184,14 +185,14 @@ private fun CustomExerciseForm(
                 OutlinedTextField(
                     value = muscleGroup,
                     onValueChange = { muscleGroup = it },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).bringIntoViewOnFocus(),
                     label = { Text("Muscle") },
                     singleLine = true,
                 )
                 OutlinedTextField(
                     value = equipment,
                     onValueChange = { equipment = it },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).bringIntoViewOnFocus(),
                     label = { Text("Equipment") },
                     singleLine = true,
                 )

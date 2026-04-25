@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -53,6 +55,11 @@ import com.trainiq.core.theme.spacing
 import com.trainiq.core.ui.MessageCard
 import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.ShimmerCardPlaceholder
+import com.trainiq.core.ui.AppCard
+import com.trainiq.core.ui.AppChip
+import com.trainiq.core.ui.AppLinearProgress
+import com.trainiq.core.ui.bringIntoViewOnFocus
+import com.trainiq.core.theme.trainIqColors
 import com.trainiq.domain.model.FoodItem
 import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.model.LoggedMeal
@@ -391,8 +398,16 @@ fun NutritionScreen(
         ) { state ->
             if (state is NutritionUiState.Loading) {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(MaterialTheme.spacing.medium),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .navigationBarsPadding()
+                        .imePadding(),
+                    contentPadding = PaddingValues(
+                        start = MaterialTheme.spacing.medium,
+                        top = MaterialTheme.spacing.medium,
+                        end = MaterialTheme.spacing.medium,
+                        bottom = 132.dp,
+                    ),
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                 ) {
                     item { ShimmerCardPlaceholder(lineCount = 3) }
@@ -418,7 +433,7 @@ fun NutritionScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
                 ) {
-                    ScreenHeader(title = "Nutrition")
+                    ScreenHeader(title = "Nutrition", subtitle = "Voeding loggen zonder gedoe")
                     message?.let { MessageCard(message = it, onDismiss = onDismissMessage) }
                     SummaryCard(overview)
                 }
@@ -671,25 +686,34 @@ fun NutritionScreen(
 
 @Composable
 private fun SummaryCard(overview: NutritionOverview?) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-    ) {
-        Column(modifier = Modifier.padding(MaterialTheme.spacing.medium), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-            Text("Today", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text("Calories ${formatNumber(overview?.todaysCalories ?: 0.0)}")
-            Text("Protein ${formatNumber(overview?.todaysProtein ?: 0.0)}g • Carbs ${formatNumber(overview?.todaysCarbs ?: 0.0)}g • Fat ${formatNumber(overview?.todaysFat ?: 0.0)}g")
-            Text("Foods ${overview?.foods?.size ?: 0} • Recipes ${overview?.recipes?.size ?: 0} • Meals ${overview?.meals?.size ?: 0}")
+    val calories = overview?.todaysCalories ?: 0.0
+    val progress = (calories / 2800.0).toFloat().coerceIn(0f, 1f)
+    AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Vandaag", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                Text(
+                    "${formatNumber(calories)} kcal • ${formatNumber(overview?.todaysProtein ?: 0.0)}g protein • ${formatNumber(overview?.todaysCarbs ?: 0.0)}g carbs • ${formatNumber(overview?.todaysFat ?: 0.0)}g fat",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.trainIqColors.mutedText,
+                )
+            }
+            Text("${(progress * 100).toInt()}%", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.trainIqColors.amber)
+        }
+        AppLinearProgress(progress = progress, accent = MaterialTheme.trainIqColors.amber)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            AppChip(label = "Foods ${overview?.foods?.size ?: 0}", accent = MaterialTheme.trainIqColors.amber)
+            AppChip(label = "Meals ${overview?.meals?.size ?: 0}", accent = MaterialTheme.trainIqColors.amber)
+            AppChip(label = "Recipes ${overview?.recipes?.size ?: 0}", accent = MaterialTheme.trainIqColors.amber)
+        }
             overview?.energyBalance?.let {
-                Text("Energy balance ${it.balance} kcal • TEF ${it.tefCalories} • NEAT ${it.neatCalories} • EAT ${it.workoutCalories}")
+            Text("Net calories ${it.balance} kcal • TEF ${it.tefCalories} • NEAT ${it.neatCalories} • EAT ${it.workoutCalories}", color = MaterialTheme.trainIqColors.mutedText)
             }
             overview?.todaysMealsByType?.forEach { (mealType, meals) ->
                 if (meals.isNotEmpty()) {
-                    Text("${mealType.label}: ${meals.size} logged")
+                Text("${mealType.label}: ${meals.size} logged", color = MaterialTheme.trainIqColors.mutedText)
                 }
             }
-        }
     }
 }
 
@@ -717,15 +741,15 @@ private fun FoodEditorCard(
     ) {
         Column(modifier = Modifier.padding(MaterialTheme.spacing.medium), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
             Text("Food item", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            OutlinedTextField(value = foodName, onValueChange = onFoodNameChange, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = barcode, onValueChange = onBarcodeChange, label = { Text("Barcode (optional)") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = foodName, onValueChange = onFoodNameChange, label = { Text("Name") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+        OutlinedTextField(value = barcode, onValueChange = onBarcodeChange, label = { Text("Barcode (optional)") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(value = calories, onValueChange = onCaloriesChange, label = { Text("kcal / 100g") }, modifier = Modifier.weight(1f))
-                OutlinedTextField(value = protein, onValueChange = onProteinChange, label = { Text("Protein") }, modifier = Modifier.weight(1f))
+            OutlinedTextField(value = calories, onValueChange = onCaloriesChange, label = { Text("kcal / 100g") }, modifier = Modifier.weight(1f).bringIntoViewOnFocus())
+            OutlinedTextField(value = protein, onValueChange = onProteinChange, label = { Text("Protein") }, modifier = Modifier.weight(1f).bringIntoViewOnFocus())
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(value = carbs, onValueChange = onCarbsChange, label = { Text("Carbs") }, modifier = Modifier.weight(1f))
-                OutlinedTextField(value = fat, onValueChange = onFatChange, label = { Text("Fat") }, modifier = Modifier.weight(1f))
+            OutlinedTextField(value = carbs, onValueChange = onCarbsChange, label = { Text("Carbs") }, modifier = Modifier.weight(1f).bringIntoViewOnFocus())
+            OutlinedTextField(value = fat, onValueChange = onFatChange, label = { Text("Fat") }, modifier = Modifier.weight(1f).bringIntoViewOnFocus())
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onSave) { Text("Save item") }
@@ -801,12 +825,12 @@ private fun RecipeEditorCard(
     ) {
         Column(modifier = Modifier.padding(MaterialTheme.spacing.medium), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
             Text("Recipe builder", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            OutlinedTextField(value = recipeName, onValueChange = onRecipeNameChange, label = { Text("Recipe name") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = recipeNotes, onValueChange = onRecipeNotesChange, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = recipeCookedGrams, onValueChange = onRecipeCookedGramsChange, label = { Text("Total cooked grams (optional)") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = recipeName, onValueChange = onRecipeNameChange, label = { Text("Recipe name") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+        OutlinedTextField(value = recipeNotes, onValueChange = onRecipeNotesChange, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+        OutlinedTextField(value = recipeCookedGrams, onValueChange = onRecipeCookedGramsChange, label = { Text("Total cooked grams (optional)") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
             Text("Selected ingredient: ${selectedFood?.name ?: "Choose a saved food"}")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(value = ingredientGrams, onValueChange = onIngredientGramsChange, label = { Text("Ingredient grams") }, modifier = Modifier.weight(1f))
+            OutlinedTextField(value = ingredientGrams, onValueChange = onIngredientGramsChange, label = { Text("Ingredient grams") }, modifier = Modifier.weight(1f).bringIntoViewOnFocus())
                 Button(onClick = onAddIngredient) { Text("Add") }
             }
             if (draft.isEmpty()) {
@@ -825,7 +849,7 @@ private fun RecipeEditorCard(
             HorizontalDivider()
             Text("Scan ingredients", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (aiEnabled) {
-                OutlinedTextField(value = recipeAiContext, onValueChange = onRecipeAiContextChange, label = { Text("AI context (optional)") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = recipeAiContext, onValueChange = onRecipeAiContextChange, label = { Text("AI context (optional)") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(onClick = onScanBarcodeForRecipe, modifier = Modifier.weight(1f)) { Text("Scan Barcode") }
@@ -914,16 +938,16 @@ private fun MealLoggerCard(
                     )
                 }
             }
-            OutlinedTextField(value = mealName, onValueChange = onMealNameChange, label = { Text("Meal name") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = mealNotes, onValueChange = onMealNotesChange, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = mealName, onValueChange = onMealNameChange, label = { Text("Meal name") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+        OutlinedTextField(value = mealNotes, onValueChange = onMealNotesChange, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
             Text("Food selection: ${selectedFood?.name ?: "None"}")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(value = mealFoodGrams, onValueChange = onMealFoodGramsChange, label = { Text("Food grams") }, modifier = Modifier.weight(1f))
+            OutlinedTextField(value = mealFoodGrams, onValueChange = onMealFoodGramsChange, label = { Text("Food grams") }, modifier = Modifier.weight(1f).bringIntoViewOnFocus())
                 Button(onClick = onAddFood, enabled = selectedFood != null) { Text("Add food") }
             }
             Text("Recipe selection: ${selectedRecipe?.name ?: "None"}")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(value = mealRecipeGrams, onValueChange = onMealRecipeGramsChange, label = { Text("Recipe grams") }, modifier = Modifier.weight(1f))
+            OutlinedTextField(value = mealRecipeGrams, onValueChange = onMealRecipeGramsChange, label = { Text("Recipe grams") }, modifier = Modifier.weight(1f).bringIntoViewOnFocus())
                 Button(onClick = onAddRecipe, enabled = selectedRecipe != null) { Text("Add recipe") }
             }
             if (mealDraft.isEmpty()) {
@@ -973,7 +997,7 @@ private fun AiMealAnalysisCard(
                 },
                 style = MaterialTheme.typography.bodyMedium,
             )
-            OutlinedTextField(value = aiContext, onValueChange = onContextChange, label = { Text("Optional context") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = aiContext, onValueChange = onContextChange, label = { Text("Optional context") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
             Button(onClick = onOpenCamera, enabled = aiPreferences.enabled && aiPreferences.apiKey.isNotBlank()) {
                 Text("Open scanner")
             }
@@ -1068,15 +1092,15 @@ private fun MealHistoryCard(
 private fun EditableAiItemCard(item: EditableAiItem, onChange: (EditableAiItem) -> Unit, onDelete: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(value = item.name, onValueChange = { onChange(item.copy(name = it)) }, label = { Text("Item") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = item.name, onValueChange = { onChange(item.copy(name = it)) }, label = { Text("Item") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(value = item.grams, onValueChange = { onChange(item.copy(grams = it)) }, label = { Text("Grams") }, modifier = Modifier.weight(1f))
-                OutlinedTextField(value = item.calories, onValueChange = { onChange(item.copy(calories = it)) }, label = { Text("Calories") }, modifier = Modifier.weight(1f))
+            OutlinedTextField(value = item.grams, onValueChange = { onChange(item.copy(grams = it)) }, label = { Text("Grams") }, modifier = Modifier.weight(1f).bringIntoViewOnFocus())
+            OutlinedTextField(value = item.calories, onValueChange = { onChange(item.copy(calories = it)) }, label = { Text("Calories") }, modifier = Modifier.weight(1f).bringIntoViewOnFocus())
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(value = item.protein, onValueChange = { onChange(item.copy(protein = it)) }, label = { Text("Protein") }, modifier = Modifier.weight(1f))
-                OutlinedTextField(value = item.carbs, onValueChange = { onChange(item.copy(carbs = it)) }, label = { Text("Carbs") }, modifier = Modifier.weight(1f))
-                OutlinedTextField(value = item.fat, onValueChange = { onChange(item.copy(fat = it)) }, label = { Text("Fat") }, modifier = Modifier.weight(1f))
+            OutlinedTextField(value = item.protein, onValueChange = { onChange(item.copy(protein = it)) }, label = { Text("Protein") }, modifier = Modifier.weight(1f).bringIntoViewOnFocus())
+            OutlinedTextField(value = item.carbs, onValueChange = { onChange(item.copy(carbs = it)) }, label = { Text("Carbs") }, modifier = Modifier.weight(1f).bringIntoViewOnFocus())
+            OutlinedTextField(value = item.fat, onValueChange = { onChange(item.copy(fat = it)) }, label = { Text("Fat") }, modifier = Modifier.weight(1f).bringIntoViewOnFocus())
             }
             item.confidence?.let { Text("Confidence: $it") }
             item.notes?.let { Text(it) }
