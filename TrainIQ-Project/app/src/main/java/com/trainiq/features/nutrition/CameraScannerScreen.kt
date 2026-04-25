@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
@@ -534,6 +535,7 @@ private fun FullscreenScanningBeam(modifier: Modifier = Modifier) {
     )
 }
 
+@androidx.annotation.OptIn(markerClass = [ExperimentalGetImage::class])
 private fun processBarcode(
     imageProxy: ImageProxy,
     scanner: com.google.mlkit.vision.barcode.BarcodeScanner,

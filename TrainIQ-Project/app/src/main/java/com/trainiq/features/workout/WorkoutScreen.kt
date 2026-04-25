@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imeNestedScroll
@@ -29,6 +30,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -77,6 +79,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -226,6 +229,14 @@ data class ActiveWorkoutUiState(
     val canFinish: Boolean = false,
     val needsFinishConfirmation: Boolean = false,
     val message: String? = null,
+)
+
+private data class ExercisePlanInput(
+    val targetSets: Int,
+    val repRange: String,
+    val restSeconds: Int,
+    val targetWeightKg: Double,
+    val targetRpe: Double,
 )
 
 sealed interface WorkoutUiEvent {
@@ -436,19 +447,29 @@ class WorkoutViewModel @Inject constructor(
     fun logSet(plan: WorkoutExercisePlan): Boolean {
         val loggedCount = _loggedSetsThisSession.value[plan.exercise.id].orEmpty().size
         val draft = _drafts.value[plan.exercise.id] ?: plan.nextPlannedDraft(loggedCount)
-        val parsedRpe = draft.rpe.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 0.0
+        val parsedWeight = draft.weight.normalizedDecimal().toDoubleOrNull()
+        val parsedReps = draft.reps.toIntOrNull()
+        val parsedRpe = draft.rpe.normalizedDecimal().toDoubleOrNull() ?: 0.0
+        if (parsedWeight == null || parsedWeight <= 0.0 || parsedWeight > MaxWeightKg) {
+            _message.value = "Voer een gewicht tussen 0 en ${MaxWeightKg.toInt()} kg in."
+            return false
+        }
+        if (parsedReps == null || parsedReps <= 0 || parsedReps > MaxReps) {
+            _message.value = "Voer reps tussen 1 en $MaxReps in."
+            return false
+        }
+        if (parsedRpe !in 0.0..10.0) {
+            _message.value = "RPE moet tussen 0 en 10 liggen."
+            return false
+        }
         val loggedSet = LoggedSet(
             exerciseId = plan.exercise.id,
-            weight = draft.weight.replace(',', '.').toDoubleOrNull() ?: 0.0,
-            reps = draft.reps.toIntOrNull() ?: 0,
+            weight = parsedWeight,
+            reps = parsedReps,
             rpe = parsedRpe,
             repsInReserve = StrengthCalculator.estimateRepsInReserve(parsedRpe),
             setType = draft.setType,
         )
-        if (loggedSet.weight <= 0.0 || loggedSet.reps <= 0) {
-            _message.value = "Voer gewicht en reps in om een set te loggen."
-            return false
-        }
         viewModelScope.launch {
             val nextDraft = plan.nextPlannedDraft(loggedCount + 1).takeIf {
                 it.weight.isNotBlank() || it.reps.isNotBlank() || it.rpe.isNotBlank()
@@ -616,7 +637,7 @@ class WorkoutViewModel @Inject constructor(
 
     fun addDay(routineId: Long, name: String) {
         viewModelScope.launch {
-            addWorkoutDayUseCase(routineId, name.trim())
+            addWorkoutDayUseCase(routineId, name.trim().ifBlank { "Session" })
             _message.value = "Session added."
         }
     }
@@ -643,17 +664,22 @@ class WorkoutViewModel @Inject constructor(
             _message.value = "Exercise name, muscle group, and equipment are required."
             return
         }
+        val input = parseExercisePlanInput(targetSets, repRange, restSeconds, targetWeightKg, targetRpe)
+            ?: run {
+                _message.value = PlanValidationMessage
+                return
+            }
         viewModelScope.launch {
             addExerciseToDayUseCase(
                 dayId = dayId,
                 name = name.trim(),
                 muscleGroup = muscleGroup.trim(),
                 equipment = equipment.trim(),
-                targetSets = targetSets.toIntOrNull() ?: 3,
-                repRange = repRange.ifBlank { "8-12" },
-                restSeconds = restSeconds.toIntOrNull() ?: 90,
-                targetWeightKg = targetWeightKg.replace(',', '.').toDoubleOrNull() ?: 0.0,
-                targetRpe = targetRpe.replace(',', '.').toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 0.0,
+                targetSets = input.targetSets,
+                repRange = input.repRange,
+                restSeconds = input.restSeconds,
+                targetWeightKg = input.targetWeightKg,
+                targetRpe = input.targetRpe,
             )
             _message.value = "Exercise added."
         }
@@ -674,17 +700,22 @@ class WorkoutViewModel @Inject constructor(
             _message.value = "Exercise name, muscle group, and equipment are required."
             return
         }
+        val input = parseExercisePlanInput(targetSets, repRange, restSeconds, targetWeightKg, targetRpe)
+            ?: run {
+                _message.value = PlanValidationMessage
+                return
+            }
         viewModelScope.launch {
             addExerciseToRoutineUseCase(
                 routineId = routineId,
                 name = name.trim(),
                 muscleGroup = muscleGroup.trim(),
                 equipment = equipment.trim(),
-                targetSets = targetSets.toIntOrNull() ?: 3,
-                repRange = repRange.ifBlank { "8-12" },
-                restSeconds = restSeconds.toIntOrNull() ?: 90,
-                targetWeightKg = targetWeightKg.replace(',', '.').toDoubleOrNull() ?: 0.0,
-                targetRpe = targetRpe.replace(',', '.').toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 0.0,
+                targetSets = input.targetSets,
+                repRange = input.repRange,
+                restSeconds = input.restSeconds,
+                targetWeightKg = input.targetWeightKg,
+                targetRpe = input.targetRpe,
             )
             _message.value = "Exercise added."
         }
@@ -727,14 +758,19 @@ class WorkoutViewModel @Inject constructor(
         targetRpe: String,
         setType: SetType,
     ) {
+        val input = parseExercisePlanInput(targetSets, repRange, restSeconds, targetWeightKg, targetRpe)
+            ?: run {
+                _message.value = PlanValidationMessage
+                return
+            }
         viewModelScope.launch {
             updateWorkoutExercisePlanUseCase(
                 workoutExerciseId = workoutExerciseId,
-                targetSets = targetSets.toIntOrNull() ?: 3,
-                repRange = repRange.ifBlank { "8-12" },
-                restSeconds = restSeconds.toIntOrNull() ?: 90,
-                targetWeightKg = targetWeightKg.replace(',', '.').toDoubleOrNull() ?: 0.0,
-                targetRpe = targetRpe.replace(',', '.').toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 0.0,
+                targetSets = input.targetSets,
+                repRange = input.repRange,
+                restSeconds = input.restSeconds,
+                targetWeightKg = input.targetWeightKg,
+                targetRpe = input.targetRpe,
                 setType = setType,
             )
             _message.value = "Exercise plan updated."
@@ -749,6 +785,10 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun updateRoutineSet(set: RoutineSet) {
+        if (!set.isValidForSave()) {
+            _message.value = RoutineSetValidationMessage
+            return
+        }
         viewModelScope.launch {
             updateRoutineSetUseCase(set)
         }
@@ -2208,15 +2248,14 @@ private fun EditSetBottomSheet(
             }
             PrimaryActionButton(
                 onClick = {
-                    onSave(
-                        set.copy(
-                            setType = selectedType,
-                            targetReps = reps.toIntOrNull() ?: 0,
-                            targetWeightKg = weight.normalizedDecimal().toDoubleOrNull() ?: 0.0,
-                            restSeconds = rest.toIntOrNull() ?: 0,
-                            targetRpe = rpe.normalizedDecimal().toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 0.0,
-                        ),
+                    val nextSet = set.copy(
+                        setType = selectedType,
+                        targetReps = reps.toIntOrNull() ?: -1,
+                        targetWeightKg = weight.normalizedDecimal().takeIf { it.isNotBlank() }?.toDoubleOrNull() ?: 0.0,
+                        restSeconds = rest.toIntOrNull() ?: -1,
+                        targetRpe = rpe.normalizedDecimal().takeIf { it.isNotBlank() }?.toDoubleOrNull() ?: 0.0,
                     )
+                    onSave(nextSet)
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -2389,6 +2428,7 @@ private fun ExercisePickerSheet(
     onDismiss: () -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val filteredExercises by remember(query, exercises) {
         derivedStateOf {
             val normalized = query.trim()
@@ -2404,10 +2444,14 @@ private fun ExercisePickerSheet(
         }
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .fillMaxHeight(0.92f)
                 .navigationBarsPadding()
                 .imePadding()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -2467,11 +2511,11 @@ private fun ExercisePickerSheet(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(if (showDefaults) 360.dp else 440.dp),
-                contentPadding = PaddingValues(bottom = 24.dp),
+                    .weight(1f),
+                contentPadding = PaddingValues(bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(filteredExercises, key = { it.id }) { exercise ->
+                itemsIndexed(filteredExercises, key = { index, exercise -> "${exercise.id}-$index" }) { _, exercise ->
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -3944,6 +3988,45 @@ private fun List<WorkoutExercisePlan>.focusLabel(): String {
 }
 
 private fun String.normalizedDecimal(): String = trim().replace(',', '.')
+
+private const val MaxTargetSets = 20
+private const val MaxReps = 100
+private const val MaxRestSeconds = 900
+private const val MaxWeightKg = 1000.0
+private const val PlanValidationMessage =
+    "Gebruik geldige waarden: sets 1-20, rust 0-900s, gewicht 0-1000kg en RPE 0-10."
+private const val RoutineSetValidationMessage =
+    "Set niet opgeslagen. Gebruik reps 1-100, rust 0-900s, gewicht 0-1000kg en RPE 0-10."
+
+private fun parseExercisePlanInput(
+    targetSets: String,
+    repRange: String,
+    restSeconds: String,
+    targetWeightKg: String,
+    targetRpe: String,
+): ExercisePlanInput? {
+    val parsedSets = targetSets.trim().takeIf { it.isNotBlank() }?.toIntOrNull() ?: 3
+    val parsedRest = restSeconds.trim().takeIf { it.isNotBlank() }?.toIntOrNull() ?: 90
+    val parsedWeight = targetWeightKg.normalizedDecimal().takeIf { it.isNotBlank() }?.toDoubleOrNull() ?: 0.0
+    val parsedRpe = targetRpe.normalizedDecimal().takeIf { it.isNotBlank() }?.toDoubleOrNull() ?: 0.0
+    if (parsedSets !in 1..MaxTargetSets) return null
+    if (parsedRest !in 0..MaxRestSeconds) return null
+    if (parsedWeight !in 0.0..MaxWeightKg) return null
+    if (parsedRpe !in 0.0..10.0) return null
+    return ExercisePlanInput(
+        targetSets = parsedSets,
+        repRange = repRange.trim().ifBlank { "8-12" },
+        restSeconds = parsedRest,
+        targetWeightKg = parsedWeight,
+        targetRpe = parsedRpe,
+    )
+}
+
+private fun RoutineSet.isValidForSave(): Boolean =
+    targetReps in 1..MaxReps &&
+        restSeconds in 0..MaxRestSeconds &&
+        targetWeightKg in 0.0..MaxWeightKg &&
+        targetRpe in 0.0..10.0
 
 private fun toggleSupersetGroup(
     plans: List<WorkoutExercisePlan>,

@@ -16,9 +16,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -202,8 +204,16 @@ fun HomeScreen(
             HomeUiState.Loading -> {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(MaterialTheme.spacing.medium),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .navigationBarsPadding()
+                        .imePadding(),
+                    contentPadding = PaddingValues(
+                        start = MaterialTheme.spacing.medium,
+                        top = MaterialTheme.spacing.medium,
+                        end = MaterialTheme.spacing.medium,
+                        bottom = 132.dp,
+                    ),
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                     horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                 ) {
@@ -234,8 +244,16 @@ fun HomeScreen(
                 val healthConnectStatus = state.healthConnectStatus
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(MaterialTheme.spacing.medium),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .navigationBarsPadding()
+                        .imePadding(),
+                    contentPadding = PaddingValues(
+                        start = MaterialTheme.spacing.medium,
+                        top = MaterialTheme.spacing.medium,
+                        end = MaterialTheme.spacing.medium,
+                        bottom = 132.dp,
+                    ),
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                     horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                 ) {

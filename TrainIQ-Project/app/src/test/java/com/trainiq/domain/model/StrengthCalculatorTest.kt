@@ -20,6 +20,12 @@ class StrengthCalculatorTest {
     }
 
     @Test
+    fun estimateOneRepMax_withInvalidInputs_returnsZero() {
+        assertEquals(0.0, StrengthCalculator.estimateOneRepMax(weight = -100.0, reps = 5), 0.0)
+        assertEquals(0.0, StrengthCalculator.estimateOneRepMax(weight = 100.0, reps = 0), 0.0)
+    }
+
+    @Test
     fun estimateRepsInReserve_fromRpe_mapsToRoundedRir() {
         assertEquals(2, StrengthCalculator.estimateRepsInReserve(8.0))
         assertEquals(1, StrengthCalculator.estimateRepsInReserve(8.8))
