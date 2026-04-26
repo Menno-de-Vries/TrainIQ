@@ -54,6 +54,7 @@ import com.trainiq.core.ui.MessageCard
 import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.SectionCard
 import com.trainiq.core.ui.bringIntoViewOnFocus
+import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.theme.ThemeMode
 import com.trainiq.data.local.TrainIqLocalStore
@@ -352,6 +353,7 @@ fun SettingsScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
+            .clearFocusOnScrollOrDrag()
             .navigationBarsPadding()
             .imePadding(),
         contentPadding = PaddingValues(

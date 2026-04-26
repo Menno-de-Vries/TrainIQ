@@ -123,6 +123,7 @@ import com.trainiq.core.ui.AppCard
 import com.trainiq.core.ui.AppChip
 import com.trainiq.core.ui.AppLinearProgress
 import com.trainiq.core.ui.clearFocusOnTapOutside
+import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.ui.EmptyStateCard
 import com.trainiq.core.ui.PrimaryActionButton
 import com.trainiq.core.ui.SecondaryActionButton
@@ -265,8 +266,8 @@ sealed interface WorkoutUiEvent {
 
 private val BuilderActionWidth = 40.dp
 private val BuilderRowActionWidth = 44.dp
-private val ActiveSetActionWidth = 80.dp
-private val ActiveSetLeadingWidth = 96.dp
+private val ActiveSetActionWidth = 96.dp
+private val ActiveSetLeadingWidth = 76.dp
 private val TopLevelBottomContentPadding = 132.dp
 private val ActiveWorkoutBottomContentPadding = 96.dp
 
@@ -1118,6 +1119,7 @@ fun WorkoutScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
+            .clearFocusOnScrollOrDrag()
             .imeNestedScroll()
             .navigationBarsPadding()
             .imePadding(),
@@ -2494,6 +2496,7 @@ private fun ExercisePickerSheet(
     onDismiss: () -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
+    var defaultsExpanded by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val filteredExercises by remember(query, exercises) {
         derivedStateOf {
@@ -2514,93 +2517,120 @@ private fun ExercisePickerSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
     ) {
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(0.92f)
+                .clearFocusOnScrollOrDrag()
                 .navigationBarsPadding()
                 .imePadding()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
+            contentPadding = PaddingValues(bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                label = { Text("Oefening zoeken") },
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .bringIntoViewOnFocus(),
-            )
+            item {
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            }
+            item {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    label = { Text("Oefening zoeken") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .bringIntoViewOnFocus(),
+                )
+            }
             if (showDefaults) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                    shape = MaterialTheme.shapes.medium,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                item {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                        shape = MaterialTheme.shapes.medium,
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Defaults voor deze oefening", style = MaterialTheme.typography.labelLarge)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Defaults voor deze oefening", style = MaterialTheme.typography.labelLarge)
+                                    Text(
+                                        "$targetSets sets - $repRange reps - ${restSeconds}s rust",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    RpeInfoButton(compactText = true)
+                                    IconButton(onClick = { defaultsExpanded = !defaultsExpanded }) {
+                                        Icon(
+                                            if (defaultsExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                                            contentDescription = if (defaultsExpanded) "Defaults inklappen" else "Defaults openen",
+                                        )
+                                    }
+                                }
+                            }
+                            if (defaultsExpanded) {
                                 Text(
                                     "Worden toegepast wanneer je een oefening kiest.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    CompactSetNumberField(targetSets, "Sets", null, KeyboardType.Number, Modifier.weight(1f), onValueChange = onTargetSetsChange)
+                                    CompactSetNumberField(repRange, "Reps", null, KeyboardType.Text, Modifier.weight(1f), onValueChange = onRepRangeChange)
+                                    CompactSetNumberField(restSeconds, "Rust", "sec", KeyboardType.Number, Modifier.weight(1f), onValueChange = onRestSecondsChange)
+                                    CompactSetNumberField(targetWeightKg, "Gewicht", "kg", KeyboardType.Decimal, Modifier.weight(1f), onValueChange = onTargetWeightChange)
+                                    CompactSetNumberField(targetRpe, "RPE", null, KeyboardType.Decimal, Modifier.weight(1f), onValueChange = onTargetRpeChange)
+                                }
                             }
-                            RpeInfoButton(compactText = true)
                         }
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            CompactSetNumberField(targetSets, "Sets", null, KeyboardType.Number, Modifier.weight(1f), onValueChange = onTargetSetsChange)
-                            CompactSetNumberField(repRange, "Reps", null, KeyboardType.Text, Modifier.weight(1f), onValueChange = onRepRangeChange)
-                            CompactSetNumberField(restSeconds, "Rust", "sec", KeyboardType.Number, Modifier.weight(1f), onValueChange = onRestSecondsChange)
-                            CompactSetNumberField(targetWeightKg, "Gewicht", "kg", KeyboardType.Decimal, Modifier.weight(1f), onValueChange = onTargetWeightChange)
-                            CompactSetNumberField(targetRpe, "RPE", null, KeyboardType.Decimal, Modifier.weight(1f), onValueChange = onTargetRpeChange)
-                        }
+                    }
+                }
+                item {
+                    TextButton(onClick = onCustomExercise, modifier = Modifier.fillMaxWidth()) {
+                        Text("Voeg eigen oefening toe")
                     }
                 }
             }
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentPadding = PaddingValues(bottom = 96.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                itemsIndexed(filteredExercises, key = { index, exercise -> "${exercise.id}-$index" }) { _, exercise ->
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(exercise.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text("${exercise.muscleGroup} - ${exercise.equipment}", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                            TextButton(onClick = { onSelect(exercise) }) { Text(if (showDefaults) "Toevoegen" else "Vervangen") }
+            itemsIndexed(filteredExercises, key = { index, exercise -> "${exercise.id}-$index" }) { _, exercise ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                exercise.name,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                "${exercise.muscleGroup} - ${exercise.equipment}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
-                    }
-                }
-                if (showDefaults) {
-                    item {
-                        TextButton(onClick = onCustomExercise, modifier = Modifier.fillMaxWidth()) {
-                            Text("Voeg eigen oefening toe")
-                        }
+                        TextButton(onClick = { onSelect(exercise) }) { Text(if (showDefaults) "Toevoegen" else "Vervangen") }
                     }
                 }
             }
@@ -2747,6 +2777,7 @@ private fun ExerciseHistoryScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
+                .clearFocusOnScrollOrDrag()
                 .padding(padding),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -3185,6 +3216,7 @@ fun ActiveWorkoutScreen(
         LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
+                    .clearFocusOnScrollOrDrag()
                     .imeNestedScroll()
                     .padding(padding)
                     .navigationBarsPadding()
@@ -3567,9 +3599,8 @@ private fun ActiveExerciseCard(
                     Text(
                         plan.exercise.name,
                         style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.ExtraBold,
-                        maxLines = 1,
-                        softWrap = false,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
@@ -3589,7 +3620,6 @@ private fun ActiveExerciseCard(
                 }
             }
             suggestion?.let { CompactPreviousPerformance(it) } ?: PlannedPerformanceFallback(plan)
-            ExerciseSummaryMetaRow(plan)
             val visibleSetRows = maxOf(plan.plannedSetCount(), loggedSets.size + 1)
             val plannedSets = plan.sets.sortedWith(compareBy<RoutineSet> { it.orderIndex }.thenBy { it.id })
             repeat(visibleSetRows) { index ->
@@ -3784,10 +3814,16 @@ private fun QuickNumberField(
                 .bringIntoViewOnFocus(),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
-            IconButton(onClick = { onValueChange(adjustNumberText(value.ifBlank { fallback.orEmpty() }, -step)) }) {
+            IconButton(
+                onClick = { onValueChange(adjustNumberText(value.ifBlank { fallback.orEmpty() }, -step)) },
+                modifier = Modifier.weight(1f),
+            ) {
                 Icon(Icons.Rounded.Remove, contentDescription = "Decrease $label")
             }
-            IconButton(onClick = { onValueChange(adjustNumberText(value.ifBlank { fallback.orEmpty() }, step)) }) {
+            IconButton(
+                onClick = { onValueChange(adjustNumberText(value.ifBlank { fallback.orEmpty() }, step)) },
+                modifier = Modifier.weight(1f),
+            ) {
                 Icon(Icons.Rounded.Add, contentDescription = "Increase $label")
             }
         }
@@ -3882,8 +3918,8 @@ private fun SetRow(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
-        Box(modifier = Modifier.width(ActiveSetActionWidth), contentAlignment = Alignment.CenterEnd) {
-            if (loggedSet != null) {
+        if (loggedSet != null) {
+            Box(modifier = Modifier.width(ActiveSetActionWidth), contentAlignment = Alignment.CenterEnd) {
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     IconButton(onClick = onEdit) {
                         Icon(Icons.Rounded.Edit, contentDescription = "Edit set")

@@ -37,6 +37,7 @@ import com.trainiq.core.ui.AppChip
 import com.trainiq.core.ui.AppTextField
 import com.trainiq.core.ui.EmptyStateCard
 import com.trainiq.core.ui.PrimaryActionButton
+import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.theme.spacing
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.core.util.ChartComposable
@@ -125,6 +126,7 @@ fun ProgressScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
+            .clearFocusOnScrollOrDrag()
             .navigationBarsPadding()
             .imePadding(),
         contentPadding = PaddingValues(

@@ -36,6 +36,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.trainiq.domain.model.Exercise
 import com.trainiq.core.ui.bringIntoViewOnFocus
+import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 
 data class CustomExerciseDraft(
     val name: String,
@@ -96,14 +97,16 @@ fun ExercisePickerSheet(
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .bringIntoViewOnFocus(),
                 label = { Text("Search exercises") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
             )
             OutlinedButton(
                 onClick = { showCustomForm = !showCustomForm },
-                modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                modifier = Modifier.fillMaxWidth(),
             ) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Text(if (showCustomForm) "Hide custom exercise" else "Add custom exercise")
@@ -115,7 +118,9 @@ fun ExercisePickerSheet(
                 )
             }
             LazyColumn(
-                modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clearFocusOnScrollOrDrag(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (filteredExercises.isEmpty()) {

@@ -64,6 +64,7 @@ import com.trainiq.core.ui.AppCard
 import com.trainiq.core.ui.AppChip
 import com.trainiq.core.ui.PrimaryActionButton
 import com.trainiq.core.ui.SecondaryActionButton
+import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.core.util.EnergyBalanceCard
 import com.trainiq.core.util.MacroBreakdownCard
@@ -219,6 +220,7 @@ fun HomeScreen(
                     columns = GridCells.Fixed(2),
                     modifier = Modifier
                         .fillMaxSize()
+                        .clearFocusOnScrollOrDrag()
                         .navigationBarsPadding()
                         .imePadding(),
                     contentPadding = PaddingValues(
@@ -259,6 +261,7 @@ fun HomeScreen(
                     columns = GridCells.Fixed(2),
                     modifier = Modifier
                         .fillMaxSize()
+                        .clearFocusOnScrollOrDrag()
                         .navigationBarsPadding()
                         .imePadding(),
                     contentPadding = PaddingValues(

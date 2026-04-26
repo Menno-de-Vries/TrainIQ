@@ -23,10 +23,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.imeNestedScroll
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material3.AlertDialog
@@ -48,6 +47,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -64,6 +64,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -71,6 +72,7 @@ import com.trainiq.core.theme.radii
 import com.trainiq.core.theme.spacing
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.domain.model.ChartPoint
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -88,7 +90,6 @@ fun AppScaffold(
         Scaffold(
             modifier = Modifier
                 .fillMaxSize()
-                .imeNestedScroll()
                 .imePadding()
                 .clearFocusOnTapOutside(),
             containerColor = Color.Transparent,
@@ -102,10 +103,12 @@ fun AppScaffold(
 fun Modifier.bringIntoViewOnFocus(delayMillis: Long = 250L): Modifier {
     val requester = remember { BringIntoViewRequester() }
     val scope = rememberCoroutineScope()
+    val bringIntoViewJob = remember { mutableStateOf<Job?>(null) }
     return bringIntoViewRequester(requester)
         .onFocusChanged { focusState ->
+            bringIntoViewJob.value?.cancel()
             if (focusState.isFocused) {
-                scope.launch {
+                bringIntoViewJob.value = scope.launch {
                     delay(delayMillis)
                     requester.bringIntoView()
                 }
@@ -116,12 +119,29 @@ fun Modifier.bringIntoViewOnFocus(delayMillis: Long = 250L): Modifier {
 @Composable
 fun Modifier.clearFocusOnTapOutside(): Modifier {
     val focusManager = LocalFocusManager.current
-    return pointerInput(focusManager) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+    return pointerInput(focusManager, keyboardController) {
         awaitEachGesture {
-            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-            val up = waitForUpOrCancellation(pass = PointerEventPass.Initial)
-            if (up != null) {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            val drag = awaitTouchSlopOrCancellation(down.id) { _, _ -> }
+            if (drag == null) {
                 focusManager.clearFocus(force = true)
+                keyboardController?.hide()
+            }
+        }
+    }
+}
+
+@Composable
+fun Modifier.clearFocusOnScrollOrDrag(): Modifier {
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    return pointerInput(focusManager, keyboardController) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            awaitTouchSlopOrCancellation(down.id) { _, _ ->
+                focusManager.clearFocus(force = true)
+                keyboardController?.hide()
             }
         }
     }

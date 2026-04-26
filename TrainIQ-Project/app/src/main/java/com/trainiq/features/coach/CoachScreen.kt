@@ -43,6 +43,7 @@ import com.trainiq.core.ui.MessageCard
 import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.ShimmerCardPlaceholder
 import com.trainiq.core.ui.bringIntoViewOnFocus
+import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.features.profile.ProfileActivityLevels
 import com.trainiq.features.profile.ProfileInputField
 import com.trainiq.features.profile.ProfileInputValidationError
@@ -351,6 +352,7 @@ fun CoachScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
+                .clearFocusOnScrollOrDrag()
                 .navigationBarsPadding()
                 .imePadding(),
             contentPadding = PaddingValues(

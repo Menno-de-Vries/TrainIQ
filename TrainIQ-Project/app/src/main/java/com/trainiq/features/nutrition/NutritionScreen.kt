@@ -66,6 +66,7 @@ import com.trainiq.core.ui.AppCard
 import com.trainiq.core.ui.AppChip
 import com.trainiq.core.ui.AppLinearProgress
 import com.trainiq.core.ui.bringIntoViewOnFocus
+import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.domain.model.FoodItem
 import com.trainiq.domain.model.FoodSourceType
@@ -434,6 +435,7 @@ fun NutritionScreen(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
+                        .clearFocusOnScrollOrDrag()
                         .navigationBarsPadding()
                         .imePadding(),
                     contentPadding = PaddingValues(
@@ -452,7 +454,9 @@ fun NutritionScreen(
             }
             if (state is NutritionUiState.Error) {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clearFocusOnScrollOrDrag(),
                     contentPadding = PaddingValues(MaterialTheme.spacing.medium),
                 ) {
                     item { MessageCard(message = state.message) }
@@ -485,6 +489,7 @@ fun NutritionScreen(
                     state = nutritionListState,
                     modifier = Modifier
                         .fillMaxSize()
+                        .clearFocusOnScrollOrDrag()
                         .navigationBarsPadding()
                         .imePadding(),
                     contentPadding = PaddingValues(
@@ -1048,6 +1053,7 @@ private fun RecipeActionBottomSheet(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .clearFocusOnScrollOrDrag()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = MaterialTheme.spacing.large, vertical = MaterialTheme.spacing.medium),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -1078,6 +1084,7 @@ private fun AddToMealActionSheet(
         modifier = Modifier
             .fillMaxWidth()
             .imePadding()
+            .clearFocusOnScrollOrDrag()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = MaterialTheme.spacing.large, vertical = MaterialTheme.spacing.medium),
         verticalArrangement = Arrangement.spacedBy(6.dp),
