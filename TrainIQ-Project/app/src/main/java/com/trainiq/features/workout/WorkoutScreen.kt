@@ -1855,7 +1855,10 @@ private fun RoutineExerciseCard(
                 horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(modifier = exerciseDragHandle.size(BuilderActionWidth), onClick = {}) {
+                Box(
+                    modifier = exerciseDragHandle.size(BuilderActionWidth),
+                    contentAlignment = Alignment.Center,
+                ) {
                     Icon(Icons.Rounded.DragHandle, contentDescription = "Oefening verplaatsen")
                 }
                 Column(
@@ -2080,7 +2083,10 @@ private fun RoutineSetRow(
         horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(modifier = dragHandle.size(BuilderRowActionWidth), onClick = {}) {
+        Box(
+            modifier = dragHandle.size(BuilderRowActionWidth),
+            contentAlignment = Alignment.Center,
+        ) {
             Icon(
                 Icons.Rounded.DragHandle,
                 contentDescription = "Set verplaatsen",
@@ -3790,14 +3796,18 @@ private fun SetRow(
 
 @Composable
 private fun ExerciseProgressionHint(suggestion: ProgressionSuggestion) {
-    SuggestionChip(
-        onClick = {},
-        label = {
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    ) {
+        Box(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(
                 "Vorige sessie: ${formatWeight(previousWeight(suggestion))}kg x ${displayRepTarget(suggestion.suggestedReps)} | Suggestie: ${formatWeight(suggestion.suggestedWeightKg)}kg x ${displayRepTarget(suggestion.suggestedReps)}",
+                style = MaterialTheme.typography.labelLarge,
             )
-        },
-    )
+        }
+    }
 }
 
 @Composable

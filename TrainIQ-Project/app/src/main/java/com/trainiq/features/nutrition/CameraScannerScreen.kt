@@ -252,16 +252,18 @@ private fun CameraScannerScreen(
     }
 
     DisposableEffect(controller, lifecycleOwner, hasPermission, scannerMode) {
+        var scanner: com.google.mlkit.vision.barcode.BarcodeScanner? = null
         if (hasPermission) {
             controller.bindToLifecycle(lifecycleOwner)
             if (scannerMode == ScannerMode.BARCODE) {
-                val scanner = BarcodeScanning.getClient(
+                val barcodeScanner = BarcodeScanning.getClient(
                     BarcodeScannerOptions.Builder()
                         .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
                         .build(),
                 )
+                scanner = barcodeScanner
                 controller.setImageAnalysisAnalyzer(ContextCompat.getMainExecutor(context)) { imageProxy ->
-                    processBarcode(imageProxy, scanner) { barcode ->
+                    processBarcode(imageProxy, barcodeScanner) { barcode ->
                         if (hasDetectedBarcode.compareAndSet(false, true)) {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             onBarcodeScanned(barcode)
@@ -272,6 +274,7 @@ private fun CameraScannerScreen(
         }
         onDispose {
             controller.clearImageAnalysisAnalyzer()
+            scanner?.close()
         }
     }
 

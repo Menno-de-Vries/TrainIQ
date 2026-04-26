@@ -323,7 +323,7 @@ private fun TrainIqNavHost(
             val route = entry.toRoute<CameraScanner>()
             CameraScannerRoute(
                 contextHint = route.contextHint,
-                scannerMode = ScannerMode.valueOf(route.scannerMode),
+                scannerMode = scannerModeFromRoute(route.scannerMode),
                 onBack = { navController.popBackStack() },
                 onBarcodeScanned = { barcode ->
                     navController.previousBackStackEntry?.savedStateHandle?.set("scanned_barcode", barcode)
@@ -346,3 +346,6 @@ private fun TrainIqNavHost(
         }
     }
 }
+
+internal fun scannerModeFromRoute(value: String): ScannerMode =
+    runCatching { ScannerMode.valueOf(value) }.getOrDefault(ScannerMode.AI_MEAL)

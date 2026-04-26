@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
@@ -32,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.trainiq.core.theme.spacing
 import androidx.health.connect.client.HealthConnectClient
@@ -52,6 +54,7 @@ import com.trainiq.core.ui.bringIntoViewOnFocus
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.theme.ThemeMode
 import com.trainiq.data.local.TrainIqLocalStore
+import com.trainiq.features.profile.buildValidatedProfileInput
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
@@ -156,37 +159,42 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun saveProfile(name: String, height: String, weight: String, bodyFat: String, activityLevel: String, goal: String) {
-        val parsedHeight = height.toDoubleOrNull()
-        val parsedWeight = weight.toDoubleOrNull()
-        val parsedBodyFat = bodyFat.toDoubleOrNull()
-        if (name.isBlank() || activityLevel.isBlank() || goal.isBlank() || parsedHeight == null || parsedWeight == null || parsedBodyFat == null) {
+        val currentProfile = profile.value
+        val input = buildValidatedProfileInput(
+            name = name,
+            height = height,
+            weight = weight,
+            bodyFat = bodyFat,
+            age = (currentProfile?.age ?: 30).toString(),
+            sex = currentProfile?.sex ?: BiologicalSex.MALE,
+            activityLevel = activityLevel,
+            goal = goal,
+        )
+        if (input == null) {
             _message.value = "Complete all profile fields with valid values."
             return
         }
-        val currentProfile = profile.value
-        val age = currentProfile?.age ?: 30
-        val sex = currentProfile?.sex ?: BiologicalSex.MALE
         val advice = goalAdvisorService.deterministicGoalAdvice(
-            height = parsedHeight,
-            weight = parsedWeight,
-            bodyFat = parsedBodyFat,
-            age = age,
-            sex = sex,
-            activityLevel = activityLevel,
-            goal = goal,
+            height = input.height,
+            weight = input.weight,
+            bodyFat = input.bodyFat,
+            age = input.age,
+            sex = input.sex,
+            activityLevel = input.activityLevel,
+            goal = input.goal,
         )
         viewModelScope.launch {
             saveUserProfileUseCase(
                 UserProfile(
                     id = 1L,
-                    name = name.trim(),
-                    age = age,
-                    sex = sex,
-                    height = parsedHeight,
-                    weight = parsedWeight,
-                    bodyFat = parsedBodyFat,
-                    activityLevel = activityLevel.trim(),
-                    goal = goal.trim(),
+                    name = input.name,
+                    age = input.age,
+                    sex = input.sex,
+                    height = input.height,
+                    weight = input.weight,
+                    bodyFat = input.bodyFat,
+                    activityLevel = input.activityLevel,
+                    goal = input.goal,
                     calorieTarget = advice.calorieTarget,
                     proteinTarget = advice.proteinTarget,
                     carbsTarget = advice.carbsTarget,
@@ -438,9 +446,9 @@ fun SettingsScreen(
         item {
             SectionCard(title = "Profile & Goals") {
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
-                OutlinedTextField(value = height, onValueChange = { height = it }, label = { Text("Height (cm)") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
-                OutlinedTextField(value = weight, onValueChange = { weight = it }, label = { Text("Weight (kg)") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
-                OutlinedTextField(value = bodyFat, onValueChange = { bodyFat = it }, label = { Text("Body fat %") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                OutlinedTextField(value = height, onValueChange = { height = it }, label = { Text("Height (cm)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                OutlinedTextField(value = weight, onValueChange = { weight = it }, label = { Text("Weight (kg)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                OutlinedTextField(value = bodyFat, onValueChange = { bodyFat = it }, label = { Text("Body fat %") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
                 OutlinedTextField(value = activityLevel, onValueChange = { activityLevel = it }, label = { Text("Activity level") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
                 OutlinedTextField(value = goal, onValueChange = { goal = it }, label = { Text("Primary goal") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
                 Button(

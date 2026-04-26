@@ -81,6 +81,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -131,7 +132,7 @@ class HomeViewModel @Inject constructor(
 
     init {
         // Immediate: hit the HC aggregate API for a fresh step count.
-        viewModelScope.launch { refreshDashboardDataUseCase() }
+        viewModelScope.launch { refreshDashboardDataSafely { refreshDashboardDataUseCase() } }
         // Parallel: full incremental sync updates _cachedSteps AND the HC state card.
         refreshHealthConnectStatus()
         // Periodic: refresh steps every 60 s while the ViewModel is active so the
@@ -139,7 +140,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             while (true) {
                 delay(60_000L)
-                refreshDashboardDataUseCase()
+                refreshDashboardDataSafely { refreshDashboardDataUseCase() }
             }
         }
     }
@@ -153,6 +154,17 @@ class HomeViewModel @Inject constructor(
                 )
             }
         }
+    }
+}
+
+internal suspend fun refreshDashboardDataSafely(refreshDashboardData: suspend () -> Unit): Boolean {
+    return try {
+        refreshDashboardData()
+        true
+    } catch (exception: CancellationException) {
+        throw exception
+    } catch (_: Exception) {
+        false
     }
 }
 
@@ -218,7 +230,7 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                 ) {
                     item(span = { GridItemSpan(2) }) {
-                        ScreenHeader(title = "TrainIQ", subtitle = "Vandaag in een slimme cockpit", actionIcon = Icons.Default.Settings, actionContentDescription = "Open settings", onActionClick = onOpenSettings)
+                        ScreenHeader(title = "TrainIQ", subtitle = "Vandaag in een slimme cockpit", actionIcon = Icons.Default.Settings, actionContentDescription = "Instellingen openen", onActionClick = onOpenSettings)
                     }
                     items(4) { ShimmerCardPlaceholder(lineCount = 4, modifier = Modifier.height(170.dp)) }
                 }
@@ -231,9 +243,9 @@ fun HomeScreen(
                             modifier = Modifier.padding(MaterialTheme.spacing.large),
                             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
                         ) {
-                            Text("Home unavailable", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                            Text("Home niet beschikbaar", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                             Text(state.message, style = MaterialTheme.typography.bodyMedium)
-                            OutlinedButton(onClick = onRefreshHealth) { Text("Retry") }
+                            OutlinedButton(onClick = onRefreshHealth) { Text("Opnieuw proberen") }
                         }
                     }
                 }
@@ -258,7 +270,7 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                 ) {
                     item(span = { GridItemSpan(2) }) {
-                        ScreenHeader(title = "TrainIQ", subtitle = "Vandaag in een slimme cockpit", actionIcon = Icons.Default.Settings, actionContentDescription = "Open settings", onActionClick = onOpenSettings)
+                        ScreenHeader(title = "TrainIQ", subtitle = "Vandaag in een slimme cockpit", actionIcon = Icons.Default.Settings, actionContentDescription = "Instellingen openen", onActionClick = onOpenSettings)
                     }
                     if (dashboard.profile == null) {
                         item(span = { GridItemSpan(2) }) {
@@ -285,21 +297,21 @@ fun HomeScreen(
                     }
                     item {
                         MetricCard(
-                            title = "Streak",
-                            value = "${dashboard.streak} days",
-                            subtitle = if (dashboard.streak > 0) "Mechanical consistency is locked in" else "Log a workout or meal to start momentum",
+                            title = "Reeks",
+                            value = "${dashboard.streak} dagen",
+                            subtitle = if (dashboard.streak > 0) "Je ritme staat stevig" else "Log een training of maaltijd om momentum op te bouwen",
                             modifier = Modifier.height(170.dp),
                         )
                     }
                     item {
                         MetricCard(
-                            title = "Recovery stream",
+                            title = "Herstel",
                             value = when (healthConnectStatus.state) {
                                 HealthConnectState.CONNECTED, HealthConnectState.NO_DATA -> "${healthConnectStatus.stepsToday ?: 0}"
                                 else -> "Offline"
                             },
                             subtitle = buildString {
-                                append("Steps")
+                                append("Stappen")
                                 healthConnectStatus.averageHeartRateBpm?.let { append(" • Avg HR $it") }
                                 append(" • Lift ${dashboard.todaysWorkoutCalories} kcal")
                             },
@@ -376,13 +388,13 @@ private fun DiscoveryCard(onOpenCoach: () -> Unit) {
                 ),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
-            Text("Discovery mode", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+            Text("Ontdekmodus", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
             Text(
-                "Welcome to your Invisible Coach. Add your profile once, and TrainIQ will start shaping recovery, nutrition, and training guidance around you.",
+                "Welkom bij je slimme coach. Vul je profiel eenmalig in en TrainIQ stemt herstel, voeding en training beter op jou af.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.trainIqColors.mutedText,
             )
-            PrimaryActionButton(onClick = onOpenCoach) { Text("Begin setup") }
+            PrimaryActionButton(onClick = onOpenCoach) { Text("Instellen starten") }
         }
     }
 }
@@ -399,20 +411,20 @@ private fun NextWorkoutCard(
         ) {
             Text("Volgende training", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
             if (dashboard.nextWorkout == null) {
-                Text("No active training day is ready yet. Open Train to configure the first session.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
-                SecondaryActionButton(onClick = onOpenTrain) { Text("Open Train") }
+                Text("Er staat nog geen actieve trainingsdag klaar. Ga naar Train om je eerste sessie in te stellen.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
+                SecondaryActionButton(onClick = onOpenTrain) { Text("Train openen") }
             } else {
                 Text(dashboard.nextWorkout.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
                 Text(
-                    dashboard.nextWorkout.exercises.joinToString { it.exercise.name }.ifBlank { "Add exercises to this day." },
+                    dashboard.nextWorkout.exercises.joinToString { it.exercise.name }.ifBlank { "Voeg oefeningen toe aan deze dag." },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.trainIqColors.mutedText,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AppChip(label = "Start workout")
+                    AppChip(label = "Training starten")
                     AppChip(label = "RPE 8")
                 }
-                PrimaryActionButton(onClick = { onStartWorkout(dashboard.nextWorkout.id) }) { Text("Start workout") }
+                PrimaryActionButton(onClick = { onStartWorkout(dashboard.nextWorkout.id) }) { Text("Training starten") }
             }
         }
     }
@@ -448,9 +460,9 @@ private fun CoachInsightCard(
                 ),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
-            Text("AI insight", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+            Text("AI-inzicht", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
             Text(insight, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
-            SecondaryActionButton(onClick = onOpenCoach) { Text("Open Coach") }
+            SecondaryActionButton(onClick = onOpenCoach) { Text("Coach openen") }
         }
     }
 }
@@ -463,13 +475,13 @@ private fun WelcomeConnectCard(onRequestHealthPermission: () -> Unit) {
                 .fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
-            Text("Welcome & Connect", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+            Text("Welkom & verbinden", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
             Text(
-                "Connect Health Connect to let TrainIQ quietly track movement, recovery, and sleep so the coach feels one step ahead without extra manual work.",
+                "Verbind Health Connect zodat TrainIQ beweging, herstel en slaap kan meenemen zonder extra handmatig werk.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.trainIqColors.mutedText,
             )
-            PrimaryActionButton(onClick = onRequestHealthPermission) { Text("Connect Health") }
+            PrimaryActionButton(onClick = onRequestHealthPermission) { Text("Health verbinden") }
         }
     }
 }

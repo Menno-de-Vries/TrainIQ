@@ -185,6 +185,7 @@ class NutritionViewModel @Inject constructor(
     }
 
     fun saveFood(
+        id: Long?,
         name: String,
         barcode: String?,
         calories: String,
@@ -203,7 +204,7 @@ class NutritionViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            val item = saveFoodItemUseCase(null, name.trim(), barcode?.trim()?.ifBlank { null }, parsedCalories, parsedProtein, parsedCarbs, parsedFat, sourceType)
+            val item = saveFoodItemUseCase(id, name.trim(), barcode?.trim()?.ifBlank { null }, parsedCalories, parsedProtein, parsedCarbs, parsedFat, sourceType)
             ephemeral.update { it.copy(message = "Saved ${item.name}.") }
             onSaved(item)
         }
@@ -221,13 +222,13 @@ class NutritionViewModel @Inject constructor(
         }
     }
 
-    fun saveMeal(mealType: MealType, name: String, notes: String, items: List<MealEntryRequest>, onSaved: () -> Unit = {}) {
+    fun saveMeal(id: Long?, mealType: MealType, name: String, notes: String, items: List<MealEntryRequest>, onSaved: () -> Unit = {}) {
         if (name.isBlank() || items.isEmpty() || items.any { it.gramsUsed <= 0.0 || !it.gramsUsed.isFinite() }) {
             ephemeral.update { it.copy(message = "Add a meal name and positive item amounts before saving.") }
             return
         }
         viewModelScope.launch {
-            saveMealUseCase(null, mealType, name.trim(), notes.trim(), items)
+            saveMealUseCase(id, mealType, name.trim(), notes.trim(), items)
             ephemeral.update { it.copy(message = "Meal saved.") }
             onSaved()
         }
@@ -299,9 +300,9 @@ fun NutritionRoute(
 @Composable
 fun NutritionScreen(
     uiState: NutritionUiState,
-    onSaveFood: (String, String?, String, String, String, String, FoodSourceType, (FoodItem) -> Unit) -> Unit,
+    onSaveFood: (Long?, String, String?, String, String, String, String, FoodSourceType, (FoodItem) -> Unit) -> Unit,
     onSaveRecipe: (String, String, String, List<Pair<Long, Double>>) -> Unit,
-    onSaveMeal: (MealType, String, String, List<MealEntryRequest>, () -> Unit) -> Unit,
+    onSaveMeal: (Long?, MealType, String, String, List<MealEntryRequest>, () -> Unit) -> Unit,
     onDeleteMeal: (Long) -> Unit,
     onDeleteFood: (Long) -> Unit,
     onDeleteRecipe: (Long) -> Unit,
@@ -355,10 +356,11 @@ fun NutritionScreen(
     val recipeDraft = remember { mutableStateListOf<Pair<Long, Double>>() }
 
     var mealType by remember { mutableStateOf(MealType.LUNCH) }
-    var mealName by remember { mutableStateOf("Lunch") }
+    var mealName by remember { mutableStateOf(MealType.LUNCH.dutchLabel) }
     var mealNotes by remember { mutableStateOf("") }
     var mealFoodGrams by remember { mutableStateOf("100") }
     var mealRecipeGrams by remember { mutableStateOf("150") }
+    var editingMealId by remember { mutableStateOf<Long?>(null) }
     val mealDraft = remember { mutableStateListOf<MealEntryRequest>() }
 
     var aiContext by remember { mutableStateOf("") }
@@ -411,8 +413,8 @@ fun NutritionScreen(
         if (!aiScanForRecipe) {
             scanResult?.suggestedMealType?.let {
                 mealType = it
-                if (mealName in listOf("Breakfast", "Lunch", "Dinner", "Snack")) {
-                    mealName = it.label
+                if (mealName in listOf("Breakfast", "Lunch", "Dinner", "Snack", "Ochtend", "Middag", "Avond", "Snacks")) {
+                    mealName = it.dutchLabel
                 }
             }
         } else if (editableAiItems.isNotEmpty()) {
@@ -499,12 +501,14 @@ fun NutritionScreen(
                                 DailyMealsDashboard(
                                     overview = overview,
                                     onAddToMeal = { type ->
+                                        editingMealId = null
                                         mealType = type
                                         mealName = type.dutchLabel
                                         addToMealType = type
                                         showAddToMealActions = true
                                     },
                                     onEditMeal = { meal ->
+                                        editingMealId = meal.id
                                         mealType = meal.mealType
                                         mealName = meal.name
                                         mealNotes = meal.notes.orEmpty()
@@ -537,7 +541,8 @@ fun NutritionScreen(
                                     onRemoveDraftItem = { index -> mealDraft.removeAt(index) },
                                     onSave = {
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        onSaveMeal(mealType, mealName, mealNotes, mealDraft.toList()) {
+                                        onSaveMeal(editingMealId, mealType, mealName, mealNotes, mealDraft.toList()) {
+                                            editingMealId = null
                                             mealNotes = ""
                                             mealDraft.clear()
                                             onSetScanResult(null)
@@ -566,6 +571,7 @@ fun NutritionScreen(
                                         editableAiItems.forEach { item ->
                                             val grams = item.grams.toNutritionNumberOrNull(max = 100_000.0) ?: 100.0
                                             onSaveFood(
+                                                null,
                                                 item.name,
                                                 null,
                                                 per100Value(item.calories, grams),
@@ -600,6 +606,7 @@ fun NutritionScreen(
                                             editableAiItems.forEach { item ->
                                                 val grams = item.grams.toNutritionNumberOrNull(max = 100_000.0) ?: 100.0
                                                 onSaveFood(
+                                                    null,
                                                     item.name,
                                                     null,
                                                     per100Value(item.calories, grams),
@@ -617,6 +624,7 @@ fun NutritionScreen(
                                             editableAiItems.forEach { item ->
                                                 val grams = item.grams.toNutritionNumberOrNull(max = 100_000.0) ?: 100.0
                                                 onSaveFood(
+                                                    null,
                                                     item.name,
                                                     null,
                                                     per100Value(item.calories, grams),
@@ -678,6 +686,7 @@ fun NutritionScreen(
                                         val fatValue = quickIngredientFat.toNutritionNumberOrNull(max = 1000.0)
                                         if (quickIngredientName.isNotBlank() && grams != null && kcal != null && proteinValue != null && carbsValue != null && fatValue != null) {
                                             onSaveFood(
+                                                null,
                                                 quickIngredientName,
                                                 quickIngredientBarcode,
                                                 quickIngredientKcal,
@@ -750,10 +759,13 @@ fun NutritionScreen(
                                     onProteinChange = { protein = it },
                                     onCarbsChange = { carbs = it },
                                     onFatChange = { fat = it },
-                                    onScanBarcode = onOpenBarcodeScanner,
+                                    onScanBarcode = {
+                                        onSetScanTarget(ScanTarget.FOOD_EDITOR)
+                                        onOpenBarcodeScanner()
+                                    },
                                     onSave = {
-                                        onSaveFood(foodName, barcode, calories, protein, carbs, fat, if (barcode.isBlank()) FoodSourceType.MANUAL else FoodSourceType.BARCODE) {
-                                            selectedFoodId = it.id
+                                        onSaveFood(selectedFoodId, foodName, barcode, calories, protein, carbs, fat, if (barcode.isBlank()) FoodSourceType.MANUAL else FoodSourceType.BARCODE) {
+                                            selectedFoodId = null
                                             foodName = ""
                                             barcode = ""
                                             calories = ""

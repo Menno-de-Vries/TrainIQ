@@ -1,6 +1,7 @@
 package com.trainiq.features.coach
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -41,6 +43,7 @@ import com.trainiq.core.ui.MessageCard
 import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.ShimmerCardPlaceholder
 import com.trainiq.core.ui.bringIntoViewOnFocus
+import com.trainiq.features.profile.buildValidatedProfileInput
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.CoachOverview
 import com.trainiq.domain.model.GoalAdvice
@@ -94,6 +97,7 @@ class CoachViewModel @Inject constructor(
 ) : ViewModel() {
     private data class CoachEphemeralState(
         val goalAdvice: GoalAdvice? = null,
+        val goalAdviceInput: GoalAdviceInput? = null,
         val generatedReport: WeeklyReportResult? = null,
         val message: String? = null,
         val isGeneratingAdvice: Boolean = false,
@@ -131,22 +135,20 @@ class CoachViewModel @Inject constructor(
         activityLevel: String,
         goal: String,
     ) {
-        val parsedHeight = height.toDoubleOrNull()
-        val parsedWeight = weight.toDoubleOrNull()
-        val parsedBodyFat = bodyFat.toDoubleOrNull()
-        val parsedAge = age.toIntOrNull() ?: 30
-        if (name.isBlank() || activityLevel.isBlank() || goal.isBlank() || parsedHeight == null || parsedWeight == null || parsedBodyFat == null) {
+        val input = buildGoalAdviceInput(name, height, weight, bodyFat, age, sex, activityLevel, goal)
+        if (input == null) {
             ephemeral.update { it.copy(message = "Complete all profile fields before generating advice.") }
             return
         }
         viewModelScope.launch {
             ephemeral.update { it.copy(isGeneratingAdvice = true, message = null) }
             val result = runCatching {
-                generateGoalAdviceUseCase(parsedHeight, parsedWeight, parsedBodyFat, parsedAge, sex, activityLevel, goal)
+                generateGoalAdviceUseCase(input.height, input.weight, input.bodyFat, input.age, input.sex, input.activityLevel, input.goal)
             }
             ephemeral.update {
                 it.copy(
                     goalAdvice = result.getOrNull(),
+                    goalAdviceInput = if (result.isSuccess) input else null,
                     message = if (result.isSuccess) "Advice generated. Review it before saving." else "Unable to generate advice right now.",
                     isGeneratingAdvice = false,
                 )
@@ -178,28 +180,29 @@ class CoachViewModel @Inject constructor(
         activityLevel: String,
         goal: String,
     ) {
-        val parsedHeight = height.toDoubleOrNull()
-        val parsedWeight = weight.toDoubleOrNull()
-        val parsedBodyFat = bodyFat.toDoubleOrNull()
-        val parsedAge = age.toIntOrNull() ?: 30
-        val current = uiState.value as? CoachUiState.Success
-        val advice = current?.goalAdvice
-        if (name.isBlank() || activityLevel.isBlank() || goal.isBlank() || parsedHeight == null || parsedWeight == null || parsedBodyFat == null || advice == null) {
+        val input = buildGoalAdviceInput(name, height, weight, bodyFat, age, sex, activityLevel, goal)
+        val currentAdviceState = ephemeral.value
+        val advice = currentAdviceState.goalAdvice
+        if (input == null || advice == null) {
             ephemeral.update { it.copy(message = "Generate advice first and then save the profile.") }
+            return
+        }
+        if (input != currentAdviceState.goalAdviceInput) {
+            ephemeral.update { it.copy(message = "Profile changed. Generate advice again before saving.") }
             return
         }
         viewModelScope.launch {
             saveUserProfileUseCase(
                 UserProfile(
                     id = 1L,
-                    name = name.trim(),
-                    age = parsedAge,
-                    sex = sex,
-                    height = parsedHeight,
-                    weight = parsedWeight,
-                    bodyFat = parsedBodyFat,
-                    activityLevel = activityLevel.trim(),
-                    goal = goal.trim(),
+                    name = input.name,
+                    age = input.age,
+                    sex = input.sex,
+                    height = input.height,
+                    weight = input.weight,
+                    bodyFat = input.bodyFat,
+                    activityLevel = input.activityLevel,
+                    goal = input.goal,
                     calorieTarget = advice.calorieTarget,
                     proteinTarget = advice.proteinTarget,
                     carbsTarget = advice.carbsTarget,
@@ -214,6 +217,42 @@ class CoachViewModel @Inject constructor(
     fun clearMessage() {
         ephemeral.update { it.copy(message = null) }
     }
+}
+
+internal data class GoalAdviceInput(
+    val name: String,
+    val height: Double,
+    val weight: Double,
+    val bodyFat: Double,
+    val age: Int,
+    val sex: BiologicalSex,
+    val activityLevel: String,
+    val goal: String,
+)
+
+internal fun buildGoalAdviceInput(
+    name: String,
+    height: String,
+    weight: String,
+    bodyFat: String,
+    age: String,
+    sex: BiologicalSex,
+    activityLevel: String,
+    goal: String,
+): GoalAdviceInput? {
+    val input = buildValidatedProfileInput(name, height, weight, bodyFat, age, sex, activityLevel, goal)
+        ?: return null
+
+    return GoalAdviceInput(
+        name = input.name,
+        height = input.height,
+        weight = input.weight,
+        bodyFat = input.bodyFat,
+        age = input.age,
+        sex = input.sex,
+        activityLevel = input.activityLevel,
+        goal = input.goal,
+    )
 }
 
 @Composable
@@ -365,7 +404,7 @@ fun CoachScreen(
                             ) {
                                 Text("Goal advisor", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
         OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
-        OutlinedTextField(value = age, onValueChange = { age = it }, label = { Text("Age") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+        OutlinedTextField(value = age, onValueChange = { age = it }, label = { Text("Age") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
                                 Text("Biological sex", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                 Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                                     BiologicalSex.entries.forEach { option ->
@@ -376,9 +415,9 @@ fun CoachScreen(
                                         )
                                     }
                                 }
-        OutlinedTextField(value = height, onValueChange = { height = it }, label = { Text("Height (cm)") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
-        OutlinedTextField(value = weight, onValueChange = { weight = it }, label = { Text("Weight (kg)") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
-        OutlinedTextField(value = bodyFat, onValueChange = { bodyFat = it }, label = { Text("Body fat %") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+        OutlinedTextField(value = height, onValueChange = { height = it }, label = { Text("Height (cm)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+        OutlinedTextField(value = weight, onValueChange = { weight = it }, label = { Text("Weight (kg)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+        OutlinedTextField(value = bodyFat, onValueChange = { bodyFat = it }, label = { Text("Body fat %") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
                                 Text("Activity level", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                 Row(
                                     modifier = Modifier
