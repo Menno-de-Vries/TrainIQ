@@ -10,6 +10,9 @@
 local.properties
 **/local.properties
 
+# Local git worktrees
+.worktrees/
+
 # Android generated outputs
 captures/
 **/.externalNativeBuild/
