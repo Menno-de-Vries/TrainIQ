@@ -29,6 +29,7 @@ import com.trainiq.data.local.RecipeIngredientStorage
 import com.trainiq.data.local.RecipeStorage
 import com.trainiq.data.local.TrainIqLocalStore
 import com.trainiq.data.local.TrainIqStorageState
+import com.trainiq.data.local.WorkoutLogEventStorage
 import com.trainiq.data.mapper.parseSetType
 import com.trainiq.data.mapper.toDomain
 import com.trainiq.domain.model.BodyMeasurement
@@ -74,7 +75,10 @@ import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WeeklyReportResult
 import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutDebrief
+import com.trainiq.domain.model.WorkoutLogEventType
+import com.trainiq.domain.model.WorkoutLoggingSummary
 import com.trainiq.domain.model.WorkoutOverview
+import com.trainiq.domain.model.WorkoutSyncStatus
 import com.trainiq.domain.model.buildEnergyBalance
 import com.trainiq.domain.model.buildGoalBaseline
 import com.trainiq.domain.model.estimateStrengthTrainingCalories
@@ -202,6 +206,9 @@ class TrainIqRepository @Inject constructor(
     }
 
     override fun observeWorkoutOverview(): Flow<WorkoutOverview> = snapshotState.map(::buildWorkoutOverview)
+
+    override fun observeWorkoutLoggingSummary(dayId: Long): Flow<WorkoutLoggingSummary> =
+        localStore.state.map { state -> state.workoutLoggingSummary(dayId = dayId, now = System.currentTimeMillis()) }
 
     override fun observeExerciseHistory(exerciseId: Long): Flow<ExerciseHistory> =
         snapshotState.map { snapshot -> buildExerciseHistory(snapshot, exerciseId) }
@@ -355,30 +362,38 @@ class TrainIqRepository @Inject constructor(
             val performedExercise = state.performedExercises.firstOrNull {
                 it.sessionId == active.sessionId && it.exerciseId == set.exerciseId
             }
-            val next = active.copy(
-                updatedAt = now,
-                loggedSets = active.loggedSets + ActiveWorkoutSetStorage(
-                    id = nextSetId,
-                    exerciseId = set.exerciseId,
-                    performedExerciseId = performedExercise?.id ?: set.performedExerciseId,
-                    sourceWorkoutExerciseId = performedExercise?.sourceWorkoutExerciseId ?: set.sourceWorkoutExerciseId,
-                    weight = set.weight,
-                    reps = set.reps,
-                    rpe = set.rpe,
-                    repsInReserve = set.repsInReserve,
-                    setType = set.setType,
-                    restSeconds = restSeconds.coerceAtLeast(0),
-                    orderIndex = active.loggedSets.count { it.exerciseId == set.exerciseId },
-                    completed = true,
-                    loggedAt = now,
-                ),
-                drafts = active.drafts.toMutableMap().apply { put(set.exerciseId, draft.toStorage()) },
-                collapsedExerciseIds = active.collapsedExerciseIds - set.exerciseId,
-                restTimerEndsAt = if (restSeconds > 0) now + restSeconds * 1_000L else null,
-                restTimerTotalSeconds = restSeconds.coerceAtLeast(0),
+            val storedSet = ActiveWorkoutSetStorage(
+                id = nextSetId,
+                exerciseId = set.exerciseId,
+                performedExerciseId = performedExercise?.id ?: set.performedExerciseId,
+                sourceWorkoutExerciseId = performedExercise?.sourceWorkoutExerciseId ?: set.sourceWorkoutExerciseId,
+                weight = set.weight,
+                reps = set.reps,
+                rpe = set.rpe,
+                repsInReserve = set.repsInReserve,
+                setType = set.setType,
+                restSeconds = restSeconds.coerceAtLeast(0),
+                orderIndex = active.loggedSets.count { it.exerciseId == set.exerciseId },
+                completed = true,
+                loggedAt = now,
             )
-            result = next.toDomain()
-            state.copy(activeWorkoutSession = next)
+            val updated = state
+                .copy(
+                    activeWorkoutSession = active.copy(
+                        drafts = active.drafts.toMutableMap().apply { put(set.exerciseId, draft.toStorage()) },
+                        collapsedExerciseIds = active.collapsedExerciseIds - set.exerciseId,
+                        restTimerEndsAt = if (restSeconds > 0) now + restSeconds * 1_000L else null,
+                        restTimerTotalSeconds = restSeconds.coerceAtLeast(0),
+                    ),
+                )
+                .appendWorkoutSetEvent(
+                    dayId = dayId,
+                    sessionId = active.sessionId,
+                    set = storedSet,
+                    now = now,
+                )
+            result = updated.activeWorkoutSession?.toDomain()
+            updated
         }
         return requireNotNull(result)
     }
@@ -398,6 +413,16 @@ class TrainIqRepository @Inject constructor(
                 loggedSets = active.loggedSets.filterIndexedForExercise(exerciseId) { index -> index != setIndex },
             )
         }
+
+    override suspend fun undoWorkoutLogEvent(eventId: Long): ActiveWorkoutSession? {
+        var result: ActiveWorkoutSession? = null
+        localStore.update { state ->
+            val updated = state.undoWorkoutSetEvent(eventId = eventId, now = System.currentTimeMillis())
+            result = updated.activeWorkoutSession?.toDomain()
+            updated
+        }
+        return result
+    }
 
     override suspend fun setActiveWorkoutCollapsed(exerciseId: Long, collapsed: Boolean): ActiveWorkoutSession? =
         mutateActiveWorkout { active, now ->
@@ -1735,6 +1760,89 @@ class TrainIqRepository @Inject constructor(
         val scannedMealResult: MealAnalysisResult? = null,
     )
 
+}
+
+internal const val WorkoutUndoWindowMillis: Long = 15_000L
+
+internal fun TrainIqStorageState.appendWorkoutSetEvent(
+    dayId: Long,
+    sessionId: Long,
+    set: ActiveWorkoutSetStorage,
+    now: Long,
+    undoWindowMillis: Long = WorkoutUndoWindowMillis,
+): TrainIqStorageState {
+    val active = activeWorkoutSession ?: ActiveWorkoutSessionStorage(
+        sessionId = sessionId,
+        dayId = dayId,
+        startedAt = now,
+    )
+    val previousLoggedSets = active.loggedSets
+    val event = WorkoutLogEventStorage(
+        id = (workoutLogEvents.maxOfOrNull { it.id } ?: 0L) + 1L,
+        dayId = dayId,
+        sessionId = sessionId,
+        type = WorkoutLogEventType.ADD_SET,
+        syncStatus = WorkoutSyncStatus.PENDING,
+        createdAt = now,
+        undoExpiresAt = now + undoWindowMillis,
+        set = set,
+        previousLoggedSets = previousLoggedSets,
+    )
+    return copy(
+        activeWorkoutSession = active.copy(
+            sessionId = sessionId,
+            dayId = dayId,
+            updatedAt = now,
+            loggedSets = previousLoggedSets + set,
+        ),
+        workoutLogEvents = workoutLogEvents + event,
+    )
+}
+
+internal fun TrainIqStorageState.undoWorkoutSetEvent(eventId: Long, now: Long): TrainIqStorageState {
+    val event = workoutLogEvents.firstOrNull { it.id == eventId && it.type == WorkoutLogEventType.ADD_SET }
+        ?: return this
+    if ((event.undoExpiresAt ?: Long.MIN_VALUE) < now) return this
+    if (workoutLogEvents.any { it.type == WorkoutLogEventType.UNDO_SET && it.targetEventId == eventId }) return this
+    val active = activeWorkoutSession ?: return this
+    val undoEvent = WorkoutLogEventStorage(
+        id = (workoutLogEvents.maxOfOrNull { it.id } ?: 0L) + 1L,
+        dayId = event.dayId,
+        sessionId = event.sessionId,
+        type = WorkoutLogEventType.UNDO_SET,
+        syncStatus = WorkoutSyncStatus.PENDING,
+        createdAt = now,
+        targetEventId = eventId,
+        previousLoggedSets = active.loggedSets,
+    )
+    return copy(
+        activeWorkoutSession = active.copy(
+            updatedAt = now,
+            loggedSets = event.previousLoggedSets,
+        ),
+        workoutLogEvents = workoutLogEvents + undoEvent,
+    )
+}
+
+internal fun TrainIqStorageState.workoutLoggingSummary(dayId: Long, now: Long): WorkoutLoggingSummary {
+    val pendingCount = workoutLogEvents.count { it.dayId == dayId && it.syncStatus == WorkoutSyncStatus.PENDING }
+    val undoneEventIds = workoutLogEvents
+        .filter { it.type == WorkoutLogEventType.UNDO_SET }
+        .mapNotNull { it.targetEventId }
+        .toSet()
+    val undoable = workoutLogEvents
+        .asReversed()
+        .firstOrNull { event ->
+            event.dayId == dayId &&
+                event.type == WorkoutLogEventType.ADD_SET &&
+                event.id !in undoneEventIds &&
+                (event.undoExpiresAt ?: Long.MIN_VALUE) >= now
+        }
+    return WorkoutLoggingSummary(
+        pendingCount = pendingCount,
+        lastUndoableEventId = undoable?.id,
+        lastUndoableExpiresAt = undoable?.undoExpiresAt,
+    )
 }
 
 internal fun defaultWorkoutSessionName(existingSessionCount: Int): String = "Session ${existingSessionCount + 1}"

@@ -201,6 +201,31 @@ data class ActiveWorkoutSession(
     val restTimerTotalSeconds: Int,
 )
 
+enum class WorkoutLogEventType {
+    ADD_SET,
+    EDIT_SET,
+    UNDO_SET,
+    DELETE_SET,
+}
+
+enum class WorkoutSyncStatus {
+    PENDING,
+    SYNCED,
+    FAILED,
+}
+
+data class ActiveWorkoutFocusTarget(
+    val exerciseId: Long,
+    val setIndex: Int,
+)
+
+data class WorkoutLoggingSummary(
+    val pendingCount: Int = 0,
+    val lastUndoableEventId: Long? = null,
+    val lastUndoableExpiresAt: Long? = null,
+    val activeFocusTarget: ActiveWorkoutFocusTarget? = null,
+)
+
 data class ProgressionSuggestion(
     val exerciseId: Long,
     val exerciseName: String,

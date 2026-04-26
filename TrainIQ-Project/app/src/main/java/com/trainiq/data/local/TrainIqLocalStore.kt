@@ -15,6 +15,8 @@ import com.trainiq.core.database.WorkoutSessionEntity
 import com.trainiq.core.database.WorkoutSetEntity
 import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.MealType
+import com.trainiq.domain.model.WorkoutLogEventType
+import com.trainiq.domain.model.WorkoutSyncStatus
 import com.trainiq.domain.model.estimateStrengthTrainingCalories
 import com.trainiq.domain.model.suggestMealType
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -168,6 +170,20 @@ data class TrainIqStorageState(
     val performedExercises: List<PerformedExerciseEntity> = emptyList(),
     val workoutSets: List<WorkoutSetEntity> = emptyList(),
     val activeWorkoutSession: ActiveWorkoutSessionStorage? = null,
+    val workoutLogEvents: List<WorkoutLogEventStorage> = emptyList(),
+)
+
+data class WorkoutLogEventStorage(
+    val id: Long = 0L,
+    val dayId: Long = 0L,
+    val sessionId: Long = 0L,
+    val type: WorkoutLogEventType = WorkoutLogEventType.ADD_SET,
+    val syncStatus: WorkoutSyncStatus = WorkoutSyncStatus.PENDING,
+    val createdAt: Long = 0L,
+    val undoExpiresAt: Long? = null,
+    val targetEventId: Long? = null,
+    val set: ActiveWorkoutSetStorage? = null,
+    val previousLoggedSets: List<ActiveWorkoutSetStorage> = emptyList(),
 )
 
 data class ActiveWorkoutSessionStorage(

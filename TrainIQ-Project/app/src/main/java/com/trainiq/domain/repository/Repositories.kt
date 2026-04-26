@@ -26,6 +26,7 @@ import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WeeklyReportResult
 import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutDebrief
+import com.trainiq.domain.model.WorkoutLoggingSummary
 import com.trainiq.domain.model.WorkoutOverview
 import kotlinx.coroutines.flow.Flow
 
@@ -38,6 +39,7 @@ interface HomeRepository {
 
 interface WorkoutRepository {
     fun observeWorkoutOverview(): Flow<WorkoutOverview>
+    fun observeWorkoutLoggingSummary(dayId: Long): Flow<WorkoutLoggingSummary>
     fun observeExerciseHistory(exerciseId: Long): Flow<ExerciseHistory>
     suspend fun getWorkoutDay(dayId: Long): WorkoutDay?
     suspend fun getProgressionSuggestions(dayId: Long): List<ProgressionSuggestion>
@@ -47,6 +49,7 @@ interface WorkoutRepository {
     suspend fun logActiveWorkoutSet(dayId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int): ActiveWorkoutSession
     suspend fun updateActiveWorkoutSetType(exerciseId: Long, setIndex: Int, setType: SetType): ActiveWorkoutSession?
     suspend fun deleteActiveWorkoutSet(exerciseId: Long, setIndex: Int): ActiveWorkoutSession?
+    suspend fun undoWorkoutLogEvent(eventId: Long): ActiveWorkoutSession?
     suspend fun setActiveWorkoutCollapsed(exerciseId: Long, collapsed: Boolean): ActiveWorkoutSession?
     suspend fun updateActiveWorkoutRestTimer(endsAt: Long?, totalSeconds: Int): ActiveWorkoutSession?
     suspend fun finishActiveWorkout(dayId: Long): WorkoutDebrief

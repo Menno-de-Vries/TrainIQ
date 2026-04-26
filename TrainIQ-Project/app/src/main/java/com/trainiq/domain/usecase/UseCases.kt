@@ -11,6 +11,7 @@ import com.trainiq.domain.model.RoutineSet
 import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WeeklyReportResult
+import com.trainiq.domain.model.WorkoutLoggingSummary
 import com.trainiq.domain.repository.MealEntryRequest
 import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.repository.CoachRepository
@@ -34,6 +35,11 @@ class RefreshDashboardDataUseCase @Inject constructor(private val repository: Ho
 
 class ObserveWorkoutOverviewUseCase @Inject constructor(private val repository: WorkoutRepository) {
     operator fun invoke() = repository.observeWorkoutOverview()
+}
+
+class ObserveWorkoutLoggingSummaryUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    operator fun invoke(dayId: Long): kotlinx.coroutines.flow.Flow<WorkoutLoggingSummary> =
+        repository.observeWorkoutLoggingSummary(dayId)
 }
 
 class ObserveExerciseHistoryUseCase @Inject constructor(private val repository: WorkoutRepository) {
@@ -78,6 +84,10 @@ class UpdateActiveWorkoutSetTypeUseCase @Inject constructor(private val reposito
 class DeleteActiveWorkoutSetUseCase @Inject constructor(private val repository: WorkoutRepository) {
     suspend operator fun invoke(exerciseId: Long, setIndex: Int) =
         repository.deleteActiveWorkoutSet(exerciseId, setIndex)
+}
+
+class UndoWorkoutLogEventUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(eventId: Long) = repository.undoWorkoutLogEvent(eventId)
 }
 
 class SetActiveWorkoutCollapsedUseCase @Inject constructor(private val repository: WorkoutRepository) {
