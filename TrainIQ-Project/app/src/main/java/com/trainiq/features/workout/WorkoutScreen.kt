@@ -801,6 +801,37 @@ class WorkoutViewModel @Inject constructor(
         }
     }
 
+    fun replaceExerciseInActiveWorkout(workoutExerciseId: Long, exercise: Exercise) {
+        val workout = _activeWorkout.value ?: return
+        val currentPlan = workout.exercises.firstOrNull { it.id == workoutExerciseId } ?: return
+        if (_loggedSetsThisSession.value[currentPlan.exercise.id].orEmpty().isNotEmpty()) {
+            _message.value = "Verwijder eerst gelogde sets voordat je deze oefening vervangt."
+            return
+        }
+        _activeWorkout.value = workout.copy(
+            exercises = workout.exercises.map { plan ->
+                if (plan.id == workoutExerciseId) plan.copy(exercise = exercise) else plan
+            },
+        )
+        _drafts.value = _drafts.value.toMutableMap().apply {
+            remove(currentPlan.exercise.id)?.let { draft -> put(exercise.id, draft) }
+        }
+        _message.value = "${currentPlan.exercise.name} vervangen door ${exercise.name} voor deze actieve training."
+    }
+
+    fun removeExerciseFromActiveWorkout(workoutExerciseId: Long) {
+        val workout = _activeWorkout.value ?: return
+        val currentPlan = workout.exercises.firstOrNull { it.id == workoutExerciseId } ?: return
+        if (_loggedSetsThisSession.value[currentPlan.exercise.id].orEmpty().isNotEmpty()) {
+            _message.value = "Verwijder eerst gelogde sets voordat je deze oefening uit de actieve training haalt."
+            return
+        }
+        _activeWorkout.value = workout.copy(exercises = workout.exercises.filterNot { it.id == workoutExerciseId })
+        _drafts.value = _drafts.value - currentPlan.exercise.id
+        _activeFocusTarget.value = _activeFocusTarget.value?.takeUnless { it.exerciseId == currentPlan.exercise.id }
+        _message.value = "${currentPlan.exercise.name} verwijderd uit deze actieve training. De routine zelf is niet aangepast."
+    }
+
     fun updateWorkoutExercisePlan(
         workoutExerciseId: Long,
         targetSets: String,
@@ -1439,6 +1470,7 @@ private fun RoutineCard(
     var showStarterExercisePicker by remember(routine.id) { mutableStateOf(false) }
     var showStarterCustomExerciseDialog by remember(routine.id) { mutableStateOf(false) }
     var showDeleteRoutineConfirm by remember(routine.id) { mutableStateOf(false) }
+    var editorOpen by remember(routine.id) { mutableStateOf(false) }
 
     if (showStarterExercisePicker) {
         ExercisePickerSheet(
@@ -1513,8 +1545,8 @@ private fun RoutineCard(
     AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.primary) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (isEditing) {
-                OutlinedTextField(editName, { editName = it }, label = { Text("Routine name") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
-                OutlinedTextField(editDescription, { editDescription = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                OutlinedTextField(editName, { editName = it }, label = { Text("Routinenaam") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                OutlinedTextField(editDescription, { editDescription = it }, label = { Text("Beschrijving") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         onClick = {
@@ -1522,7 +1554,7 @@ private fun RoutineCard(
                             isEditing = false
                         },
                     ) {
-                        Text("Save")
+                        Text("Opslaan")
                     }
                     TextButton(
                         onClick = {
@@ -1537,7 +1569,13 @@ private fun RoutineCard(
             } else {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Routine builder", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+                        Text(
+                            routine.name,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                         Text(
                             "${routineFocusLabel(routine)} focus · ${routineExerciseCount(routine)} oefeningen · ±${routineEstimatedMinutes(routine)} min",
                             style = MaterialTheme.typography.titleMedium,
@@ -1546,7 +1584,7 @@ private fun RoutineCard(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            routine.name + routine.description.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty(),
+                            routine.description.ifBlank { "Geen beschrijving." },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.trainIqColors.mutedText,
                             maxLines = 2,
@@ -1559,8 +1597,11 @@ private fun RoutineCard(
                                 Text("Start")
                             }
                         }
-                        IconButton(onClick = { isEditing = true }) {
-                            Icon(Icons.Rounded.Edit, contentDescription = "Routine bewerken")
+                        IconButton(onClick = { editorOpen = !editorOpen }) {
+                            Icon(
+                                if (editorOpen) Icons.Rounded.ExpandLess else Icons.Rounded.Edit,
+                                contentDescription = if (editorOpen) "Routine editor sluiten" else "Routine bewerken",
+                            )
                         }
                     }
                 }
@@ -1569,21 +1610,28 @@ private fun RoutineCard(
                 SecondaryActionButton(onClick = { onSetActiveRoutine(routine.id) }) { Text(if (routine.active) "Actief" else "Actief maken") }
                 TextButton(onClick = { showDeleteRoutineConfirm = true }) { Text("Verwijderen") }
             }
+            if (editorOpen || isEditing) {
             HorizontalDivider()
-            Text("Add session", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (!isEditing) {
+                TextButton(onClick = { isEditing = true }) {
+                    Icon(Icons.Rounded.Edit, contentDescription = null)
+                    Text("Naam en beschrijving bewerken")
+                }
+            }
+            Text("Sessie toevoegen", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(dayName, { dayName = it }, label = { Text("Session name (optional)") }, modifier = Modifier.weight(1f).bringIntoViewOnFocus())
-                Button(onClick = { onAddDay(routine.id, dayName); dayName = "" }) { Text("Add") }
+                OutlinedTextField(dayName, { dayName = it }, label = { Text("Sessienaam (optioneel)") }, modifier = Modifier.weight(1f).bringIntoViewOnFocus())
+                Button(onClick = { onAddDay(routine.id, dayName); dayName = "" }) { Text("Toevoegen") }
             }
             if (routine.days.isEmpty()) {
                 Text(
-                    "No sessions yet. Add an exercise now and TrainIQ will create Session 1 automatically.",
+                    "Nog geen sessies. Voeg een oefening toe en TrainIQ maakt Session 1 automatisch.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Button(onClick = { showStarterExercisePicker = true }, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Rounded.Add, contentDescription = null)
-                    Text("Add first exercise")
+                    Text("Eerste oefening toevoegen")
                 }
             } else {
                 routine.days.forEach { day ->
@@ -1605,6 +1653,7 @@ private fun RoutineCard(
                         onMoveRoutineSet = onMoveRoutineSet,
                     )
                 }
+            }
             }
         }
     }
@@ -1932,9 +1981,8 @@ private fun RoutineExerciseCard(
                     Text(
                         plan.exercise.name,
                         style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.ExtraBold,
-                        maxLines = 1,
-                        softWrap = false,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
@@ -3093,6 +3141,7 @@ fun ActiveWorkoutRoute(
     viewModel: WorkoutViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.activeWorkoutUiState.collectAsStateWithLifecycle()
+    val overview by viewModel.overview.collectAsStateWithLifecycle()
     val workoutFeedbackPreferences by viewModel.workoutFeedbackPreferences.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
@@ -3140,6 +3189,7 @@ fun ActiveWorkoutRoute(
 
     ActiveWorkoutScreen(
         uiState = uiState,
+        exerciseLibrary = overview?.exercises.orEmpty(),
         snackbarHostState = snackbarHostState,
         workoutHapticsEnabled = workoutFeedbackPreferences.workoutHapticsEnabled,
         onBack = onBack,
@@ -3155,6 +3205,8 @@ fun ActiveWorkoutRoute(
         onSkipRestTimer = viewModel::skipRestTimer,
         onRestartRestTimer = viewModel::restartRestTimer,
         onToggleExerciseCollapsed = viewModel::setExerciseCollapsed,
+        onReplaceActiveExercise = viewModel::replaceExerciseInActiveWorkout,
+        onRemoveActiveExercise = viewModel::removeExerciseFromActiveWorkout,
         onFinish = { viewModel.finishWorkout(dayId) },
         onDiscard = { viewModel.discardWorkout(dayId) },
     )
@@ -3164,6 +3216,7 @@ fun ActiveWorkoutRoute(
 @Composable
 fun ActiveWorkoutScreen(
     uiState: ActiveWorkoutUiState,
+    exerciseLibrary: List<Exercise>,
     snackbarHostState: SnackbarHostState,
     workoutHapticsEnabled: Boolean,
     onBack: () -> Unit,
@@ -3179,13 +3232,41 @@ fun ActiveWorkoutScreen(
     onSkipRestTimer: () -> Unit,
     onRestartRestTimer: (Int) -> Unit,
     onToggleExerciseCollapsed: (Long, Boolean) -> Unit,
+    onReplaceActiveExercise: (Long, Exercise) -> Unit,
+    onRemoveActiveExercise: (Long) -> Unit,
     onFinish: () -> Unit,
     onDiscard: () -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
     var showFinishConfirm by remember { mutableStateOf(false) }
     var showDiscardConfirm by remember { mutableStateOf(false) }
+    var replacingActivePlan by remember { mutableStateOf<WorkoutExercisePlan?>(null) }
+    var pendingRemoveActivePlan by remember { mutableStateOf<WorkoutExercisePlan?>(null) }
     val currentOnDismissMessage by rememberUpdatedState(onDismissMessage)
+
+    replacingActivePlan?.let { plan ->
+        ExercisePickerSheet(
+            exercises = exerciseLibrary,
+            title = "Oefening vervangen",
+            showDefaults = false,
+            targetSets = plan.targetSets.toString(),
+            repRange = plan.repRange,
+            restSeconds = plan.restSeconds.toString(),
+            targetWeightKg = plan.targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty(),
+            targetRpe = plan.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty(),
+            onTargetSetsChange = {},
+            onRepRangeChange = {},
+            onRestSecondsChange = {},
+            onTargetWeightChange = {},
+            onTargetRpeChange = {},
+            onSelect = { exercise ->
+                replacingActivePlan = null
+                onReplaceActiveExercise(plan.id, exercise)
+            },
+            onCustomExercise = {},
+            onDismiss = { replacingActivePlan = null },
+        )
+    }
 
     Scaffold(
         modifier = Modifier.clearFocusOnTapOutside(),
@@ -3284,6 +3365,8 @@ fun ActiveWorkoutScreen(
                                 onLogSet = onLogSet,
                                 onLogSameAgain = onLogSameAgain,
                                 onToggleCollapsed = onToggleExerciseCollapsed,
+                                onReplaceExercise = { replacingActivePlan = plan },
+                                onRemoveExercise = { pendingRemoveActivePlan = plan },
                             )
                         }
                     }
@@ -3304,6 +3387,8 @@ fun ActiveWorkoutScreen(
                         onLogSet = onLogSet,
                         onLogSameAgain = onLogSameAgain,
                         onToggleCollapsed = onToggleExerciseCollapsed,
+                        onReplaceExercise = { replacingActivePlan = group.first() },
+                        onRemoveExercise = { pendingRemoveActivePlan = group.first() },
                     )
                 }
             }
@@ -3354,6 +3439,22 @@ fun ActiveWorkoutScreen(
                 ) { Text("Weggooien") }
             },
             dismissButton = { TextButton(onClick = { showDiscardConfirm = false }) { Text("Annuleren") } },
+        )
+    }
+    pendingRemoveActivePlan?.let { plan ->
+        AlertDialog(
+            onDismissRequest = { pendingRemoveActivePlan = null },
+            title = { Text("Oefening uit actieve training halen?") },
+            text = { Text("${plan.exercise.name} wordt alleen uit deze actieve training verwijderd. Je opgeslagen routine blijft hetzelfde.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        pendingRemoveActivePlan = null
+                        onRemoveActiveExercise(plan.id)
+                    },
+                ) { Text("Verwijderen") }
+            },
+            dismissButton = { TextButton(onClick = { pendingRemoveActivePlan = null }) { Text("Annuleren") } },
         )
     }
 }
@@ -3452,6 +3553,8 @@ private fun ActiveWorkoutPlanCard(
     onLogSet: (WorkoutExercisePlan) -> Boolean,
     onLogSameAgain: (WorkoutExercisePlan) -> Boolean,
     onToggleCollapsed: (Long, Boolean) -> Unit,
+    onReplaceExercise: () -> Unit,
+    onRemoveExercise: () -> Unit,
 ) {
     val draft = uiState.drafts[plan.exercise.id] ?: SetInputDraft()
     val loggedSets = uiState.loggedSetsThisSession[plan.exercise.id].orEmpty()
@@ -3485,6 +3588,8 @@ private fun ActiveWorkoutPlanCard(
                 hapticOnSuccess()
             }
         },
+        onReplaceExercise = onReplaceExercise,
+        onRemoveExercise = onRemoveExercise,
     )
 }
 
@@ -3566,6 +3671,8 @@ private fun ActiveExerciseCard(
     onCopyLastSet: () -> Unit,
     onLogSet: () -> Unit,
     onLogSameAgain: () -> Unit,
+    onReplaceExercise: () -> Unit,
+    onRemoveExercise: () -> Unit,
 ) {
     val targetWeight = draft.weight.toFloatOrNull() ?: suggestion?.suggestedWeightKg?.toFloat()
     val platePlan = targetWeight?.let { StrengthCalculator.calculatePlates(it) }.orEmpty()
@@ -3576,6 +3683,7 @@ private fun ActiveExerciseCard(
             if (weight > 0.0 && reps > 0) StrengthCalculator.estimateOneRepMax(weight, reps) else null
         }
     }
+    var menuExpanded by remember(plan.id) { mutableStateOf(false) }
     AppCard(
         modifier = Modifier.fillMaxWidth(),
         accent = when {
@@ -3617,6 +3725,34 @@ private fun ActiveExerciseCard(
                         if (collapsed) Icons.Rounded.ExpandMore else Icons.Rounded.ExpandLess,
                         contentDescription = if (collapsed) "Open oefening" else "Klap oefening in",
                     )
+                }
+                Box {
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Icon(Icons.Rounded.MoreVert, contentDescription = "Actieve oefening acties")
+                    }
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Alleen nu vervangen") },
+                            leadingIcon = { Icon(Icons.Rounded.SwapHoriz, contentDescription = null) },
+                            enabled = loggedSets.isEmpty(),
+                            onClick = {
+                                menuExpanded = false
+                                onReplaceExercise()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Alleen nu verwijderen") },
+                            leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null) },
+                            enabled = loggedSets.isEmpty(),
+                            onClick = {
+                                menuExpanded = false
+                                onRemoveExercise()
+                            },
+                        )
+                    }
                 }
             }
             suggestion?.let { CompactPreviousPerformance(it) } ?: PlannedPerformanceFallback(plan)
@@ -3775,17 +3911,17 @@ private fun SetLoggerFields(
                 modifier = Modifier.weight(1f),
                 onValueChange = { onDraftChange(draft.copy(reps = it)) },
             )
-            QuickNumberField(
-                value = draft.rpe,
-                label = "RPE",
-                suffix = "",
-                keyboardType = KeyboardType.Decimal,
-                step = 0.5,
-                fallback = null,
-                modifier = Modifier.weight(1f),
-                onValueChange = { onDraftChange(draft.copy(rpe = it)) },
-            )
         }
+        QuickNumberField(
+            value = draft.rpe,
+            label = "RPE",
+            suffix = "",
+            keyboardType = KeyboardType.Decimal,
+            step = 0.5,
+            fallback = null,
+            modifier = Modifier.fillMaxWidth(),
+            onValueChange = { onDraftChange(draft.copy(rpe = it)) },
+        )
     }
 }
 
