@@ -1,5 +1,6 @@
 package com.trainiq.features.home
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedContent
@@ -328,14 +329,13 @@ fun HomeScreen(
                             onOpenInstall = {
                                 val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata"))
                                 val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata"))
-                                val intent = if (marketIntent.resolveActivity(context.packageManager) != null) marketIntent else webIntent
-                                context.startActivity(intent)
+                                if (!context.startActivityIfResolvable(marketIntent)) {
+                                    context.startActivityIfResolvable(webIntent)
+                                }
                             },
                             onOpenSettings = {
                                 val settingsIntent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
-                                if (settingsIntent.resolveActivity(context.packageManager) != null) {
-                                    context.startActivity(settingsIntent)
-                                } else {
+                                if (!context.startActivityIfResolvable(settingsIntent)) {
                                     onRefreshHealth()
                                 }
                             },
@@ -484,4 +484,11 @@ private fun WelcomeConnectCard(onRequestHealthPermission: () -> Unit) {
             PrimaryActionButton(onClick = onRequestHealthPermission) { Text("Health verbinden") }
         }
     }
+}
+
+private fun Context.startActivityIfResolvable(intent: Intent): Boolean {
+    if (intent.resolveActivity(packageManager) == null) return false
+    return runCatching {
+        startActivity(intent)
+    }.isSuccess
 }

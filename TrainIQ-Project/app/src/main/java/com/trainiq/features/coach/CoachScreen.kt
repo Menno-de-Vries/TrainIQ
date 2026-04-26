@@ -43,7 +43,12 @@ import com.trainiq.core.ui.MessageCard
 import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.ShimmerCardPlaceholder
 import com.trainiq.core.ui.bringIntoViewOnFocus
+import com.trainiq.features.profile.ProfileActivityLevels
+import com.trainiq.features.profile.ProfileInputField
+import com.trainiq.features.profile.ProfileInputValidationError
+import com.trainiq.features.profile.ProfileInputValidationResult
 import com.trainiq.features.profile.buildValidatedProfileInput
+import com.trainiq.features.profile.validateProfileInput
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.CoachOverview
 import com.trainiq.domain.model.GoalAdvice
@@ -64,14 +69,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-
-private val CoachActivityLevels = listOf(
-    "Sedentary",
-    "Lightly active",
-    "Moderately active",
-    "Very active",
-    "Athlete",
-)
 
 sealed interface CoachUiState {
     data object Loading : CoachUiState
@@ -135,13 +132,24 @@ class CoachViewModel @Inject constructor(
         activityLevel: String,
         goal: String,
     ) {
-        val input = buildGoalAdviceInput(name, height, weight, bodyFat, age, sex, activityLevel, goal)
-        if (input == null) {
-            ephemeral.update { it.copy(message = "Complete all profile fields before generating advice.") }
-            return
+        val input = when (
+            val result = validateGoalAdviceInput(name, height, weight, bodyFat, age, sex, activityLevel, goal)
+        ) {
+            is GoalAdviceInputValidationResult.Valid -> result.input
+            is GoalAdviceInputValidationResult.Invalid -> {
+                ephemeral.update { it.copy(message = result.message) }
+                return
+            }
         }
         viewModelScope.launch {
-            ephemeral.update { it.copy(isGeneratingAdvice = true, message = null) }
+            ephemeral.update {
+                it.copy(
+                    goalAdvice = null,
+                    goalAdviceInput = null,
+                    isGeneratingAdvice = true,
+                    message = null,
+                )
+            }
             val result = runCatching {
                 generateGoalAdviceUseCase(input.height, input.weight, input.bodyFat, input.age, input.sex, input.activityLevel, input.goal)
             }
@@ -149,7 +157,7 @@ class CoachViewModel @Inject constructor(
                 it.copy(
                     goalAdvice = result.getOrNull(),
                     goalAdviceInput = if (result.isSuccess) input else null,
-                    message = if (result.isSuccess) "Advice generated. Review it before saving." else "Unable to generate advice right now.",
+                    message = if (result.isSuccess) "Advies gemaakt. Controleer het voordat je opslaat." else "Advies maken lukt nu niet.",
                     isGeneratingAdvice = false,
                 )
             }
@@ -163,7 +171,7 @@ class CoachViewModel @Inject constructor(
             ephemeral.update {
                 it.copy(
                     generatedReport = result.getOrNull(),
-                    message = if (result.isSuccess) "Weekly report generated." else "Unable to generate the weekly report right now.",
+                    message = if (result.isSuccess) "Weekrapport gemaakt." else "Weekrapport maken lukt nu niet.",
                     isGeneratingReport = false,
                 )
             }
@@ -180,15 +188,23 @@ class CoachViewModel @Inject constructor(
         activityLevel: String,
         goal: String,
     ) {
-        val input = buildGoalAdviceInput(name, height, weight, bodyFat, age, sex, activityLevel, goal)
+        val input = when (
+            val result = validateGoalAdviceInput(name, height, weight, bodyFat, age, sex, activityLevel, goal)
+        ) {
+            is GoalAdviceInputValidationResult.Valid -> result.input
+            is GoalAdviceInputValidationResult.Invalid -> {
+                ephemeral.update { it.copy(message = result.message) }
+                return
+            }
+        }
         val currentAdviceState = ephemeral.value
         val advice = currentAdviceState.goalAdvice
-        if (input == null || advice == null) {
-            ephemeral.update { it.copy(message = "Generate advice first and then save the profile.") }
+        if (advice == null) {
+            ephemeral.update { it.copy(message = "Maak eerst advies en sla daarna het profiel op.") }
             return
         }
         if (input != currentAdviceState.goalAdviceInput) {
-            ephemeral.update { it.copy(message = "Profile changed. Generate advice again before saving.") }
+            ephemeral.update { it.copy(message = "Profiel gewijzigd. Maak opnieuw advies voordat je opslaat.") }
             return
         }
         viewModelScope.launch {
@@ -210,7 +226,7 @@ class CoachViewModel @Inject constructor(
                     trainingFocus = advice.trainingFocus,
                 ),
             )
-            ephemeral.update { it.copy(message = "Profile and goals saved.") }
+            ephemeral.update { it.copy(message = "Profiel en doelen opgeslagen.") }
         }
     }
 
@@ -230,6 +246,11 @@ internal data class GoalAdviceInput(
     val goal: String,
 )
 
+private sealed interface GoalAdviceInputValidationResult {
+    data class Valid(val input: GoalAdviceInput) : GoalAdviceInputValidationResult
+    data class Invalid(val message: String) : GoalAdviceInputValidationResult
+}
+
 internal fun buildGoalAdviceInput(
     name: String,
     height: String,
@@ -240,8 +261,7 @@ internal fun buildGoalAdviceInput(
     activityLevel: String,
     goal: String,
 ): GoalAdviceInput? {
-    val input = buildValidatedProfileInput(name, height, weight, bodyFat, age, sex, activityLevel, goal)
-        ?: return null
+    val input = buildValidatedProfileInput(name, height, weight, bodyFat, age, sex, activityLevel, goal) ?: return null
 
     return GoalAdviceInput(
         name = input.name,
@@ -253,6 +273,33 @@ internal fun buildGoalAdviceInput(
         activityLevel = input.activityLevel,
         goal = input.goal,
     )
+}
+
+private fun validateGoalAdviceInput(
+    name: String,
+    height: String,
+    weight: String,
+    bodyFat: String,
+    age: String,
+    sex: BiologicalSex,
+    activityLevel: String,
+    goal: String,
+): GoalAdviceInputValidationResult = when (
+    val result = validateProfileInput(name, height, weight, bodyFat, age, sex, activityLevel, goal)
+) {
+    is ProfileInputValidationResult.Valid -> GoalAdviceInputValidationResult.Valid(
+        GoalAdviceInput(
+            name = result.input.name,
+            height = result.input.height,
+            weight = result.input.weight,
+            bodyFat = result.input.bodyFat,
+            age = result.input.age,
+            sex = result.input.sex,
+            activityLevel = result.input.activityLevel,
+            goal = result.input.goal,
+        ),
+    )
+    is ProfileInputValidationResult.Invalid -> GoalAdviceInputValidationResult.Invalid(result.error.message)
 }
 
 @Composable
@@ -283,6 +330,7 @@ fun CoachScreen(
     var bodyFat by remember { mutableStateOf("") }
     var activityLevel by remember { mutableStateOf("Moderately active") }
     var goal by remember { mutableStateOf("") }
+    var profileInputError by remember { mutableStateOf<ProfileInputValidationError?>(null) }
     val haptics = LocalHapticFeedback.current
 
     val profile = (uiState as? CoachUiState.Success)?.currentProfile
@@ -313,7 +361,7 @@ fun CoachScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
         ) {
-            item { ScreenHeader(title = "Coach", subtitle = "AI feedback die echt met je data werkt") }
+            item { ScreenHeader(title = "Coach", subtitle = "AI-feedback die echt met je data werkt") }
 
             when (state) {
                 CoachUiState.Loading -> {
@@ -326,7 +374,7 @@ fun CoachScreen(
                 }
 
                 is CoachUiState.Success -> {
-                    state.message?.let { message ->
+                    if (profileInputError == null) state.message?.let { message ->
                         item { MessageCard(message = message, onDismiss = onDismissMessage) }
                     }
                     item {
@@ -335,7 +383,7 @@ fun CoachScreen(
                                 modifier = Modifier.padding(MaterialTheme.spacing.medium),
                                 verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
                             ) {
-                                Text("Weekly summary", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                                Text("Weekoverzicht", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                                 Surface(
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(24.dp),
@@ -355,32 +403,32 @@ fun CoachScreen(
                                     },
                                     enabled = !state.isGeneratingReport,
                                 ) {
-                                    Text(if (state.isGeneratingReport) "Thinking..." else "Generate AI report")
+                                    Text(if (state.isGeneratingReport) "Bezig met nadenken..." else "AI-rapport maken")
                                 }
                                 if (state.isGeneratingReport) {
                                     ShimmerCardPlaceholder(lineCount = 3)
                                 }
                                 state.generatedReport?.let { report ->
                                     if (report.wins.isNotEmpty()) {
-                                        Text("Wins", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                        Text("Successen", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                         report.wins.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
                                     }
                                     if (report.risks.isNotEmpty()) {
-                                        Text("Risks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                        Text("Risico's", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                         report.risks.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
                                     }
-                                    Text("Next week focus", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                    Text("Focus voor volgende week", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                     Text(report.nextWeekFocus, style = MaterialTheme.typography.bodyMedium)
                                     if (report.thinkingProcess.isNotEmpty()) {
-                                        Text("Reasoning trace", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                        Text("Redeneerspoor", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                         report.thinkingProcess.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
                                     }
                                 }
-                                Text("Training insights", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                (state.overview.trainingInsights.ifEmpty { listOf("No insights yet. Save a goal and complete a workout.") }).forEach {
+                                Text("Trainingsinzichten", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                (state.overview.trainingInsights.ifEmpty { listOf("Nog geen inzichten. Sla een doel op en voltooi een workout.") }).forEach {
                                     Text("• $it", style = MaterialTheme.typography.bodyMedium)
                                 }
-                                Text("Nutrition coach", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                Text("Voedingscoach", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                 Surface(
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(24.dp),
@@ -402,65 +450,160 @@ fun CoachScreen(
                                 modifier = Modifier.padding(MaterialTheme.spacing.medium),
                                 verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
                             ) {
-                                Text("Goal advisor", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
-        OutlinedTextField(value = age, onValueChange = { age = it }, label = { Text("Age") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
-                                Text("Biological sex", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                Text("Doeladvies", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                                OutlinedTextField(
+                                    value = name,
+                                    onValueChange = {
+                                        name = it
+                                        profileInputError = null
+                                    },
+                                    label = { Text("Naam") },
+                                    isError = profileInputError.isFor(ProfileInputField.Name),
+                                    supportingText = profileInputError.supportingTextFor(ProfileInputField.Name),
+                                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                                )
+                                OutlinedTextField(
+                                    value = age,
+                                    onValueChange = {
+                                        age = it
+                                        profileInputError = null
+                                    },
+                                    label = { Text("Leeftijd") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    isError = profileInputError.isFor(ProfileInputField.Age),
+                                    supportingText = profileInputError.supportingTextFor(ProfileInputField.Age),
+                                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                                )
+                                Text("Biologische sekse", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                 Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                                     BiologicalSex.entries.forEach { option ->
                                         FilterChip(
                                             selected = sex == option,
-                                            onClick = { sex = option },
-                                            label = { Text(option.name.lowercase().replaceFirstChar(Char::titlecase)) },
+                                            onClick = {
+                                                sex = option
+                                                profileInputError = null
+                                            },
+                                            label = { Text(option.displayLabel()) },
                                         )
                                     }
                                 }
-        OutlinedTextField(value = height, onValueChange = { height = it }, label = { Text("Height (cm)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
-        OutlinedTextField(value = weight, onValueChange = { weight = it }, label = { Text("Weight (kg)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
-        OutlinedTextField(value = bodyFat, onValueChange = { bodyFat = it }, label = { Text("Body fat %") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
-                                Text("Activity level", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                OutlinedTextField(
+                                    value = height,
+                                    onValueChange = {
+                                        height = it
+                                        profileInputError = null
+                                    },
+                                    label = { Text("Lengte (cm)") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    isError = profileInputError.isFor(ProfileInputField.Height),
+                                    supportingText = profileInputError.supportingTextFor(ProfileInputField.Height),
+                                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                                )
+                                OutlinedTextField(
+                                    value = weight,
+                                    onValueChange = {
+                                        weight = it
+                                        profileInputError = null
+                                    },
+                                    label = { Text("Gewicht (kg)") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    isError = profileInputError.isFor(ProfileInputField.Weight),
+                                    supportingText = profileInputError.supportingTextFor(ProfileInputField.Weight),
+                                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                                )
+                                OutlinedTextField(
+                                    value = bodyFat,
+                                    onValueChange = {
+                                        bodyFat = it
+                                        profileInputError = null
+                                    },
+                                    label = { Text("Vetpercentage %") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    isError = profileInputError.isFor(ProfileInputField.BodyFat),
+                                    supportingText = profileInputError.supportingTextFor(ProfileInputField.BodyFat),
+                                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                                )
+                                Text("Activiteitsniveau", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .horizontalScroll(rememberScrollState()),
                                     horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
                                 ) {
-                                    CoachActivityLevels.forEach { option ->
+                                    ProfileActivityLevels.forEach { option ->
                                         FilterChip(
                                             selected = activityLevel == option,
-                                            onClick = { activityLevel = option },
+                                            onClick = {
+                                                activityLevel = option
+                                                profileInputError = null
+                                            },
                                             label = { Text(option) },
                                         )
                                     }
                                 }
-        OutlinedTextField(value = goal, onValueChange = { goal = it }, label = { Text("Goal") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                                profileInputError.takeIf { it.isFor(ProfileInputField.ActivityLevel) }?.let { error ->
+                                    Text(error.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                                }
+                                OutlinedTextField(
+                                    value = goal,
+                                    onValueChange = {
+                                        goal = it
+                                        profileInputError = null
+                                    },
+                                    label = { Text("Doel") },
+                                    isError = profileInputError.isFor(ProfileInputField.Goal),
+                                    supportingText = profileInputError.supportingTextFor(ProfileInputField.Goal),
+                                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                                )
                                 Button(
                                     onClick = {
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        onGenerateAdvice(name, height, weight, bodyFat, age, sex, activityLevel, goal)
+                                        when (
+                                            val result = validateProfileInput(name, height, weight, bodyFat, age, sex, activityLevel, goal)
+                                        ) {
+                                            is ProfileInputValidationResult.Valid -> {
+                                                profileInputError = null
+                                                onGenerateAdvice(name, height, weight, bodyFat, age, sex, activityLevel, goal)
+                                            }
+                                            is ProfileInputValidationResult.Invalid -> {
+                                                profileInputError = result.error
+                                                onDismissMessage()
+                                            }
+                                        }
                                     },
                                     enabled = !state.isGeneratingAdvice,
                                 ) {
-                                    Text(if (state.isGeneratingAdvice) "Generating..." else "Generate advice")
+                                    Text(if (state.isGeneratingAdvice) "Advies maken..." else "Advies maken")
                                 }
                                 if (state.isGeneratingAdvice) {
                                     ShimmerCardPlaceholder(lineCount = 4)
                                 }
                                 state.goalAdvice?.let { advice ->
                                     Text("BMR: ${advice.bmr} kcal", style = MaterialTheme.typography.bodyMedium)
-                                    Text("Maintenance: ${advice.maintenanceCalories} kcal", style = MaterialTheme.typography.bodyMedium)
-                                    Text("Activity multiplier: ${"%.3f".format(advice.activityMultiplier)}", style = MaterialTheme.typography.bodyMedium)
-                                    Text("Calories: ${advice.calorieTarget} kcal", style = MaterialTheme.typography.bodyMedium)
-                                    Text("Macros: P${advice.proteinTarget} C${advice.carbsTarget} F${advice.fatTarget}", style = MaterialTheme.typography.bodyMedium)
-                                    Text("Training focus: ${advice.trainingFocus}", style = MaterialTheme.typography.bodyMedium)
+                                    Text("Onderhoud: ${advice.maintenanceCalories} kcal", style = MaterialTheme.typography.bodyMedium)
+                                    Text("Activiteitsfactor: ${"%.3f".format(advice.activityMultiplier)}", style = MaterialTheme.typography.bodyMedium)
+                                    Text("Calorieen: ${advice.calorieTarget} kcal", style = MaterialTheme.typography.bodyMedium)
+                                    Text("Macro's: P${advice.proteinTarget} C${advice.carbsTarget} F${advice.fatTarget}", style = MaterialTheme.typography.bodyMedium)
+                                    Text("Trainingsfocus: ${advice.trainingFocus}", style = MaterialTheme.typography.bodyMedium)
                                     Text(advice.summary, style = MaterialTheme.typography.bodyMedium)
                                     Button(
                                         onClick = {
                                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            onSaveProfile(name, height, weight, bodyFat, age, sex, activityLevel, goal)
+                                            when (
+                                                val result = validateProfileInput(name, height, weight, bodyFat, age, sex, activityLevel, goal)
+                                            ) {
+                                                is ProfileInputValidationResult.Valid -> {
+                                                    profileInputError = null
+                                                    onSaveProfile(name, height, weight, bodyFat, age, sex, activityLevel, goal)
+                                                }
+                                                is ProfileInputValidationResult.Invalid -> {
+                                                    profileInputError = result.error
+                                                    onDismissMessage()
+                                                }
+                                            }
                                         },
                                     ) {
-                                        Text("Save profile")
+                                        Text("Profiel opslaan")
                                     }
                                 }
                             }
@@ -470,4 +613,16 @@ fun CoachScreen(
             }
         }
     }
+}
+
+private fun ProfileInputValidationError?.isFor(field: ProfileInputField): Boolean = this?.field == field
+
+private fun BiologicalSex.displayLabel(): String = when (this) {
+    BiologicalSex.MALE -> "Man"
+    BiologicalSex.FEMALE -> "Vrouw"
+}
+
+private fun ProfileInputValidationError?.supportingTextFor(field: ProfileInputField): (@Composable () -> Unit)? {
+    val error = takeIf { it.isFor(field) } ?: return null
+    return { Text(error.message) }
 }

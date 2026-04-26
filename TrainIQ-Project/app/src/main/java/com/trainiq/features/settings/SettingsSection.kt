@@ -1,5 +1,6 @@
 package com.trainiq.features.settings
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -9,11 +10,13 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
@@ -54,7 +57,12 @@ import com.trainiq.core.ui.bringIntoViewOnFocus
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.theme.ThemeMode
 import com.trainiq.data.local.TrainIqLocalStore
-import com.trainiq.features.profile.buildValidatedProfileInput
+import com.trainiq.features.profile.DefaultProfileActivityLevel
+import com.trainiq.features.profile.ProfileActivityLevels
+import com.trainiq.features.profile.ProfileInputField
+import com.trainiq.features.profile.ProfileInputValidationError
+import com.trainiq.features.profile.ProfileInputValidationResult
+import com.trainiq.features.profile.validateProfileInput
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
@@ -92,7 +100,7 @@ class SettingsViewModel @Inject constructor(
     private val _healthStatus = MutableStateFlow(
         HealthConnectStatus(
             state = HealthConnectState.ERROR,
-            message = "Health Connect status wordt geladen.",
+            message = "Health Connect-status wordt geladen.",
         ),
     )
     val healthStatus: StateFlow<HealthConnectStatus> = _healthStatus.asStateFlow()
@@ -112,9 +120,9 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             preferencesRepository.setAiEnabled(enabled)
             _message.value = if (enabled) {
-                "AI features enabled. Requests only run after you explicitly trigger them."
+                "AI-functies ingeschakeld. Verzoeken starten alleen na jouw expliciete actie."
             } else {
-                "AI features disabled. TrainIQ will stay manual-first."
+                "AI-functies uitgeschakeld. TrainIQ blijft handmatig werken."
             }
         }
     }
@@ -122,11 +130,11 @@ class SettingsViewModel @Inject constructor(
     fun saveGeminiKey(apiKey: String) {
         viewModelScope.launch {
             if (apiKey.isBlank()) {
-                _message.value = "Enter a Gemini API key first."
+                _message.value = "Voer eerst een Gemini API-sleutel in."
                 return@launch
             }
             preferencesRepository.saveGeminiApiKey(apiKey)
-            _message.value = "Gemini API key saved."
+            _message.value = "Gemini API-sleutel opgeslagen."
         }
     }
 
@@ -134,45 +142,54 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             preferencesRepository.clearGeminiApiKey()
             preferencesRepository.setAiEnabled(false)
-            _message.value = "Gemini API key removed and AI disabled."
+            _message.value = "Gemini API-sleutel verwijderd en AI uitgeschakeld."
         }
     }
 
     fun setRestTimerSoundEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setRestTimerSoundEnabled(enabled)
-            _message.value = if (enabled) "Rest timer sound enabled." else "Rest timer sound disabled."
+            _message.value = if (enabled) "Rusttimer-geluid ingeschakeld." else "Rusttimer-geluid uitgeschakeld."
         }
     }
 
     fun setWorkoutHapticsEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setWorkoutHapticsEnabled(enabled)
-            _message.value = if (enabled) "Workout haptics enabled." else "Workout haptics disabled."
+            _message.value = if (enabled) "Workouttrillingen ingeschakeld." else "Workouttrillingen uitgeschakeld."
         }
     }
 
     fun refreshHealthConnectStatus() {
         viewModelScope.launch {
-            _healthStatus.value = getHealthConnectStatusUseCase()
+            _healthStatus.value = runCatching { getHealthConnectStatusUseCase() }
+                .getOrElse {
+                    HealthConnectStatus(
+                        state = HealthConnectState.ERROR,
+                        message = "Health Connect kan nu niet worden bijgewerkt.",
+                    )
+                }
         }
     }
 
-    fun saveProfile(name: String, height: String, weight: String, bodyFat: String, activityLevel: String, goal: String) {
-        val currentProfile = profile.value
-        val input = buildValidatedProfileInput(
-            name = name,
-            height = height,
-            weight = weight,
-            bodyFat = bodyFat,
-            age = (currentProfile?.age ?: 30).toString(),
-            sex = currentProfile?.sex ?: BiologicalSex.MALE,
-            activityLevel = activityLevel,
-            goal = goal,
-        )
-        if (input == null) {
-            _message.value = "Complete all profile fields with valid values."
-            return
+    fun saveProfile(name: String, age: String, sex: BiologicalSex, height: String, weight: String, bodyFat: String, activityLevel: String, goal: String) {
+        val input = when (
+            val result = validateProfileInput(
+                name = name,
+                height = height,
+                weight = weight,
+                bodyFat = bodyFat,
+                age = age,
+                sex = sex,
+                activityLevel = activityLevel,
+                goal = goal,
+            )
+        ) {
+            is ProfileInputValidationResult.Valid -> result.input
+            is ProfileInputValidationResult.Invalid -> {
+                _message.value = result.error.message
+                return
+            }
         }
         val advice = goalAdvisorService.deterministicGoalAdvice(
             height = input.height,
@@ -202,21 +219,21 @@ class SettingsViewModel @Inject constructor(
                     trainingFocus = advice.trainingFocus,
                 ),
             )
-            _message.value = "Profile saved. Dashboard targets updated."
+            _message.value = "Profiel opgeslagen. Dashboarddoelen bijgewerkt."
         }
     }
 
     fun resetProfile() {
         viewModelScope.launch {
             localStore.clearProfile()
-            _message.value = "Profile removed."
+            _message.value = "Profiel verwijderd."
         }
     }
 
     fun clearAllData() {
         viewModelScope.launch {
             localStore.clearAll()
-            _message.value = "Local training, meal, and profile data cleared."
+            _message.value = "Lokale training-, maaltijd- en profielgegevens gewist."
         }
     }
 
@@ -226,7 +243,7 @@ class SettingsViewModel @Inject constructor(
 
     fun maskedKey(): String {
         val key = aiPreferences.value.apiKey
-        if (key.isBlank()) return "Not configured"
+        if (key.isBlank()) return "Niet ingesteld"
         return if (key.length <= 8) "********" else "${key.take(4)}****${key.takeLast(4)}"
     }
 }
@@ -269,17 +286,16 @@ fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
         onRefreshHealth = viewModel::refreshHealthConnectStatus,
         onOpenHealthSettings = {
             val intent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
-            if (intent.resolveActivity(context.packageManager) != null) {
-                context.startActivity(intent)
-            } else {
+            if (!context.startActivityIfResolvable(intent)) {
                 viewModel.refreshHealthConnectStatus()
             }
         },
         onOpenHealthInstall = {
             val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata"))
             val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata"))
-            val intent = if (marketIntent.resolveActivity(context.packageManager) != null) marketIntent else webIntent
-            context.startActivity(intent)
+            if (!context.startActivityIfResolvable(marketIntent) && !context.startActivityIfResolvable(webIntent)) {
+                viewModel.refreshHealthConnectStatus()
+            }
         },
     )
 }
@@ -299,7 +315,7 @@ fun SettingsScreen(
     onToggleWorkoutHaptics: (Boolean) -> Unit,
     onSaveApiKey: (String) -> Unit,
     onClearApiKey: () -> Unit,
-    onSaveProfile: (String, String, String, String, String, String) -> Unit,
+    onSaveProfile: (String, String, BiologicalSex, String, String, String, String, String) -> Unit,
     onResetProfile: () -> Unit,
     onClearAllData: () -> Unit,
     onDismissMessage: () -> Unit,
@@ -310,19 +326,27 @@ fun SettingsScreen(
 ) {
     var apiKey by remember { mutableStateOf("") }
     var name by remember { mutableStateOf(profile?.name.orEmpty()) }
+    var age by remember { mutableStateOf(profile?.age?.toString() ?: "30") }
+    var sex by remember { mutableStateOf(profile?.sex ?: BiologicalSex.MALE) }
     var height by remember { mutableStateOf(profile?.height?.toString().orEmpty()) }
     var weight by remember { mutableStateOf(profile?.weight?.toString().orEmpty()) }
     var bodyFat by remember { mutableStateOf(profile?.bodyFat?.toString().orEmpty()) }
-    var activityLevel by remember { mutableStateOf(profile?.activityLevel.orEmpty()) }
+    var activityLevel by remember {
+        mutableStateOf(profile?.activityLevel?.takeIf { it in ProfileActivityLevels } ?: DefaultProfileActivityLevel)
+    }
     var goal by remember { mutableStateOf(profile?.goal.orEmpty()) }
+    var profileInputError by remember { mutableStateOf<ProfileInputValidationError?>(null) }
 
     LaunchedEffect(profile) {
         name = profile?.name.orEmpty()
+        age = profile?.age?.toString() ?: "30"
+        sex = profile?.sex ?: BiologicalSex.MALE
         height = profile?.height?.toString().orEmpty()
         weight = profile?.weight?.toString().orEmpty()
         bodyFat = profile?.bodyFat?.toString().orEmpty()
-        activityLevel = profile?.activityLevel.orEmpty()
+        activityLevel = profile?.activityLevel?.takeIf { it in ProfileActivityLevels } ?: DefaultProfileActivityLevel
         goal = profile?.goal.orEmpty()
+        profileInputError = null
     }
 
     LazyColumn(
@@ -338,42 +362,42 @@ fun SettingsScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.large),
     ) {
-        item { ScreenHeader(title = "Settings", subtitle = "Profiel, Health Connect en voorkeuren") }
+        item { ScreenHeader(title = "Instellingen", subtitle = "Profiel, Health Connect en voorkeuren") }
         item {
-            SectionCard(title = "Quick Status") {
-                Text("Theme: ${themeMode.name.lowercase().replaceFirstChar(Char::titlecase)}")
-                Text("AI: ${if (aiPreferences.enabled && aiPreferences.apiKey.isNotBlank()) "Ready for explicit use" else "Manual-only"}")
+            SectionCard(title = "Snelle status") {
+                Text("Thema: ${themeMode.displayLabel()}")
+                Text("AI: ${if (aiPreferences.enabled && aiPreferences.apiKey.isNotBlank()) "Klaar voor expliciet gebruik" else "Alleen handmatig"}")
                 Text("Health Connect: ${healthStatusLabel(healthStatus)}")
             }
         }
-        message?.let {
+        if (profileInputError == null) message?.let {
             item {
                 MessageCard(message = it, onDismiss = onDismissMessage)
             }
         }
         item {
-            SectionCard(title = "Appearance") {
-                Text("Theme mode")
+            SectionCard(title = "Weergave") {
+                Text("Themamodus")
                 ThemeMode.entries.forEach { mode ->
                     FilterChip(
                         selected = themeMode == mode,
                         onClick = { onThemeSelected(mode) },
-                        label = { Text(mode.name.lowercase().replaceFirstChar(Char::titlecase)) },
+                        label = { Text(mode.displayLabel()) },
                     )
                 }
             }
         }
         item {
-            SectionCard(title = "Workout feedback") {
+            SectionCard(title = "Workoutfeedback") {
                 FeedbackToggleRow(
-                    title = "Rest timer sound",
-                    body = "Play a short sound when rest reaches zero.",
+                    title = "Rusttimer-geluid",
+                    body = "Speel een kort geluid wanneer de rusttijd voorbij is.",
                     checked = workoutFeedbackPreferences.restTimerSoundEnabled,
                     onCheckedChange = onToggleRestTimerSound,
                 )
                 FeedbackToggleRow(
-                    title = "Workout haptics",
-                    body = "Use subtle vibration when sets are completed or rest finishes.",
+                    title = "Workouttrillingen",
+                    body = "Gebruik een subtiele trilling bij voltooide sets of afgelopen rusttijd.",
                     checked = workoutFeedbackPreferences.workoutHapticsEnabled,
                     onCheckedChange = onToggleWorkoutHaptics,
                 )
@@ -381,30 +405,30 @@ fun SettingsScreen(
         }
         item {
             SectionCard(title = "AI / Gemini") {
-                Text("AI is always opt-in. TrainIQ does not make background AI calls.")
+                Text("AI wordt alleen gebruikt nadat jij het inschakelt. TrainIQ doet geen AI-aanvragen op de achtergrond.")
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Enable AI features", fontWeight = FontWeight.SemiBold)
-                        Text("Only explicit actions like meal analysis, goal advice, AI report, and workout debrief can trigger requests.")
+                        Text("AI-functies inschakelen", fontWeight = FontWeight.SemiBold)
+                        Text("Alleen expliciete acties zoals maaltijdanalyse, doeladvies, AI-rapport en workoutterugblik kunnen verzoeken starten.")
                     }
                     Switch(checked = aiPreferences.enabled, onCheckedChange = onToggleAi)
                 }
-                Text("Current key: $maskedApiKey")
-                OutlinedTextField(value = apiKey, onValueChange = { apiKey = it }, label = { Text("Gemini API key") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                Text("Huidige sleutel: $maskedApiKey")
+                OutlinedTextField(value = apiKey, onValueChange = { apiKey = it }, label = { Text("Gemini API-sleutel") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
                 Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                     Button(onClick = {
                         onSaveApiKey(apiKey)
                         apiKey = ""
-                    }) { Text(if (aiPreferences.apiKey.isBlank()) "Save key" else "Update key") }
-                    TextButton(onClick = onClearApiKey) { Text("Remove key") }
+                    }) { Text(if (aiPreferences.apiKey.isBlank()) "Sleutel opslaan" else "Sleutel bijwerken") }
+                    TextButton(onClick = onClearApiKey) { Text("Sleutel verwijderen") }
                 }
-                Text("Gemini may incur API costs. Keep AI disabled unless you want to use it.")
-                Text("Used by: Meal analysis, workout debrief, weekly AI report, goal advisor.")
-                Text("Status: ${if (aiPreferences.enabled && aiPreferences.apiKey.isNotBlank()) "Enabled and ready" else if (aiPreferences.apiKey.isBlank()) "No key configured" else "Disabled"}")
+                Text("Gemini kan API-kosten veroorzaken. Laat AI uitgeschakeld tenzij je het wilt gebruiken.")
+                Text("Gebruikt door: maaltijdanalyse, workoutterugblik, wekelijks AI-rapport en doeladviseur.")
+                Text("Status: ${if (aiPreferences.enabled && aiPreferences.apiKey.isNotBlank()) "Ingeschakeld en klaar" else if (aiPreferences.apiKey.isBlank()) "Geen sleutel ingesteld" else "Uitgeschakeld"}")
             }
         }
         item {
@@ -412,72 +436,183 @@ fun SettingsScreen(
                 Text("Status: ${healthStatusLabel(healthStatus)}")
                 Text(healthStatus.message)
                 healthStatus.lastSyncedAt?.let {
-                    Text("Last checked: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it))}")
+                    Text("Laatst gecontroleerd: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it))}")
                 }
                 healthStatus.stepsToday?.let { steps ->
-                    Text(if (steps > 0) "Today's steps available: $steps" else "Connected, but no step data was returned today yet.")
+                    Text(if (steps > 0) "Stappen vandaag beschikbaar: $steps" else "Verbonden, maar er is vandaag nog geen stapdata teruggekomen.")
                 }
                 healthStatus.averageHeartRateBpm?.let { bpm ->
-                    Text("Average heart rate today: $bpm bpm")
+                    Text("Gemiddelde hartslag vandaag: $bpm bpm")
                 }
                 healthStatus.latestHeartRateBpm?.let { bpm ->
-                    Text("Latest heart rate sample: $bpm bpm")
+                    Text("Laatste hartslagmeting: $bpm bpm")
                 }
                 healthStatus.sleepMinutes?.takeIf { it > 0 }?.let { minutes ->
-                    Text("Recent sleep: ${minutes / 60}h ${minutes % 60}m across ${healthStatus.sleepSessionCount} session(s)")
+                    Text("Recente slaap: ${minutes / 60}u ${minutes % 60}m over ${healthStatus.sleepSessionCount} sessie(s)")
                 }
                 when (healthStatus.state) {
-                    HealthConnectState.PERMISSION_REQUIRED -> Text("Grant access to let TrainIQ read your daily steps, heart rate, and sleep.")
-                    HealthConnectState.PROVIDER_MISSING -> Text("Install or update Health Connect first, then return here and refresh.")
+                    HealthConnectState.PERMISSION_REQUIRED -> Text("Geef toegang zodat TrainIQ je dagelijkse stappen, hartslag en slaap kan lezen.")
+                    HealthConnectState.PROVIDER_MISSING -> Text("Installeer of update Health Connect eerst, kom daarna terug en vernieuw.")
                     else -> Unit
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small), verticalAlignment = Alignment.CenterVertically) {
                     when (healthStatus.state) {
-                        HealthConnectState.PROVIDER_MISSING -> Button(onClick = onOpenHealthInstall) { Text("Install / update") }
-                        HealthConnectState.PERMISSION_REQUIRED -> Button(onClick = onRequestHealthPermission) { Text("Grant access") }
-                        HealthConnectState.CONNECTED, HealthConnectState.NO_DATA -> Button(onClick = onOpenHealthSettings) { Text("Open Health Connect") }
-                        HealthConnectState.UNSUPPORTED -> Text("Not supported on this device.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        HealthConnectState.ERROR -> Text("Unable to read Health Connect right now.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        HealthConnectState.PROVIDER_MISSING -> Button(onClick = onOpenHealthInstall) { Text("Installeren / bijwerken") }
+                        HealthConnectState.PERMISSION_REQUIRED -> Button(onClick = onRequestHealthPermission) { Text("Toegang geven") }
+                        HealthConnectState.CONNECTED, HealthConnectState.NO_DATA -> Button(onClick = onOpenHealthSettings) { Text("Health Connect openen") }
+                        HealthConnectState.UNSUPPORTED -> Text("Niet ondersteund op dit apparaat.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        HealthConnectState.ERROR -> Text("Health Connect kan nu niet worden gelezen.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    TextButton(onClick = onRefreshHealth) { Text("Refresh") }
+                    TextButton(onClick = onRefreshHealth) { Text("Vernieuwen") }
                 }
             }
         }
         item {
-            SectionCard(title = "Profile & Goals") {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
-                OutlinedTextField(value = height, onValueChange = { height = it }, label = { Text("Height (cm)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
-                OutlinedTextField(value = weight, onValueChange = { weight = it }, label = { Text("Weight (kg)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
-                OutlinedTextField(value = bodyFat, onValueChange = { bodyFat = it }, label = { Text("Body fat %") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
-                OutlinedTextField(value = activityLevel, onValueChange = { activityLevel = it }, label = { Text("Activity level") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
-                OutlinedTextField(value = goal, onValueChange = { goal = it }, label = { Text("Primary goal") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
-                Button(
-                    onClick = { onSaveProfile(name, height, weight, bodyFat, activityLevel, goal) },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("Save profile") }
-                TextButton(onClick = onResetProfile, modifier = Modifier.fillMaxWidth()) { Text("Reset profile") }
-                profile?.let {
-                    Text("Current dashboard targets: ${it.calorieTarget} kcal and ${it.proteinTarget} g protein.")
-                }
-            }
-        }
-        item {
-            SectionCard(title = "Data / Storage") {
-                Text("Storage mode: Local JSON store")
-                Text("AI key storage: local app preferences")
-                Text("Health Connect cache: persisted change token plus lightweight sync snapshot")
+            SectionCard(title = "Profiel & doelen") {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = {
+                        name = it
+                        profileInputError = null
+                    },
+                    label = { Text("Naam") },
+                    isError = profileInputError.isFor(ProfileInputField.Name),
+                    supportingText = profileInputError.supportingTextFor(ProfileInputField.Name),
+                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                )
+                OutlinedTextField(
+                    value = age,
+                    onValueChange = {
+                        age = it
+                        profileInputError = null
+                    },
+                    label = { Text("Leeftijd") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    isError = profileInputError.isFor(ProfileInputField.Age),
+                    supportingText = profileInputError.supportingTextFor(ProfileInputField.Age),
+                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                )
+                Text("Biologische sekse", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-                    TextButton(onClick = onClearApiKey) { Text("Clear AI key") }
-                    TextButton(onClick = onClearAllData) { Text("Clear local data") }
+                    BiologicalSex.entries.forEach { option ->
+                        FilterChip(
+                            selected = sex == option,
+                            onClick = {
+                                sex = option
+                                profileInputError = null
+                            },
+                            label = { Text(option.displayLabel()) },
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = height,
+                    onValueChange = {
+                        height = it
+                        profileInputError = null
+                    },
+                    label = { Text("Lengte (cm)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    isError = profileInputError.isFor(ProfileInputField.Height),
+                    supportingText = profileInputError.supportingTextFor(ProfileInputField.Height),
+                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                )
+                OutlinedTextField(
+                    value = weight,
+                    onValueChange = {
+                        weight = it
+                        profileInputError = null
+                    },
+                    label = { Text("Gewicht (kg)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    isError = profileInputError.isFor(ProfileInputField.Weight),
+                    supportingText = profileInputError.supportingTextFor(ProfileInputField.Weight),
+                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                )
+                OutlinedTextField(
+                    value = bodyFat,
+                    onValueChange = {
+                        bodyFat = it
+                        profileInputError = null
+                    },
+                    label = { Text("Vetpercentage %") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    isError = profileInputError.isFor(ProfileInputField.BodyFat),
+                    supportingText = profileInputError.supportingTextFor(ProfileInputField.BodyFat),
+                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                )
+                Text("Activiteitsniveau", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+                ) {
+                    ProfileActivityLevels.forEach { option ->
+                        FilterChip(
+                            selected = activityLevel == option,
+                            onClick = {
+                                activityLevel = option
+                                profileInputError = null
+                            },
+                            label = { Text(option) },
+                        )
+                    }
+                }
+                profileInputError.takeIf { it.isFor(ProfileInputField.ActivityLevel) }?.let { error ->
+                    Text(error.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+                OutlinedTextField(
+                    value = goal,
+                    onValueChange = {
+                        goal = it
+                        profileInputError = null
+                    },
+                    label = { Text("Hoofddoel") },
+                    isError = profileInputError.isFor(ProfileInputField.Goal),
+                    supportingText = profileInputError.supportingTextFor(ProfileInputField.Goal),
+                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                )
+                Button(
+                    onClick = {
+                        when (
+                            val result = validateProfileInput(name, height, weight, bodyFat, age, sex, activityLevel, goal)
+                        ) {
+                            is ProfileInputValidationResult.Valid -> {
+                                profileInputError = null
+                                onSaveProfile(name, age, sex, height, weight, bodyFat, activityLevel, goal)
+                            }
+                            is ProfileInputValidationResult.Invalid -> {
+                                profileInputError = result.error
+                                onDismissMessage()
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Profiel opslaan") }
+                TextButton(onClick = onResetProfile, modifier = Modifier.fillMaxWidth()) { Text("Profiel resetten") }
+                profile?.let {
+                    Text("Huidige dashboarddoelen: ${it.calorieTarget} kcal en ${it.proteinTarget} g eiwit.")
                 }
             }
         }
         item {
-            SectionCard(title = "About") {
-                Text("App version: ${BuildConfig.VERSION_NAME}")
-                Text("AI enabled: ${if (aiPreferences.enabled) "Yes" else "No"}")
+            SectionCard(title = "Gegevens / opslag") {
+                Text("Opslagmodus: lokale JSON-opslag")
+                Text("AI-sleutelopslag: lokale appvoorkeuren")
+                Text("Health Connect-cache: opgeslagen wijzigingstoken plus lichte syncsnapshot")
+                Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+                    TextButton(onClick = onClearApiKey) { Text("AI-sleutel wissen") }
+                    TextButton(onClick = onClearAllData) { Text("Lokale data wissen") }
+                }
+            }
+        }
+        item {
+            SectionCard(title = "Over") {
+                Text("Appversie: ${BuildConfig.VERSION_NAME}")
+                Text("AI ingeschakeld: ${if (aiPreferences.enabled) "Ja" else "Nee"}")
                 Text("Health Connect: ${healthStatusLabel(healthStatus)}")
-                Text("Designed as a manual-first training and nutrition MVP.")
+                Text("Ontworpen als handmatige training- en voedings-MVP.")
             }
         }
     }
@@ -504,10 +639,35 @@ private fun FeedbackToggleRow(
 }
 
 private fun healthStatusLabel(status: HealthConnectStatus): String = when (status.state) {
-    HealthConnectState.UNSUPPORTED -> "Not supported"
-    HealthConnectState.PROVIDER_MISSING -> "Provider missing"
-    HealthConnectState.PERMISSION_REQUIRED -> "Permission required"
-    HealthConnectState.CONNECTED -> "Connected"
-    HealthConnectState.NO_DATA -> "Connected, no data yet"
-    HealthConnectState.ERROR -> "Error"
+    HealthConnectState.UNSUPPORTED -> "Niet ondersteund"
+    HealthConnectState.PROVIDER_MISSING -> "Provider ontbreekt"
+    HealthConnectState.PERMISSION_REQUIRED -> "Toegang vereist"
+    HealthConnectState.CONNECTED -> "Verbonden"
+    HealthConnectState.NO_DATA -> "Verbonden, nog geen data"
+    HealthConnectState.ERROR -> "Fout"
+}
+
+private fun BiologicalSex.displayLabel(): String = when (this) {
+    BiologicalSex.MALE -> "Man"
+    BiologicalSex.FEMALE -> "Vrouw"
+}
+
+private fun ThemeMode.displayLabel(): String = when (this) {
+    ThemeMode.SYSTEM -> "Systeem"
+    ThemeMode.LIGHT -> "Licht"
+    ThemeMode.DARK -> "Donker"
+}
+
+private fun Context.startActivityIfResolvable(intent: Intent): Boolean {
+    if (intent.resolveActivity(packageManager) == null) return false
+    return runCatching {
+        startActivity(intent)
+    }.isSuccess
+}
+
+private fun ProfileInputValidationError?.isFor(field: ProfileInputField): Boolean = this?.field == field
+
+private fun ProfileInputValidationError?.supportingTextFor(field: ProfileInputField): (@Composable () -> Unit)? {
+    val error = takeIf { it.isFor(field) } ?: return null
+    return { Text(error.message) }
 }
