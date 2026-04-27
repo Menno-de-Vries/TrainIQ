@@ -363,7 +363,7 @@ fun CoachScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
         ) {
-            item { ScreenHeader(title = "Coach", subtitle = "AI-feedback die echt met je data werkt") }
+            item { ScreenHeader(title = "Coach", subtitle = "Advies op basis van training, voeding en profiel") }
 
             when (state) {
                 CoachUiState.Loading -> {
@@ -422,7 +422,7 @@ fun CoachScreen(
                                     Text("Focus voor volgende week", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                     Text(report.nextWeekFocus, style = MaterialTheme.typography.bodyMedium)
                                     if (report.thinkingProcess.isNotEmpty()) {
-                                        Text("Redeneerspoor", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                        Text("Waarom dit advies?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                         report.thinkingProcess.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
                                     }
                                 }

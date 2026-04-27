@@ -25,6 +25,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -100,6 +101,12 @@ import kotlinx.coroutines.launch
 
 enum class ScanTarget { FOOD_EDITOR, RECIPE_DRAFT }
 
+private sealed interface PendingNutritionDelete {
+    data class Meal(val id: Long) : PendingNutritionDelete
+    data class Food(val id: Long) : PendingNutritionDelete
+    data class Recipe(val id: Long) : PendingNutritionDelete
+}
+
 sealed interface NutritionUiState {
     data object Loading : NutritionUiState
     data class Success(
@@ -157,11 +164,11 @@ class NutritionViewModel @Inject constructor(
         viewModelScope.launch {
             val ai = aiPreferences.value
             if (!ai.enabled) {
-                ephemeral.update { it.copy(message = "AI is disabled in Settings. Nutrition still works fully with manual entry.") }
+                ephemeral.update { it.copy(message = "AI staat uit in Instellingen. Voeding werkt nog steeds volledig met handmatige invoer.") }
                 return@launch
             }
             if (ai.apiKey.isBlank()) {
-                ephemeral.update { it.copy(message = "No Gemini API key is configured. Add one in Settings or keep using manual flows.") }
+                ephemeral.update { it.copy(message = "Er is geen Gemini API-sleutel ingesteld. Voeg er een toe in Instellingen of blijf handmatig werken.") }
                 return@launch
             }
             ephemeral.update { it.copy(isAnalyzing = true, message = null) }
@@ -171,16 +178,16 @@ class NutritionViewModel @Inject constructor(
                         state.copy(
                             scanResult = it,
                             message = if (it.items.isEmpty()) {
-                                "No reliable meal estimate was returned. You can retry or enter it manually."
+                                "Er kwam geen betrouwbare maaltijdinschatting terug. Probeer opnieuw of voer de maaltijd handmatig in."
                             } else {
-                                it.notes ?: "Review the AI estimate before adding it to your meal."
+                                it.notes ?: "Controleer de AI-inschatting voordat je die aan je maaltijd toevoegt."
                             },
                             isAnalyzing = false,
                         )
                     }
                 }
                 .onFailure {
-                    ephemeral.update { it.copy(message = "Meal analysis failed. You can retry or continue with manual entry.", isAnalyzing = false) }
+                    ephemeral.update { it.copy(message = "Maaltijdanalyse mislukt. Probeer opnieuw of ga verder met handmatige invoer.", isAnalyzing = false) }
                 }
         }
     }
@@ -201,12 +208,12 @@ class NutritionViewModel @Inject constructor(
         val parsedCarbs = carbs.toNutritionNumberOrNull(max = 1000.0)
         val parsedFat = fat.toNutritionNumberOrNull(max = 1000.0)
         if (name.isBlank() || parsedCalories == null || parsedProtein == null || parsedCarbs == null || parsedFat == null) {
-            ephemeral.update { it.copy(message = "Enter a name and non-negative per-100g values first.") }
+            ephemeral.update { it.copy(message = "Vul eerst een naam en niet-negatieve waarden per 100g in.") }
             return
         }
         viewModelScope.launch {
             val item = saveFoodItemUseCase(id, name.trim(), barcode?.trim()?.ifBlank { null }, parsedCalories, parsedProtein, parsedCarbs, parsedFat, sourceType)
-            ephemeral.update { it.copy(message = "Saved ${item.name}.") }
+            ephemeral.update { it.copy(message = "${item.name} opgeslagen.") }
             onSaved(item)
         }
     }
@@ -214,23 +221,23 @@ class NutritionViewModel @Inject constructor(
     fun saveRecipe(name: String, notes: String, cookedGrams: String, ingredients: List<Pair<Long, Double>>) {
         val parsedCookedGrams = cookedGrams.trim().takeIf { it.isNotBlank() }?.toNutritionNumberOrNull(max = 100_000.0)
         if (name.isBlank() || ingredients.isEmpty() || ingredients.any { it.second <= 0.0 || !it.second.isFinite() } || (cookedGrams.isNotBlank() && parsedCookedGrams == null)) {
-            ephemeral.update { it.copy(message = "Add a recipe name and positive ingredient amounts.") }
+            ephemeral.update { it.copy(message = "Vul een receptnaam en positieve hoeveelheden voor ingrediënten in.") }
             return
         }
         viewModelScope.launch {
             saveRecipeUseCase(null, name.trim(), notes.trim(), parsedCookedGrams, ingredients)
-            ephemeral.update { it.copy(message = "Recipe saved.") }
+            ephemeral.update { it.copy(message = "Recept opgeslagen.") }
         }
     }
 
     fun saveMeal(id: Long?, mealType: MealType, name: String, notes: String, items: List<MealEntryRequest>, onSaved: () -> Unit = {}) {
         if (name.isBlank() || items.isEmpty() || items.any { it.gramsUsed <= 0.0 || !it.gramsUsed.isFinite() }) {
-            ephemeral.update { it.copy(message = "Add a meal name and positive item amounts before saving.") }
+            ephemeral.update { it.copy(message = "Vul een maaltijdnaam en positieve hoeveelheden in voordat je opslaat.") }
             return
         }
         viewModelScope.launch {
             saveMealUseCase(id, mealType, name.trim(), notes.trim(), items)
-            ephemeral.update { it.copy(message = "Meal saved.") }
+            ephemeral.update { it.copy(message = "Maaltijd opgeslagen.") }
             onSaved()
         }
     }
@@ -238,21 +245,21 @@ class NutritionViewModel @Inject constructor(
     fun deleteMeal(mealId: Long) {
         viewModelScope.launch {
             deleteMealUseCase(mealId)
-            ephemeral.update { it.copy(message = "Meal deleted.") }
+            ephemeral.update { it.copy(message = "Maaltijd verwijderd.") }
         }
     }
 
     fun deleteFood(foodId: Long) {
         viewModelScope.launch {
             deleteFoodUseCase(foodId)
-            ephemeral.update { it.copy(message = "Food deleted.") }
+            ephemeral.update { it.copy(message = "Product verwijderd.") }
         }
     }
 
     fun deleteRecipe(recipeId: Long) {
         viewModelScope.launch {
             deleteRecipeUseCase(recipeId)
-            ephemeral.update { it.copy(message = "Recipe deleted.") }
+            ephemeral.update { it.copy(message = "Recept verwijderd.") }
         }
     }
 
@@ -329,6 +336,7 @@ fun NutritionScreen(
     var selectedTab by remember { mutableStateOf(0) }
     var aiScanForRecipe by remember { mutableStateOf(false) }
     var showAddToMealActions by remember { mutableStateOf(false) }
+    var pendingDelete by remember { mutableStateOf<PendingNutritionDelete?>(null) }
     var addToMealType by remember { mutableStateOf(MealType.BREAKFAST) }
     var selectedFoodId by remember { mutableStateOf<Long?>(null) }
     var selectedRecipeId by remember { mutableStateOf<Long?>(null) }
@@ -373,7 +381,7 @@ fun NutritionScreen(
                 quickIngredientBarcode = pendingBarcode
                 selectedTab = 1
                 onDismissMessage()
-                quickIngredientName = quickIngredientName.ifBlank { "Scanned product" }
+                quickIngredientName = quickIngredientName.ifBlank { "Gescand product" }
             } else {
                 barcode = pendingBarcode
                 selectedTab = 2
@@ -423,7 +431,7 @@ fun NutritionScreen(
         }
     }
 
-    val tabs = listOf("Meals", "Recipes", "Library", "History")
+    val tabs = listOf("Vandaag", "Recepten", "Producten", "Historie")
 
     Box(modifier = Modifier.fillMaxSize()) {
         AnimatedContent(
@@ -471,7 +479,7 @@ fun NutritionScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
                 ) {
-                    ScreenHeader(title = "Nutrition", subtitle = "Voeding loggen zonder gedoe")
+                    ScreenHeader(title = "Voeding", subtitle = "Voeding loggen zonder gedoe")
                     message?.let { MessageCard(message = it, onDismiss = onDismissMessage) }
                 }
                 Surface(tonalElevation = 2.dp) {
@@ -528,7 +536,7 @@ fun NutritionScreen(
                                         })
                                         coroutineScope.launch { nutritionListState.animateScrollToItem(1) }
                                     },
-                                    onDeleteMeal = onDeleteMeal,
+                                    onDeleteMeal = { pendingDelete = PendingNutritionDelete.Meal(it) },
                                 )
                             }
                             if (mealDraft.isNotEmpty()) {
@@ -604,10 +612,10 @@ fun NutritionScreen(
                                 item {
                                     PhotoFoodReviewCard(
                                         editableItems = editableAiItems.toList(),
-                                        onChangeItem = { index, item -> editableAiItems[index] = item },
-                                        onDeleteItem = { index -> editableAiItems.removeAt(index) },
-                                        onSaveAsRecipe = {
-                                            recipeName = recipeName.ifBlank { "AI photo recipe" }
+                                            onChangeItem = { index, item -> editableAiItems[index] = item },
+                                            onDeleteItem = { index -> editableAiItems.removeAt(index) },
+                                            onSaveAsRecipe = {
+                                            recipeName = recipeName.ifBlank { "AI-fotorecept" }
                                             editableAiItems.forEach { item ->
                                                 val grams = item.grams.toNutritionNumberOrNull(max = 100_000.0) ?: 100.0
                                                 onSaveFood(
@@ -745,7 +753,7 @@ fun NutritionScreen(
                                         mealDraft += MealEntryRequest(MealEntryType.RECIPE, recipe.id, mealRecipeGrams.toNutritionNumberOrNull(max = 100_000.0) ?: 150.0)
                                         selectedTab = 0
                                     },
-                                    onDelete = onDeleteRecipe,
+                                    onDelete = { pendingDelete = PendingNutritionDelete.Recipe(it) },
                                 )
                             }
                         }
@@ -791,7 +799,7 @@ fun NutritionScreen(
                                         mealDraft += MealEntryRequest(MealEntryType.FOOD, food.id, grams)
                                         selectedTab = 0
                                     },
-                                    onDelete = onDeleteFood,
+                                    onDelete = { pendingDelete = PendingNutritionDelete.Food(it) },
                                 )
                             }
                         }
@@ -816,7 +824,7 @@ fun NutritionScreen(
                                         })
                                         selectedTab = 0
                                     },
-                                    onDeleteMeal = onDeleteMeal,
+                                    onDeleteMeal = { pendingDelete = PendingNutritionDelete.Meal(it) },
                                 )
                             }
                         }
@@ -891,6 +899,50 @@ fun NutritionScreen(
             )
         }
     }
+    pendingDelete?.let { delete ->
+        ConfirmNutritionDeleteDialog(
+            pendingDelete = delete,
+            onConfirm = {
+                when (delete) {
+                    is PendingNutritionDelete.Meal -> onDeleteMeal(delete.id)
+                    is PendingNutritionDelete.Food -> onDeleteFood(delete.id)
+                    is PendingNutritionDelete.Recipe -> onDeleteRecipe(delete.id)
+                }
+                pendingDelete = null
+            },
+            onDismiss = { pendingDelete = null },
+        )
+    }
+}
+
+@Composable
+private fun ConfirmNutritionDeleteDialog(
+    pendingDelete: PendingNutritionDelete,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val title = when (pendingDelete) {
+        is PendingNutritionDelete.Meal -> "Maaltijd verwijderen?"
+        is PendingNutritionDelete.Food -> "Product verwijderen?"
+        is PendingNutritionDelete.Recipe -> "Recept verwijderen?"
+    }
+    val body = when (pendingDelete) {
+        is PendingNutritionDelete.Meal -> "Deze maaltijd verdwijnt uit je voedingslog."
+        is PendingNutritionDelete.Food -> "Dit product verdwijnt uit je productlijst."
+        is PendingNutritionDelete.Recipe -> "Dit recept verdwijnt uit je opgeslagen recepten."
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Text(
+                body,
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+            )
+        },
+        confirmButton = { Button(onClick = onConfirm) { Text("Verwijderen") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annuleren") } },
+    )
 }
 
 @Composable
@@ -902,7 +954,7 @@ private fun SummaryCard(overview: NutritionOverview?) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Vandaag", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                 Text(
-                    "${formatNumber(calories)} kcal • ${formatNumber(overview?.todaysProtein ?: 0.0)}g protein • ${formatNumber(overview?.todaysCarbs ?: 0.0)}g carbs • ${formatNumber(overview?.todaysFat ?: 0.0)}g fat",
+                    "${formatNumber(calories)} kcal • ${formatNumber(overview?.todaysProtein ?: 0.0)}g eiwit • ${formatNumber(overview?.todaysCarbs ?: 0.0)}g koolhydraten • ${formatNumber(overview?.todaysFat ?: 0.0)}g vet",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.trainIqColors.mutedText,
                 )
@@ -911,16 +963,16 @@ private fun SummaryCard(overview: NutritionOverview?) {
         }
         AppLinearProgress(progress = progress, accent = MaterialTheme.trainIqColors.amber)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            AppChip(label = "Foods ${overview?.foods?.size ?: 0}", accent = MaterialTheme.trainIqColors.amber)
-            AppChip(label = "Meals ${overview?.meals?.size ?: 0}", accent = MaterialTheme.trainIqColors.amber)
-            AppChip(label = "Recipes ${overview?.recipes?.size ?: 0}", accent = MaterialTheme.trainIqColors.amber)
+            AppChip(label = "Producten ${overview?.foods?.size ?: 0}", accent = MaterialTheme.trainIqColors.amber)
+            AppChip(label = "Maaltijden ${overview?.meals?.size ?: 0}", accent = MaterialTheme.trainIqColors.amber)
+            AppChip(label = "Recepten ${overview?.recipes?.size ?: 0}", accent = MaterialTheme.trainIqColors.amber)
         }
             overview?.energyBalance?.let {
-            Text("Net calories ${it.balance} kcal • TEF ${it.tefCalories} • NEAT ${it.neatCalories} • EAT ${it.workoutCalories}", color = MaterialTheme.trainIqColors.mutedText)
+            Text("Netto calorieën ${it.balance} kcal • TEF ${it.tefCalories} • NEAT ${it.neatCalories} • training ${it.workoutCalories}", color = MaterialTheme.trainIqColors.mutedText)
             }
             overview?.todaysMealsByType?.forEach { (mealType, meals) ->
                 if (meals.isNotEmpty()) {
-                Text("${mealType.label}: ${meals.size} logged", color = MaterialTheme.trainIqColors.mutedText)
+                Text("${mealType.dutchLabel}: ${meals.size} gelogd", color = MaterialTheme.trainIqColors.mutedText)
                 }
             }
     }
@@ -937,9 +989,9 @@ private fun DailyMealsDashboard(
     AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.primary) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("Today", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                Text("Vandaag", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                 Text(
-                    "${formatNumber(overview?.todaysProtein ?: 0.0)}g protein · ${formatNumber(overview?.todaysCarbs ?: 0.0)}g carbs · ${formatNumber(overview?.todaysFat ?: 0.0)}g fat",
+                    "${formatNumber(overview?.todaysProtein ?: 0.0)}g eiwit · ${formatNumber(overview?.todaysCarbs ?: 0.0)}g koolhydraten · ${formatNumber(overview?.todaysFat ?: 0.0)}g vet",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.trainIqColors.mutedText,
                 )
@@ -982,17 +1034,17 @@ private fun MealSectionCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(mealType.dutchLabel, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "${formatNumber(total.calories)} kcal · ${formatNumber(total.protein)}g protein · ${formatNumber(total.carbs)}g carbs · ${formatNumber(total.fat)}g fat",
+                        "${formatNumber(total.calories)} kcal · ${formatNumber(total.protein)}g eiwit · ${formatNumber(total.carbs)}g koolhydraten · ${formatNumber(total.fat)}g vet",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.trainIqColors.mutedText,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                TextButton(onClick = onAdd) { Text("Add") }
+                TextButton(onClick = onAdd) { Text("Toevoegen") }
             }
             if (meals.isEmpty()) {
-                Text("No food added yet", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.trainIqColors.mutedText)
+                Text("Nog niets toegevoegd", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.trainIqColors.mutedText)
             } else {
                 meals.forEach { meal ->
                     MealEntryRow(meal = meal, onEditMeal = onEditMeal, onDeleteMeal = onDeleteMeal)
@@ -1021,8 +1073,8 @@ private fun MealEntryRow(
                 Text("${item.name} · ${formatNumber(item.gramsUsed)}g", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.trainIqColors.mutedText)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { onEditMeal(meal) }) { Text("Edit grams") }
-                TextButton(onClick = { onDeleteMeal(meal.id) }) { Text("Delete") }
+                TextButton(onClick = { onEditMeal(meal) }) { Text("Hoeveelheid aanpassen") }
+                TextButton(onClick = { onDeleteMeal(meal.id) }) { Text("Verwijderen") }
             }
         }
     }
@@ -1033,10 +1085,10 @@ private fun RecipesHeaderCard(recipeCount: Int, onCreateClick: () -> Unit) {
     AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.secondary) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Recipes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-                Text("$recipeCount reusable recipes · manual, barcode, or reviewed AI photo", color = MaterialTheme.trainIqColors.mutedText)
+                Text("Recepten", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+                Text("$recipeCount herbruikbare recepten - handmatig, barcode of AI-foto", color = MaterialTheme.trainIqColors.mutedText)
             }
-            Button(onClick = onCreateClick) { Text("+ Add") }
+            Button(onClick = onCreateClick) { Text("+ Toevoegen") }
         }
     }
 }
@@ -1058,12 +1110,12 @@ private fun RecipeActionBottomSheet(
             .padding(horizontal = MaterialTheme.spacing.large, vertical = MaterialTheme.spacing.medium),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text("Add or create", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Button(onClick = onManualRecipe, modifier = Modifier.fillMaxWidth()) { Text("Create recipe manually") }
-        OutlinedButton(onClick = onBarcodeIngredient, modifier = Modifier.fillMaxWidth()) { Text("Scan barcode item into recipe") }
-        OutlinedButton(onClick = onPhotoIngredient, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) { Text("Add item by photo/AI into recipe") }
-        OutlinedButton(onClick = onPhotoDirect, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) { Text("Take photo: recipe or today") }
-        OutlinedButton(onClick = onExistingRecipeToMeal, modifier = Modifier.fillMaxWidth()) { Text("Add existing recipe to meal") }
+        Text("Toevoegen of maken", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Button(onClick = onManualRecipe, modifier = Modifier.fillMaxWidth()) { Text("Recept handmatig maken") }
+        OutlinedButton(onClick = onBarcodeIngredient, modifier = Modifier.fillMaxWidth()) { Text("Barcode-product in recept scannen") }
+        OutlinedButton(onClick = onPhotoIngredient, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) { Text("Product via foto/AI toevoegen") }
+        OutlinedButton(onClick = onPhotoDirect, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) { Text("Foto nemen: recept of vandaag") }
+        OutlinedButton(onClick = onExistingRecipeToMeal, modifier = Modifier.fillMaxWidth()) { Text("Bestaand recept aan maaltijd toevoegen") }
     }
 }
 
@@ -1089,14 +1141,14 @@ private fun AddToMealActionSheet(
             .padding(horizontal = MaterialTheme.spacing.large, vertical = MaterialTheme.spacing.medium),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text("Add to ${mealType.dutchLabel}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("Choose a source, then review before saving.", color = MaterialTheme.trainIqColors.mutedText)
-        Button(onClick = onManualFood, modifier = Modifier.fillMaxWidth()) { Text("Create manual food") }
-        OutlinedButton(onClick = onSavedFood, enabled = hasSavedFoods, modifier = Modifier.fillMaxWidth()) { Text("Use saved food") }
-        OutlinedButton(onClick = onRecipe, enabled = hasSavedRecipes, modifier = Modifier.fillMaxWidth()) { Text("Use saved recipe") }
-        OutlinedButton(onClick = onPhotoAi, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) { Text("Photo / AI estimate") }
+        Text("Toevoegen aan ${mealType.dutchLabel}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("Kies een bron en controleer daarna voor opslaan.", color = MaterialTheme.trainIqColors.mutedText)
+        Button(onClick = onManualFood, modifier = Modifier.fillMaxWidth()) { Text("Handmatig product maken") }
+        OutlinedButton(onClick = onSavedFood, enabled = hasSavedFoods, modifier = Modifier.fillMaxWidth()) { Text("Opgeslagen product gebruiken") }
+        OutlinedButton(onClick = onRecipe, enabled = hasSavedRecipes, modifier = Modifier.fillMaxWidth()) { Text("Opgeslagen recept gebruiken") }
+        OutlinedButton(onClick = onPhotoAi, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) { Text("Foto / AI-inschatting") }
         if (hasDraft) {
-            OutlinedButton(onClick = onOpenMealDraft, modifier = Modifier.fillMaxWidth()) { Text("Review current meal draft") }
+            OutlinedButton(onClick = onOpenMealDraft, modifier = Modifier.fillMaxWidth()) { Text("Huidige maaltijd controleren") }
         }
     }
 }
@@ -1110,14 +1162,14 @@ private fun PhotoFoodReviewCard(
     onAddToMeal: () -> Unit,
 ) {
     AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.tertiary) {
-        Text("Photo review", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Text("AI values are estimates. Review and edit before saving.", color = MaterialTheme.trainIqColors.mutedText)
+        Text("Fotocontrole", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text("AI-waarden zijn schattingen. Controleer en pas ze aan voordat je opslaat.", color = MaterialTheme.trainIqColors.mutedText)
         editableItems.forEachIndexed { index, item ->
             EditableAiItemCard(item = item, onChange = { onChangeItem(index, it) }, onDelete = { onDeleteItem(index) })
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            Button(onClick = onSaveAsRecipe, modifier = Modifier.weight(1f)) { Text("Save as recipe") }
-            OutlinedButton(onClick = onAddToMeal, modifier = Modifier.weight(1f)) { Text("Add to meal") }
+            Button(onClick = onSaveAsRecipe, modifier = Modifier.weight(1f)) { Text("Opslaan als recept") }
+            OutlinedButton(onClick = onAddToMeal, modifier = Modifier.weight(1f)) { Text("Aan maaltijd toevoegen") }
         }
     }
 }
@@ -1192,28 +1244,28 @@ private fun FoodEditorCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
         Column(modifier = Modifier.padding(MaterialTheme.spacing.medium), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-            Text("Food library item", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Product", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(
-                "Save foods once, then add them to meals or use them as recipe ingredients.",
+                "Sla producten eenmalig op en voeg ze daarna toe aan maaltijden of gebruik ze als receptingrediënten.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.trainIqColors.mutedText,
             )
-            NutritionTextField(value = foodName, onValueChange = onFoodNameChange, label = "Food name", modifier = Modifier.fillMaxWidth())
-            NutritionTextField(value = barcode, onValueChange = onBarcodeChange, label = "Barcode (optional)", modifier = Modifier.fillMaxWidth())
+            NutritionTextField(value = foodName, onValueChange = onFoodNameChange, label = "Productnaam", modifier = Modifier.fillMaxWidth())
+            NutritionTextField(value = barcode, onValueChange = onBarcodeChange, label = "Barcode (optioneel)", modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 NutritionNumberField(value = calories, onValueChange = onCaloriesChange, label = "kcal / 100g", modifier = Modifier.weight(1f))
-                NutritionNumberField(value = protein, onValueChange = onProteinChange, label = "Protein / 100g", modifier = Modifier.weight(1f))
+                NutritionNumberField(value = protein, onValueChange = onProteinChange, label = "Eiwit / 100g", modifier = Modifier.weight(1f))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                NutritionNumberField(value = carbs, onValueChange = onCarbsChange, label = "Carbs / 100g", modifier = Modifier.weight(1f))
-                NutritionNumberField(value = fat, onValueChange = onFatChange, label = "Fat / 100g", modifier = Modifier.weight(1f))
+                NutritionNumberField(value = carbs, onValueChange = onCarbsChange, label = "Koolhydraten / 100g", modifier = Modifier.weight(1f))
+                NutritionNumberField(value = fat, onValueChange = onFatChange, label = "Vet / 100g", modifier = Modifier.weight(1f))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(onClick = onSave, modifier = Modifier.weight(1f)) { Text("Save item") }
-                OutlinedButton(onClick = onScanBarcode, modifier = Modifier.weight(1f)) { Text("Scan barcode") }
+                Button(onClick = onSave, modifier = Modifier.weight(1f)) { Text("Product opslaan") }
+                OutlinedButton(onClick = onScanBarcode, modifier = Modifier.weight(1f)) { Text("Barcode scannen") }
             }
             Text(
-                "Barcode lookup opens the scanner when available. If no product data is found, fill the values manually before saving.",
+                "Barcode zoeken opent de scanner als die beschikbaar is. Vul de waarden handmatig in als er geen productdata wordt gevonden.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.trainIqColors.mutedText,
             )
@@ -1235,11 +1287,11 @@ private fun SavedFoodsCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
         Column(modifier = Modifier.padding(MaterialTheme.spacing.medium), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-            Text("Food library", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Producten", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             if (foods.isEmpty()) {
                 EmptyStateCard(
-                    title = "No saved foods yet",
-                    body = "Create a manual food or scan a barcode. Saved foods stay reusable for meals and recipes.",
+                    title = "Nog geen opgeslagen producten",
+                    body = "Maak handmatig een product of scan een barcode. Opgeslagen producten blijven herbruikbaar voor maaltijden en recepten.",
                 )
             } else {
                 foods.forEach { food ->
@@ -1256,14 +1308,14 @@ private fun SavedFoodsCard(
                         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(food.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(
-                                "${formatNumber(food.caloriesPer100g)} kcal/100g · ${formatNumber(food.proteinPer100g)}g protein · ${formatNumber(food.carbsPer100g)}g carbs · ${formatNumber(food.fatPer100g)}g fat",
+                                "${formatNumber(food.caloriesPer100g)} kcal/100g · ${formatNumber(food.proteinPer100g)}g eiwit · ${formatNumber(food.carbsPer100g)}g koolhydraten · ${formatNumber(food.fatPer100g)}g vet",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.trainIqColors.mutedText,
                             )
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                OutlinedButton(onClick = { onSelect(food.id) }, modifier = Modifier.weight(1f)) { Text(if (selectedFoodId == food.id) "Selected" else "Use") }
-                                Button(onClick = { onQuickAdd(food) }, modifier = Modifier.weight(1f)) { Text("Add to meal") }
-                                TextButton(onClick = { onDelete(food.id) }) { Text("Delete") }
+                                OutlinedButton(onClick = { onSelect(food.id) }, modifier = Modifier.weight(1f)) { Text(if (selectedFoodId == food.id) "Geselecteerd" else "Gebruiken") }
+                                Button(onClick = { onQuickAdd(food) }, modifier = Modifier.weight(1f)) { Text("Aan maaltijd") }
+                                TextButton(onClick = { onDelete(food.id) }) { Text("Verwijderen") }
                             }
                         }
                     }
@@ -1328,37 +1380,37 @@ private fun RecipeEditorCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
         Column(modifier = Modifier.padding(MaterialTheme.spacing.medium), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-            Text("Recipe builder", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Receptmaker", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(
-                "Build a reusable recipe from saved foods, barcode/manual ingredients, or reviewed AI suggestions.",
+                "Maak een herbruikbaar recept met opgeslagen producten, barcode- of handmatige ingrediënten, of gecontroleerde AI-suggesties.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.trainIqColors.mutedText,
             )
-            NutritionTextField(value = recipeName, onValueChange = onRecipeNameChange, label = "Recipe name", modifier = Modifier.fillMaxWidth())
-            NutritionTextField(value = recipeNotes, onValueChange = onRecipeNotesChange, label = "Notes", modifier = Modifier.fillMaxWidth(), singleLine = false)
-            NutritionNumberField(value = recipeCookedGrams, onValueChange = onRecipeCookedGramsChange, label = "Total cooked grams (optional)", modifier = Modifier.fillMaxWidth())
-            Text("Saved ingredient: ${selectedFood?.name ?: "Choose one from Food library"}", style = MaterialTheme.typography.labelLarge)
+            NutritionTextField(value = recipeName, onValueChange = onRecipeNameChange, label = "Receptnaam", modifier = Modifier.fillMaxWidth())
+            NutritionTextField(value = recipeNotes, onValueChange = onRecipeNotesChange, label = "Notities", modifier = Modifier.fillMaxWidth(), singleLine = false)
+            NutritionNumberField(value = recipeCookedGrams, onValueChange = onRecipeCookedGramsChange, label = "Totaal bereid gewicht (optioneel)", modifier = Modifier.fillMaxWidth())
+            Text("Opgeslagen ingrediënt: ${selectedFood?.name ?: "Kies een product uit Producten"}", style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                NutritionNumberField(value = ingredientGrams, onValueChange = onIngredientGramsChange, label = "Ingredient grams", modifier = Modifier.weight(1f))
-                Button(onClick = onAddIngredient, enabled = selectedFood != null, modifier = Modifier.weight(1f)) { Text("Add saved") }
+                NutritionNumberField(value = ingredientGrams, onValueChange = onIngredientGramsChange, label = "Ingrediënt gram", modifier = Modifier.weight(1f))
+                Button(onClick = onAddIngredient, enabled = selectedFood != null, modifier = Modifier.weight(1f)) { Text("Toevoegen") }
             }
             HorizontalDivider()
-            Text("Create ingredient manually", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-            NutritionTextField(value = quickIngredientName, onValueChange = onQuickIngredientNameChange, label = "Ingredient name", modifier = Modifier.fillMaxWidth())
-            NutritionTextField(value = quickIngredientBarcode, onValueChange = onQuickIngredientBarcodeChange, label = "Barcode (optional)", modifier = Modifier.fillMaxWidth())
+            Text("Ingrediënt handmatig maken", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            NutritionTextField(value = quickIngredientName, onValueChange = onQuickIngredientNameChange, label = "Ingrediëntnaam", modifier = Modifier.fillMaxWidth())
+            NutritionTextField(value = quickIngredientBarcode, onValueChange = onQuickIngredientBarcodeChange, label = "Barcode (optioneel)", modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 NutritionNumberField(value = quickIngredientKcal, onValueChange = onQuickIngredientKcalChange, label = "kcal / 100g", modifier = Modifier.weight(1f))
-                NutritionNumberField(value = quickIngredientProtein, onValueChange = onQuickIngredientProteinChange, label = "Protein / 100g", modifier = Modifier.weight(1f))
+                NutritionNumberField(value = quickIngredientProtein, onValueChange = onQuickIngredientProteinChange, label = "Eiwit / 100g", modifier = Modifier.weight(1f))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                NutritionNumberField(value = quickIngredientCarbs, onValueChange = onQuickIngredientCarbsChange, label = "Carbs / 100g", modifier = Modifier.weight(1f))
-                NutritionNumberField(value = quickIngredientFat, onValueChange = onQuickIngredientFatChange, label = "Fat / 100g", modifier = Modifier.weight(1f))
+                NutritionNumberField(value = quickIngredientCarbs, onValueChange = onQuickIngredientCarbsChange, label = "Koolhydraten / 100g", modifier = Modifier.weight(1f))
+                NutritionNumberField(value = quickIngredientFat, onValueChange = onQuickIngredientFatChange, label = "Vet / 100g", modifier = Modifier.weight(1f))
             }
-            OutlinedButton(onClick = onCreateIngredient, modifier = Modifier.fillMaxWidth()) { Text("Save ingredient and add") }
+            OutlinedButton(onClick = onCreateIngredient, modifier = Modifier.fillMaxWidth()) { Text("Ingrediënt opslaan en toevoegen") }
             if (draft.isEmpty()) {
                 EmptyStateCard(
-                    title = "No ingredients yet",
-                    body = "Add at least one ingredient with grams used. Totals update live from per-100g values.",
+                    title = "Nog geen ingrediënten",
+                    body = "Voeg minimaal een ingrediënt met grammen toe. Totalen worden live bijgewerkt.",
                 )
             } else {
                 draft.forEachIndexed { index, (foodId, grams) ->
@@ -1372,30 +1424,30 @@ private fun RecipeEditorCard(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(food?.name ?: "Food", fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Text("${formatNumber(grams)}g used", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.trainIqColors.mutedText)
+                                Text(food?.name ?: "Product", fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text("${formatNumber(grams)}g gebruikt", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.trainIqColors.mutedText)
                             }
-                            TextButton(onClick = { onRemoveIngredient(index) }) { Text("Remove") }
+                            TextButton(onClick = { onRemoveIngredient(index) }) { Text("Verwijderen") }
                         }
                     }
                 }
                 RecipeTotalsCard(totalNutrition = totalNutrition, totalGrams = totalGrams)
             }
-            Button(onClick = onSave, enabled = draft.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Save recipe") }
+            Button(onClick = onSave, enabled = draft.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Recept opslaan") }
             HorizontalDivider()
-            Text("Barcode and photo helpers", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Barcode- en fotohulp", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (aiEnabled) {
-                NutritionTextField(value = recipeAiContext, onValueChange = onRecipeAiContextChange, label = "AI context (optional)", modifier = Modifier.fillMaxWidth())
+                NutritionTextField(value = recipeAiContext, onValueChange = onRecipeAiContextChange, label = "AI-context (optioneel)", modifier = Modifier.fillMaxWidth())
             } else {
                 Text(
-                    "AI photo recognition is unavailable until it is enabled in Settings. Manual and barcode flows still work.",
+                    "AI-fotoherkenning is pas beschikbaar nadat je dit aanzet in Instellingen. Handmatig invoeren en barcodes blijven werken.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.trainIqColors.mutedText,
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = onScanBarcodeForRecipe, modifier = Modifier.weight(1f)) { Text("Scan Barcode") }
-                OutlinedButton(onClick = onAiVisionForRecipe, enabled = aiEnabled, modifier = Modifier.weight(1f)) { Text("Use AI Vision") }
+                OutlinedButton(onClick = onScanBarcodeForRecipe, modifier = Modifier.weight(1f)) { Text("Barcode scannen") }
+                OutlinedButton(onClick = onAiVisionForRecipe, enabled = aiEnabled, modifier = Modifier.weight(1f)) { Text("AI-herkenning gebruiken") }
             }
         }
     }
@@ -1408,10 +1460,10 @@ private fun RecipeTotalsCard(totalNutrition: NutritionFacts, totalGrams: Double)
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Recipe totals", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            Text("${formatNumber(totalNutrition.calories)} kcal · ${formatNumber(totalGrams)}g total")
+            Text("Recepttotalen", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text("${formatNumber(totalNutrition.calories)} kcal · ${formatNumber(totalGrams)}g totaal")
             Text(
-                "${formatNumber(totalNutrition.protein)}g protein · ${formatNumber(totalNutrition.carbs)}g carbs · ${formatNumber(totalNutrition.fat)}g fat",
+                "${formatNumber(totalNutrition.protein)}g eiwit · ${formatNumber(totalNutrition.carbs)}g koolhydraten · ${formatNumber(totalNutrition.fat)}g vet",
                 color = MaterialTheme.trainIqColors.mutedText,
             )
         }
@@ -1432,11 +1484,11 @@ private fun SavedRecipesCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
         Column(modifier = Modifier.padding(MaterialTheme.spacing.medium), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-            Text("Saved recipes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Opgeslagen recepten", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             if (recipes.isEmpty()) {
                 EmptyStateCard(
-                    title = "No reusable recipes yet",
-                    body = "Use + Add or the builder below to save recipes you can log again later.",
+                    title = "Nog geen herbruikbare recepten",
+                    body = "Gebruik + Toevoegen of de maker hieronder om recepten later opnieuw te loggen.",
                 )
             } else {
                 recipes.forEach { recipe ->
@@ -1453,15 +1505,15 @@ private fun SavedRecipesCard(
                         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(recipe.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(
-                                "${formatNumber(recipe.totalNutrition.calories)} kcal · ${formatNumber(recipe.totalNutrition.protein)}g protein · ${formatNumber(recipe.totalNutrition.carbs)}g carbs · ${formatNumber(recipe.totalNutrition.fat)}g fat",
+                                "${formatNumber(recipe.totalNutrition.calories)} kcal · ${formatNumber(recipe.totalNutrition.protein)}g eiwit · ${formatNumber(recipe.totalNutrition.carbs)}g koolhydraten · ${formatNumber(recipe.totalNutrition.fat)}g vet",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.trainIqColors.mutedText,
                             )
-                            Text("${recipe.ingredients.size} ingredients", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            Text("${recipe.ingredients.size} ingrediënten", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                OutlinedButton(onClick = { onSelect(recipe.id) }, modifier = Modifier.weight(1f)) { Text(if (selectedRecipeId == recipe.id) "Editing" else "Edit") }
-                                Button(onClick = { onUseInMeal(recipe) }, modifier = Modifier.weight(1f)) { Text("Add to meal") }
-                                TextButton(onClick = { onDelete(recipe.id) }) { Text("Delete") }
+                                OutlinedButton(onClick = { onSelect(recipe.id) }, modifier = Modifier.weight(1f)) { Text(if (selectedRecipeId == recipe.id) "Bewerken" else "Bewerk") }
+                                Button(onClick = { onUseInMeal(recipe) }, modifier = Modifier.weight(1f)) { Text("Aan maaltijd") }
+                                TextButton(onClick = { onDelete(recipe.id) }) { Text("Verwijderen") }
                             }
                         }
                     }
@@ -1491,9 +1543,9 @@ private fun MealDraftReviewCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
         Column(modifier = Modifier.padding(MaterialTheme.spacing.medium), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-            Text("Review meal draft", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Maaltijd controleren", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(
-                "Check the meal moment, name and items before saving them into today's overview.",
+                "Controleer het maaltijdmoment, de naam en de items voordat je ze opslaat in het overzicht van vandaag.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.trainIqColors.mutedText,
             )
@@ -1517,8 +1569,8 @@ private fun MealDraftReviewCard(
                     }
                 }
             }
-            NutritionTextField(value = mealName, onValueChange = onMealNameChange, label = "Meal name", modifier = Modifier.fillMaxWidth())
-            NutritionTextField(value = mealNotes, onValueChange = onMealNotesChange, label = "Notes", modifier = Modifier.fillMaxWidth(), singleLine = false)
+            NutritionTextField(value = mealName, onValueChange = onMealNameChange, label = "Maaltijdnaam", modifier = Modifier.fillMaxWidth())
+            NutritionTextField(value = mealNotes, onValueChange = onMealNotesChange, label = "Notities", modifier = Modifier.fillMaxWidth(), singleLine = false)
             mealDraft.forEachIndexed { index, entry ->
                 val label = when (entry.itemType) {
                     MealEntryType.FOOD -> foods.firstOrNull { it.id == entry.referenceId }?.name
@@ -1533,11 +1585,11 @@ private fun MealDraftReviewCard(
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Text("$label • ${formatNumber(entry.gramsUsed)}g", maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { onRemoveDraftItem(index) }) { Text("Remove") }
+                        TextButton(onClick = { onRemoveDraftItem(index) }) { Text("Verwijderen") }
                     }
                 }
             }
-            Button(onClick = onSave, enabled = mealDraft.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Save meal") }
+            Button(onClick = onSave, enabled = mealDraft.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Maaltijd opslaan") }
         }
     }
 }
@@ -1560,22 +1612,22 @@ private fun AiMealAnalysisCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
         Column(modifier = Modifier.padding(MaterialTheme.spacing.medium), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-            Text("Photo / AI review", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-            Text("Scan meal", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text("Foto / AI-controle", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            Text("Maaltijd scannen", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
             Text(
                 when {
-                    !aiPreferences.enabled -> "AI is disabled in Settings. Manual nutrition logging still works."
-                    aiPreferences.apiKey.isBlank() -> "Add a Gemini API key in Settings to enable meal analysis."
-                    else -> "Open the full-screen scanner, capture the meal, then review each detected item before saving."
+                    !aiPreferences.enabled -> "AI staat uit in Instellingen. Handmatig voeding loggen blijft werken."
+                    aiPreferences.apiKey.isBlank() -> "Voeg een Gemini API-sleutel toe in Instellingen om maaltijdanalyse te gebruiken."
+                    else -> "Open de scanner op volledig scherm, fotografeer de maaltijd en controleer elk gevonden item voordat je opslaat."
                 },
                 style = MaterialTheme.typography.bodyMedium,
             )
-            NutritionTextField(value = aiContext, onValueChange = onContextChange, label = "Optional context", modifier = Modifier.fillMaxWidth())
+            NutritionTextField(value = aiContext, onValueChange = onContextChange, label = "Optionele context", modifier = Modifier.fillMaxWidth())
             Button(onClick = onOpenCamera, enabled = aiPreferences.enabled && aiPreferences.apiKey.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
-                Text("Open scanner")
+                Text("Scanner openen")
             }
             if (isAnalyzing) {
-                Text("Processing...", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Text("Verwerken...", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                 repeat(3) {
                     ShimmerCardPlaceholder(lineCount = 2)
                 }
@@ -1584,7 +1636,7 @@ private fun AiMealAnalysisCard(
                 EditableAiItemCard(item = item, onChange = { onChangeItem(index, it) }, onDelete = { onDeleteItem(index) })
             }
             if (editableItems.isNotEmpty()) {
-                Button(onClick = onSaveToDraft) { Text("Add AI items to meal draft") }
+                Button(onClick = onSaveToDraft) { Text("AI-items aan maaltijd toevoegen") }
             }
         }
     }
@@ -1604,14 +1656,14 @@ private fun RecipeAiResultsCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
         Column(modifier = Modifier.padding(MaterialTheme.spacing.medium), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-            Text("AI-detected ingredients", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text("Review each item, then add them to your recipe.", style = MaterialTheme.typography.bodyMedium)
+            Text("AI-gevonden ingrediënten", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Controleer elk item en voeg ze daarna toe aan je recept.", style = MaterialTheme.typography.bodyMedium)
             editableItems.forEachIndexed { index, item ->
                 EditableAiItemCard(item = item, onChange = { onChangeItem(index, it) }, onDelete = { onDeleteItem(index) })
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onAddAsIngredients) { Text("Add as ingredients") }
-                TextButton(onClick = onDismiss) { Text("Dismiss") }
+                Button(onClick = onAddAsIngredients) { Text("Als ingrediënten toevoegen") }
+                TextButton(onClick = onDismiss) { Text("Sluiten") }
             }
         }
     }
@@ -1631,12 +1683,12 @@ private fun MealHistoryCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
         Column(modifier = Modifier.padding(MaterialTheme.spacing.medium), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-            Text("Nutrition history", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text("Previously logged meals stay as nutrition snapshots, so editing foods or recipes later does not rewrite old logs.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
+            Text("Voedingshistorie", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Eerder gelogde maaltijden blijven voedingssnapshots, zodat latere product- of receptwijzigingen oude logs niet aanpassen.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
             if (meals.isEmpty()) {
                 EmptyStateCard(
-                    title = "No logged meals yet",
-                    body = "Meals saved from Ochtend, Middag, Avond or Snacks will appear here for review and reuse.",
+                    title = "Nog geen gelogde maaltijden",
+                    body = "Maaltijden uit Ochtend, Middag, Avond of Snacks verschijnen hier om te controleren en hergebruiken.",
                 )
             } else {
                 meals.forEach { meal ->
@@ -1644,7 +1696,7 @@ private fun MealHistoryCard(
                         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(meal.name, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(meal.mealType.dutchLabel, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                            Text("${formatNumber(meal.totalNutrition.calories)} kcal • P${formatNumber(meal.totalNutrition.protein)} C${formatNumber(meal.totalNutrition.carbs)} F${formatNumber(meal.totalNutrition.fat)}")
+                            Text("${formatNumber(meal.totalNutrition.calories)} kcal • E${formatNumber(meal.totalNutrition.protein)} K${formatNumber(meal.totalNutrition.carbs)} V${formatNumber(meal.totalNutrition.fat)}")
                             meal.items.forEach { item ->
                                 val liveName = when (item.itemType.name) {
                                     "FOOD" -> foods.firstOrNull { it.id == item.referenceId }?.name
@@ -1653,8 +1705,8 @@ private fun MealHistoryCard(
                                 Text("$liveName • ${formatNumber(item.gramsUsed)}g", maxLines = 2, overflow = TextOverflow.Ellipsis)
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                Button(onClick = { onReuseMeal(meal) }, modifier = Modifier.weight(1f)) { Text("Reuse") }
-                                TextButton(onClick = { onDeleteMeal(meal.id) }) { Text("Delete") }
+                                Button(onClick = { onReuseMeal(meal) }, modifier = Modifier.weight(1f)) { Text("Opnieuw gebruiken") }
+                                TextButton(onClick = { onDeleteMeal(meal.id) }) { Text("Verwijderen") }
                             }
                         }
                     }
@@ -1668,20 +1720,20 @@ private fun MealHistoryCard(
 private fun EditableAiItemCard(item: EditableAiItem, onChange: (EditableAiItem) -> Unit, onDelete: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            NutritionTextField(value = item.name, onValueChange = { onChange(item.copy(name = it)) }, label = "Item", modifier = Modifier.fillMaxWidth())
+            NutritionTextField(value = item.name, onValueChange = { onChange(item.copy(name = it)) }, label = "Naam", modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                NutritionNumberField(value = item.grams, onValueChange = { onChange(item.copy(grams = it)) }, label = "Grams", modifier = Modifier.weight(1f))
-                NutritionNumberField(value = item.calories, onValueChange = { onChange(item.copy(calories = it)) }, label = "Calories", modifier = Modifier.weight(1f))
+                NutritionNumberField(value = item.grams, onValueChange = { onChange(item.copy(grams = it)) }, label = "Grammen", modifier = Modifier.weight(1f))
+                NutritionNumberField(value = item.calories, onValueChange = { onChange(item.copy(calories = it)) }, label = "Calorieën", modifier = Modifier.weight(1f))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                NutritionNumberField(value = item.protein, onValueChange = { onChange(item.copy(protein = it)) }, label = "Protein", modifier = Modifier.weight(1f))
-                NutritionNumberField(value = item.carbs, onValueChange = { onChange(item.copy(carbs = it)) }, label = "Carbs", modifier = Modifier.weight(1f))
-                NutritionNumberField(value = item.fat, onValueChange = { onChange(item.copy(fat = it)) }, label = "Fat", modifier = Modifier.weight(1f))
+                NutritionNumberField(value = item.protein, onValueChange = { onChange(item.copy(protein = it)) }, label = "Eiwit", modifier = Modifier.weight(1f))
+                NutritionNumberField(value = item.carbs, onValueChange = { onChange(item.copy(carbs = it)) }, label = "Koolhydraten", modifier = Modifier.weight(1f))
+                NutritionNumberField(value = item.fat, onValueChange = { onChange(item.copy(fat = it)) }, label = "Vet", modifier = Modifier.weight(1f))
             }
-            item.confidence?.let { Text("Confidence: $it") }
+            item.confidence?.let { Text("Zekerheid: $it") }
             item.notes?.let { Text(it) }
-            Text("Per-100g preview: ${per100Value(item.calories, item.grams.toNutritionNumberOrNull(max = 100_000.0) ?: 100.0)} kcal", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.trainIqColors.mutedText)
-            TextButton(onClick = onDelete) { Text("Remove item") }
+            Text("Per 100g: ${per100Value(item.calories, item.grams.toNutritionNumberOrNull(max = 100_000.0) ?: 100.0)} kcal", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.trainIqColors.mutedText)
+            TextButton(onClick = onDelete) { Text("Item verwijderen") }
         }
     }
 }

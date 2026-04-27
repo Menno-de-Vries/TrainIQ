@@ -85,6 +85,54 @@ class TrainIqRepositoryTest {
     }
 
     @Test
+    fun withExerciseRemovedFromDay_removesOnlyMatchingActiveSetsForSameExerciseOnDifferentPlan() {
+        val state = TrainIqStorageState(
+            workoutExercises = listOf(
+                WorkoutExerciseEntity(id = 4L, dayId = 7L, exerciseId = 3L, targetSets = 2, repRange = "8-12", restSeconds = 90),
+                WorkoutExerciseEntity(id = 5L, dayId = 7L, exerciseId = 3L, targetSets = 2, repRange = "8-12", restSeconds = 90),
+            ),
+            routineSets = listOf(
+                RoutineSetEntity(id = 10L, workoutExerciseId = 4L, orderIndex = 0),
+                RoutineSetEntity(id = 11L, workoutExerciseId = 5L, orderIndex = 0),
+            ),
+            activeWorkoutSession = ActiveWorkoutSessionStorage(
+                dayId = 7L,
+                loggedSets = listOf(
+                    ActiveWorkoutSetStorage(id = 20L, exerciseId = 3L, sourceWorkoutExerciseId = 4L),
+                    ActiveWorkoutSetStorage(id = 21L, exerciseId = 3L, sourceWorkoutExerciseId = 5L),
+                ),
+                collapsedExerciseIds = setOf(3L),
+            ),
+        )
+
+        val updated = state.withExerciseRemovedFromDay(workoutExerciseId = 4L, now = 1_000L)
+
+        assertEquals(listOf(5L), updated.workoutExercises.map { it.id })
+        assertEquals(listOf(11L), updated.routineSets.map { it.id })
+        assertEquals(listOf(21L), updated.activeWorkoutSession?.loggedSets?.map { it.id })
+        assertEquals(setOf(3L), updated.activeWorkoutSession?.collapsedExerciseIds)
+    }
+
+    @Test
+    fun withExerciseRemovedFromDay_keepsActiveDraftForSameExerciseOnDifferentPlan() {
+        val state = TrainIqStorageState(
+            workoutExercises = listOf(
+                WorkoutExerciseEntity(id = 4L, dayId = 7L, exerciseId = 3L, targetSets = 2, repRange = "8-12", restSeconds = 90),
+                WorkoutExerciseEntity(id = 5L, dayId = 7L, exerciseId = 3L, targetSets = 2, repRange = "8-12", restSeconds = 90),
+            ),
+            activeWorkoutSession = ActiveWorkoutSessionStorage(
+                dayId = 7L,
+                drafts = mapOf(3L to ActiveWorkoutDraftStorage(weight = "80", reps = "8")),
+            ),
+        )
+
+        val updated = state.withExerciseRemovedFromDay(workoutExerciseId = 4L, now = 1_000L)
+
+        assertEquals(mapOf(3L to ActiveWorkoutDraftStorage(weight = "80", reps = "8")), updated.activeWorkoutSession?.drafts)
+    }
+
+
+    @Test
     fun resolveReadiness_withLowRpeAndCompletedSessions_returnsIncrease() {
         assertEquals(
             ReadinessLevel.INCREASE,
@@ -263,6 +311,65 @@ class TrainIqRepositoryTest {
         assertEquals(state.sessions, updated.sessions)
         assertEquals(state.performedExercises, updated.performedExercises)
         assertEquals(state.workoutSets, updated.workoutSets)
+    }
+
+    @Test
+    fun withExerciseRemovedFromDay_preservesActiveSetsWhenRemovedPlanIsNotActiveDay() {
+        val state = TrainIqStorageState(
+            workoutExercises = listOf(
+                WorkoutExerciseEntity(id = 4L, dayId = 7L, exerciseId = 3L, targetSets = 2, repRange = "8-12", restSeconds = 90),
+                WorkoutExerciseEntity(id = 5L, dayId = 8L, exerciseId = 3L, targetSets = 2, repRange = "8-12", restSeconds = 90),
+            ),
+            routineSets = listOf(
+                RoutineSetEntity(id = 10L, workoutExerciseId = 4L, orderIndex = 0, targetReps = 8),
+                RoutineSetEntity(id = 11L, workoutExerciseId = 5L, orderIndex = 0, targetReps = 8),
+            ),
+            activeWorkoutSession = ActiveWorkoutSessionStorage(
+                dayId = 7L,
+                startedAt = 100L,
+                loggedSets = listOf(
+                    ActiveWorkoutSetStorage(id = 1L, exerciseId = 3L, sourceWorkoutExerciseId = 4L, weight = 80.0, reps = 8),
+                ),
+                drafts = mapOf(3L to ActiveWorkoutDraftStorage(weight = "80", reps = "8")),
+                collapsedExerciseIds = setOf(3L),
+            ),
+        )
+
+        val updated = state.withExerciseRemovedFromDay(workoutExerciseId = 5L, now = 200L)
+
+        assertEquals(listOf(4L), updated.workoutExercises.map { it.id })
+        assertEquals(listOf(10L), updated.routineSets.map { it.id })
+        assertEquals(1, updated.activeWorkoutSession?.loggedSets?.size)
+        assertEquals("80", updated.activeWorkoutSession?.drafts?.get(3L)?.weight)
+        assertEquals(setOf(3L), updated.activeWorkoutSession?.collapsedExerciseIds)
+    }
+
+    @Test
+    fun withExerciseRemovedFromDay_preservesDuplicateExerciseSetsOnSameActiveDay() {
+        val state = TrainIqStorageState(
+            workoutExercises = listOf(
+                WorkoutExerciseEntity(id = 4L, dayId = 7L, exerciseId = 3L, targetSets = 2, repRange = "8-12", restSeconds = 90),
+                WorkoutExerciseEntity(id = 5L, dayId = 7L, exerciseId = 3L, targetSets = 2, repRange = "8-12", restSeconds = 90),
+            ),
+            routineSets = listOf(
+                RoutineSetEntity(id = 10L, workoutExerciseId = 4L, orderIndex = 0, targetReps = 8),
+                RoutineSetEntity(id = 11L, workoutExerciseId = 5L, orderIndex = 0, targetReps = 8),
+            ),
+            activeWorkoutSession = ActiveWorkoutSessionStorage(
+                dayId = 7L,
+                startedAt = 100L,
+                loggedSets = listOf(
+                    ActiveWorkoutSetStorage(id = 1L, exerciseId = 3L, sourceWorkoutExerciseId = 4L, weight = 80.0, reps = 8),
+                ),
+                drafts = mapOf(3L to ActiveWorkoutDraftStorage(weight = "80", reps = "8")),
+            ),
+        )
+
+        val updated = state.withExerciseRemovedFromDay(workoutExerciseId = 5L, now = 200L)
+
+        assertEquals(listOf(4L), updated.workoutExercises.map { it.id })
+        assertEquals(1, updated.activeWorkoutSession?.loggedSets?.size)
+        assertEquals("80", updated.activeWorkoutSession?.drafts?.get(3L)?.weight)
     }
 
     @Test

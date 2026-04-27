@@ -360,7 +360,9 @@ class TrainIqRepository @Inject constructor(
                 ?: ActiveWorkoutSessionStorage(dayId = dayId, startedAt = now)
             val nextSetId = (active.loggedSets.maxOfOrNull { it.id } ?: 0L) + 1L
             val performedExercise = state.performedExercises.firstOrNull {
-                it.sessionId == active.sessionId && it.exerciseId == set.exerciseId
+                it.sessionId == active.sessionId &&
+                    it.exerciseId == set.exerciseId &&
+                    (set.sourceWorkoutExerciseId == null || it.sourceWorkoutExerciseId == set.sourceWorkoutExerciseId)
             }
             val storedSet = ActiveWorkoutSetStorage(
                 id = nextSetId,
@@ -855,22 +857,9 @@ class TrainIqRepository @Inject constructor(
 
     override suspend fun removeExerciseFromDay(workoutExerciseId: Long) {
         localStore.update { state ->
-            val removed = state.workoutExercises.firstOrNull { it.id == workoutExerciseId }
-            val removedExerciseId = removed?.exerciseId
-            val active = state.activeWorkoutSession
-            state.copy(
-                workoutExercises = state.workoutExercises.filterNot { it.id == workoutExerciseId },
-                routineSets = state.routineSets.filterNot { it.workoutExerciseId == workoutExerciseId },
-                activeWorkoutSession = if (removedExerciseId != null && active != null) {
-                    active.copy(
-                        loggedSets = active.loggedSets.filterNot { it.exerciseId == removedExerciseId },
-                        drafts = active.drafts - removedExerciseId,
-                        collapsedExerciseIds = active.collapsedExerciseIds - removedExerciseId,
-                        updatedAt = System.currentTimeMillis(),
-                    )
-                } else {
-                    active
-                },
+            state.withExerciseRemovedFromDay(
+                workoutExerciseId = workoutExerciseId,
+                now = System.currentTimeMillis(),
             )
         }
     }
@@ -2087,6 +2076,46 @@ internal fun TrainIqStorageState.withExerciseReplacedInPlan(
                 workoutExercise
             }
         },
+    )
+}
+
+internal fun TrainIqStorageState.withExerciseRemovedFromDay(
+    workoutExerciseId: Long,
+    now: Long,
+): TrainIqStorageState {
+    val removed = workoutExercises.firstOrNull { it.id == workoutExerciseId }
+    val remainingWorkoutExercises = workoutExercises.filterNot { it.id == workoutExerciseId }
+    val nextActiveSession = when {
+        removed == null || activeWorkoutSession == null -> activeWorkoutSession
+        activeWorkoutSession.dayId != removed.dayId -> activeWorkoutSession
+        else -> {
+            val remainingActivePlanUsesExercise = remainingWorkoutExercises.any {
+                it.dayId == removed.dayId && it.exerciseId == removed.exerciseId
+            }
+            activeWorkoutSession.copy(
+                loggedSets = activeWorkoutSession.loggedSets.filterNot { set ->
+                    set.sourceWorkoutExerciseId == workoutExerciseId ||
+                        (!remainingActivePlanUsesExercise && set.sourceWorkoutExerciseId == null && set.exerciseId == removed.exerciseId)
+                },
+                drafts = if (remainingActivePlanUsesExercise) {
+                    activeWorkoutSession.drafts
+                } else {
+                    activeWorkoutSession.drafts - removed.exerciseId
+                },
+                collapsedExerciseIds = if (remainingActivePlanUsesExercise) {
+                    activeWorkoutSession.collapsedExerciseIds
+                } else {
+                    activeWorkoutSession.collapsedExerciseIds - removed.exerciseId
+                },
+                updatedAt = now,
+            )
+        }
+    }
+
+    return copy(
+        workoutExercises = remainingWorkoutExercises,
+        routineSets = routineSets.filterNot { it.workoutExerciseId == workoutExerciseId },
+        activeWorkoutSession = nextActiveSession,
     )
 }
 

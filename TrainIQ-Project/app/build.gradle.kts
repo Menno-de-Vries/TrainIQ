@@ -37,6 +37,13 @@ android {
                 "proguard-rules.pro"
             )
         }
+        create("profileable") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = false
+            isProfileable = true
+            matchingFallbacks += listOf("release")
+        }
     }
 
     compileOptions {

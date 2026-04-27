@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -51,9 +52,9 @@ fun CreateRoutineDialog(
     }
 
     AlertDialog(
-        modifier = modifier,
+        modifier = modifier.imePadding(),
         onDismissRequest = onDismiss,
-        title = { Text("Create routine") },
+        title = { Text("Routine maken") },
         text = {
             OutlinedTextField(
                 value = name,
@@ -61,7 +62,7 @@ fun CreateRoutineDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focusRequester),
-                label = { Text("Routine name") },
+                label = { Text("Routinenaam") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(
@@ -78,12 +79,12 @@ fun CreateRoutineDialog(
                 onClick = { onConfirm(trimmedName) },
                 enabled = trimmedName.isNotEmpty(),
             ) {
-                Text("Create")
+                Text("Maken")
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Annuleren")
             }
         },
     )
@@ -98,7 +99,7 @@ fun GeneratedRoutinePreviewDialog(
     modifier: Modifier = Modifier,
 ) {
     AlertDialog(
-        modifier = modifier,
+        modifier = modifier.imePadding(),
         onDismissRequest = onDismiss,
         title = { Text(routine.routineName) },
         text = {
@@ -110,7 +111,7 @@ fun GeneratedRoutinePreviewDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
-                    text = routine.routineDescription.ifBlank { "No description provided." },
+                    text = routine.routineDescription.ifBlank { "Geen beschrijving ingevuld." },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -144,7 +145,7 @@ fun GeneratedRoutinePreviewDialog(
                                     fontWeight = FontWeight.SemiBold,
                                 )
                                 Text(
-                                    text = "${day.exercises.size} exercises",
+                                    text = "${day.exercises.size} oefeningen",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -162,7 +163,7 @@ fun GeneratedRoutinePreviewDialog(
                             }
                             if (day.exercises.size > 4) {
                                 Text(
-                                    text = "+${day.exercises.size - 4} more",
+                                    text = "+${day.exercises.size - 4} meer",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.primary,
                                 )
@@ -174,16 +175,16 @@ fun GeneratedRoutinePreviewDialog(
         },
         confirmButton = {
             Button(onClick = onSave) {
-                Text("Save")
+                Text("Opslaan")
             }
         },
         dismissButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = onRetry) {
-                    Text("Retry")
+                    Text("Opnieuw proberen")
                 }
                 TextButton(onClick = onDismiss) {
-                    Text("Cancel")
+                    Text("Annuleren")
                 }
             }
         },
@@ -200,17 +201,17 @@ private fun GeneratedRoutineMetaRow(routine: GeneratedRoutine) {
     ) {
         AssistChip(
             onClick = {},
-            label = { Text("${routine.days.size} days") },
+            label = { Text("${routine.days.size} dagen") },
         )
         if (routine.estimatedDurationMinutes > 0) {
             AssistChip(
                 onClick = {},
-                label = { Text("${routine.estimatedDurationMinutes} min/session") },
+                label = { Text("${routine.estimatedDurationMinutes} min/sessie") },
             )
         }
         AssistChip(
             onClick = {},
-            label = { Text("${routine.days.sumOf { it.exercises.size }} exercises") },
+            label = { Text("${routine.days.sumOf { it.exercises.size }} oefeningen") },
         )
     }
 }

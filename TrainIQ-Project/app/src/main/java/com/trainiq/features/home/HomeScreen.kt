@@ -3,13 +3,6 @@ package com.trainiq.features.home
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -38,7 +31,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -102,13 +94,15 @@ class HomeViewModel @Inject constructor(
     private val getHealthConnectStatusUseCase: GetHealthConnectStatusUseCase,
     private val refreshDashboardDataUseCase: RefreshDashboardDataUseCase,
 ) : ViewModel() {
+    private val healthConnectRefreshGate = HomeRefreshGate()
+
     private val dashboard = observeHomeDashboardUseCase()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val healthConnectStatus = MutableStateFlow(
         HealthConnectStatus(
             state = HealthConnectState.ERROR,
-            message = "Loading Health Connect status.",
+            message = "Health Connect-status laden.",
         ),
     )
 
@@ -133,12 +127,10 @@ class HomeViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState.Loading)
 
     init {
-        // Immediate: hit the HC aggregate API for a fresh step count.
-        viewModelScope.launch { refreshDashboardDataSafely { refreshDashboardDataUseCase() } }
-        // Parallel: full incremental sync updates _cachedSteps AND the HC state card.
-        refreshHealthConnectStatus()
-        // Periodic: refresh steps every 60 s while the ViewModel is active so the
-        // dashboard stays current without requiring the user to leave and return.
+        viewModelScope.launch {
+            delay(2_000L)
+            refreshHealthConnectStatus()
+        }
         viewModelScope.launch {
             while (true) {
                 delay(60_000L)
@@ -148,14 +140,35 @@ class HomeViewModel @Inject constructor(
     }
 
     fun refreshHealthConnectStatus() {
+        if (!healthConnectRefreshGate.tryStart()) return
         viewModelScope.launch {
-            healthConnectStatus.value = runCatching { getHealthConnectStatusUseCase() }.getOrElse {
-                HealthConnectStatus(
-                    state = HealthConnectState.ERROR,
-                    message = "Unable to refresh Health Connect right now.",
-                )
+            try {
+                healthConnectStatus.value = runCatching { getHealthConnectStatusUseCase() }.getOrElse {
+                    HealthConnectStatus(
+                        state = HealthConnectState.ERROR,
+                        message = "Health Connect kan nu niet worden ververst.",
+                    )
+                }
+            } finally {
+                healthConnectRefreshGate.finish()
             }
         }
+    }
+}
+
+internal class HomeRefreshGate {
+    private var inFlight = false
+
+    @Synchronized
+    fun tryStart(): Boolean {
+        if (inFlight) return false
+        inFlight = true
+        return true
+    }
+
+    @Synchronized
+    fun finish() {
+        inFlight = false
     }
 }
 
@@ -181,10 +194,10 @@ fun HomeRoute(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val requestHealthPermission = rememberHealthConnectPermissionRequester(viewModel::refreshHealthConnectStatus)
 
-    LaunchedEffect(Unit) {
-        viewModel.refreshHealthConnectStatus()
-    }
-    HealthConnectRefreshOnResume(viewModel::refreshHealthConnectStatus)
+    HealthConnectRefreshOnResume(
+        onRefresh = viewModel::refreshHealthConnectStatus,
+        refreshOnFirstResume = false,
+    )
 
     HomeScreen(
         uiState = uiState,
@@ -210,11 +223,7 @@ fun HomeScreen(
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
 
-    AnimatedContent(
-        targetState = uiState,
-        label = "home-ui-state",
-    ) { state ->
-        when (state) {
+    when (uiState) {
             HomeUiState.Loading -> {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
@@ -247,7 +256,7 @@ fun HomeScreen(
                             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
                         ) {
                             Text("Home niet beschikbaar", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                            Text(state.message, style = MaterialTheme.typography.bodyMedium)
+                            Text(uiState.message, style = MaterialTheme.typography.bodyMedium)
                             OutlinedButton(onClick = onRefreshHealth) { Text("Opnieuw proberen") }
                         }
                     }
@@ -255,8 +264,8 @@ fun HomeScreen(
             }
 
             is HomeUiState.Success -> {
-                val dashboard = state.dashboard
-                val healthConnectStatus = state.healthConnectStatus
+                val dashboard = uiState.dashboard
+                val healthConnectStatus = uiState.healthConnectStatus
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
                     modifier = Modifier
@@ -314,11 +323,10 @@ fun HomeScreen(
                                 HealthConnectState.CONNECTED, HealthConnectState.NO_DATA -> "${healthConnectStatus.stepsToday ?: 0}"
                                 else -> "Offline"
                             },
-                            subtitle = buildString {
-                                append("Stappen")
-                                healthConnectStatus.averageHeartRateBpm?.let { append(" • Avg HR $it") }
-                                append(" • Lift ${dashboard.todaysWorkoutCalories} kcal")
-                            },
+                            subtitle = buildHomeRecoverySubtitle(
+                                averageHeartRateBpm = healthConnectStatus.averageHeartRateBpm,
+                                todaysWorkoutCalories = dashboard.todaysWorkoutCalories,
+                            ),
                             modifier = Modifier.height(170.dp),
                         )
                     }
@@ -348,11 +356,6 @@ fun HomeScreen(
                             },
                         )
                     }
-                    if (healthConnectStatus.state != HealthConnectState.CONNECTED) {
-                        item(span = { GridItemSpan(2) }) {
-                            WelcomeConnectCard(onRequestHealthPermission = onRequestHealthPermission)
-                        }
-                    }
                     item(span = { GridItemSpan(2) }) {
                         NextWorkoutCard(
                             dashboard = dashboard,
@@ -372,7 +375,15 @@ fun HomeScreen(
                 }
             }
         }
-    }
+}
+
+internal fun buildHomeRecoverySubtitle(
+    averageHeartRateBpm: Int?,
+    todaysWorkoutCalories: Int,
+): String = buildString {
+    append("Stappen")
+    averageHeartRateBpm?.let { append(" - Gem. hartslag $it") }
+    append(" - Training $todaysWorkoutCalories kcal")
 }
 
 @Composable
@@ -438,16 +449,6 @@ private fun CoachInsightCard(
     insight: String,
     onOpenCoach: () -> Unit,
 ) {
-    val transition = rememberInfiniteTransition(label = "coach-pulse")
-    val glow by transition.animateFloat(
-        initialValue = 0.16f,
-        targetValue = 0.42f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1600),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "coach-glow",
-    )
     AppCard(accent = MaterialTheme.colorScheme.primary) {
         Column(
             modifier = Modifier
@@ -456,8 +457,8 @@ private fun CoachInsightCard(
                     Brush.linearGradient(
                         colors = listOf(
                             MaterialTheme.colorScheme.surface,
-                            MaterialTheme.colorScheme.primary.copy(alpha = glow * 0.16f),
-                            MaterialTheme.colorScheme.secondary.copy(alpha = glow * 0.10f),
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.03f),
                         ),
                     ),
                 ),

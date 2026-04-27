@@ -124,8 +124,8 @@ class CameraScannerViewModel @Inject constructor(
                 contextHint = temp.contextHint,
                 isEnabled = ai.enabled && ai.apiKey.isNotBlank(),
                 message = temp.message ?: when {
-                    !ai.enabled -> "AI is disabled in Settings. Enable it before scanning."
-                    ai.apiKey.isBlank() -> "Add a Gemini API key in Settings before scanning."
+                    !ai.enabled -> "AI staat uit in Instellingen. Zet AI aan voordat je scant."
+                    ai.apiKey.isBlank() -> "Voeg eerst een Gemini API-sleutel toe in Instellingen."
                     else -> null
                 },
             )
@@ -136,7 +136,7 @@ class CameraScannerViewModel @Inject constructor(
             )
             Phase.Error -> CameraScannerUiState.Error(
                 contextHint = temp.contextHint,
-                message = temp.message ?: "Unable to analyze this photo right now.",
+                message = temp.message ?: "Deze foto kan nu niet geanalyseerd worden.",
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CameraScannerUiState.Preview("", false))
@@ -153,7 +153,7 @@ class CameraScannerViewModel @Inject constructor(
             ephemeral.update {
                 it.copy(
                     phase = Phase.Error,
-                    message = if (!ai.enabled) "Enable AI in Settings before scanning." else "Add a Gemini API key before scanning.",
+                    message = if (!ai.enabled) "Zet AI aan in Instellingen voordat je scant." else "Voeg eerst een Gemini API-sleutel toe.",
                 )
             }
             return
@@ -175,7 +175,7 @@ class CameraScannerViewModel @Inject constructor(
                     ephemeral.update {
                         it.copy(
                             phase = Phase.Error,
-                            message = "Meal analysis failed. Capture again or return to manual entry.",
+                            message = "Maaltijdanalyse mislukt. Maak opnieuw een foto of voer de maaltijd handmatig in.",
                         )
                     }
                 }
@@ -305,14 +305,14 @@ private fun CameraScannerScreen(
 
                 // Top hint card
                 val topHint = when {
-                    scannerMode == ScannerMode.BARCODE -> "Point the camera at the barcode on the product label."
+                    scannerMode == ScannerMode.BARCODE -> "Richt de camera op de barcode van het product."
                     uiState is CameraScannerUiState.Preview -> uiState.contextHint.ifBlank {
-                        "Capture the full plate or package clearly. TrainIQ will return editable foods and exact macros."
+                        "Zet het volledige bord of de verpakking duidelijk in beeld. TrainIQ maakt er bewerkbare producten en macro's van."
                     }
                     uiState is CameraScannerUiState.Error -> uiState.contextHint.ifBlank { "" }
                     else -> null
                 }
-                val topTitle = if (scannerMode == ScannerMode.BARCODE) "Barcode scanner" else "Camera scanner"
+                val topTitle = if (scannerMode == ScannerMode.BARCODE) "Barcodescanner" else "Camerascanner"
                 val helperMessage = when {
                     scannerMode == ScannerMode.AI_MEAL && uiState is CameraScannerUiState.Preview -> cameraError ?: uiState.message
                     else -> null
@@ -358,7 +358,7 @@ private fun CameraScannerScreen(
                                 .padding(MaterialTheme.spacing.large),
                             horizontalArrangement = Arrangement.Center,
                         ) {
-                            OutlinedButton(onClick = onBack) { Text("Cancel") }
+                            OutlinedButton(onClick = onBack) { Text("Annuleren") }
                         }
                     }
                     uiState is CameraScannerUiState.Preview -> {
@@ -370,14 +370,14 @@ private fun CameraScannerScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            OutlinedButton(onClick = onBack) { Text("Back") }
+                            OutlinedButton(onClick = onBack) { Text("Terug") }
                             Button(
                                 onClick = {
                                     cameraError = null
                                     takeScannerPhoto(context, controller, onAnalyze) { cameraError = it }
                                 },
                                 enabled = uiState.isEnabled,
-                            ) { Text("Capture") }
+                            ) { Text("Foto maken") }
                         }
                     }
                 }
@@ -424,10 +424,10 @@ private fun PermissionGate(onGrant: () -> Unit, onBack: () -> Unit) {
                 modifier = Modifier.padding(MaterialTheme.spacing.large),
                 verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
             ) {
-                Text("Camera access required", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                Text("Grant camera access to use the scanner.", style = MaterialTheme.typography.bodyMedium)
-                Button(onClick = onGrant) { Text("Grant access") }
-                OutlinedButton(onClick = onBack) { Text("Back") }
+                Text("Cameratoegang nodig", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                Text("Geef cameratoegang om de scanner te gebruiken.", style = MaterialTheme.typography.bodyMedium)
+                Button(onClick = onGrant) { Text("Toegang geven") }
+                OutlinedButton(onClick = onBack) { Text("Terug") }
             }
         }
     }
@@ -442,9 +442,9 @@ private fun ProcessingSheetContent() {
             .windowInsetsPadding(WindowInsets.navigationBars),
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
     ) {
-        Text("Scanning...", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("Scannen...", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text(
-            "Gemini Flash is identifying foods, estimating portions, and calculating macros.",
+            "Gemini Flash herkent producten, schat porties en berekent macro's.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -466,11 +466,11 @@ private fun CompletedSheetContent(
             .windowInsetsPadding(WindowInsets.navigationBars),
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
     ) {
-        Text("Scan complete", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("Scan voltooid", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text(
             buildString {
-                append("Found $itemCount item${if (itemCount != 1) "s" else ""}.")
-                suggestedMealType?.let { append(" Suggested: ${it.label}.") }
+                append("$itemCount ${if (itemCount == 1) "item gevonden" else "items gevonden"}.")
+                suggestedMealType?.let { append(" Suggestie: ${it.dutchLabel}.") }
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -479,11 +479,19 @@ private fun CompletedSheetContent(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
-            OutlinedButton(onClick = onScanAgain) { Text("Scan again") }
-            Button(onClick = onReviewItems, modifier = Modifier.weight(1f)) { Text("Review items") }
+            OutlinedButton(onClick = onScanAgain) { Text("Opnieuw scannen") }
+            Button(onClick = onReviewItems, modifier = Modifier.weight(1f)) { Text("Items controleren") }
         }
     }
 }
+
+private val MealType.dutchLabel: String
+    get() = when (this) {
+        MealType.BREAKFAST -> "Ochtend"
+        MealType.LUNCH -> "Middag"
+        MealType.DINNER -> "Avond"
+        MealType.SNACK -> "Snacks"
+    }
 
 @Composable
 private fun ErrorSheetContent(
@@ -498,14 +506,14 @@ private fun ErrorSheetContent(
             .windowInsetsPadding(WindowInsets.navigationBars),
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
     ) {
-        Text("Scan unavailable", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+        Text("Scan niet beschikbaar", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
         Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
-            OutlinedButton(onClick = onBack) { Text("Back") }
-            Button(onClick = onRetry, modifier = Modifier.weight(1f)) { Text("Try again") }
+            OutlinedButton(onClick = onBack) { Text("Terug") }
+            Button(onClick = onRetry, modifier = Modifier.weight(1f)) { Text("Opnieuw proberen") }
         }
     }
 }
@@ -573,7 +581,7 @@ private fun takeScannerPhoto(
 
             override fun onError(exception: ImageCaptureException) {
                 android.util.Log.e("TrainIQ", "Camera capture failed", exception)
-                onError("Unable to capture a photo on this device.")
+                onError("Kan geen foto maken op dit apparaat.")
             }
         },
     )

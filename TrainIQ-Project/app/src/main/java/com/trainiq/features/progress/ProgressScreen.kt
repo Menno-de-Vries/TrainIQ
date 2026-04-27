@@ -11,8 +11,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -24,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -34,7 +34,6 @@ import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.ShimmerCardPlaceholder
 import com.trainiq.core.ui.AppCard
 import com.trainiq.core.ui.AppChip
-import com.trainiq.core.ui.AppTextField
 import com.trainiq.core.ui.EmptyStateCard
 import com.trainiq.core.ui.PrimaryActionButton
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
@@ -55,6 +54,94 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.Locale
+
+enum class ProgressMeasurementField {
+    Weight,
+    BodyFat,
+    MuscleMass,
+}
+
+data class ValidatedProgressMeasurement(
+    val weight: Double,
+    val bodyFat: Double,
+    val muscleMass: Double,
+)
+
+data class ProgressMeasurementValidationError(
+    val field: ProgressMeasurementField,
+    val message: String,
+)
+
+sealed interface ProgressMeasurementValidationResult {
+    data class Valid(val measurement: ValidatedProgressMeasurement) : ProgressMeasurementValidationResult
+    data class Invalid(val error: ProgressMeasurementValidationError) : ProgressMeasurementValidationResult
+}
+
+private data class ProgressMeasurementFieldSpec(
+    val field: ProgressMeasurementField,
+    val minimum: Double,
+    val maximum: Double,
+    val message: String,
+)
+
+private val weightSpec = ProgressMeasurementFieldSpec(
+    field = ProgressMeasurementField.Weight,
+    minimum = 30.0,
+    maximum = 300.0,
+    message = "Gewicht moet tussen 30 en 300 kg zijn.",
+)
+
+private val bodyFatSpec = ProgressMeasurementFieldSpec(
+    field = ProgressMeasurementField.BodyFat,
+    minimum = 0.0,
+    maximum = 100.0,
+    message = "Vetpercentage moet tussen 0 en 100% zijn.",
+)
+
+private val muscleMassSpec = ProgressMeasurementFieldSpec(
+    field = ProgressMeasurementField.MuscleMass,
+    minimum = 1.0,
+    maximum = 200.0,
+    message = "Spiermassa moet tussen 1 en 200 kg zijn.",
+)
+
+fun validateProgressMeasurementInput(
+    weight: String,
+    bodyFat: String,
+    muscleMass: String,
+): ProgressMeasurementValidationResult {
+    val parsedWeight = parseProgressMeasurementField(weight, weightSpec)
+        ?: return ProgressMeasurementValidationResult.Invalid(progressMeasurementError(weightSpec))
+    val parsedBodyFat = parseProgressMeasurementField(bodyFat, bodyFatSpec)
+        ?: return ProgressMeasurementValidationResult.Invalid(progressMeasurementError(bodyFatSpec))
+    val parsedMuscleMass = parseProgressMeasurementField(muscleMass, muscleMassSpec)
+        ?: return ProgressMeasurementValidationResult.Invalid(progressMeasurementError(muscleMassSpec))
+
+    return ProgressMeasurementValidationResult.Valid(
+        ValidatedProgressMeasurement(
+            weight = parsedWeight,
+            bodyFat = parsedBodyFat,
+            muscleMass = parsedMuscleMass,
+        ),
+    )
+}
+
+private fun validateProgressMeasurementField(
+    value: String,
+    spec: ProgressMeasurementFieldSpec,
+): ProgressMeasurementValidationError? =
+    if (parseProgressMeasurementField(value, spec) == null) progressMeasurementError(spec) else null
+
+private fun parseProgressMeasurementField(value: String, spec: ProgressMeasurementFieldSpec): Double? {
+    val parsed = value.trim().replace(',', '.').toDoubleOrNull() ?: return null
+    return parsed.takeIf { it.isFinite() && it in spec.minimum..spec.maximum }
+}
+
+private fun progressMeasurementError(spec: ProgressMeasurementFieldSpec) = ProgressMeasurementValidationError(
+    field = spec.field,
+    message = spec.message,
+)
 
 @HiltViewModel
 class ProgressViewModel @Inject constructor(
@@ -69,16 +156,18 @@ class ProgressViewModel @Inject constructor(
     val message: StateFlow<String?> = _message.asStateFlow()
 
     fun addMeasurement(weight: String, bodyFat: String, muscleMass: String) {
-        val parsedWeight = weight.toDoubleOrNull()
-        val parsedBodyFat = bodyFat.toDoubleOrNull()
-        val parsedMuscleMass = muscleMass.toDoubleOrNull()
-        if (parsedWeight == null || parsedBodyFat == null || parsedMuscleMass == null) {
-            _message.value = "Fill in valid numbers for all measurement fields."
-            return
-        }
-        viewModelScope.launch {
-            addMeasurementUseCase(parsedWeight, parsedBodyFat, parsedMuscleMass)
-            _message.value = "Measurement saved."
+        when (val validation = validateProgressMeasurementInput(weight, bodyFat, muscleMass)) {
+            is ProgressMeasurementValidationResult.Invalid -> {
+                _message.value = validation.error.message
+                return
+            }
+            is ProgressMeasurementValidationResult.Valid -> {
+                viewModelScope.launch {
+                    val measurement = validation.measurement
+                    addMeasurementUseCase(measurement.weight, measurement.bodyFat, measurement.muscleMass)
+                    _message.value = "Meting opgeslagen."
+                }
+            }
         }
     }
 
@@ -122,6 +211,15 @@ fun ProgressScreen(
     var weight by remember { mutableStateOf("") }
     var bodyFat by remember { mutableStateOf("") }
     var muscleMass by remember { mutableStateOf("") }
+    var weightTouched by remember { mutableStateOf(false) }
+    var bodyFatTouched by remember { mutableStateOf(false) }
+    var muscleMassTouched by remember { mutableStateOf(false) }
+
+    val weightError = validateProgressMeasurementField(weight, weightSpec).takeIf { weightTouched }
+    val bodyFatError = validateProgressMeasurementField(bodyFat, bodyFatSpec).takeIf { bodyFatTouched }
+    val muscleMassError = validateProgressMeasurementField(muscleMass, muscleMassSpec).takeIf { muscleMassTouched }
+    val measurementValidation = validateProgressMeasurementInput(weight, bodyFat, muscleMass)
+    val canSaveMeasurement = measurementValidation is ProgressMeasurementValidationResult.Valid
 
     LazyColumn(
         modifier = Modifier
@@ -150,19 +248,51 @@ fun ProgressScreen(
         item {
             AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.purple) {
                 Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-                    Text("Body composition", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                    Text("Lichaamssamenstelling", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                     Text("Vetpercentage, spiermassa en gewicht naast elkaar.", color = MaterialTheme.trainIqColors.mutedText)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        AppTextField(value = weight, onValueChange = { weight = it }, label = "Weight", modifier = Modifier.weight(1f))
-                        AppTextField(value = bodyFat, onValueChange = { bodyFat = it }, label = "Body fat %", modifier = Modifier.weight(1f))
+                        MeasurementTextField(
+                            value = weight,
+                            onValueChange = {
+                                weight = it
+                                weightTouched = true
+                            },
+                            label = "Gewicht (kg)",
+                            error = weightError,
+                            modifier = Modifier.weight(1f),
+                        )
+                        MeasurementTextField(
+                            value = bodyFat,
+                            onValueChange = {
+                                bodyFat = it
+                                bodyFatTouched = true
+                            },
+                            label = "Vetpercentage (%)",
+                            error = bodyFatError,
+                            modifier = Modifier.weight(1f),
+                        )
                     }
-                    AppTextField(value = muscleMass, onValueChange = { muscleMass = it }, label = "Muscle mass", modifier = Modifier.fillMaxWidth())
+                    MeasurementTextField(
+                        value = muscleMass,
+                        onValueChange = {
+                            muscleMass = it
+                            muscleMassTouched = true
+                        },
+                        label = "Spiermassa (kg)",
+                        error = muscleMassError,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                     PrimaryActionButton(onClick = {
-                        onAddMeasurement(weight, bodyFat, muscleMass)
-                        weight = ""
-                        bodyFat = ""
-                        muscleMass = ""
-                    }, accent = MaterialTheme.trainIqColors.purple) { Text("Save measurement") }
+                        if (measurementValidation is ProgressMeasurementValidationResult.Valid) {
+                            onAddMeasurement(weight, bodyFat, muscleMass)
+                            weight = ""
+                            bodyFat = ""
+                            muscleMass = ""
+                            weightTouched = false
+                            bodyFatTouched = false
+                            muscleMassTouched = false
+                        }
+                    }, enabled = canSaveMeasurement, accent = MaterialTheme.trainIqColors.purple) { Text("Meting opslaan") }
                 }
             }
         }
@@ -174,35 +304,55 @@ fun ProgressScreen(
         ) {
             item {
                 EmptyStateCard(
-                    title = "No progress data",
-                    body = "Add body measurements and complete workouts to unlock progress analytics.",
+                    title = "Nog geen voortgangsdata",
+                    body = "Voeg lichaamsmetingen toe en rond trainingen af om voortgangsanalyse te zien.",
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
         } else {
             item {
-                MetricCard("Strength score", "${overview.estimatedOneRepMax.toInt()} kg", "Volume en estimated 1RM samengevoegd", Modifier.fillMaxWidth())
+                MetricCard("Krachtscore", "${overview.estimatedOneRepMax.toInt()} kg", "Volume en geschatte 1RM samengevoegd", Modifier.fillMaxWidth())
             }
             item {
-                MetricCard("Fatigue index", String.format("%.2f", overview.fatigueIndex), "Waarschuwing bij snelle volume + RPE stijging", Modifier.fillMaxWidth())
+                MetricCard("Vermoeidheidsindex", String.format(Locale.getDefault(), "%.2f", overview.fatigueIndex), "Waarschuwing bij snelle volume + RPE stijging", Modifier.fillMaxWidth())
             }
             item {
                 AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.purple) {
                     Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-                        Text("Measurement history", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                        Text("Meetgeschiedenis", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                         overview.measurements.forEach { measurement ->
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("${measurement.date.toReadableDate()}: ${measurement.weight} kg, ${measurement.bodyFat}% fat", color = MaterialTheme.trainIqColors.mutedText)
-                                TextButton(onClick = { onDeleteMeasurement(measurement.id) }) { Text("Delete") }
+                                Text("${measurement.date.toReadableDate()}: ${measurement.weight} kg, ${measurement.bodyFat}% vet", color = MaterialTheme.trainIqColors.mutedText)
+                                TextButton(onClick = { onDeleteMeasurement(measurement.id) }) { Text("Verwijderen") }
                             }
                         }
                     }
                 }
             }
-            item { ChartComposable("Body weight", overview.weightTrend, Modifier.fillMaxWidth()) }
-            item { ChartComposable("Body fat", overview.bodyFatTrend, Modifier.fillMaxWidth()) }
-            item { ChartComposable("Strength progression", overview.strengthTrend, Modifier.fillMaxWidth()) }
-            item { ChartComposable("Training volume", overview.volumeTrend, Modifier.fillMaxWidth()) }
+            item { ChartComposable("Lichaamsgewicht", overview.weightTrend, Modifier.fillMaxWidth()) }
+            item { ChartComposable("Vetpercentage", overview.bodyFatTrend, Modifier.fillMaxWidth()) }
+            item { ChartComposable("Krachtprogressie", overview.strengthTrend, Modifier.fillMaxWidth()) }
+            item { ChartComposable("Trainingsvolume", overview.volumeTrend, Modifier.fillMaxWidth()) }
         }
     }
+}
+
+@Composable
+private fun MeasurementTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    error: ProgressMeasurementValidationError?,
+    modifier: Modifier = Modifier,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        modifier = modifier,
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        isError = error != null,
+        supportingText = error?.let { { Text(it.message) } },
+    )
 }

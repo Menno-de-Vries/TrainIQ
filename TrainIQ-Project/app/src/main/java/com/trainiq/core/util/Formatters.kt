@@ -1,4 +1,4 @@
-package com.trainiq.core.util
+﻿package com.trainiq.core.util
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -67,10 +67,10 @@ fun EnergyBalanceCard(
     AppCard(modifier = modifier) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             androidx.compose.foundation.layout.Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall)) {
-                Text("Energy balance", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                Text("Energiebalans", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                 Text(
                     energyBalance?.let { "Inname, verbranding en stappen live bij elkaar" }
-                        ?: "Complete your profile to unlock BMR, TEF, NEAT, and training energy math.",
+                        ?: "Vul je profiel in voor rustverbranding, vertering, beweging en trainingsverbruik.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.trainIqColors.mutedText,
                 )
@@ -82,7 +82,7 @@ fun EnergyBalanceCard(
         AppLinearProgress(progress = progress)
         energyBalance?.let {
             Text(
-                "In ${it.caloriesIn} • Out ${it.caloriesOut} • Target $calorieTarget",
+                "In ${it.caloriesIn} - Uit ${it.caloriesOut} - Doel $calorieTarget",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.trainIqColors.mutedText,
             )
@@ -101,15 +101,15 @@ fun MacroBreakdownCard(
     modifier: Modifier = Modifier,
 ) {
     AppCard(modifier = modifier) {
-        Text("Macro targets", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+        Text("Macrodoelen", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
         Text(
-            "Eiwit $protein/$proteinTarget g • carbs $carbs/$carbsTarget g • fat $fat/$fatTarget g",
+            "Eiwit $protein/$proteinTarget g - koolhydraten $carbs/$carbsTarget g - vet $fat/$fatTarget g",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.trainIqColors.mutedText,
         )
-        MacroProgressRow("Protein", protein, proteinTarget, MaterialTheme.colorScheme.primary)
-        MacroProgressRow("Carbs", carbs, carbsTarget, MaterialTheme.colorScheme.tertiary)
-        MacroProgressRow("Fat", fat, fatTarget, MaterialTheme.colorScheme.secondary)
+        MacroProgressRow("Eiwit", protein, proteinTarget, MaterialTheme.colorScheme.primary)
+        MacroProgressRow("Koolhydraten", carbs, carbsTarget, MaterialTheme.colorScheme.tertiary)
+        MacroProgressRow("Vet", fat, fatTarget, MaterialTheme.colorScheme.secondary)
     }
 }
 
@@ -136,10 +136,10 @@ private fun MacroProgressRow(
 fun WorkoutExerciseItem(plan: WorkoutExercisePlan, loggedSetCount: Int, modifier: Modifier = Modifier) {
     AppCard(modifier = modifier) {
         Text(plan.exercise.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
-        Text("${plan.targetSets} sets • ${plan.repRange} reps • ${plan.restSeconds}s rest", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
+        Text("${plan.targetSets} sets - ${plan.repRange} reps - ${plan.restSeconds}s rust", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
         Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
             AppChip(label = plan.exercise.muscleGroup)
-            AppChip(label = "$loggedSetCount logged")
+            AppChip(label = "$loggedSetCount gelogd")
         }
     }
 }
@@ -167,3 +167,4 @@ fun ChartComposable(title: String, points: List<ChartPoint>, modifier: Modifier 
 }
 
 fun LoggedSet.volume(): Double = weight * reps
+

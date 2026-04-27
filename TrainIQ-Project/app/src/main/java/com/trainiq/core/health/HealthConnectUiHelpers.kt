@@ -3,6 +3,7 @@ package com.trainiq.core.health
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.HeartRateRecord
@@ -31,12 +32,17 @@ fun rememberHealthConnectPermissionRequester(onPermissionsResult: () -> Unit): (
 }
 
 @Composable
-fun HealthConnectRefreshOnResume(onRefresh: () -> Unit) {
+fun HealthConnectRefreshOnResume(onRefresh: () -> Unit, refreshOnFirstResume: Boolean = true) {
     val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
+    val currentOnRefresh = rememberUpdatedState(onRefresh)
+    DisposableEffect(lifecycleOwner, refreshOnFirstResume) {
+        var hasSeenFirstResume = false
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                onRefresh()
+                if (refreshOnFirstResume || hasSeenFirstResume) {
+                    currentOnRefresh.value()
+                }
+                hasSeenFirstResume = true
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)

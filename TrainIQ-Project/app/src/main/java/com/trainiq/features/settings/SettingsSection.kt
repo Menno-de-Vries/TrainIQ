@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
@@ -301,6 +302,12 @@ fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
     )
 }
 
+private enum class PendingDestructiveSettingsAction {
+    CLEAR_API_KEY,
+    RESET_PROFILE,
+    CLEAR_ALL_DATA,
+}
+
 @Composable
 fun SettingsScreen(
     themeMode: ThemeMode,
@@ -337,6 +344,7 @@ fun SettingsScreen(
     }
     var goal by remember { mutableStateOf(profile?.goal.orEmpty()) }
     var profileInputError by remember { mutableStateOf<ProfileInputValidationError?>(null) }
+    var pendingDestructiveAction by remember { mutableStateOf<PendingDestructiveSettingsAction?>(null) }
 
     LaunchedEffect(profile) {
         name = profile?.name.orEmpty()
@@ -426,7 +434,7 @@ fun SettingsScreen(
                         onSaveApiKey(apiKey)
                         apiKey = ""
                     }) { Text(if (aiPreferences.apiKey.isBlank()) "Sleutel opslaan" else "Sleutel bijwerken") }
-                    TextButton(onClick = onClearApiKey) { Text("Sleutel verwijderen") }
+                    TextButton(onClick = { pendingDestructiveAction = PendingDestructiveSettingsAction.CLEAR_API_KEY }) { Text("Sleutel verwijderen") }
                 }
                 Text("Gemini kan API-kosten veroorzaken. Laat AI uitgeschakeld tenzij je het wilt gebruiken.")
                 Text("Gebruikt door: maaltijdanalyse, workoutterugblik, wekelijks AI-rapport en doeladviseur.")
@@ -592,7 +600,10 @@ fun SettingsScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Profiel opslaan") }
-                TextButton(onClick = onResetProfile, modifier = Modifier.fillMaxWidth()) { Text("Profiel resetten") }
+                TextButton(
+                    onClick = { pendingDestructiveAction = PendingDestructiveSettingsAction.RESET_PROFILE },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Profiel resetten") }
                 profile?.let {
                     Text("Huidige dashboarddoelen: ${it.calorieTarget} kcal en ${it.proteinTarget} g eiwit.")
                 }
@@ -604,8 +615,8 @@ fun SettingsScreen(
                 Text("AI-sleutelopslag: lokale appvoorkeuren")
                 Text("Health Connect-cache: opgeslagen wijzigingstoken plus lichte syncsnapshot")
                 Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-                    TextButton(onClick = onClearApiKey) { Text("AI-sleutel wissen") }
-                    TextButton(onClick = onClearAllData) { Text("Lokale data wissen") }
+                    TextButton(onClick = { pendingDestructiveAction = PendingDestructiveSettingsAction.CLEAR_API_KEY }) { Text("AI-sleutel wissen") }
+                    TextButton(onClick = { pendingDestructiveAction = PendingDestructiveSettingsAction.CLEAR_ALL_DATA }) { Text("Lokale data wissen") }
                 }
             }
         }
@@ -617,6 +628,37 @@ fun SettingsScreen(
                 Text("Ontworpen als handmatige training- en voedings-MVP.")
             }
         }
+    }
+
+    pendingDestructiveAction?.let { action ->
+        AlertDialog(
+            onDismissRequest = { pendingDestructiveAction = null },
+            title = {
+                Text(
+                    when (action) {
+                        PendingDestructiveSettingsAction.CLEAR_API_KEY -> "API-sleutel verwijderen?"
+                        PendingDestructiveSettingsAction.RESET_PROFILE -> "Profiel resetten?"
+                        PendingDestructiveSettingsAction.CLEAR_ALL_DATA -> "Alle lokale data wissen?"
+                    },
+                )
+            },
+            text = { Text("Deze actie kan niet automatisch ongedaan worden gemaakt.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        when (action) {
+                            PendingDestructiveSettingsAction.CLEAR_API_KEY -> onClearApiKey()
+                            PendingDestructiveSettingsAction.RESET_PROFILE -> onResetProfile()
+                            PendingDestructiveSettingsAction.CLEAR_ALL_DATA -> onClearAllData()
+                        }
+                        pendingDestructiveAction = null
+                    },
+                ) { Text("Bevestigen") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDestructiveAction = null }) { Text("Annuleren") }
+            },
+        )
     }
 }
 

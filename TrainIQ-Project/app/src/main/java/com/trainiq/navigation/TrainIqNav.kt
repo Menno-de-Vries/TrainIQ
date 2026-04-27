@@ -38,6 +38,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -117,12 +118,12 @@ fun TrainIqApp() {
     val navController = rememberNavController()
     val haptics = LocalHapticFeedback.current
     val items = listOf(
-        TopLevelDestination(Home, Home::class, "Home", Icons.Default.Home),
-        TopLevelDestination(Train, Train::class, "Train", Icons.AutoMirrored.Filled.DirectionsRun),
-        TopLevelDestination(Nutrition, Nutrition::class, "Nutrition", Icons.Default.Restaurant),
-        TopLevelDestination(Progress, Progress::class, "Progress", Icons.Default.AutoGraph),
+        TopLevelDestination(Home, Home::class, "Start", Icons.Default.Home),
+        TopLevelDestination(Train, Train::class, "Training", Icons.AutoMirrored.Filled.DirectionsRun),
+        TopLevelDestination(Nutrition, Nutrition::class, "Voeding", Icons.Default.Restaurant),
+        TopLevelDestination(Progress, Progress::class, "Voortgang", Icons.Default.AutoGraph),
         TopLevelDestination(Coach, Coach::class, "Coach", Icons.Default.SmartToy),
-        TopLevelDestination(Settings, Settings::class, "Settings", Icons.Default.Settings),
+        TopLevelDestination(Settings, Settings::class, "Instellingen", Icons.Default.Settings),
     )
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
@@ -202,7 +203,8 @@ fun TrainIqApp() {
                                             }
                                         }
                                     },
-                                    alwaysShowLabel = false,
+                                    label = { Text(screen.label) },
+                                    alwaysShowLabel = true,
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = MaterialTheme.colorScheme.primary,
                                         selectedTextColor = MaterialTheme.colorScheme.primary,
