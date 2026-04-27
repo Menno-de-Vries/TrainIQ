@@ -80,6 +80,24 @@ class NutritionInputValidationTest {
     }
 
     @Test
+    fun aiValidation_acceptsLargePortionTotalsBeforePer100GramConversion() {
+        val errors = validateEditableAiItem(
+            EditableAiItem(
+                name = "Familiepan pasta",
+                grams = "1000",
+                calories = "6000",
+                protein = "180",
+                carbs = "900",
+                fat = "120",
+                confidence = null,
+                notes = null,
+            ),
+        )
+
+        assertFalse(errors.hasErrors)
+    }
+
+    @Test
     fun pendingGuard_rejectsSecondSubmitAndAllowsAfterFinish() {
         val started = tryStartNutritionSubmit(emptySet(), NutritionSubmitKey.Food)
         assertTrue(started is NutritionSubmitStartResult.Started)
@@ -107,5 +125,16 @@ class NutritionInputValidationTest {
 
         assertEquals(0, started.pendingCount)
         assertTrue(started.isFinished)
+    }
+
+    @Test
+    fun pendingGuard_tracksAiItemsSeparatelyFromManualFoodSubmit() {
+        val foodStarted = tryStartNutritionSubmit(emptySet(), NutritionSubmitKey.Food) as NutritionSubmitStartResult.Started
+        val aiStarted = tryStartNutritionSubmit(foodStarted.pendingKeys, NutritionSubmitKey.AiItems)
+
+        assertTrue(aiStarted is NutritionSubmitStartResult.Started)
+        aiStarted as NutritionSubmitStartResult.Started
+        assertEquals(setOf(NutritionSubmitKey.Food, NutritionSubmitKey.AiItems), aiStarted.pendingKeys)
+        assertEquals(NutritionSubmitStartResult.AlreadyPending, tryStartNutritionSubmit(aiStarted.pendingKeys, NutritionSubmitKey.AiItems))
     }
 }

@@ -55,6 +55,7 @@ import com.trainiq.domain.model.CoachOverview
 import com.trainiq.domain.model.GoalAdvice
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WeeklyReportResult
+import com.trainiq.domain.model.buildGoalBaseline
 import com.trainiq.domain.usecase.GenerateGoalAdviceUseCase
 import com.trainiq.domain.usecase.GenerateWeeklyReportUseCase
 import com.trainiq.domain.usecase.ObserveCoachUseCase
@@ -200,40 +201,74 @@ class CoachViewModel @Inject constructor(
         }
         val currentAdviceState = ephemeral.value
         val advice = currentAdviceState.goalAdvice
-        if (advice == null) {
-            ephemeral.update { it.copy(message = "Maak eerst advies en sla daarna het profiel op.") }
-            return
-        }
-        if (input != currentAdviceState.goalAdviceInput) {
-            ephemeral.update { it.copy(message = "Profiel gewijzigd. Maak opnieuw advies voordat je opslaat.") }
-            return
-        }
+            ?.takeIf { input == currentAdviceState.goalAdviceInput }
+            ?: input.toDeterministicGoalAdvice()
         viewModelScope.launch {
-            saveUserProfileUseCase(
-                UserProfile(
-                    id = 1L,
-                    name = input.name,
-                    age = input.age,
-                    sex = input.sex,
-                    height = input.height,
-                    weight = input.weight,
-                    bodyFat = input.bodyFat,
-                    activityLevel = input.activityLevel,
-                    goal = input.goal,
-                    calorieTarget = advice.calorieTarget,
-                    proteinTarget = advice.proteinTarget,
-                    carbsTarget = advice.carbsTarget,
-                    fatTarget = advice.fatTarget,
-                    trainingFocus = advice.trainingFocus,
-                ),
-            )
-            ephemeral.update { it.copy(message = "Profiel en doelen opgeslagen.") }
+            runCatching {
+                saveUserProfileUseCase(
+                    UserProfile(
+                        id = 1L,
+                        name = input.name,
+                        age = input.age,
+                        sex = input.sex,
+                        height = input.height,
+                        weight = input.weight,
+                        bodyFat = input.bodyFat,
+                        activityLevel = input.activityLevel,
+                        goal = input.goal,
+                        calorieTarget = advice.calorieTarget,
+                        proteinTarget = advice.proteinTarget,
+                        carbsTarget = advice.carbsTarget,
+                        fatTarget = advice.fatTarget,
+                        trainingFocus = advice.trainingFocus,
+                    ),
+                )
+            }.onSuccess {
+                ephemeral.update {
+                    it.copy(
+                        goalAdvice = advice,
+                        goalAdviceInput = input,
+                        message = "Profiel en doelen opgeslagen.",
+                    )
+                }
+            }.onFailure {
+                ephemeral.update { it.copy(message = "Profiel opslaan mislukt. Probeer opnieuw.") }
+            }
         }
     }
 
     fun clearMessage() {
         ephemeral.update { it.copy(message = null) }
     }
+}
+
+private fun GoalAdviceInput.toDeterministicGoalAdvice(): GoalAdvice {
+    val baseline = buildGoalBaseline(
+        heightCm = height,
+        weightKg = weight,
+        bodyFat = bodyFat,
+        age = age,
+        sex = sex,
+        activityLevel = activityLevel,
+        goal = goal,
+    )
+    val trainingFocus = when {
+        goal.contains("bulk", ignoreCase = true) -> "Progressieve overload op compoundoefeningen"
+        goal.contains("cut", ignoreCase = true) || goal.contains("fat", ignoreCase = true) -> "Consistentie, stappen en herstel"
+        bodyFat > 20 -> "Body recomposition met consistente krachttraining"
+        else -> "Gebalanceerde krachtopbouw en herstel"
+    }
+    return GoalAdvice(
+        bmr = baseline.bmr,
+        maintenanceCalories = baseline.maintenanceCalories,
+        activityMultiplier = baseline.activityMultiplier,
+        calorieTarget = baseline.targetCalories,
+        proteinTarget = baseline.proteinTarget,
+        carbsTarget = baseline.carbsTarget,
+        fatTarget = baseline.fatTarget,
+        trainingFocus = trainingFocus,
+        summary = "Lokale berekening opgeslagen. Je kunt AI-advies later gebruiken om dit te verfijnen.",
+    )
 }
 
 internal data class GoalAdviceInput(
@@ -596,7 +631,7 @@ fun CoachScreen(
                                     Text("BMR: ${advice.bmr} kcal", style = MaterialTheme.typography.bodyMedium)
                                     Text("Onderhoud: ${advice.maintenanceCalories} kcal", style = MaterialTheme.typography.bodyMedium)
                                     Text("Activiteitsfactor: ${"%.3f".format(advice.activityMultiplier)}", style = MaterialTheme.typography.bodyMedium)
-                                    Text("Calorieen: ${advice.calorieTarget} kcal", style = MaterialTheme.typography.bodyMedium)
+                                    Text("Calorieën: ${advice.calorieTarget} kcal", style = MaterialTheme.typography.bodyMedium)
                                     Text("Macro's: P${advice.proteinTarget} C${advice.carbsTarget} F${advice.fatTarget}", style = MaterialTheme.typography.bodyMedium)
                                     Text("Trainingsfocus: ${advice.trainingFocus}", style = MaterialTheme.typography.bodyMedium)
                                     Text(advice.summary, style = MaterialTheme.typography.bodyMedium)

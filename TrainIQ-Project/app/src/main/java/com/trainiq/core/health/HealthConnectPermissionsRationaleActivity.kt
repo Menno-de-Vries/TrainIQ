@@ -167,8 +167,8 @@ private enum class PermissionReason(val title: String, val description: String) 
         description = "Slaap helpt TrainIQ inschatten hoe hersteld je bent en maakt readiness, deload-signalen en sessieadvies concreter.",
     ),
     Calories(
-        title = "Verbrande calorieen",
-        description = "Verbrande calorieen geven context voor energieverbruik en helpen training en voeding realistischer naast elkaar te zetten.",
+        title = "Verbrande calorieën",
+        description = "Verbrande calorieën geven context voor energieverbruik en helpen training en voeding realistischer naast elkaar te zetten.",
     ),
     Weight(
         title = "Gewicht",

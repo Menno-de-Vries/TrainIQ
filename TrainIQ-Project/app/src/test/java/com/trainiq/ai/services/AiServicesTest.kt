@@ -1,5 +1,6 @@
 package com.trainiq.ai.services
 
+import com.google.gson.Gson
 import com.trainiq.data.model.GeminiRequest
 import com.trainiq.data.model.GeminiResponse
 import com.trainiq.data.remote.GeminiApi
@@ -13,6 +14,31 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AiServicesTest {
+    @Test
+    fun geminiRequest_serializesOfficialRestGenerationConfigShape() {
+        val json = Gson().toJson(
+            GeminiRequest(
+                contents = listOf(GeminiRequest.Content(parts = listOf(GeminiRequest.Part(text = "Geef JSON")))),
+                generationConfig = GeminiRequest.GenerationConfig(
+                    responseMimeType = "application/json",
+                    thinkingConfig = GeminiRequest.ThinkingConfig(
+                        includeThoughts = false,
+                        thinkingBudget = 1000,
+                    ),
+                ),
+            ),
+        )
+
+        assertTrue(json.contains("\"generationConfig\""))
+        assertTrue(json.contains("\"responseMimeType\":\"application/json\""))
+        assertTrue(json.contains("\"thinkingConfig\""))
+        assertTrue(json.contains("\"includeThoughts\":false"))
+        assertTrue(json.contains("\"thinkingBudget\":1000"))
+        assertFalse(json.contains("generation_config"))
+        assertFalse(json.contains("response_mime_type"))
+        assertFalse(json.contains("thinking_config"))
+    }
+
     @Test
     fun analyzeMealImage_withStructuredItems_returnsApiResult() = runTest {
         val api = FakeGeminiApi(

@@ -83,14 +83,14 @@ class HealthConnectDataSource @Inject constructor(
                 preferencesRepository.clearHealthConnectSyncPreferences()
                 HealthConnectStatus(
                     state = HealthConnectState.PROVIDER_MISSING,
-                    message = "Installeer of update Health Connect voordat TrainIQ stappen, hartslag, slaap, calorieen en gewicht kan lezen.",
+                    message = "Installeer of update Health Connect voordat TrainIQ stappen, hartslag, slaap, calorieën en gewicht kan lezen.",
                 )
             }
 
             HealthConnectClient.SDK_AVAILABLE -> fetchConnectedStatus()
             else -> HealthConnectStatus(
                 state = HealthConnectState.ERROR,
-                message = "Unable to determine Health Connect availability.",
+                message = "Health Connect-status kan nu niet worden bepaald.",
             )
         }
     }
@@ -103,7 +103,7 @@ class HealthConnectDataSource @Inject constructor(
                 preferencesRepository.clearHealthConnectSyncPreferences()
                 HealthConnectStatus(
                     state = HealthConnectState.PERMISSION_REQUIRED,
-                    message = "Geen toegang tot Health Connect. Verbind opnieuw om stappen, hartslag, slaap, calorieen en gewicht te lezen.",
+                    message = "Geen toegang tot Health Connect. Verbind opnieuw om stappen, hartslag, slaap, calorieën en gewicht te lezen.",
                 )
             } else {
                 val syncPayload = syncTrackedMetrics(client)
@@ -210,11 +210,12 @@ class HealthConnectDataSource @Inject constructor(
         // deduplication-correct results. We cannot safely reuse the cached value because
         // older DataStore entries have aggregatedStepsToday == 0 (pre-migration).
         val freshSteps = aggregateStepsToday(client)
+        val hasFreshAggregateData = freshSteps != initialCacheState.aggregatedStepsToday
 
         return SyncPayload(
             cacheState = normalizedCacheState.copy(aggregatedStepsToday = freshSteps),
             nextChangesToken = currentToken,
-            lastSyncedAt = if (hasNewUiData) System.currentTimeMillis() else storedState.lastSyncedAt,
+            lastSyncedAt = if (hasNewUiData || hasFreshAggregateData) System.currentTimeMillis() else storedState.lastSyncedAt,
         )
     }
 
@@ -314,7 +315,7 @@ class HealthConnectDataSource @Inject constructor(
 
     private fun buildMessage(metrics: HealthConnectMetrics, state: HealthConnectState): String {
         if (state == HealthConnectState.NO_DATA) {
-            return "Health Connect is verbonden, maar er is nog geen recente data voor stappen, hartslag, slaap, calorieen of gewicht."
+            return "Health Connect is verbonden, maar er is nog geen recente data voor stappen, hartslag, slaap, calorieën of gewicht."
         }
         val parts = buildList {
             add("${metrics.stepsToday} stappen")

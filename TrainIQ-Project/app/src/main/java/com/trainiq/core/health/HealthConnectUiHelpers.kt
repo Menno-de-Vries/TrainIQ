@@ -1,9 +1,16 @@
 package com.trainiq.core.health
 
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.HeartRateRecord
@@ -25,10 +32,31 @@ internal val HealthConnectReadPermissions = setOf(
 
 @Composable
 fun rememberHealthConnectPermissionRequester(onPermissionsResult: () -> Unit): () -> Unit {
+    var showRationale by remember { mutableStateOf(false) }
     val launcher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract(),
     ) { onPermissionsResult() }
-    return { launcher.launch(HealthConnectReadPermissions) }
+    if (showRationale) {
+        AlertDialog(
+            onDismissRequest = { showRationale = false },
+            title = { Text("Health Connect verbinden") },
+            text = {
+                Text("TrainIQ leest alleen stappen, hartslag, slaap, actieve calorieën en gewicht om je dashboard en coaching te vullen. Je beheert of trekt deze toegang altijd weer in via Android Health Connect.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRationale = false
+                        launcher.launch(HealthConnectReadPermissions)
+                    },
+                ) { Text("Doorgaan") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRationale = false }) { Text("Annuleren") }
+            },
+        )
+    }
+    return { showRationale = true }
 }
 
 @Composable

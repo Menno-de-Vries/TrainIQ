@@ -4,8 +4,7 @@ import com.google.gson.annotations.SerializedName
 
 data class GeminiRequest(
     val contents: List<Content>,
-    @SerializedName("thinking_config") val thinkingConfig: ThinkingConfig? = null,
-    @SerializedName("generation_config") val generationConfig: GenerationConfig? = null,
+    @SerializedName("generationConfig") val generationConfig: GenerationConfig? = null,
 ) {
     data class Content(val parts: List<Part>)
 
@@ -20,12 +19,13 @@ data class GeminiRequest(
     )
 
     data class ThinkingConfig(
-        @SerializedName("include_thoughts") val includeThoughts: Boolean,
-        @SerializedName("thinking_budget") val thinkingBudget: Int,
+        @SerializedName("includeThoughts") val includeThoughts: Boolean,
+        @SerializedName("thinkingBudget") val thinkingBudget: Int,
     )
 
     data class GenerationConfig(
-        @SerializedName("response_mime_type") val responseMimeType: String = "application/json",
+        @SerializedName("responseMimeType") val responseMimeType: String = "application/json",
+        @SerializedName("thinkingConfig") val thinkingConfig: ThinkingConfig? = null,
     )
 }
 

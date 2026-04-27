@@ -34,6 +34,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -100,7 +101,7 @@ data class ActiveWorkout(val dayId: Long)
 data class ExerciseHistory(val exerciseId: Long)
 
 @Serializable
-data class CameraScanner(val contextHint: String = "", val scannerMode: String = ScannerMode.AI_MEAL.name)
+data class CameraScanner(val contextHint: String = "", val scannerMode: ScannerMode = ScannerMode.AI_MEAL)
 
 private data class TopLevelDestination(
     val route: Any,
@@ -128,7 +129,8 @@ fun TrainIqApp(diagnosticsTracker: DiagnosticsTracker) {
     }.takeIf { it >= 0 }
     val density = LocalDensity.current
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
-    var navVisible by remember { mutableStateOf(false) }
+    var navVisible by remember { mutableStateOf(true) }
+    var trainDetailMode by remember { mutableStateOf(false) }
     val navOffset by animateDpAsState(
         targetValue = if (navVisible) 0.dp else 28.dp,
         animationSpec = tween(durationMillis = 420),
@@ -140,18 +142,21 @@ fun TrainIqApp(diagnosticsTracker: DiagnosticsTracker) {
     }
     LaunchedEffect(currentDestination?.route) {
         diagnosticsTracker.screen(currentDestination.screenName())
+        if (currentDestination?.hierarchy?.any { it.hasRoute(Train::class) } != true) {
+            trainDetailMode = false
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         AppScaffold(
             modifier = Modifier.fillMaxSize(),
             bottomBar = {
-                if (currentTopLevelIndex != null && !imeVisible) {
+                if (currentTopLevelIndex != null && !imeVisible && !trainDetailMode) {
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
                             .offset(y = navOffset)
-                            .padding(horizontal = 18.dp, vertical = 12.dp)
+                            .padding(horizontal = 10.dp, vertical = 10.dp)
                             .navigationBarsPadding(),
                         color = MaterialTheme.trainIqColors.card,
                         tonalElevation = 0.dp,
@@ -160,7 +165,7 @@ fun TrainIqApp(diagnosticsTracker: DiagnosticsTracker) {
                         shape = RoundedCornerShape(MaterialTheme.radii.nav),
                     ) {
                         NavigationBar(
-                            modifier = Modifier.height(64.dp),
+                            modifier = Modifier.height(82.dp),
                             tonalElevation = 0.dp,
                             containerColor = androidx.compose.ui.graphics.Color.Transparent,
                         ) {
@@ -188,12 +193,13 @@ fun TrainIqApp(diagnosticsTracker: DiagnosticsTracker) {
                                         ) {
                                             Icon(
                                                 imageVector = screen.icon,
-                                                contentDescription = screen.label,
+                                                contentDescription = null,
                                                 modifier = Modifier.size(24.dp),
                                             )
                                         }
                                     },
-                                    alwaysShowLabel = false,
+                                    label = { Text(screen.label, maxLines = 1) },
+                                    alwaysShowLabel = true,
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = MaterialTheme.colorScheme.primary,
                                         selectedTextColor = MaterialTheme.colorScheme.primary,
@@ -210,6 +216,8 @@ fun TrainIqApp(diagnosticsTracker: DiagnosticsTracker) {
         ) { padding ->
             TrainIqNavHost(
                 navController = navController,
+                topLevelDestinations = items,
+                onTrainDetailModeChanged = { trainDetailMode = it },
                 modifier = Modifier
                     .padding(padding)
                     .topLevelTabSwipeNavigation(
@@ -253,9 +261,9 @@ private fun androidx.navigation.NavDestination?.screenName(): String = when {
     hierarchy.any { it.hasRoute(Home::class) } -> "Home"
     hierarchy.any { it.hasRoute(Train::class) } -> "Train"
     hierarchy.any { it.hasRoute(Nutrition::class) } -> "Nutrition"
-    hierarchy.any { it.hasRoute(Progress::class) } -> "Progress"
+    hierarchy.any { it.hasRoute(Progress::class) } -> "Voortgang"
     hierarchy.any { it.hasRoute(Coach::class) } -> "Coach"
-    hierarchy.any { it.hasRoute(Settings::class) } -> "Settings"
+    hierarchy.any { it.hasRoute(Settings::class) } -> "Instellingen"
     hierarchy.any { it.hasRoute(CameraScanner::class) } -> "CameraScanner"
     hierarchy.any { it.hasRoute(ActiveWorkout::class) } -> "ActiveWorkout"
     hierarchy.any { it.hasRoute(ExerciseHistory::class) } -> "ExerciseHistory"
@@ -297,6 +305,8 @@ private fun Modifier.topLevelTabSwipeNavigation(
 @Composable
 private fun TrainIqNavHost(
     navController: NavHostController,
+    topLevelDestinations: List<TopLevelDestination>,
+    onTrainDetailModeChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     NavHost(
@@ -307,15 +317,16 @@ private fun TrainIqNavHost(
         composable<Home> {
             HomeRoute(
                 onStartWorkout = { dayId -> navController.navigateToActiveWorkout(dayId) },
-                onOpenCoach = { navController.navigate(Coach) },
-                onOpenTrain = { navController.navigate(Train) },
-                onOpenSettings = { navController.navigate(Settings) },
+                onOpenCoach = { navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Coach::class }) },
+                onOpenTrain = { navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Train::class }) },
+                onOpenSettings = { navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Settings::class }) },
             )
         }
         composable<Train> {
             WorkoutRoute(
                 onStartWorkout = { dayId -> navController.navigateToActiveWorkout(dayId) },
                 onOpenExerciseHistory = { exerciseId -> navController.navigate(ExerciseHistory(exerciseId)) },
+                onDetailModeChanged = onTrainDetailModeChanged,
             )
         }
         composable<Nutrition> { entry ->
@@ -324,7 +335,7 @@ private fun TrainIqNavHost(
                 .collectAsStateWithLifecycle()
             NutritionRoute(
                 onOpenAiScanner = { contextHint -> navController.navigate(CameraScanner(contextHint)) },
-                onOpenBarcodeScanner = { navController.navigate(CameraScanner(scannerMode = ScannerMode.BARCODE.name)) },
+                onOpenBarcodeScanner = { navController.navigate(CameraScanner(scannerMode = ScannerMode.BARCODE)) },
                 pendingBarcode = pendingBarcode.takeIf { it.isNotEmpty() },
                 onBarcodeClear = { entry.savedStateHandle.remove<String>("scanned_barcode") },
             )
@@ -336,7 +347,7 @@ private fun TrainIqNavHost(
             val route = entry.toRoute<CameraScanner>()
             CameraScannerRoute(
                 contextHint = route.contextHint,
-                scannerMode = scannerModeFromRoute(route.scannerMode),
+                scannerMode = route.scannerMode,
                 onBack = { navController.popBackStack() },
                 onBarcodeScanned = { barcode ->
                     navController.previousBackStackEntry?.savedStateHandle?.set("scanned_barcode", barcode)
@@ -359,6 +370,3 @@ private fun TrainIqNavHost(
         }
     }
 }
-
-internal fun scannerModeFromRoute(value: String): ScannerMode =
-    runCatching { ScannerMode.valueOf(value) }.getOrDefault(ScannerMode.AI_MEAL)

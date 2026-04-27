@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -45,6 +46,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -67,6 +69,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.trainiq.core.theme.radii
@@ -258,9 +261,24 @@ fun SectionHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(
+            title,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
         trailing?.let {
-            Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.mutedText)
+            Text(
+                it,
+                modifier = Modifier.padding(start = 8.dp),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.trainIqColors.mutedText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.End,
+            )
         }
     }
 }
@@ -273,9 +291,26 @@ fun AppChip(
     accent: Color = MaterialTheme.colorScheme.primary,
     onClick: (() -> Unit)? = null,
 ) {
+    if (onClick == null) {
+        Surface(
+            modifier = modifier,
+            shape = RoundedCornerShape(MaterialTheme.radii.chip),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
+            contentColor = accent,
+        ) {
+            Text(
+                label,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
+        return
+    }
     FilterChip(
         selected = selected,
-        onClick = onClick ?: {},
+        onClick = onClick,
         modifier = modifier,
         label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         shape = RoundedCornerShape(MaterialTheme.radii.chip),
@@ -384,7 +419,16 @@ fun ProgressCard(
                 Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
             value?.let {
-                Text(it, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = accent)
+                Text(
+                    it,
+                    modifier = Modifier.padding(start = 8.dp),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = accent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.End,
+                )
             }
         }
         AppLinearProgress(progress = progress, accent = accent, modifier = Modifier.padding(top = 10.dp))
@@ -406,10 +450,19 @@ fun StatCard(
                 Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                 Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
-            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = accent)
+            Text(
+                value,
+                modifier = Modifier.padding(start = 8.dp),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.ExtraBold,
+                color = accent,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.End,
+            )
         }
         if (chips.isNotEmpty()) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 chips.take(3).forEach { AppChip(label = it, accent = accent) }
             }
         }
@@ -511,7 +564,7 @@ private fun EmptyMiniChart() {
             .border(1.dp, MaterialTheme.trainIqColors.cardBorder, RoundedCornerShape(16.dp)),
         contentAlignment = Alignment.Center,
     ) {
-        Text("No data yet", color = MaterialTheme.trainIqColors.mutedText)
+        Text("Nog geen data", color = MaterialTheme.trainIqColors.mutedText)
     }
 }
 
@@ -522,7 +575,7 @@ fun AppDialog(
     confirmLabel: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
-    dismissLabel: String = "Cancel",
+    dismissLabel: String = "Annuleren",
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,

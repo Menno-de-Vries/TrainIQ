@@ -28,7 +28,7 @@ object AppModule {
         OkHttpClient.Builder()
             .addInterceptor(
                 HttpLoggingInterceptor().apply {
-                    level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
+                    level = HttpLoggingInterceptor.Level.NONE
                 },
             )
             .build()

@@ -5,6 +5,8 @@ import com.trainiq.domain.repository.MealEntryRequest
 private const val MAX_CALORIES_PER_100G = 5000.0
 private const val MAX_MACRO_PER_100G = 1000.0
 private const val MAX_GRAMS = 100_000.0
+private const val MAX_AI_TOTAL_CALORIES = 100_000.0
+private const val MAX_AI_TOTAL_MACRO = 100_000.0
 
 internal data class FoodFieldErrors(
     val name: String? = null,
@@ -137,10 +139,10 @@ internal fun validateQuickAddGrams(grams: String): QuickAddFieldErrors =
 internal fun validateEditableAiItem(item: EditableAiItem): AiItemFieldErrors = AiItemFieldErrors(
     name = requiredNameError(item.name),
     grams = requiredPositiveGramError(item.grams),
-    calories = nutritionNumberError(item.calories, max = MAX_CALORIES_PER_100G, allowZero = true),
-    protein = nutritionNumberError(item.protein, max = MAX_MACRO_PER_100G, allowZero = true),
-    carbs = nutritionNumberError(item.carbs, max = MAX_MACRO_PER_100G, allowZero = true),
-    fat = nutritionNumberError(item.fat, max = MAX_MACRO_PER_100G, allowZero = true),
+    calories = nutritionNumberError(item.calories, max = MAX_AI_TOTAL_CALORIES, allowZero = true),
+    protein = nutritionNumberError(item.protein, max = MAX_AI_TOTAL_MACRO, allowZero = true),
+    carbs = nutritionNumberError(item.carbs, max = MAX_AI_TOTAL_MACRO, allowZero = true),
+    fat = nutritionNumberError(item.fat, max = MAX_AI_TOTAL_MACRO, allowZero = true),
 )
 
 internal fun requiredPositiveGramError(value: String): String? =

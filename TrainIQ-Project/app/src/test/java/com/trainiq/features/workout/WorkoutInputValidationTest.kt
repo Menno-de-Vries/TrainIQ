@@ -63,6 +63,17 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun `set input accepts zero weight for bodyweight sets`() {
+        val result = validateSetInput(SetInputDraft(weight = "0", reps = "12", rpe = "7"))
+
+        assertTrue(result is SetLogValidationResult.Valid)
+        result as SetLogValidationResult.Valid
+        assertEquals(0.0, result.weight, 0.0)
+        assertEquals(12, result.reps)
+        assertEquals(7.0, result.rpe, 0.0)
+    }
+
+    @Test
     fun `set input rejects non numeric rpe`() {
         val result = validateSetInput(SetInputDraft(weight = "80", reps = "8", rpe = "abc"))
 

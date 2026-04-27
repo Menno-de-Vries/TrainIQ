@@ -136,6 +136,7 @@ class HomeViewModel @Inject constructor(
             while (true) {
                 delay(60_000L)
                 refreshDashboardDataSafely { refreshDashboardDataUseCase() }
+                refreshHealthConnectStatus()
             }
         }
     }
@@ -256,7 +257,7 @@ fun HomeScreen(
                             modifier = Modifier.padding(MaterialTheme.spacing.large),
                             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
                         ) {
-                            Text("Home niet beschikbaar", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                            Text("Startscherm niet beschikbaar", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                             Text(uiState.message, style = MaterialTheme.typography.bodyMedium)
                             OutlinedButton(onClick = onRefreshHealth) { Text("Opnieuw proberen") }
                         }
@@ -329,9 +330,10 @@ fun HomeScreen(
                         }
                         item {
                             MetricCard(
-                                title = "Herstel",
+                                title = "Stappen",
                                 value = when (healthConnectStatus.state) {
-                                    HealthConnectState.CONNECTED, HealthConnectState.NO_DATA -> "${healthConnectStatus.stepsToday ?: 0}"
+                                    HealthConnectState.CONNECTED -> "${healthConnectStatus.stepsToday ?: 0} stappen"
+                                    HealthConnectState.NO_DATA -> "Geen data"
                                     else -> "Offline"
                                 },
                                 subtitle = buildHomeRecoverySubtitle(
@@ -482,8 +484,8 @@ private fun NextWorkoutCard(
         ) {
             Text("Volgende training", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
             if (dashboard.nextWorkout == null) {
-                Text("Er staat nog geen actieve trainingsdag klaar. Ga naar Train om je eerste sessie in te stellen.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
-                SecondaryActionButton(onClick = onOpenTrain) { Text("Train openen") }
+                Text("Er staat nog geen actieve trainingsdag klaar. Ga naar Training om je eerste sessie in te stellen.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
+                SecondaryActionButton(onClick = onOpenTrain) { Text("Training openen") }
             } else {
                 val exerciseSummary = remember(dashboard.nextWorkout.exercises) {
                     dashboard.nextWorkout.exercises.joinToString { it.exercise.name }

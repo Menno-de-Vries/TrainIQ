@@ -17,6 +17,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -163,9 +164,14 @@ class ProgressViewModel @Inject constructor(
             }
             is ProgressMeasurementValidationResult.Valid -> {
                 viewModelScope.launch {
-                    val measurement = validation.measurement
-                    addMeasurementUseCase(measurement.weight, measurement.bodyFat, measurement.muscleMass)
-                    _message.value = "Meting opgeslagen."
+                    runCatching {
+                        val measurement = validation.measurement
+                        addMeasurementUseCase(measurement.weight, measurement.bodyFat, measurement.muscleMass)
+                    }.onSuccess {
+                        _message.value = "Meting opgeslagen."
+                    }.onFailure {
+                        _message.value = "Meting opslaan mislukt. Probeer opnieuw."
+                    }
                 }
             }
         }
@@ -177,8 +183,9 @@ class ProgressViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            deleteMeasurementUseCase(measurementId)
-            _message.value = "Meting verwijderd."
+            runCatching { deleteMeasurementUseCase(measurementId) }
+                .onSuccess { _message.value = "Meting verwijderd." }
+                .onFailure { _message.value = "Meting verwijderen mislukt. Probeer opnieuw." }
         }
     }
 
@@ -221,6 +228,17 @@ fun ProgressScreen(
     val measurementValidation = validateProgressMeasurementInput(weight, bodyFat, muscleMass)
     val canSaveMeasurement = measurementValidation is ProgressMeasurementValidationResult.Valid
 
+    LaunchedEffect(message) {
+        if (message == "Meting opgeslagen.") {
+            weight = ""
+            bodyFat = ""
+            muscleMass = ""
+            weightTouched = false
+            bodyFatTouched = false
+            muscleMassTouched = false
+        }
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -235,7 +253,7 @@ fun ProgressScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
     ) {
-        item { ScreenHeader(title = "Progress", subtitle = "Metingen, grafieken en kracht-trends") }
+        item { ScreenHeader(title = "Voortgang", subtitle = "Metingen, grafieken en krachttrends") }
         message?.let {
             item { MessageCard(message = it, onDismiss = onDismissMessage) }
         }
@@ -250,28 +268,26 @@ fun ProgressScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                     Text("Lichaamssamenstelling", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                     Text("Vetpercentage, spiermassa en gewicht naast elkaar.", color = MaterialTheme.trainIqColors.mutedText)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        MeasurementTextField(
-                            value = weight,
-                            onValueChange = {
-                                weight = it
-                                weightTouched = true
-                            },
-                            label = "Gewicht (kg)",
-                            error = weightError,
-                            modifier = Modifier.weight(1f),
-                        )
-                        MeasurementTextField(
-                            value = bodyFat,
-                            onValueChange = {
-                                bodyFat = it
-                                bodyFatTouched = true
-                            },
-                            label = "Vetpercentage (%)",
-                            error = bodyFatError,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
+                    MeasurementTextField(
+                        value = weight,
+                        onValueChange = {
+                            weight = it
+                            weightTouched = true
+                        },
+                        label = "Gewicht (kg)",
+                        error = weightError,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    MeasurementTextField(
+                        value = bodyFat,
+                        onValueChange = {
+                            bodyFat = it
+                            bodyFatTouched = true
+                        },
+                        label = "Vetpercentage (%)",
+                        error = bodyFatError,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                     MeasurementTextField(
                         value = muscleMass,
                         onValueChange = {
@@ -285,12 +301,6 @@ fun ProgressScreen(
                     PrimaryActionButton(onClick = {
                         if (measurementValidation is ProgressMeasurementValidationResult.Valid) {
                             onAddMeasurement(weight, bodyFat, muscleMass)
-                            weight = ""
-                            bodyFat = ""
-                            muscleMass = ""
-                            weightTouched = false
-                            bodyFatTouched = false
-                            muscleMassTouched = false
                         }
                     }, enabled = canSaveMeasurement, accent = MaterialTheme.trainIqColors.purple) { Text("Meting opslaan") }
                 }
@@ -311,11 +321,23 @@ fun ProgressScreen(
                 )
             }
         } else {
-            item {
-                MetricCard("Krachtscore", "${overview.estimatedOneRepMax.toInt()} kg", "Volume en geschatte 1RM samengevoegd", Modifier.fillMaxWidth())
+            val hasTrainingProgress = overview.strengthTrend.isNotEmpty() || overview.volumeTrend.isNotEmpty()
+            if (!hasTrainingProgress) {
+                item {
+                    EmptyStateCard(
+                        title = "Nog geen trainingsprogressie",
+                        body = "Rond een workout af om geschatte 1RM, vermoeidheid en trainingsvolume te zien.",
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
-            item {
-                MetricCard("Vermoeidheidsindex", String.format(Locale.getDefault(), "%.2f", overview.fatigueIndex), "Waarschuwing bij snelle volume + RPE stijging", Modifier.fillMaxWidth())
+            if (hasTrainingProgress) {
+                item {
+                    MetricCard("Geschatte 1RM", "${overview.estimatedOneRepMax.toInt()} kg", "Beste geschatte maximale kracht uit je gelogde sets", Modifier.fillMaxWidth())
+                }
+                item {
+                    MetricCard("Vermoeidheidsindex", String.format(Locale.getDefault(), "%.2f", overview.fatigueIndex), "Waarschuwing bij snelle volume + RPE stijging", Modifier.fillMaxWidth())
+                }
             }
             item {
                 AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.purple) {

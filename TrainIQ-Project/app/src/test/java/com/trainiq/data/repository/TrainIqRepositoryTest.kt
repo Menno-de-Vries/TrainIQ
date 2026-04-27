@@ -26,6 +26,7 @@ import com.trainiq.domain.model.BodyMeasurement
 import com.trainiq.domain.repository.MealEntryRequest
 import com.trainiq.domain.repository.MealEntryType
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class TrainIqRepositoryTest {
@@ -96,19 +97,21 @@ class TrainIqRepositoryTest {
     }
 
     @Test
-    fun buildMealItemSnapshots_skipsMissingFoodAndRecipeReferences() {
-        val items = buildMealItemSnapshots(
-            mealId = 10L,
-            startItemId = 20L,
-            requests = listOf(
-                MealEntryRequest(MealEntryType.FOOD, referenceId = 99L, gramsUsed = 100.0),
-                MealEntryRequest(MealEntryType.RECIPE, referenceId = 88L, gramsUsed = 150.0),
-            ),
-            foods = emptyList(),
-            recipes = emptyList(),
-        )
+    fun buildMealItemSnapshots_failsWhenFoodOrRecipeReferenceIsMissing() {
+        val error = assertThrows(IllegalStateException::class.java) {
+            buildMealItemSnapshots(
+                mealId = 10L,
+                startItemId = 20L,
+                requests = listOf(
+                    MealEntryRequest(MealEntryType.FOOD, referenceId = 99L, gramsUsed = 100.0),
+                    MealEntryRequest(MealEntryType.RECIPE, referenceId = 88L, gramsUsed = 150.0),
+                ),
+                foods = emptyList(),
+                recipes = emptyList(),
+            )
+        }
 
-        assertEquals(emptyList<LoggedMealItemStorage>(), items)
+        assertEquals("Deze maaltijd bevat een verwijderd product of recept.", error.message)
     }
 
     @Test
@@ -500,6 +503,35 @@ class TrainIqRepositoryTest {
         assertEquals(listOf(4L), updated.workoutExercises.map { it.id })
         assertEquals(1, updated.activeWorkoutSession?.loggedSets?.size)
         assertEquals("80", updated.activeWorkoutSession?.drafts?.get(3L)?.weight)
+    }
+
+    @Test
+    fun withWorkoutSessionDeleted_removesSetsPerformedExercisesAndLogEvents() {
+        val state = TrainIqStorageState(
+            sessions = listOf(
+                WorkoutSessionEntity(id = 1L, date = 1_000L, duration = 1_800L, status = "COMPLETED", completed = true),
+                WorkoutSessionEntity(id = 2L, date = 2_000L, duration = 1_800L, status = "COMPLETED", completed = true),
+            ),
+            performedExercises = listOf(
+                PerformedExerciseEntity(id = 10L, sessionId = 1L, exerciseId = 3L, sourceWorkoutExerciseId = 4L),
+                PerformedExerciseEntity(id = 11L, sessionId = 2L, exerciseId = 5L, sourceWorkoutExerciseId = 6L),
+            ),
+            workoutSets = listOf(
+                WorkoutSetEntity(id = 20L, sessionId = 1L, exerciseId = 3L, weight = 80.0, reps = 8, rpe = 8.0),
+                WorkoutSetEntity(id = 21L, sessionId = 2L, exerciseId = 5L, weight = 100.0, reps = 5, rpe = 8.0),
+            ),
+            workoutLogEvents = listOf(
+                com.trainiq.data.local.WorkoutLogEventStorage(id = 30L, sessionId = 1L, dayId = 7L),
+                com.trainiq.data.local.WorkoutLogEventStorage(id = 31L, sessionId = 2L, dayId = 8L),
+            ),
+        )
+
+        val updated = state.withWorkoutSessionDeleted(sessionId = 1L)
+
+        assertEquals(listOf(2L), updated.sessions.map { it.id })
+        assertEquals(listOf(21L), updated.workoutSets.map { it.id })
+        assertEquals(listOf(11L), updated.performedExercises.map { it.id })
+        assertEquals(listOf(31L), updated.workoutLogEvents.map { it.id })
     }
 
     @Test

@@ -172,7 +172,7 @@ fun PermissionManagerCard(
             when (status.state) {
                 HealthConnectState.PROVIDER_MISSING -> FilledTonalButton(onClick = onOpenInstall) { Text("Installeren of bijwerken") }
                 HealthConnectState.PERMISSION_REQUIRED -> FilledTonalButton(onClick = onRequestPermission) { Text("Opnieuw verbinden") }
-                HealthConnectState.CONNECTED, HealthConnectState.NO_DATA -> OutlinedButton(onClick = onOpenSettings) { Text("Open Health Connect") }
+                HealthConnectState.CONNECTED, HealthConnectState.NO_DATA -> OutlinedButton(onClick = onOpenSettings) { Text("Health Connect openen") }
                 HealthConnectState.ERROR -> OutlinedButton(onClick = onRefresh) { Text("Opnieuw proberen") }
                 HealthConnectState.UNSUPPORTED -> Text("Dit apparaat ondersteunt Health Connect niet.", style = MaterialTheme.typography.bodyMedium)
             }

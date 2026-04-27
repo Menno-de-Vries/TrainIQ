@@ -93,12 +93,12 @@ class RoutineGeneratorService @Inject constructor(
                             ),
                         ),
                     ),
-                    thinkingConfig = GeminiRequest.ThinkingConfig(
-                        includeThoughts = false,
-                        thinkingBudget = 1000,
-                    ),
                     generationConfig = GeminiRequest.GenerationConfig(
                         responseMimeType = "application/json",
+                        thinkingConfig = GeminiRequest.ThinkingConfig(
+                            includeThoughts = false,
+                            thinkingBudget = 1000,
+                        ),
                     ),
                 ),
             )

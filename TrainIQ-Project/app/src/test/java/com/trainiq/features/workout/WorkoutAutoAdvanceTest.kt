@@ -15,11 +15,11 @@ class WorkoutAutoAdvanceTest {
 
         val target = resolveNextFocusTarget(
             plans = listOf(bench, row),
-            loggedSetsByExerciseId = mapOf(1L to listOf(loggedSet(1L))),
-            justLoggedExerciseId = 1L,
+            loggedSetsByPlanKey = mapOf(10L to listOf(loggedSet(1L, 10L))),
+            justLoggedPlanKey = 10L,
         )
 
-        assertEquals(ActiveWorkoutFocusTarget(exerciseId = 1L, setIndex = 1), target)
+        assertEquals(ActiveWorkoutFocusTarget(exerciseId = 10L, setIndex = 1), target)
     }
 
     @Test
@@ -29,11 +29,11 @@ class WorkoutAutoAdvanceTest {
 
         val target = resolveNextFocusTarget(
             plans = listOf(bench, row),
-            loggedSetsByExerciseId = mapOf(1L to listOf(loggedSet(1L))),
-            justLoggedExerciseId = 1L,
+            loggedSetsByPlanKey = mapOf(10L to listOf(loggedSet(1L, 10L))),
+            justLoggedPlanKey = 10L,
         )
 
-        assertEquals(ActiveWorkoutFocusTarget(exerciseId = 2L, setIndex = 0), target)
+        assertEquals(ActiveWorkoutFocusTarget(exerciseId = 11L, setIndex = 0), target)
     }
 
     @Test
@@ -44,20 +44,20 @@ class WorkoutAutoAdvanceTest {
 
         val firstTarget = resolveNextFocusTarget(
             plans = listOf(bench, row, press),
-            loggedSetsByExerciseId = mapOf(1L to listOf(loggedSet(1L))),
-            justLoggedExerciseId = 1L,
+            loggedSetsByPlanKey = mapOf(10L to listOf(loggedSet(1L, 10L))),
+            justLoggedPlanKey = 10L,
         )
         val secondTarget = resolveNextFocusTarget(
             plans = listOf(bench, row, press),
-            loggedSetsByExerciseId = mapOf(
-                1L to listOf(loggedSet(1L)),
-                2L to listOf(loggedSet(2L)),
+            loggedSetsByPlanKey = mapOf(
+                10L to listOf(loggedSet(1L, 10L)),
+                11L to listOf(loggedSet(2L, 11L)),
             ),
-            justLoggedExerciseId = 2L,
+            justLoggedPlanKey = 11L,
         )
 
-        assertEquals(ActiveWorkoutFocusTarget(exerciseId = 2L, setIndex = 0), firstTarget)
-        assertEquals(ActiveWorkoutFocusTarget(exerciseId = 1L, setIndex = 1), secondTarget)
+        assertEquals(ActiveWorkoutFocusTarget(exerciseId = 11L, setIndex = 0), firstTarget)
+        assertEquals(ActiveWorkoutFocusTarget(exerciseId = 10L, setIndex = 1), secondTarget)
     }
 
     private fun plan(
@@ -74,8 +74,9 @@ class WorkoutAutoAdvanceTest {
         supersetGroupId = supersetGroupId,
     )
 
-    private fun loggedSet(exerciseId: Long) = LoggedSet(
+    private fun loggedSet(exerciseId: Long, sourceWorkoutExerciseId: Long) = LoggedSet(
         exerciseId = exerciseId,
+        sourceWorkoutExerciseId = sourceWorkoutExerciseId,
         weight = 80.0,
         reps = 8,
         rpe = 8.0,

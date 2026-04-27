@@ -205,45 +205,57 @@ class SettingsViewModel @Inject constructor(
             goal = input.goal,
         )
         viewModelScope.launch {
-            saveUserProfileUseCase(
-                UserProfile(
-                    id = 1L,
-                    name = input.name,
-                    age = input.age,
-                    sex = input.sex,
-                    height = input.height,
-                    weight = input.weight,
-                    bodyFat = input.bodyFat,
-                    activityLevel = input.activityLevel,
-                    goal = input.goal,
-                    calorieTarget = advice.calorieTarget,
-                    proteinTarget = advice.proteinTarget,
-                    carbsTarget = advice.carbsTarget,
-                    fatTarget = advice.fatTarget,
-                    trainingFocus = advice.trainingFocus,
-                ),
-            )
-            _message.value = "Profiel opgeslagen. Dashboarddoelen bijgewerkt."
+            runCatching {
+                saveUserProfileUseCase(
+                    UserProfile(
+                        id = 1L,
+                        name = input.name,
+                        age = input.age,
+                        sex = input.sex,
+                        height = input.height,
+                        weight = input.weight,
+                        bodyFat = input.bodyFat,
+                        activityLevel = input.activityLevel,
+                        goal = input.goal,
+                        calorieTarget = advice.calorieTarget,
+                        proteinTarget = advice.proteinTarget,
+                        carbsTarget = advice.carbsTarget,
+                        fatTarget = advice.fatTarget,
+                        trainingFocus = advice.trainingFocus,
+                    ),
+                )
+            }.onSuccess {
+                _message.value = "Profiel opgeslagen. Dashboarddoelen bijgewerkt."
+            }.onFailure {
+                _message.value = "Profiel opslaan mislukt. Probeer opnieuw."
+            }
         }
     }
 
     fun resetProfile() {
         viewModelScope.launch {
-            localStore.clearProfile()
-            _message.value = "Profiel verwijderd."
+            runCatching { localStore.clearProfile() }
+                .onSuccess { _message.value = "Profiel verwijderd." }
+                .onFailure { _message.value = "Profiel verwijderen mislukt. Probeer opnieuw." }
         }
     }
 
     fun clearAllData() {
         viewModelScope.launch {
-            localStore.clearAll()
-            preferencesRepository.clearLocalPrivateData()
-            performanceSessionStore.clearAll()
-            _healthStatus.value = HealthConnectStatus(
-                state = HealthConnectState.PERMISSION_REQUIRED,
-                message = "Lokale data is gewist. Verbind Health Connect opnieuw als je die koppeling wilt gebruiken.",
-            )
-            _message.value = "Alle lokale appdata, AI-sleutel, voorkeuren en Health Connect-cache zijn gewist."
+            runCatching {
+                localStore.clearAll()
+                preferencesRepository.clearLocalPrivateData()
+                performanceSessionStore.clearAll()
+            }.onSuccess {
+                _healthStatus.value = HealthConnectStatus(
+                    state = HealthConnectState.NO_DATA,
+                    message = "Lokale Health Connect-cache is gewist. Android-toegang is niet ingetrokken; beheer toegang in Health Connect.",
+                )
+                _message.value = "Alle lokale appdata, AI-sleutel, voorkeuren en Health Connect-cache zijn gewist. Health Connect-toegang beheer je apart in Android."
+                refreshHealthConnectStatus()
+            }.onFailure {
+                _message.value = "Lokale data wissen mislukt. Probeer opnieuw."
+            }
         }
     }
 
@@ -615,12 +627,19 @@ fun SettingsScreen(
         }
         item {
             SectionCard(title = "Gegevens / opslag") {
-                Text("Opslagmodus: lokale JSON-opslag")
-                Text("AI-sleutelopslag: lokale appvoorkeuren")
-                Text("Health Connect-cache: opgeslagen wijzigingstoken plus lichte syncsnapshot")
-                Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-                    TextButton(onClick = { pendingDestructiveAction = PendingDestructiveSettingsAction.CLEAR_API_KEY }) { Text("AI-sleutel wissen") }
-                    TextButton(onClick = { pendingDestructiveAction = PendingDestructiveSettingsAction.CLEAR_ALL_DATA }) { Text("Lokale data wissen") }
+                Text("Lokale data: profiel, routines, workouts, voeding, recepten en metingen.")
+                Text("AI-sleutel: lokaal opgeslagen in appvoorkeuren.")
+                Text("Health Connect-cache: sync-token en recente stappen, hartslag, slaap, calorieën en gewicht.")
+                Text("Toegang intrekken doe je in Android Health Connect.")
+                Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+                    TextButton(
+                        onClick = { pendingDestructiveAction = PendingDestructiveSettingsAction.CLEAR_API_KEY },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("AI-sleutel wissen") }
+                    TextButton(
+                        onClick = { pendingDestructiveAction = PendingDestructiveSettingsAction.CLEAR_ALL_DATA },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Lokale data wissen") }
                 }
             }
         }

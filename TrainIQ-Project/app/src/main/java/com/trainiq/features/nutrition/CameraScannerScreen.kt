@@ -2,6 +2,9 @@ package com.trainiq.features.nutrition
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -75,6 +78,7 @@ import com.trainiq.domain.model.MealAnalysisResult
 import com.trainiq.domain.model.MealAnalysisSource
 import com.trainiq.domain.model.MealType
 import com.trainiq.domain.usecase.AnalyzeMealUseCase
+import com.trainiq.domain.usecase.ClearLastScanResultUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
@@ -108,6 +112,7 @@ sealed interface CameraScannerUiState {
 class CameraScannerViewModel @Inject constructor(
     preferencesRepository: UserPreferencesRepository,
     private val analyzeMealUseCase: AnalyzeMealUseCase,
+    private val clearLastScanResultUseCase: ClearLastScanResultUseCase,
 ) : ViewModel() {
     private data class ScannerEphemeralState(
         val contextHint: String = "",
@@ -216,8 +221,13 @@ class CameraScannerViewModel @Inject constructor(
         }
     }
 
-    fun dismissError() {
+    fun resetToPreview(clearScanResult: Boolean = true) {
+        if (clearScanResult) clearLastScanResultUseCase()
         ephemeral.update { it.copy(phase = Phase.Preview, message = null) }
+    }
+
+    fun clearScanResult() {
+        clearLastScanResultUseCase()
     }
 }
 
@@ -265,10 +275,13 @@ fun CameraScannerRoute(
         uiState = uiState,
         scannerMode = scannerMode,
         onAnalyze = viewModel::analyze,
-        onDismissError = viewModel::dismissError,
-        onScanAgain = viewModel::dismissError,
+        onDismissError = { viewModel.resetToPreview(clearScanResult = true) },
+        onScanAgain = { viewModel.resetToPreview(clearScanResult = true) },
         onReviewItems = onBack,
-        onBack = onBack,
+        onBack = {
+            viewModel.clearScanResult()
+            onBack()
+        },
         onBarcodeScanned = onBarcodeScanned,
     )
 }
@@ -289,10 +302,14 @@ private fun CameraScannerScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val haptics = LocalHapticFeedback.current
     var hasPermission by remember { mutableStateOf(false) }
+    var permissionDenied by remember { mutableStateOf(false) }
     var cameraError by remember { mutableStateOf<String?>(null) }
     var isCapturing by remember { mutableStateOf(false) }
     val hasDetectedBarcode = remember { AtomicBoolean(false) }
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { hasPermission = it }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        hasPermission = it
+        permissionDenied = !it
+    }
     LaunchedEffect(Unit) { permissionLauncher.launch(Manifest.permission.CAMERA) }
 
     val controller = remember(context, scannerMode) {
@@ -340,7 +357,19 @@ private fun CameraScannerScreen(
         color = Color.Black,
     ) {
         if (!hasPermission) {
-            PermissionGate(onGrant = { permissionLauncher.launch(Manifest.permission.CAMERA) }, onBack = onBack)
+            PermissionGate(
+                permissionDenied = permissionDenied,
+                onGrant = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+                onOpenSettings = {
+                    context.startActivity(
+                        Intent(
+                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.fromParts("package", context.packageName, null),
+                        ),
+                    )
+                },
+                onBack = onBack,
+            )
         } else {
             Box(modifier = Modifier.fillMaxSize()) {
                 AndroidView(
@@ -412,6 +441,7 @@ private fun CameraScannerScreen(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
                                 .fillMaxWidth()
+                                .windowInsetsPadding(WindowInsets.navigationBars)
                                 .padding(MaterialTheme.spacing.large),
                             horizontalArrangement = Arrangement.Center,
                         ) {
@@ -423,6 +453,7 @@ private fun CameraScannerScreen(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
                                 .fillMaxWidth()
+                                .windowInsetsPadding(WindowInsets.navigationBars)
                                 .padding(MaterialTheme.spacing.large),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
@@ -519,18 +550,23 @@ private fun EmptySheetContent(
     ) {
         Text("Geen producten gevonden", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
         Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
-            OutlinedButton(onClick = onRetry) { Text("Opnieuw proberen") }
-            Button(onClick = onManual, modifier = Modifier.weight(1f)) { Text("Handmatig toevoegen") }
+            Button(onClick = onManual, modifier = Modifier.fillMaxWidth()) { Text("Handmatig toevoegen") }
+            OutlinedButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("Opnieuw proberen") }
         }
     }
 }
 
 @Composable
-private fun PermissionGate(onGrant: () -> Unit, onBack: () -> Unit) {
+private fun PermissionGate(
+    permissionDenied: Boolean,
+    onGrant: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onBack: () -> Unit,
+) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Card(
             modifier = Modifier.padding(MaterialTheme.spacing.large),
@@ -542,9 +578,21 @@ private fun PermissionGate(onGrant: () -> Unit, onBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
             ) {
                 Text("Cameratoegang nodig", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                Text("Geef cameratoegang om de scanner te gebruiken.", style = MaterialTheme.typography.bodyMedium)
-                Button(onClick = onGrant) { Text("Toegang geven") }
-                OutlinedButton(onClick = onBack) { Text("Terug") }
+                Text(
+                    if (permissionDenied) {
+                        "TrainIQ heeft cameratoegang nodig om maaltijden of barcodes te scannen. Als Android de vraag niet meer toont, open dan de app-instellingen."
+                    } else {
+                        "Geef cameratoegang om de scanner te gebruiken."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+                    Button(onClick = onGrant, modifier = Modifier.fillMaxWidth()) { Text("Toegang geven") }
+                    if (permissionDenied) {
+                        OutlinedButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) { Text("Instellingen openen") }
+                    }
+                    OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Terug") }
+                }
             }
         }
     }
@@ -592,12 +640,12 @@ private fun CompletedSheetContent(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
-            OutlinedButton(onClick = onScanAgain) { Text("Opnieuw scannen") }
-            Button(onClick = onReviewItems, modifier = Modifier.weight(1f)) { Text("Items controleren") }
+            Button(onClick = onReviewItems, modifier = Modifier.fillMaxWidth()) { Text("Items controleren") }
+            OutlinedButton(onClick = onScanAgain, modifier = Modifier.fillMaxWidth()) { Text("Opnieuw scannen") }
         }
     }
 }
@@ -626,12 +674,12 @@ private fun ErrorSheetContent(
     ) {
         Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
         Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
-            OutlinedButton(onClick = onBack) { Text("Terug") }
-            Button(onClick = onRetry, modifier = Modifier.weight(1f)) { Text("Opnieuw proberen") }
+            Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("Opnieuw proberen") }
+            OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Terug") }
         }
     }
 }

@@ -6,17 +6,14 @@ import org.junit.Test
 
 class ScannerModeRouteTest {
     @Test
-    fun scannerModeFromRoute_withKnownMode_returnsMode() {
-        assertEquals(ScannerMode.BARCODE, scannerModeFromRoute(ScannerMode.BARCODE.name))
+    fun cameraScannerRoute_keepsScannerModeTyped() {
+        val route = CameraScanner(scannerMode = ScannerMode.BARCODE)
+
+        assertEquals(ScannerMode.BARCODE, route.scannerMode)
     }
 
     @Test
-    fun scannerModeFromRoute_withUnknownMode_fallsBackToAiMeal() {
-        assertEquals(ScannerMode.AI_MEAL, scannerModeFromRoute("UNKNOWN"))
-    }
-
-    @Test
-    fun scannerModeFromRoute_withBlankMode_fallsBackToAiMeal() {
-        assertEquals(ScannerMode.AI_MEAL, scannerModeFromRoute(""))
+    fun cameraScannerRoute_defaultsToAiMealMode() {
+        assertEquals(ScannerMode.AI_MEAL, CameraScanner().scannerMode)
     }
 }

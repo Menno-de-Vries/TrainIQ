@@ -155,8 +155,8 @@ fun SetLogger(
     modifier: Modifier = Modifier,
 ) {
     Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-        OutlinedTextField(value = weight, onValueChange = onWeightChange, label = { Text("Weight") }, modifier = Modifier.weight(1f))
-        OutlinedTextField(value = reps, onValueChange = onRepsChange, label = { Text("Reps") }, modifier = Modifier.weight(1f))
+        OutlinedTextField(value = weight, onValueChange = onWeightChange, label = { Text("Gewicht") }, modifier = Modifier.weight(1f))
+        OutlinedTextField(value = reps, onValueChange = onRepsChange, label = { Text("Herhalingen") }, modifier = Modifier.weight(1f))
         OutlinedTextField(value = rpe, onValueChange = onRpeChange, label = { Text("RPE") }, modifier = Modifier.weight(1f))
     }
 }

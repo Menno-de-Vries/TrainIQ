@@ -88,9 +88,13 @@ class MealAnalysisService internal constructor(
                                 ),
                             ),
                         ),
-                ),
+                    ),
                     generationConfig = GeminiRequest.GenerationConfig(
                         responseMimeType = "application/json",
+                        thinkingConfig = GeminiRequest.ThinkingConfig(
+                            includeThoughts = false,
+                            thinkingBudget = 0,
+                        ),
                     ),
                 ),
             )
@@ -193,6 +197,10 @@ class WorkoutDebriefService internal constructor(
                     ),
                     generationConfig = GeminiRequest.GenerationConfig(
                         responseMimeType = "application/json",
+                        thinkingConfig = GeminiRequest.ThinkingConfig(
+                            includeThoughts = false,
+                            thinkingBudget = 1000,
+                        ),
                     ),
                 ),
             )
@@ -249,12 +257,12 @@ class GoalAdvisorService @Inject constructor(
                             ),
                         ),
                     ),
-                    thinkingConfig = GeminiRequest.ThinkingConfig(
-                        includeThoughts = false,
-                        thinkingBudget = 1000,
-                    ),
                     generationConfig = GeminiRequest.GenerationConfig(
                         responseMimeType = "application/json",
+                        thinkingConfig = GeminiRequest.ThinkingConfig(
+                            includeThoughts = false,
+                            thinkingBudget = 1000,
+                        ),
                     ),
                 ),
             )
@@ -340,12 +348,12 @@ class WeeklyReportService @Inject constructor(
                             parts = listOf(GeminiRequest.Part(text = GeminiPrompts.weeklyReport(volume, weightTrend, adherence))),
                         ),
                     ),
-                    thinkingConfig = GeminiRequest.ThinkingConfig(
-                        includeThoughts = false,
-                        thinkingBudget = 1000,
-                    ),
                     generationConfig = GeminiRequest.GenerationConfig(
                         responseMimeType = "application/json",
+                        thinkingConfig = GeminiRequest.ThinkingConfig(
+                            includeThoughts = false,
+                            thinkingBudget = 1000,
+                        ),
                     ),
                 ),
             )

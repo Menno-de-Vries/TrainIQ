@@ -93,6 +93,7 @@ fun CreateRoutineDialog(
 @Composable
 fun GeneratedRoutinePreviewDialog(
     routine: GeneratedRoutine,
+    isSaving: Boolean,
     onSave: () -> Unit,
     onRetry: () -> Unit,
     onDismiss: () -> Unit,
@@ -174,16 +175,16 @@ fun GeneratedRoutinePreviewDialog(
             }
         },
         confirmButton = {
-            Button(onClick = onSave) {
-                Text("Opslaan")
+            Button(onClick = onSave, enabled = !isSaving) {
+                Text(if (isSaving) "Opslaan..." else "Opslaan")
             }
         },
         dismissButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onRetry) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
                     Text("Opnieuw proberen")
                 }
-                TextButton(onClick = onDismiss) {
+                TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
                     Text("Annuleren")
                 }
             }

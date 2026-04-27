@@ -144,6 +144,7 @@ import com.trainiq.core.theme.spacing
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.domain.model.ActiveWorkoutFocusTarget
 import com.trainiq.domain.model.ActiveWorkoutSession
+import com.trainiq.domain.model.ActiveWorkoutSetEntry
 import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.ChartPoint
 import com.trainiq.domain.model.ExerciseHistory
@@ -283,7 +284,7 @@ sealed interface WorkoutUiEvent {
 
 private val BuilderActionWidth = 48.dp
 private val BuilderRowActionWidth = 48.dp
-private val ActiveSetActionWidth = 96.dp
+private val ActiveSetActionWidth = 104.dp
 private val ActiveSetLeadingWidth = 76.dp
 private val TopLevelBottomContentPadding = 132.dp
 private val ActiveWorkoutBottomContentPadding = 96.dp
@@ -371,6 +372,8 @@ class WorkoutViewModel @Inject constructor(
 
     private val _pendingGeneratedRoutine = MutableStateFlow<GeneratedRoutine?>(null)
     val pendingGeneratedRoutine: StateFlow<GeneratedRoutine?> = _pendingGeneratedRoutine.asStateFlow()
+    private val _isSavingGeneratedRoutine = MutableStateFlow(false)
+    val isSavingGeneratedRoutine: StateFlow<Boolean> = _isSavingGeneratedRoutine.asStateFlow()
 
     private val _events = MutableSharedFlow<WorkoutUiEvent>(extraBufferCapacity = 1)
     val events: SharedFlow<WorkoutUiEvent> = _events.asSharedFlow()
@@ -454,14 +457,21 @@ class WorkoutViewModel @Inject constructor(
                     suggestion.exerciseId to draft.toDomainDraft()
                 }
                 .toMap()
-            val planDrafts = workout?.exercises.orEmpty()
+            val planDrafts = workout.exercises
                 .mapNotNull { plan ->
                     val draft = plan.nextPlannedDraft(loggedCount = 0).takeIf { it.weight.isNotBlank() || it.reps.isNotBlank() || it.rpe.isNotBlank() } ?: return@mapNotNull null
-                    plan.exercise.id to draft.toDomainDraft()
+                    plan.activeKey to draft.toDomainDraft()
                 }
                 .toMap()
-            val initialDrafts = planDrafts + suggestionDrafts
-            val active = getOrStartActiveWorkoutSessionUseCase(dayId, initialDrafts)
+            val suggestionDraftsByPlan = suggestionDrafts.mapKeys { (exerciseId, _) ->
+                workout.exercises.firstOrNull { it.exercise.id == exerciseId }?.activeKey ?: exerciseId
+            }
+            val initialDrafts = planDrafts + suggestionDraftsByPlan
+            val active = runCatching { getOrStartActiveWorkoutSessionUseCase(dayId, initialDrafts) }
+                .getOrElse {
+                    _message.value = it.message ?: "Rond je actieve training af of verwijder die voordat je een andere training start."
+                    return@launch
+                }
             applyActiveSession(active)
             observeLoggingSummary(dayId)
             sessionStartTime = active.startedAt
@@ -507,17 +517,18 @@ class WorkoutViewModel @Inject constructor(
 
     fun logSet(plan: WorkoutExercisePlan): Boolean {
         diagnosticsTracker.tap("Workout:SetLogClicked")
-        val loggedCount = _loggedSetsThisSession.value[plan.exercise.id].orEmpty().size
-        val draft = _drafts.value[plan.exercise.id] ?: plan.nextPlannedDraft(loggedCount)
+        val key = plan.activeKey
+        val loggedCount = _loggedSetsThisSession.value[key].orEmpty().size
+        val draft = _drafts.value[key] ?: plan.nextPlannedDraft(loggedCount)
         val validation = validateSetInput(draft)
         if (validation is SetLogValidationResult.Invalid) {
-            _draftErrors.value = _draftErrors.value.toMutableMap().apply { put(plan.exercise.id, validation.fieldErrors) }
+            _draftErrors.value = _draftErrors.value.toMutableMap().apply { put(key, validation.fieldErrors) }
             _message.value = validation.message
             return false
         }
-        clearSetInputError(plan.exercise.id)
+        clearSetInputError(key)
         val dayId = _activeWorkout.value?.id ?: return false
-        when (val start = tryStartSetLog(_pendingLoggingExerciseIds.value, plan.exercise.id)) {
+        when (val start = tryStartSetLog(_pendingLoggingExerciseIds.value, key)) {
             is SetLogStartResult.AlreadyPending -> {
                 _message.value = "Deze set wordt al opgeslagen."
                 return false
@@ -548,21 +559,21 @@ class WorkoutViewModel @Inject constructor(
                     restSeconds = plan.plannedRestSeconds(loggedCount),
                 )
                 applyActiveSession(active)
-                clearSetInputError(plan.exercise.id)
+                clearSetInputError(key)
                 val loggedSetsByExerciseId = active.loggedSets
-                    .groupBy { it.exerciseId }
+                    .groupBy { it.activeKey }
                     .mapValues { (_, sets) -> sets.map { it.toLoggedSet() } }
                 _activeFocusTarget.value = resolveNextFocusTarget(
                     plans = _activeWorkout.value?.exercises.orEmpty(),
-                    loggedSetsByExerciseId = loggedSetsByExerciseId,
-                    justLoggedExerciseId = plan.exercise.id,
+                    loggedSetsByPlanKey = loggedSetsByExerciseId,
+                    justLoggedPlanKey = key,
                 )
                 val summary = observeWorkoutLoggingSummaryUseCase(dayId).first()
                 _loggingSummary.value = summary.copy(activeFocusTarget = _activeFocusTarget.value)
                 val message = when (loggedSet.setType) {
                     SetType.FAILURE -> "Failure set voltooid voor ${plan.exercise.name}."
                     SetType.DROP_SET -> "Drop set voltooid voor ${plan.exercise.name}."
-                    else -> "Set ${active.loggedSets.count { it.exerciseId == plan.exercise.id }} gelogd voor ${plan.exercise.name}."
+                    else -> "Set ${active.loggedSets.count { it.activeKey == key }} gelogd voor ${plan.exercise.name}."
                 }
                 _events.emit(
                     WorkoutUiEvent.SetLogged(
@@ -575,7 +586,7 @@ class WorkoutViewModel @Inject constructor(
             } catch (_: Exception) {
                 _message.value = "Set loggen is mislukt. Probeer opnieuw."
             } finally {
-                _pendingLoggingExerciseIds.value = finishSetLog(_pendingLoggingExerciseIds.value, plan.exercise.id)
+                _pendingLoggingExerciseIds.value = finishSetLog(_pendingLoggingExerciseIds.value, key)
             }
         }
         return true
@@ -590,9 +601,10 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun logSameAgain(plan: WorkoutExercisePlan): Boolean {
-        val lastSet = _loggedSetsThisSession.value[plan.exercise.id].orEmpty().lastOrNull() ?: return false
-        _drafts.value = _drafts.value.toMutableMap().apply { put(plan.exercise.id, lastSet.toDraft()) }
-        clearSetInputError(plan.exercise.id)
+        val key = plan.activeKey
+        val lastSet = _loggedSetsThisSession.value[key].orEmpty().lastOrNull() ?: return false
+        _drafts.value = _drafts.value.toMutableMap().apply { put(key, lastSet.toDraft()) }
+        clearSetInputError(key)
         return logSet(plan)
     }
 
@@ -641,7 +653,7 @@ class WorkoutViewModel @Inject constructor(
         }
         viewModelScope.launch {
             createRoutineUseCase(name.trim(), description.trim())
-            _message.value = "Routine created."
+            _message.value = "Routine aangemaakt."
         }
     }
 
@@ -695,8 +707,10 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun savePendingGeneratedRoutine() {
+        if (_isSavingGeneratedRoutine.value) return
         val routine = _pendingGeneratedRoutine.value ?: return
         viewModelScope.launch {
+            _isSavingGeneratedRoutine.value = true
             runCatching {
                 saveGeneratedRoutineUseCase(routine)
             }.onSuccess {
@@ -704,6 +718,8 @@ class WorkoutViewModel @Inject constructor(
                 _message.value = "Routine opgeslagen."
             }.onFailure {
                 _message.value = it.toAiUserMessage("Routine opslaan is mislukt.")
+            }.also {
+                _isSavingGeneratedRoutine.value = false
             }
         }
     }
@@ -834,60 +850,51 @@ class WorkoutViewModel @Inject constructor(
     fun removeExercise(workoutExerciseId: Long) {
         viewModelScope.launch {
             removeExerciseFromDayUseCase(workoutExerciseId)
-            _message.value = "Exercise removed."
+            _message.value = "Oefening verwijderd."
         }
     }
 
     fun reorderExercises(dayId: Long, orderedIds: List<Long>) {
         viewModelScope.launch {
             reorderExercisesUseCase(dayId, orderedIds)
-            _message.value = "Exercise order updated."
+            _message.value = "Oefenvolgorde bijgewerkt."
         }
     }
 
     fun setSupersetGroup(workoutExerciseIds: List<Long>, groupId: Long?) {
         viewModelScope.launch {
             setSupersetGroupUseCase(workoutExerciseIds, groupId)
-            _message.value = if (groupId == null) "Superset removed." else "Superset linked."
+            _message.value = if (groupId == null) "Superset losgekoppeld." else "Superset gekoppeld."
         }
     }
 
     fun replaceExerciseInPlan(workoutExerciseId: Long, exercise: Exercise) {
         viewModelScope.launch {
             replaceExerciseInPlanUseCase(workoutExerciseId, exercise.id)
-            _message.value = "Exercise replaced with ${exercise.name}."
+            _message.value = "Oefening vervangen door ${exercise.name}."
         }
     }
 
     fun replaceExerciseInActiveWorkout(workoutExerciseId: Long, exercise: Exercise) {
         val workout = _activeWorkout.value ?: return
         val currentPlan = workout.exercises.firstOrNull { it.id == workoutExerciseId } ?: return
-        if (_loggedSetsThisSession.value[currentPlan.exercise.id].orEmpty().isNotEmpty()) {
+        val key = currentPlan.activeKey
+        if (_loggedSetsThisSession.value[key].orEmpty().isNotEmpty()) {
             _message.value = "Verwijder eerst gelogde sets voordat je deze oefening vervangt."
             return
         }
-        _activeWorkout.value = workout.copy(
-            exercises = workout.exercises.map { plan ->
-                if (plan.id == workoutExerciseId) plan.copy(exercise = exercise) else plan
-            },
-        )
-        _drafts.value = _drafts.value.toMutableMap().apply {
-            remove(currentPlan.exercise.id)?.let { draft -> put(exercise.id, draft) }
-        }
-        _message.value = "${currentPlan.exercise.name} vervangen door ${exercise.name} voor deze actieve training."
+        _message.value = "Oefeningen vervangen tijdens een actieve training is tijdelijk uitgeschakeld. Pas de routine aan voordat je start."
     }
 
     fun removeExerciseFromActiveWorkout(workoutExerciseId: Long) {
         val workout = _activeWorkout.value ?: return
         val currentPlan = workout.exercises.firstOrNull { it.id == workoutExerciseId } ?: return
-        if (_loggedSetsThisSession.value[currentPlan.exercise.id].orEmpty().isNotEmpty()) {
+        val key = currentPlan.activeKey
+        if (_loggedSetsThisSession.value[key].orEmpty().isNotEmpty()) {
             _message.value = "Verwijder eerst gelogde sets voordat je deze oefening uit de actieve training haalt."
             return
         }
-        _activeWorkout.value = workout.copy(exercises = workout.exercises.filterNot { it.id == workoutExerciseId })
-        _drafts.value = _drafts.value - currentPlan.exercise.id
-        _activeFocusTarget.value = _activeFocusTarget.value?.takeUnless { it.exerciseId == currentPlan.exercise.id }
-        _message.value = "${currentPlan.exercise.name} verwijderd uit deze actieve training. De routine zelf is niet aangepast."
+        _message.value = "Oefeningen verwijderen tijdens een actieve training is tijdelijk uitgeschakeld. Pas de routine aan voordat je start."
     }
 
     fun updateWorkoutExercisePlan(
@@ -914,7 +921,7 @@ class WorkoutViewModel @Inject constructor(
                 targetRpe = input.targetRpe,
                 setType = setType,
             )
-            _message.value = "Exercise plan updated."
+            _message.value = "Oefening bijgewerkt."
         }
     }
 
@@ -956,7 +963,7 @@ class WorkoutViewModel @Inject constructor(
     fun deleteWorkoutSession(sessionId: Long) {
         viewModelScope.launch {
             deleteWorkoutSessionUseCase(sessionId)
-            _message.value = "Workout session deleted."
+            _message.value = "Workoutsessie verwijderd."
         }
     }
 
@@ -1051,7 +1058,7 @@ class WorkoutViewModel @Inject constructor(
     private fun applyActiveSession(session: ActiveWorkoutSession) {
         _activeSession.value = session
         _loggedSetsThisSession.value = session.loggedSets
-            .groupBy { it.exerciseId }
+            .groupBy { it.activeKey }
             .mapValues { (_, sets) -> sets.map { it.toLoggedSet() } }
         _drafts.value = session.drafts.mapValues { it.value.toUiDraft() }
         _elapsedSeconds.value = ((System.currentTimeMillis() - session.startedAt) / 1_000).coerceAtLeast(0)
@@ -1096,18 +1103,22 @@ class WorkoutViewModel @Inject constructor(
 fun WorkoutRoute(
     onStartWorkout: (Long) -> Unit,
     onOpenExerciseHistory: (Long) -> Unit,
+    onDetailModeChanged: (Boolean) -> Unit = {},
     viewModel: WorkoutViewModel = hiltViewModel(),
 ) {
     val overview by viewModel.overview.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val pendingGeneratedRoutine by viewModel.pendingGeneratedRoutine.collectAsStateWithLifecycle()
+    val isSavingGeneratedRoutine by viewModel.isSavingGeneratedRoutine.collectAsStateWithLifecycle()
     WorkoutScreen(
         overview = overview,
         message = message,
         pendingGeneratedRoutine = pendingGeneratedRoutine,
+        isSavingGeneratedRoutine = isSavingGeneratedRoutine,
         onDismissMessage = viewModel::clearMessage,
         onStartWorkout = onStartWorkout,
         onOpenExerciseHistory = onOpenExerciseHistory,
+        onDetailModeChanged = onDetailModeChanged,
         onCreateRoutine = viewModel::createRoutine,
         onGenerateAiRoutine = viewModel::generateAiRoutine,
         onSaveGeneratedRoutine = viewModel::savePendingGeneratedRoutine,
@@ -1139,9 +1150,11 @@ fun WorkoutScreen(
     overview: WorkoutOverview?,
     message: String?,
     pendingGeneratedRoutine: GeneratedRoutine?,
+    isSavingGeneratedRoutine: Boolean,
     onDismissMessage: () -> Unit,
     onStartWorkout: (Long) -> Unit,
     onOpenExerciseHistory: (Long) -> Unit,
+    onDetailModeChanged: (Boolean) -> Unit = {},
     onCreateRoutine: (String, String) -> Unit,
     onGenerateAiRoutine: (Int, String, String, String, Int, Boolean) -> Unit,
     onSaveGeneratedRoutine: () -> Unit,
@@ -1169,6 +1182,9 @@ fun WorkoutScreen(
     var showCreateDialog by remember { mutableStateOf(false) }
     var isGenerating by remember { mutableStateOf(false) }
     var selectedRoutineId by rememberSaveable { mutableStateOf<Long?>(null) }
+    LaunchedEffect(selectedRoutineId) {
+        onDetailModeChanged(selectedRoutineId != null)
+    }
     BackHandler(enabled = selectedRoutineId != null) {
         selectedRoutineId = null
     }
@@ -1181,6 +1197,7 @@ fun WorkoutScreen(
     pendingGeneratedRoutine?.let { routine ->
         GeneratedRoutinePreviewDialog(
             routine = routine,
+            isSaving = isSavingGeneratedRoutine,
             onSave = onSaveGeneratedRoutine,
             onRetry = {
                 isGenerating = true
@@ -1687,7 +1704,7 @@ private fun RoutineCard(
         AlertDialog(
             onDismissRequest = { showDeleteRoutineConfirm = false },
             title = { Text("Routine verwijderen?") },
-            text = { Text("Deze routine en alle sessies in de routine worden verwijderd. Workout history blijft bewaard.") },
+            text = { Text("Deze routine en alle sessies in de routine worden verwijderd. Trainingsgeschiedenis blijft bewaard.") },
             confirmButton = {
                 Button(
                     onClick = {
@@ -1785,7 +1802,7 @@ private fun RoutineCard(
                             isEditing = false
                         },
                     ) {
-                        Text("Annuleer")
+                        Text("Annuleren")
                     }
                 }
             } else {
@@ -2883,7 +2900,7 @@ private fun ExercisePickerSheet(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("Defaults voor deze oefening", style = MaterialTheme.typography.labelLarge)
+                    Text("Standaardwaarden voor deze oefening", style = MaterialTheme.typography.labelLarge)
                                     Text(
                                         "$targetSets sets - $repRange reps - ${restSeconds}s rust",
                                         style = MaterialTheme.typography.bodySmall,
@@ -2897,7 +2914,7 @@ private fun ExercisePickerSheet(
                                     IconButton(onClick = { defaultsExpanded = !defaultsExpanded }) {
                                         Icon(
                                             if (defaultsExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                                            contentDescription = if (defaultsExpanded) "Defaults inklappen" else "Defaults openen",
+                            contentDescription = if (defaultsExpanded) "Standaardwaarden inklappen" else "Standaardwaarden openen",
                                         )
                                     }
                                 }
@@ -3002,7 +3019,7 @@ private fun CustomExerciseDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Defaults", style = MaterialTheme.typography.labelLarge)
+            Text("Standaardwaarden", style = MaterialTheme.typography.labelLarge)
                     RpeInfoButton(compactText = true)
                 }
                 FlowRow(
@@ -3652,7 +3669,7 @@ fun ActiveWorkoutScreen(
                                 uiState = uiState,
                                 suggestion = suggestionsByExerciseId[plan.exercise.id],
                                 isResting = uiState.restTimerSeconds > 0,
-                                isAutoAdvanceTarget = uiState.activeFocusTarget?.exerciseId == plan.exercise.id,
+                                isAutoAdvanceTarget = uiState.activeFocusTarget?.exerciseId == plan.activeKey,
                                 hapticOnSuccess = {
                                     if (workoutHapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                 },
@@ -3675,7 +3692,7 @@ fun ActiveWorkoutScreen(
                         uiState = uiState,
                         suggestion = suggestionsByExerciseId[group.first().exercise.id],
                         isResting = uiState.restTimerSeconds > 0,
-                        isAutoAdvanceTarget = uiState.activeFocusTarget?.exerciseId == group.first().exercise.id,
+                        isAutoAdvanceTarget = uiState.activeFocusTarget?.exerciseId == group.first().activeKey,
                         hapticOnSuccess = {
                             if (workoutHapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         },
@@ -3786,7 +3803,7 @@ private fun ActiveWorkoutStickyStatus(uiState: ActiveWorkoutUiState) {
                 ) {
                     Icon(
                         Icons.Rounded.CloudQueue,
-                        contentDescription = "${uiState.loggingSummary.pendingCount} workout events pending sync",
+                        contentDescription = "${uiState.loggingSummary.pendingCount} workout-events wachten op synchronisatie",
                         modifier = Modifier.size(18.dp),
                         tint = MaterialTheme.colorScheme.primary,
                     )
@@ -3857,10 +3874,11 @@ private fun ActiveWorkoutPlanCard(
     onReplaceExercise: () -> Unit,
     onRemoveExercise: () -> Unit,
 ) {
-    val draft = uiState.drafts[plan.exercise.id] ?: SetInputDraft()
-    val draftErrors = uiState.draftErrors[plan.exercise.id] ?: SetInputFieldErrors()
-    val loggedSets = uiState.loggedSetsThisSession[plan.exercise.id].orEmpty()
-    val collapsed = plan.exercise.id in uiState.collapsedExerciseIds
+    val key = plan.activeKey
+    val draft = uiState.drafts[key] ?: SetInputDraft()
+    val draftErrors = uiState.draftErrors[key] ?: SetInputFieldErrors()
+    val loggedSets = uiState.loggedSetsThisSession[key].orEmpty()
+    val collapsed = key in uiState.collapsedExerciseIds
     ActiveExerciseCard(
         plan = plan,
         loggedSets = loggedSets,
@@ -3869,17 +3887,17 @@ private fun ActiveWorkoutPlanCard(
         draftErrors = draftErrors,
         isResting = isResting,
         isAutoAdvanceTarget = isAutoAdvanceTarget,
-        isLogPending = uiState.pendingLoggingExerciseIds.contains(plan.exercise.id),
+        isLogPending = uiState.pendingLoggingExerciseIds.contains(key),
         collapsed = collapsed,
         onOpenHistory = onOpenHistory,
-        onDraftChange = { next -> onDraftChange(plan.exercise.id, next) },
-        onSetTypeChange = { setIndex, setType -> onSetTypeChange(plan.exercise.id, setIndex, setType) },
-        onEditSet = { setIndex -> onEditSet(plan.exercise.id, setIndex) },
-        onDeleteSet = { setIndex -> onDeleteSet(plan.exercise.id, setIndex) },
-        onToggleCollapsed = { onToggleCollapsed(plan.exercise.id, !collapsed) },
+        onDraftChange = { next -> onDraftChange(key, next) },
+        onSetTypeChange = { setIndex, setType -> onSetTypeChange(key, setIndex, setType) },
+        onEditSet = { setIndex -> onEditSet(key, setIndex) },
+        onDeleteSet = { setIndex -> onDeleteSet(key, setIndex) },
+        onToggleCollapsed = { onToggleCollapsed(key, !collapsed) },
         onCopyLastSet = {
             loggedSets.lastOrNull()?.let { lastSet ->
-                onDraftChange(plan.exercise.id, lastSet.toDraft())
+                onDraftChange(key, lastSet.toDraft())
             }
         },
         onLogSet = {
@@ -4009,7 +4027,12 @@ private fun ActiveExerciseCard(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .clickable(onClick = onOpenHistory),
+                        .semantics { contentDescription = "Open geschiedenis voor ${plan.exercise.name}" }
+                        .clickable(
+                            role = Role.Button,
+                            onClickLabel = "Open geschiedenis",
+                            onClick = onOpenHistory,
+                        ),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     Text(
@@ -4408,7 +4431,7 @@ private fun SetRow(
             Box(modifier = Modifier.width(ActiveSetActionWidth), contentAlignment = Alignment.CenterEnd) {
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     IconButton(onClick = onEdit) {
-                        Icon(Icons.Rounded.ContentCopy, contentDescription = "Set naar invoer kopieren")
+                        Icon(Icons.Rounded.ContentCopy, contentDescription = "Set naar invoer kopiëren")
                     }
                     IconButton(onClick = { showDeleteConfirm = true }) {
                         Icon(Icons.Rounded.Delete, contentDescription = "Set verwijderen")
@@ -4567,7 +4590,7 @@ private fun WorkoutDebriefCard(result: WorkoutDebrief, uiState: ActiveWorkoutUiS
     }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Workout samenvatting", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Trainingssamenvatting", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 StatusMetric("Volume", "${summary.volume.toInt()} kg")
                 StatusMetric("Sets", summary.setCount.toString())
@@ -4585,12 +4608,12 @@ private fun WorkoutDebriefCard(result: WorkoutDebrief, uiState: ActiveWorkoutUiS
             if (result.recoveryAdvice.isNotBlank()) {
                 Text("Herstel: ${result.recoveryAdvice}")
             }
-            Text("Intensity signal: ${result.intensitySignal}", color = intensityContentColor(result.intensitySignal))
+            Text("Intensiteitssignaal: ${result.intensitySignal}", color = intensityContentColor(result.intensitySignal))
             LinearProgressIndicator(
                 progress = { result.recoveryScore.coerceIn(0, 100) / 100f },
                 modifier = Modifier.fillMaxWidth(),
             )
-            Text("Recovery score: ${result.recoveryScore}/100", style = MaterialTheme.typography.bodySmall)
+            Text("Herstelscore: ${result.recoveryScore}/100", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -4651,7 +4674,7 @@ private fun List<WorkoutExercisePlan>.focusLabel(): String {
         .entries
         .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
         .map { it.key }
-    return groups.take(2).joinToString(" + ").ifBlank { "Full body" }
+    return groups.take(2).joinToString(" + ").ifBlank { "Hele lichaam" }
 }
 
 private fun String.normalizedDecimal(): String = trim().replace(',', '.')
@@ -4708,7 +4731,7 @@ internal fun validateSetInput(draft: SetInputDraft): SetLogValidationResult {
     val parsedReps = draft.reps.trim().toIntOrNull()
     val rpeInput = draft.rpe.normalizedDecimal()
     val parsedRpe = if (rpeInput.isBlank()) 0.0 else rpeInput.toDoubleOrNull()
-    if (parsedWeight == null || !parsedWeight.isFinite() || parsedWeight <= 0.0 || parsedWeight > MaxWeightKg) {
+    if (parsedWeight == null || !parsedWeight.isFinite() || parsedWeight < 0.0 || parsedWeight > MaxWeightKg) {
         val message = "Voer een gewicht tussen 0 en ${MaxWeightKg.toInt()} kg in."
         return SetLogValidationResult.Invalid(message, SetInputFieldErrors(weight = message))
     }
@@ -4802,37 +4825,37 @@ private fun workoutExerciseGroups(plans: List<WorkoutExercisePlan>): List<List<W
 
 internal fun resolveNextFocusTarget(
     plans: List<WorkoutExercisePlan>,
-    loggedSetsByExerciseId: Map<Long, List<LoggedSet>>,
-    justLoggedExerciseId: Long,
+    loggedSetsByPlanKey: Map<Long, List<LoggedSet>>,
+    justLoggedPlanKey: Long,
 ): ActiveWorkoutFocusTarget? {
-    val currentIndex = plans.indexOfFirst { it.exercise.id == justLoggedExerciseId }
+    val currentIndex = plans.indexOfFirst { it.activeKey == justLoggedPlanKey }
     if (currentIndex < 0) return null
     val current = plans[currentIndex]
     val currentGroupId = current.supersetGroupId
     if (currentGroupId != null) {
         val group = plans.filter { it.supersetGroupId == currentGroupId }
-        val currentGroupIndex = group.indexOfFirst { it.exercise.id == justLoggedExerciseId }
+        val currentGroupIndex = group.indexOfFirst { it.activeKey == justLoggedPlanKey }
         val orderedCandidates = group.drop(currentGroupIndex + 1) + group.take(currentGroupIndex + 1)
         orderedCandidates.firstOrNull { plan ->
-            loggedSetsByExerciseId[plan.exercise.id].orEmpty().size < plan.plannedSetCount()
+            loggedSetsByPlanKey[plan.activeKey].orEmpty().size < plan.plannedSetCount()
         }?.let { plan ->
             return ActiveWorkoutFocusTarget(
-                exerciseId = plan.exercise.id,
-                setIndex = loggedSetsByExerciseId[plan.exercise.id].orEmpty().size,
+                exerciseId = plan.activeKey,
+                setIndex = loggedSetsByPlanKey[plan.activeKey].orEmpty().size,
             )
         }
     }
-    val currentLoggedCount = loggedSetsByExerciseId[justLoggedExerciseId].orEmpty().size
+    val currentLoggedCount = loggedSetsByPlanKey[justLoggedPlanKey].orEmpty().size
     if (currentLoggedCount < current.plannedSetCount()) {
-        return ActiveWorkoutFocusTarget(justLoggedExerciseId, currentLoggedCount)
+        return ActiveWorkoutFocusTarget(justLoggedPlanKey, currentLoggedCount)
     }
     val next = plans.drop(currentIndex + 1).firstOrNull { plan ->
-        loggedSetsByExerciseId[plan.exercise.id].orEmpty().size < plan.plannedSetCount()
+        loggedSetsByPlanKey[plan.activeKey].orEmpty().size < plan.plannedSetCount()
     }
     return next?.let {
         ActiveWorkoutFocusTarget(
-            exerciseId = it.exercise.id,
-            setIndex = loggedSetsByExerciseId[it.exercise.id].orEmpty().size,
+            exerciseId = it.activeKey,
+            setIndex = loggedSetsByPlanKey[it.activeKey].orEmpty().size,
         )
     }
 }
@@ -4897,10 +4920,16 @@ private fun ActiveWorkoutSetDraft.toUiDraft() = SetInputDraft(
 private fun exerciseSummaryMeta(plan: WorkoutExercisePlan): String {
     val rpe = plan.targetRpe.takeIf { it > 0.0 }?.let { "RPE ${formatWeight(it)}" } ?: "RPE -"
     val superset = plan.supersetGroupId?.let { " · Superset $it" }.orEmpty()
-    return "${plan.plannedSetCount()} sets · ${plan.repRange} reps · ${plan.restSeconds}s rest · $rpe$superset"
+    return "${plan.plannedSetCount()} sets · ${plan.repRange} reps · ${plan.restSeconds}s rust · $rpe$superset"
 }
 
 private fun WorkoutExercisePlan.plannedSetCount(): Int = sets.size.takeIf { it > 0 } ?: targetSets
+
+private val WorkoutExercisePlan.activeKey: Long
+    get() = id
+
+private val ActiveWorkoutSetEntry.activeKey: Long
+    get() = sourceWorkoutExerciseId ?: exerciseId
 
 private fun WorkoutExercisePlan.plannedRestSeconds(setIndex: Int): Int =
     sets.sortedWith(compareBy<RoutineSet> { it.orderIndex }.thenBy { it.id })

@@ -293,6 +293,9 @@ class TrainIqRepository @Inject constructor(
         var result: ActiveWorkoutSession? = null
         localStore.update { state ->
             val existing = state.activeWorkoutSession
+            if (existing != null && existing.dayId != dayId) {
+                error("Rond je actieve training af of verwijder die voordat je een andere training start.")
+            }
             val active = if (existing != null && existing.dayId == dayId) {
                 existing.copy(updatedAt = now)
             } else {
@@ -372,15 +375,15 @@ class TrainIqRepository @Inject constructor(
                 repsInReserve = set.repsInReserve,
                 setType = set.setType,
                 restSeconds = restSeconds.coerceAtLeast(0),
-                orderIndex = active.loggedSets.count { it.exerciseId == set.exerciseId },
+                orderIndex = active.loggedSets.count { it.activeKey == storedSetKey(set) },
                 completed = true,
                 loggedAt = now,
             )
             val updated = state
                 .copy(
                     activeWorkoutSession = active.copy(
-                        drafts = active.drafts.toMutableMap().apply { put(set.exerciseId, draft.toStorage()) },
-                        collapsedExerciseIds = active.collapsedExerciseIds - set.exerciseId,
+                        drafts = active.drafts.toMutableMap().apply { put(storedSetKey(set), draft.toStorage()) },
+                        collapsedExerciseIds = active.collapsedExerciseIds - storedSetKey(set),
                         restTimerEndsAt = if (restSeconds > 0) now + restSeconds * 1_000L else null,
                         restTimerTotalSeconds = restSeconds.coerceAtLeast(0),
                     ),
@@ -460,7 +463,13 @@ class TrainIqRepository @Inject constructor(
 
     override suspend fun discardActiveWorkout(dayId: Long) {
         localStore.update { state ->
-            if (state.activeWorkoutSession?.dayId == dayId) state.copy(activeWorkoutSession = null) else state
+            val active = state.activeWorkoutSession?.takeIf { it.dayId == dayId } ?: return@update state
+            state.copy(
+                activeWorkoutSession = null,
+                sessions = state.sessions.filterNot { it.id == active.sessionId && !it.completed && it.status == "DRAFT" },
+                performedExercises = state.performedExercises.filterNot { it.sessionId == active.sessionId },
+                workoutLogEvents = state.workoutLogEvents.filterNot { it.sessionId == active.sessionId },
+            )
         }
     }
 
@@ -863,10 +872,7 @@ class TrainIqRepository @Inject constructor(
 
     override suspend fun deleteWorkoutSession(sessionId: Long) {
         localStore.update { state ->
-            state.copy(
-                sessions = state.sessions.filterNot { it.id == sessionId },
-                workoutSets = state.workoutSets.filterNot { it.sessionId == sessionId },
-            )
+            state.withWorkoutSessionDeleted(sessionId)
         }
     }
 
@@ -991,13 +997,19 @@ class TrainIqRepository @Inject constructor(
         combine(snapshotState, _cachedSteps) { snapshot, steps -> buildNutritionOverview(snapshot, steps) }
 
     override suspend fun analyzeMealPhoto(path: String, context: String, capturedAtMillis: Long): MealAnalysisResult {
-        val result = mealAnalysisService.analyzeMealImage(
-            path = path,
-            userContext = context,
-            capturedAtMillis = capturedAtMillis,
-        )
-        scannedMealResult.value = result
-        return result
+        scannedMealResult.value = null
+        return try {
+            val result = mealAnalysisService.analyzeMealImage(
+                path = path,
+                userContext = context,
+                capturedAtMillis = capturedAtMillis,
+            )
+            scannedMealResult.value = result
+            result
+        } catch (error: Throwable) {
+            scannedMealResult.value = null
+            throw error
+        }
     }
 
     override fun clearLastScanResult() {
@@ -1015,28 +1027,29 @@ class TrainIqRepository @Inject constructor(
         sourceType: FoodSourceType,
     ): FoodItem {
         val now = System.currentTimeMillis()
-        val current = localStore.state.value
-        val existing = current.foods.firstOrNull { it.id == id }
-        val duplicateBarcode = barcode?.trim()?.takeIf { it.isNotBlank() }?.let { code ->
-            current.foods.firstOrNull { it.barcode == code && it.id != id }
-        }
-        val foodId = existing?.id ?: duplicateBarcode?.id ?: ((current.foods.maxOfOrNull { it.id } ?: 0L) + 1L)
-        val storage = FoodItemStorage(
-            id = foodId,
-            name = name.trim(),
-            barcode = barcode?.trim()?.takeIf { it.isNotBlank() },
-            caloriesPer100g = caloriesPer100g,
-            proteinPer100g = proteinPer100g,
-            carbsPer100g = carbsPer100g,
-            fatPer100g = fatPer100g,
-            sourceType = sourceType,
-            createdAt = existing?.createdAt ?: duplicateBarcode?.createdAt ?: now,
-            updatedAt = now,
-        )
+        var saved: FoodItemStorage? = null
         localStore.update { state ->
+            val existing = state.foods.firstOrNull { it.id == id }
+            val duplicateBarcode = barcode?.trim()?.takeIf { it.isNotBlank() }?.let { code ->
+                state.foods.firstOrNull { it.barcode == code && it.id != id }
+            }
+            val foodId = existing?.id ?: duplicateBarcode?.id ?: ((state.foods.maxOfOrNull { it.id } ?: 0L) + 1L)
+            val storage = FoodItemStorage(
+                id = foodId,
+                name = name.trim(),
+                barcode = barcode?.trim()?.takeIf { it.isNotBlank() },
+                caloriesPer100g = caloriesPer100g,
+                proteinPer100g = proteinPer100g,
+                carbsPer100g = carbsPer100g,
+                fatPer100g = fatPer100g,
+                sourceType = sourceType,
+                createdAt = existing?.createdAt ?: duplicateBarcode?.createdAt ?: now,
+                updatedAt = now,
+            )
+            saved = storage
             state.copy(foods = state.foods.filterNot { it.id == foodId } + storage)
         }
-        return mapFood(storage)
+        return mapFood(requireNotNull(saved))
     }
 
     override suspend fun saveRecipe(
@@ -1361,6 +1374,7 @@ class TrainIqRepository @Inject constructor(
         }
         val sessionVolumes = snapshot.sets.groupBy { it.sessionId }.mapValues { analyticsEngine.trainingVolume(it.value) }
         val history = snapshot.sessions
+            .filter { it.completed && it.status == "COMPLETED" }
             .sortedByDescending { it.date }
             .map { it.toDomain(sessionVolumes[it.id] ?: 0.0) }
         return WorkoutOverview(
@@ -1534,8 +1548,8 @@ class TrainIqRepository @Inject constructor(
             .filter { normalizeToDay(it.date) == todayEpochMillis() }
             .sumOf { it.caloriesBurned }
         return when {
-            snapshot.sessions.isEmpty() -> "Je bent klaar om te starten. Plan ${nextWorkout.name} als eerste sessie voor je doel '${profile.goal}'."
-            proteinGap > 20 -> "Je volgende workout is ${nextWorkout.name}. Voeg vandaag nog ongeveer $proteinGap g eiwit toe en houd rekening met ${todaysWorkoutCalories} kcal strength work."
+            snapshot.sessions.none { it.completed && it.status == "COMPLETED" } -> "Je bent klaar om te starten. Plan ${nextWorkout.name} als eerste sessie voor je doel '${profile.goal}'."
+            proteinGap > 20 -> "Je volgende workout is ${nextWorkout.name}. Voeg vandaag nog ongeveer $proteinGap g eiwit toe en houd rekening met ${todaysWorkoutCalories} kcal krachttraining."
             else -> "Je ligt op koers voor ${profile.goal}. Volgende training: ${nextWorkout.name}. Focus op ${profile.trainingFocus.lowercase()}."
         }
     }
@@ -1543,14 +1557,14 @@ class TrainIqRepository @Inject constructor(
     private fun calculateAdherence(snapshot: RepositorySnapshot): Int {
         val today = todayEpochMillis()
         val last7Days = (0..6).map { today - (it * 86_400_000L) }.toSet()
-        val workoutDays = snapshot.sessions.map { normalizeToDay(it.date) }.toSet()
+        val workoutDays = snapshot.sessions.filter { it.completed && it.status == "COMPLETED" }.map { normalizeToDay(it.date) }.toSet()
         val mealDays = snapshot.meals.map { normalizeToDay(it.timestamp) }.toSet()
         val activeDays = last7Days.count { it in workoutDays || it in mealDays }
         return (activeDays / 7.0 * 100).toInt()
     }
 
     private fun computeStreak(sessions: List<WorkoutSessionEntity>, meals: List<LoggedMeal>): Int {
-        val activeDays = (sessions.map { normalizeToDay(it.date) } + meals.map { normalizeToDay(it.timestamp) }).toSet()
+        val activeDays = (sessions.filter { it.completed && it.status == "COMPLETED" }.map { normalizeToDay(it.date) } + meals.map { normalizeToDay(it.timestamp) }).toSet()
         if (activeDays.isEmpty()) return 0
         var streak = 0
         var day = todayEpochMillis()
@@ -1893,7 +1907,7 @@ private fun List<ActiveWorkoutSetStorage>.replaceExerciseSet(
 ): List<ActiveWorkoutSetStorage> {
     var exerciseIndex = -1
     return map { set ->
-        if (set.exerciseId != exerciseId) {
+        if (set.activeKey != exerciseId) {
             set
         } else {
             exerciseIndex += 1
@@ -1908,7 +1922,7 @@ private fun List<ActiveWorkoutSetStorage>.filterIndexedForExercise(
 ): List<ActiveWorkoutSetStorage> {
     var exerciseIndex = -1
     return filter { set ->
-        if (set.exerciseId != exerciseId) {
+        if (set.activeKey != exerciseId) {
             true
         } else {
             exerciseIndex += 1
@@ -1916,6 +1930,20 @@ private fun List<ActiveWorkoutSetStorage>.filterIndexedForExercise(
         }
     }
 }
+
+private val ActiveWorkoutSetStorage.activeKey: Long
+    get() = sourceWorkoutExerciseId ?: exerciseId
+
+private fun storedSetKey(set: LoggedSet): Long = set.sourceWorkoutExerciseId ?: set.exerciseId
+
+internal fun TrainIqStorageState.withWorkoutSessionDeleted(sessionId: Long): TrainIqStorageState =
+    copy(
+        sessions = sessions.filterNot { it.id == sessionId },
+        workoutSets = workoutSets.filterNot { it.sessionId == sessionId },
+        performedExercises = performedExercises.filterNot { it.sessionId == sessionId },
+        workoutLogEvents = workoutLogEvents.filterNot { it.sessionId == sessionId },
+        activeWorkoutSession = activeWorkoutSession?.takeUnless { it.sessionId == sessionId },
+    )
 
 internal fun TrainIqStorageState.withExerciseAddedToRoutine(
     routineId: Long,
@@ -2207,10 +2235,10 @@ internal fun buildMealItemSnapshots(
     val foodsById = foods.associateBy { it.id }
     val recipesById = recipes.associateBy { it.id }
     var nextItemId = startItemId + 1L
-    return requests.mapNotNull { request ->
+    return requests.map { request ->
         when (request.itemType) {
             MealEntryType.FOOD -> {
-                val food = foodsById[request.referenceId] ?: return@mapNotNull null
+                val food = foodsById[request.referenceId] ?: error("Deze maaltijd bevat een verwijderd product of recept.")
                 val nutrition = food.nutritionForGrams(request.gramsUsed)
                 LoggedMealItemStorage(
                     id = nextItemId++,
@@ -2228,9 +2256,9 @@ internal fun buildMealItemSnapshots(
             }
 
             MealEntryType.RECIPE -> {
-                val recipe = recipesById[request.referenceId] ?: return@mapNotNull null
+                val recipe = recipesById[request.referenceId] ?: error("Deze maaltijd bevat een verwijderd product of recept.")
                 val baseGrams = recipe.totalCookedGrams ?: recipe.ingredients.sumOf { it.gramsUsed }
-                if (baseGrams <= 0.0 || !baseGrams.isFinite()) return@mapNotNull null
+                if (baseGrams <= 0.0 || !baseGrams.isFinite()) error("Deze maaltijd bevat een verwijderd product of recept.")
                 val ratio = request.gramsUsed / baseGrams
                 val nutrition = NutritionFacts(
                     calories = recipe.totalNutrition.calories * ratio,

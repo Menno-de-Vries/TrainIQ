@@ -8,6 +8,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -92,6 +94,7 @@ import com.trainiq.domain.usecase.SaveMealUseCase
 import com.trainiq.domain.usecase.SaveRecipeUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -333,6 +336,19 @@ class NutritionViewModel @Inject constructor(
         }
     }
 
+    fun tryStartAiBatchSave(): Boolean {
+        val current = ephemeral.value.pendingSubmits
+        val started = tryStartNutritionSubmit(current, NutritionSubmitKey.AiItems)
+        if (started is NutritionSubmitStartResult.AlreadyPending) return false
+        started as NutritionSubmitStartResult.Started
+        ephemeral.update { it.copy(pendingSubmits = started.pendingKeys, message = null) }
+        return true
+    }
+
+    fun finishAiBatchSave() {
+        ephemeral.update { it.copy(pendingSubmits = finishNutritionSubmit(it.pendingSubmits, NutritionSubmitKey.AiItems)) }
+    }
+
     fun setMessage(message: String?) {
         ephemeral.update { it.copy(message = message) }
     }
@@ -364,8 +380,11 @@ fun NutritionRoute(
         onDeleteMeal = viewModel::deleteMeal,
         onDeleteFood = viewModel::deleteFood,
         onDeleteRecipe = viewModel::deleteRecipe,
+        onTryStartAiBatchSave = viewModel::tryStartAiBatchSave,
+        onFinishAiBatchSave = viewModel::finishAiBatchSave,
         onSetScanResult = viewModel::setScanResult,
         onSetScanTarget = viewModel::setScanTarget,
+        onSetMessage = viewModel::setMessage,
         onDismissMessage = { viewModel.setMessage(null) },
         onOpenAiScanner = onOpenAiScanner,
         onOpenBarcodeScanner = onOpenBarcodeScanner,
@@ -384,8 +403,11 @@ fun NutritionScreen(
     onDeleteMeal: (Long) -> Unit,
     onDeleteFood: (Long) -> Unit,
     onDeleteRecipe: (Long) -> Unit,
+    onTryStartAiBatchSave: () -> Boolean,
+    onFinishAiBatchSave: () -> Unit,
     onSetScanResult: (MealAnalysisResult?) -> Unit,
     onSetScanTarget: (ScanTarget) -> Unit = {},
+    onSetMessage: (String?) -> Unit,
     onDismissMessage: () -> Unit,
     onOpenAiScanner: (String) -> Unit,
     onOpenBarcodeScanner: () -> Unit,
@@ -403,6 +425,7 @@ fun NutritionScreen(
     val isRecipeSaving = NutritionSubmitKey.Recipe in pendingSubmits
     val isMealSaving = NutritionSubmitKey.Meal in pendingSubmits
     val isDeletePending = NutritionSubmitKey.Delete in pendingSubmits
+    val isAiBatchPending = NutritionSubmitKey.AiItems in pendingSubmits
     val haptics = LocalHapticFeedback.current
     val nutritionListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
@@ -457,15 +480,73 @@ fun NutritionScreen(
     val editableAiItems = remember { mutableStateListOf<EditableAiItem>() }
     var aiItemErrors by remember { mutableStateOf<Map<Int, AiItemFieldErrors>>(emptyMap()) }
     var aiSaveProgress by remember { mutableStateOf(startAiBatchSaveProgress(0)) }
-    val isAiSaving = !aiSaveProgress.isFinished
+    val isAiSaving = !aiSaveProgress.isFinished || isAiBatchPending
 
-    fun finishAiBatchItem(success: Boolean, onAllSucceeded: () -> Unit) {
+    fun finishAiBatchItem(item: EditableAiItem, success: Boolean, onAllSucceeded: () -> Unit) {
         val next = aiSaveProgress.finishOne(success)
         aiSaveProgress = next
+        if (success) {
+            editableAiItems.remove(item)
+            aiItemErrors = emptyMap()
+        }
+        if (next.isFinished) {
+            onFinishAiBatchSave()
+        }
         if (next.allSucceeded) {
             editableAiItems.clear()
             aiItemErrors = emptyMap()
             onAllSucceeded()
+        }
+    }
+
+    fun saveAiFoodItemSequentially(batchItem: AiBatchItem): CompletableDeferred<Result<FoodItem>> {
+        val result = CompletableDeferred<Result<FoodItem>>()
+        val item = batchItem.item
+        val grams = batchItem.grams
+        onSaveFood(
+            null,
+            item.name,
+            null,
+            per100Value(item.calories, grams),
+            per100Value(item.protein, grams),
+            per100Value(item.carbs, grams),
+            per100Value(item.fat, grams),
+            FoodSourceType.AI,
+            { saved -> result.complete(Result.success(saved)) },
+            { error -> result.complete(Result.failure(error)) },
+        )
+        return result
+    }
+
+    fun startAiFoodBatchSave(
+        batchItems: List<AiBatchItem>,
+        successMessage: (Int) -> String,
+        partialFailureMessage: (Int, Int) -> String,
+        onSavedItem: (FoodItem, Double) -> Unit,
+        onAllSucceeded: () -> Unit,
+    ) {
+        if (!onTryStartAiBatchSave()) return
+        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        aiSaveProgress = startAiBatchSaveProgress(batchItems.size)
+        coroutineScope.launch {
+            var succeeded = 0
+            batchItems.forEach { batchItem ->
+                val saved = saveAiFoodItemSequentially(batchItem).await().getOrNull()
+                if (saved != null) {
+                    succeeded += 1
+                    onSavedItem(saved, batchItem.grams)
+                    finishAiBatchItem(item = batchItem.item, success = true, onAllSucceeded = onAllSucceeded)
+                } else {
+                    finishAiBatchItem(item = batchItem.item, success = false, onAllSucceeded = {})
+                }
+            }
+            onSetMessage(
+                if (succeeded == batchItems.size) {
+                    successMessage(succeeded)
+                } else {
+                    partialFailureMessage(succeeded, batchItems.size - succeeded)
+                },
+            )
         }
     }
 
@@ -702,29 +783,15 @@ fun NutritionScreen(
                                             aiItemErrors = aiBatchNutritionErrors(editableAiItems.size)
                                             return@AiMealAnalysisCard
                                         }
-                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        aiSaveProgress = startAiBatchSaveProgress(batchItems.size)
-                                        batchItems.forEach { batchItem ->
-                                            val item = batchItem.item
-                                            val grams = batchItem.grams
-                                            onSaveFood(
-                                                null,
-                                                item.name,
-                                                null,
-                                                per100Value(item.calories, grams),
-                                                per100Value(item.protein, grams),
-                                                per100Value(item.carbs, grams),
-                                                per100Value(item.fat, grams),
-                                                FoodSourceType.AI,
-                                                { saved ->
-                                                    mealDraft += MealEntryRequest(MealEntryType.FOOD, saved.id, grams)
-                                                    finishAiBatchItem(success = true) {
-                                                        onSetScanResult(null)
-                                                    }
-                                                },
-                                                { finishAiBatchItem(success = false) {} },
-                                            )
-                                        }
+                                        startAiFoodBatchSave(
+                                            batchItems = batchItems,
+                                            successMessage = { count -> "$count AI-items toegevoegd aan je maaltijd." },
+                                            partialFailureMessage = { success, failed -> "$success AI-items toegevoegd, $failed mislukt. Controleer de overgebleven items." },
+                                            onSavedItem = { saved, grams ->
+                                                mealDraft += MealEntryRequest(MealEntryType.FOOD, saved.id, grams)
+                                            },
+                                            onAllSucceeded = { onSetScanResult(null) },
+                                        )
                                     },
                                 )
                                 }
@@ -760,29 +827,18 @@ fun NutritionScreen(
                                                 return@PhotoFoodReviewCard
                                             }
                                             recipeName = recipeName.ifBlank { "AI-fotorecept" }
-                                            aiSaveProgress = startAiBatchSaveProgress(batchItems.size)
-                                            batchItems.forEach { batchItem ->
-                                                val item = batchItem.item
-                                                val grams = batchItem.grams
-                                                onSaveFood(
-                                                    null,
-                                                    item.name,
-                                                    null,
-                                                    per100Value(item.calories, grams),
-                                                    per100Value(item.protein, grams),
-                                                    per100Value(item.carbs, grams),
-                                                    per100Value(item.fat, grams),
-                                                    FoodSourceType.AI,
-                                                    { saved ->
-                                                        recipeDraft += saved.id to grams
-                                                        finishAiBatchItem(success = true) {
-                                                            aiScanForRecipe = false
-                                                            onSetScanResult(null)
-                                                        }
-                                                    },
-                                                    { finishAiBatchItem(success = false) {} },
-                                                )
-                                            }
+                                            startAiFoodBatchSave(
+                                                batchItems = batchItems,
+                                                successMessage = { count -> "$count AI-items toegevoegd aan je recept." },
+                                                partialFailureMessage = { success, failed -> "$success AI-items toegevoegd, $failed mislukt. Controleer de overgebleven items." },
+                                                onSavedItem = { saved, grams ->
+                                                    recipeDraft += saved.id to grams
+                                                },
+                                                onAllSucceeded = {
+                                                    aiScanForRecipe = false
+                                                    onSetScanResult(null)
+                                                },
+                                            )
                                         },
                                         onAddToMeal = {
                                             val errors = editableAiItems.mapIndexedNotNull { index, item ->
@@ -795,30 +851,19 @@ fun NutritionScreen(
                                                 aiItemErrors = aiBatchNutritionErrors(editableAiItems.size)
                                                 return@PhotoFoodReviewCard
                                             }
-                                            aiSaveProgress = startAiBatchSaveProgress(batchItems.size)
-                                            batchItems.forEach { batchItem ->
-                                                val item = batchItem.item
-                                                val grams = batchItem.grams
-                                                onSaveFood(
-                                                    null,
-                                                    item.name,
-                                                    null,
-                                                    per100Value(item.calories, grams),
-                                                    per100Value(item.protein, grams),
-                                                    per100Value(item.carbs, grams),
-                                                    per100Value(item.fat, grams),
-                                                    FoodSourceType.AI,
-                                                    { saved ->
-                                                        mealDraft += MealEntryRequest(MealEntryType.FOOD, saved.id, grams)
-                                                        finishAiBatchItem(success = true) {
-                                                            aiScanForRecipe = false
-                                                            selectedTab = 0
-                                                            onSetScanResult(null)
-                                                        }
-                                                    },
-                                                    { finishAiBatchItem(success = false) {} },
-                                                )
-                                            }
+                                            startAiFoodBatchSave(
+                                                batchItems = batchItems,
+                                                successMessage = { count -> "$count AI-items toegevoegd aan je maaltijd." },
+                                                partialFailureMessage = { success, failed -> "$success AI-items toegevoegd, $failed mislukt. Controleer de overgebleven items." },
+                                                onSavedItem = { saved, grams ->
+                                                    mealDraft += MealEntryRequest(MealEntryType.FOOD, saved.id, grams)
+                                                },
+                                                onAllSucceeded = {
+                                                    aiScanForRecipe = false
+                                                    selectedTab = 0
+                                                    onSetScanResult(null)
+                                                },
+                                            )
                                         },
                                     )
                                 }
@@ -1190,6 +1235,7 @@ private fun ConfirmNutritionDeleteDialog(
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SummaryCard(overview: NutritionOverview?) {
     val calories = overview?.todaysCalories ?: 0.0
@@ -1207,7 +1253,11 @@ private fun SummaryCard(overview: NutritionOverview?) {
             Text("${(progress * 100).toInt()}%", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.trainIqColors.amber)
         }
         AppLinearProgress(progress = progress, accent = MaterialTheme.trainIqColors.amber)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
             AppChip(label = "Producten ${overview?.foods?.size ?: 0}", accent = MaterialTheme.trainIqColors.amber)
             AppChip(label = "Maaltijden ${overview?.meals?.size ?: 0}", accent = MaterialTheme.trainIqColors.amber)
             AppChip(label = "Recepten ${overview?.recipes?.size ?: 0}", accent = MaterialTheme.trainIqColors.amber)
@@ -1317,9 +1367,9 @@ private fun MealEntryRow(
             meal.items.forEach { item ->
                 Text("${item.name} · ${formatNumber(item.gramsUsed)}g", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.trainIqColors.mutedText)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { onEditMeal(meal) }) { Text("Hoeveelheid aanpassen") }
-                TextButton(onClick = { onDeleteMeal(meal.id) }) { Text("Verwijderen") }
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                TextButton(onClick = { onEditMeal(meal) }, modifier = Modifier.fillMaxWidth()) { Text("Hoeveelheid aanpassen") }
+                TextButton(onClick = { onDeleteMeal(meal.id) }, modifier = Modifier.fillMaxWidth()) { Text("Maaltijd verwijderen") }
             }
         }
     }
