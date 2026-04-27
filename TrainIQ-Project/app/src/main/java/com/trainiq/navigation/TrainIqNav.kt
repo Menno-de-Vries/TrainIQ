@@ -38,7 +38,6 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -165,7 +164,7 @@ fun TrainIqApp() {
                         shape = RoundedCornerShape(MaterialTheme.radii.nav),
                     ) {
                         NavigationBar(
-                            modifier = Modifier.height(76.dp),
+                            modifier = Modifier.height(64.dp),
                             tonalElevation = 0.dp,
                             containerColor = androidx.compose.ui.graphics.Color.Transparent,
                         ) {
@@ -203,8 +202,6 @@ fun TrainIqApp() {
                                             }
                                         }
                                     },
-                                    label = { Text(screen.label) },
-                                    alwaysShowLabel = true,
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = MaterialTheme.colorScheme.primary,
                                         selectedTextColor = MaterialTheme.colorScheme.primary,
