@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -139,7 +140,12 @@ fun Modifier.clearFocusOnScrollOrDrag(): Modifier {
     return pointerInput(focusManager, keyboardController) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-            awaitTouchSlopOrCancellation(down.id) { _, _ ->
+            val drag = awaitTouchSlopOrCancellation(down.id) { _, _ ->
+                focusManager.clearFocus(force = true)
+                keyboardController?.hide()
+            }
+            if (drag != null) {
+                waitForUpOrCancellation(pass = PointerEventPass.Final)
                 focusManager.clearFocus(force = true)
                 keyboardController?.hide()
             }

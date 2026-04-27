@@ -1389,19 +1389,40 @@ private fun RoutineCreationCard(onShowCreateDialog: () -> Unit, onShowAiDialog: 
 
 @Composable
 private fun ActiveRoutineCard(activeRoutine: WorkoutRoutine?, onStartWorkout: (Long) -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.mint) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Actieve routine", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             if (activeRoutine == null) {
                 Text("Nog geen actieve routine. Maak er hieronder een en markeer die als actief.")
             } else {
-                Text(activeRoutine.name)
-                Text(activeRoutine.description.ifBlank { "Nog geen beschrijving." })
+                Text(
+                    activeRoutine.name,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    activeRoutine.description.ifBlank { "Nog geen beschrijving." },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.trainIqColors.mutedText,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 val startableDay = activeRoutine.firstStartableDay()
                 if (startableDay == null) {
                     Text("Voeg in Sessies eerst een oefening toe voordat je deze routine start.")
                 } else {
-                    Button(onClick = { onStartWorkout(startableDay.id) }) { Text("Start ${startableDay.name}") }
+                    Button(
+                        onClick = { onStartWorkout(startableDay.id) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            "Start ${startableDay.name}",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
         }
@@ -2537,6 +2558,9 @@ private fun EditSetBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .navigationBarsPadding()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -3542,7 +3566,12 @@ fun ActiveWorkoutScreen(
                     title = "Actieve training",
                     subtitle = "${uiState.workout?.name ?: "Workout"} · ${formatTimer(uiState.elapsedSeconds.toInt())}",
                 )
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    maxItemsInEachRow = 3,
+                ) {
                     SecondaryActionButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Terug") }
                     SecondaryActionButton(onClick = { showDiscardConfirm = true }, modifier = Modifier.weight(1f), accent = MaterialTheme.colorScheme.error) { Text("Weggooien") }
                 }
@@ -4082,10 +4111,16 @@ private fun ActiveExerciseCard(
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    maxItemsInEachRow = 3,
+                ) {
                     SecondaryActionButton(
                         onClick = onCopyLastSet,
                         enabled = loggedSets.isNotEmpty(),
+                        modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 44.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                     ) {
                         Icon(Icons.Rounded.ContentCopy, contentDescription = "Vorige set kopiëren")
@@ -4093,13 +4128,16 @@ private fun ActiveExerciseCard(
                     TextButton(
                         onClick = onLogSameAgain,
                         enabled = loggedSets.isNotEmpty() && !isLogPending,
+                        modifier = Modifier.defaultMinSize(minHeight = 44.dp),
                     ) {
-                        Text("Zelfde opnieuw")
+                        Text("Zelfde opnieuw", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     PrimaryActionButton(
                         onClick = onLogSet,
                         enabled = !isLogPending,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .defaultMinSize(minHeight = 44.dp),
                     ) {
                         Text(
                             when {
@@ -4107,6 +4145,8 @@ private fun ActiveExerciseCard(
                                 loggedSets.size >= plan.plannedSetCount() -> "Extra set"
                                 else -> "Set loggen"
                             },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }

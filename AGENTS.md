@@ -1,65 +1,249 @@
-# AGENTS.md
+# TrainIQ — Engineering Foundation \& Standards
 
-## Projectdoel
-Deze Android app moet continu verbeterd worden op:
-- gebruiksgemak
-- design en visuele consistentie
-- performance
-- stabiliteit
-- toegankelijkheid
-- foutafhandeling
-- verwijderen van glitches, design flaws en onbedoelde werking
-- betere flow voor normale gebruikers
+Dit document is de leidende standaard voor technische keuzes binnen TrainIQ. Elke implementatie moet schaalbaar, onderhoudbaar, performant en AI-native blijven.
 
-## Belangrijkste regel
-Werk altijd in kleine, veilige iteraties. Verander niet te veel tegelijk.
+\---
 
-## Werkwijze per taak
-Volg altijd deze volgorde:
+## 🚀 Projectvisie
 
-1. Onderzoek de bestaande app en code.
-2. Zoek naar concrete problemen in UX, UI, bugs, glitches, onbedoelde functies of slechte flows.
-3. Maak eerst een kort plan.
-4. Voer maximaal 1 tot 3 gerichte verbeteringen tegelijk uit.
-5. Draai relevante tests.
-6. Bouw de Android app als dat mogelijk is.
-7. Controleer of bestaande functionaliteit niet kapot is gegaan.
-8. Geef aan:
-   - wat aangepast is
-   - waarom dit beter is
-   - welke bestanden gewijzigd zijn
-   - welke tests/build checks zijn uitgevoerd
-   - welke risico’s of vervolgstappen er nog zijn
+**TrainIQ** zet passieve gezondheidsdata om in actieve coaching.
 
-## Niet doen
-- Geen grote redesigns zonder duidelijke reden.
-- Geen bestaande functies verwijderen zonder onderbouwing.
-- Geen onnodige dependencies toevoegen.
-- Geen code herschrijven puur om het herschrijven.
-- Geen UI mooier maken ten koste van bruikbaarheid.
-- Geen breaking changes zonder uitleg.
+```text
+Health Connect → Gemini 2.5 Flash → Material 3 UI → Persoonlijke actie
+```
 
-## Android kwaliteitseisen
-Controleer waar mogelijk:
-- app start correct op
-- schermen laden zonder crash
-- navigatie werkt logisch
-- knoppen hebben duidelijke labels
-- foutmeldingen zijn begrijpelijk
-- loading states zijn aanwezig waar nodig
-- lege states zijn netjes afgehandeld
-- inputvalidatie werkt
-- donkere/lichtmodus breekt de UI niet
-- layout werkt op meerdere schermgroottes
-- geen rare overlap, clipping of onleesbare tekst
+**Doel:** een bijna onzichtbare gebruikerservaring waarbij data automatisch wordt verzameld en inzichten proactief worden aangeboden.
 
-## Testregels
-Gebruik waar mogelijk:
-- bestaande unit tests
-- bestaande UI tests
-- Android build/test commands
-- lint checks
-- handmatige testscenario’s als automatische tests ontbreken
+\---
 
-## Outputstijl
-Geef altijd een duidelijk eindrapport in het Nederlands.
+## 🗺️ Roadmap 2026
+
+### Phase 1 — Foundation
+
+* MVVM-structuur met Hilt DI
+* Room entities en repositories
+* Eerste Health Connect DataSource
+* Gemini 1.5/2.0-integratie aanwezig, maar update nodig
+
+### Phase 2 — Modernization \& Precision
+
+* Type-safe navigation met `kotlinx.serialization`
+* Volledige Material 3 UI met Dynamic Color
+* Health Connect-sync met `ChangesToken`
+* Multi-metric support: steps, heart rate, sleep, active calories en workouts
+* Upgrade naar Gemini 2.5 Flash
+* Thinking Budget voor coach-, advies- en rapportagefeatures
+
+### Phase 3 — Invisible Coach
+
+* Proactieve inzichten op basis van slaap, herstel en training
+* Multimodal scanning voor maaltijden, supplementlabels en fysieke houding
+* Gemini Nano voor snelle lokale feedback waar mogelijk
+
+\---
+
+## 🛠️ Architectuur
+
+TrainIQ gebruikt:
+
+```text
+MVVM + Clean Architecture + Unidirectional Data Flow
+```
+
+Structuur:
+
+```text
+Data → Domain → UI
+```
+
+Regels:
+
+* Business logic staat in `UseCases`
+* UI gebruikt alleen state uit ViewModels
+* Elke screen heeft één `uiState: StateFlow<T>`
+* UI-state gebruikt een sealed interface: `Loading`, `Success`, `Error`
+* Dependency Injection gebeurt met Hilt
+* Repositories zijn `@Singleton`
+* ViewModel-afhankelijke objecten zijn `@ViewModelScoped`
+* Navigatie gebruikt Navigation 2.8.0+ type-safe routes
+* Geen string-based routes gebruiken
+
+Voorbeeld:
+
+```kotlin
+sealed interface UiState {
+    data object Loading : UiState
+    data class Success(...) : UiState
+    data class Error(val message: String) : UiState
+}
+```
+
+\---
+
+## 🎨 UI/UX Standards
+
+TrainIQ moet modern, vloeiend en rustig aanvoelen.
+
+Verplicht:
+
+* Gebruik overal `MaterialTheme.colorScheme`
+* Gebruik overal `MaterialTheme.typography`
+* Ondersteun Dynamic Color op Android 12+
+* Gebruik shimmer states in plaats van standaard spinners
+* Gebruik subtiele animaties met `AnimatedContent`
+* Voeg haptic feedback toe bij belangrijke acties
+* Ondersteun tablets en foldables met `WindowSizeClass`
+
+Aanbevolen flows voor shared transitions:
+
+```text
+Home → Active Workout
+Workout List → Workout Detail
+Meal Scan → Result
+```
+
+\---
+
+## ❤️ Health Connect Standards
+
+Health Connect is de databron van TrainIQ en moet veilig, duidelijk en betrouwbaar werken.
+
+Verplicht:
+
+* Controleer altijd `HealthConnectClient.getSdkStatus()`
+* Handel `PROVIDER\\\_MISSING` netjes af
+* Toon eerst een Permission Manager-screen met uitleg
+* Toon pas daarna de systeem-permission prompt
+* Gebruik `ChangesToken` voor incrementele sync
+* Haal alleen gewijzigde data op sinds de laatste sync
+
+Belangrijke metrics:
+
+* Steps
+* Heart Rate
+* Sleep
+* Active Calories
+* Workout Sessions
+
+\---
+
+## 🤖 Gemini 2.5 Flash Standards
+
+Gemini is de reasoning engine van TrainIQ.
+
+### Fast Mode
+
+Voor snelle taken zoals meal scanning, barcodeherkenning en simpele classificatie.
+
+```text
+Thinking disabled
+```
+
+### Deep Mode
+
+Voor coachadvies, weekrapporten, herstelanalyse en trainingsaanbevelingen.
+
+```text
+Thinking Budget: 500–1000 tokens
+```
+
+AI-regels:
+
+* Gebruik standaard Gemini 2.5 Flash
+* Behoud de persona van een Senior Strength Coach
+* Output moet altijd JSON zijn
+* Gebruik `response\\\_mime\\\_type: "application/json"`
+* Gebruik nooit regex om JSON uit vrije tekst te halen
+
+\---
+
+## 🗄️ Database \& Quality
+
+### Room
+
+* Gebruik `AutoMigration` waar mogelijk
+* Gebruik handmatige SQL-migraties wanneer nodig
+* Controleer vóór nieuwe velden altijd:
+
+  * `Entities.kt`
+  * `DomainModels.kt`
+  * `Mappers.kt`
+
+### Performance
+
+* Gebruik Baseline Profiles tegen startup-lag en JIT-vertraging
+* Vermijd onnodige recompositions in Compose
+* Houd mapping en business logic buiten de UI-laag
+
+### Testing
+
+Verplicht testen voor:
+
+* `Mappers.kt`
+* `UseCases.kt`
+* Belangrijke repositorylogica
+
+Aanbevolen:
+
+* JUnit
+* Turbine
+* MockK
+
+\---
+
+## 🚦 Gemini CLI / Codex Workflow
+
+Gebruik bij elke wijziging deze volgorde:
+
+### 1\. Research
+
+Controleer eerst:
+
+```text
+Entities.kt
+DomainModels.kt
+Repositories
+UseCases
+Navigation routes
+```
+
+Voeg niets dubbel of inconsistent toe.
+
+### 2\. Act
+
+* Gebruik `replace` voor kleine, precieze wijzigingen
+* Houd wijzigingen klein en controleerbaar
+* Voeg bij nieuwe AI-calls Gemini 2.5 Flash-parameters toe
+* Respecteer bestaande architectuur en naming conventions
+
+### 3\. Validate
+
+Minimaal:
+
+```text
+Compile check
+```
+
+Waar relevant:
+
+* Unit tests
+* Mapper tests
+* UseCase tests
+* UI state checks
+
+### 4\. Prompt-regel
+
+Wanneer een verzoek het woord **prompt** bevat, moet er een **Codex-prompt** worden gegenereerd in plaats van dat de wijziging direct wordt uitgevoerd.
+
+\---
+
+## ✅ Hoofdregel
+
+```text
+Long-term code health > short-term speed
+```
+
+TrainIQ moet groeien als een stabiele, moderne en AI-native health-app.
+
+
+
