@@ -11,13 +11,75 @@ import com.trainiq.core.database.WorkoutRoutineEntity
 import com.trainiq.data.local.ActiveWorkoutDraftStorage
 import com.trainiq.data.local.ActiveWorkoutSessionStorage
 import com.trainiq.data.local.ActiveWorkoutSetStorage
+import com.trainiq.data.local.LoggedMealItemStorage
 import com.trainiq.data.local.TrainIqStorageState
+import com.trainiq.domain.model.FoodItem
+import com.trainiq.domain.model.FoodSourceType
+import com.trainiq.domain.model.LoggedMealItemType
+import com.trainiq.domain.model.NutritionFacts
+import com.trainiq.domain.model.Recipe
+import com.trainiq.domain.model.RecipeIngredient
 import com.trainiq.domain.model.ReadinessLevel
 import com.trainiq.domain.model.SetType
+import com.trainiq.domain.repository.MealEntryRequest
+import com.trainiq.domain.repository.MealEntryType
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class TrainIqRepositoryTest {
+    @Test
+    fun buildMealItemSnapshots_skipsMissingFoodAndRecipeReferences() {
+        val items = buildMealItemSnapshots(
+            mealId = 10L,
+            startItemId = 20L,
+            requests = listOf(
+                MealEntryRequest(MealEntryType.FOOD, referenceId = 99L, gramsUsed = 100.0),
+                MealEntryRequest(MealEntryType.RECIPE, referenceId = 88L, gramsUsed = 150.0),
+            ),
+            foods = emptyList(),
+            recipes = emptyList(),
+        )
+
+        assertEquals(emptyList<LoggedMealItemStorage>(), items)
+    }
+
+    @Test
+    fun buildMealItemSnapshots_scalesRecipeFromPositiveCookedGrams() {
+        val recipe = Recipe(
+            id = 7L,
+            name = "Pasta",
+            ingredients = listOf(
+                RecipeIngredient(
+                    id = 1L,
+                    recipeId = 7L,
+                    foodItemId = 2L,
+                    foodName = "Pasta",
+                    gramsUsed = 200.0,
+                    nutrition = NutritionFacts(calories = 600.0, protein = 20.0, carbs = 100.0, fat = 8.0),
+                ),
+            ),
+            totalCookedGrams = 300.0,
+            totalNutrition = NutritionFacts(calories = 600.0, protein = 20.0, carbs = 100.0, fat = 8.0),
+            createdAt = 0L,
+            updatedAt = 0L,
+        )
+
+        val items = buildMealItemSnapshots(
+            mealId = 10L,
+            startItemId = 20L,
+            requests = listOf(MealEntryRequest(MealEntryType.RECIPE, referenceId = 7L, gramsUsed = 150.0)),
+            foods = emptyList(),
+            recipes = listOf(recipe),
+        )
+
+        assertEquals(1, items.size)
+        assertEquals(LoggedMealItemType.RECIPE, items.single().itemType)
+        assertEquals(300.0, items.single().calories, 0.0)
+        assertEquals(10.0, items.single().protein, 0.0)
+        assertEquals(50.0, items.single().carbs, 0.0)
+        assertEquals(4.0, items.single().fat, 0.0)
+    }
+
     @Test
     fun withExerciseAddedToRoutine_withoutSession_createsDefaultSessionAndExercise() {
         val state = TrainIqStorageState(

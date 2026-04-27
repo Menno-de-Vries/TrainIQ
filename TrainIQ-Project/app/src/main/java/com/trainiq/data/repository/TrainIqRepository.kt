@@ -1102,52 +1102,14 @@ class TrainIqRepository @Inject constructor(
             notes = notes?.trim()?.takeIf { it.isNotBlank() },
         )
         val startItemId = current.mealItems.maxOfOrNull { it.id } ?: 0L
-        val mealItems = items.mapIndexed { index, request ->
-            when (request.itemType) {
-                MealEntryType.FOOD -> {
-                    val food = snapshot.foods.first { it.id == request.referenceId }
-                    val nutrition = food.nutritionForGrams(request.gramsUsed)
-                    LoggedMealItemStorage(
-                        id = startItemId + index + 1L,
-                        mealId = mealId,
-                        itemType = LoggedMealItemType.FOOD,
-                        referenceId = food.id,
-                        name = food.name,
-                        gramsUsed = request.gramsUsed,
-                        calories = nutrition.calories,
-                        protein = nutrition.protein,
-                        carbs = nutrition.carbs,
-                        fat = nutrition.fat,
-                        notes = request.notes,
-                    )
-                }
-
-                MealEntryType.RECIPE -> {
-                    val recipe = snapshot.recipes.first { it.id == request.referenceId }
-                    val baseGrams = recipe.totalCookedGrams ?: recipe.ingredients.sumOf { it.gramsUsed }
-                    val ratio = request.gramsUsed / baseGrams.coerceAtLeast(1.0)
-                    val nutrition = NutritionFacts(
-                        calories = recipe.totalNutrition.calories * ratio,
-                        protein = recipe.totalNutrition.protein * ratio,
-                        carbs = recipe.totalNutrition.carbs * ratio,
-                        fat = recipe.totalNutrition.fat * ratio,
-                    ).rounded()
-                    LoggedMealItemStorage(
-                        id = startItemId + index + 1L,
-                        mealId = mealId,
-                        itemType = LoggedMealItemType.RECIPE,
-                        referenceId = recipe.id,
-                        name = recipe.name,
-                        gramsUsed = request.gramsUsed,
-                        calories = nutrition.calories,
-                        protein = nutrition.protein,
-                        carbs = nutrition.carbs,
-                        fat = nutrition.fat,
-                        notes = request.notes,
-                    )
-                }
-            }
-        }
+        val mealItems = buildMealItemSnapshots(
+            mealId = mealId,
+            startItemId = startItemId,
+            requests = items,
+            foods = snapshot.foods,
+            recipes = snapshot.recipes,
+        )
+        require(mealItems.isNotEmpty()) { "Deze maaltijd bevat geen beschikbare producten of recepten meer." }
         localStore.update { state ->
             state.copy(
                 meals = state.meals.filterNot { it.id == mealId } + mealStorage,
@@ -2251,6 +2213,65 @@ internal fun resolveReadiness(
         plateauDetected && effectiveRir >= 2f -> ReadinessLevel.PLATEAU
         effectiveRir >= 2f && completedRecentSessions -> ReadinessLevel.INCREASE
         else -> ReadinessLevel.MAINTAIN
+    }
+}
+
+internal fun buildMealItemSnapshots(
+    mealId: Long,
+    startItemId: Long,
+    requests: List<MealEntryRequest>,
+    foods: List<FoodItem>,
+    recipes: List<Recipe>,
+): List<LoggedMealItemStorage> {
+    val foodsById = foods.associateBy { it.id }
+    val recipesById = recipes.associateBy { it.id }
+    var nextItemId = startItemId + 1L
+    return requests.mapNotNull { request ->
+        when (request.itemType) {
+            MealEntryType.FOOD -> {
+                val food = foodsById[request.referenceId] ?: return@mapNotNull null
+                val nutrition = food.nutritionForGrams(request.gramsUsed)
+                LoggedMealItemStorage(
+                    id = nextItemId++,
+                    mealId = mealId,
+                    itemType = LoggedMealItemType.FOOD,
+                    referenceId = food.id,
+                    name = food.name,
+                    gramsUsed = request.gramsUsed,
+                    calories = nutrition.calories,
+                    protein = nutrition.protein,
+                    carbs = nutrition.carbs,
+                    fat = nutrition.fat,
+                    notes = request.notes,
+                )
+            }
+
+            MealEntryType.RECIPE -> {
+                val recipe = recipesById[request.referenceId] ?: return@mapNotNull null
+                val baseGrams = recipe.totalCookedGrams ?: recipe.ingredients.sumOf { it.gramsUsed }
+                if (baseGrams <= 0.0 || !baseGrams.isFinite()) return@mapNotNull null
+                val ratio = request.gramsUsed / baseGrams
+                val nutrition = NutritionFacts(
+                    calories = recipe.totalNutrition.calories * ratio,
+                    protein = recipe.totalNutrition.protein * ratio,
+                    carbs = recipe.totalNutrition.carbs * ratio,
+                    fat = recipe.totalNutrition.fat * ratio,
+                ).rounded()
+                LoggedMealItemStorage(
+                    id = nextItemId++,
+                    mealId = mealId,
+                    itemType = LoggedMealItemType.RECIPE,
+                    referenceId = recipe.id,
+                    name = recipe.name,
+                    gramsUsed = request.gramsUsed,
+                    calories = nutrition.calories,
+                    protein = nutrition.protein,
+                    carbs = nutrition.carbs,
+                    fat = nutrition.fat,
+                    notes = request.notes,
+                )
+            }
+        }
     }
 }
 
