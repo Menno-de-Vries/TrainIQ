@@ -71,6 +71,7 @@ import com.trainiq.features.settings.SettingsRoute
 import com.trainiq.features.workout.ActiveWorkoutRoute
 import com.trainiq.features.workout.ExerciseHistoryRoute
 import com.trainiq.features.workout.WorkoutRoute
+import com.trainiq.core.diagnostics.DiagnosticsTracker
 import com.trainiq.core.theme.radii
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.core.ui.AppScaffold
@@ -113,7 +114,7 @@ private data class TopLevelDestination(
 )
 
 @Composable
-fun TrainIqApp() {
+fun TrainIqApp(diagnosticsTracker: DiagnosticsTracker) {
     val navController = rememberNavController()
     val haptics = LocalHapticFeedback.current
     val items = listOf(
@@ -140,6 +141,9 @@ fun TrainIqApp() {
 
     LaunchedEffect(Unit) {
         navVisible = true
+    }
+    LaunchedEffect(currentDestination?.route) {
+        diagnosticsTracker.screen(currentDestination.screenName())
     }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -173,6 +177,7 @@ fun TrainIqApp() {
                                 NavigationBarItem(
                                     selected = selected,
                                     onClick = {
+                                        diagnosticsTracker.tap("Nav:${screen.label}")
                                         haptics.performHapticFeedback(
                                             if (screen.routeClass == Coach::class) HapticFeedbackType.LongPress else HapticFeedbackType.TextHandleMove,
                                         )
@@ -246,6 +251,20 @@ private fun NavHostController.navigateTopLevel(screen: TopLevelDestination) {
         launchSingleTop = true
         restoreState = true
     }
+}
+
+private fun androidx.navigation.NavDestination?.screenName(): String = when {
+    this == null -> "Unknown"
+    hierarchy.any { it.hasRoute(Home::class) } -> "Home"
+    hierarchy.any { it.hasRoute(Train::class) } -> "Train"
+    hierarchy.any { it.hasRoute(Nutrition::class) } -> "Nutrition"
+    hierarchy.any { it.hasRoute(Progress::class) } -> "Progress"
+    hierarchy.any { it.hasRoute(Coach::class) } -> "Coach"
+    hierarchy.any { it.hasRoute(Settings::class) } -> "Settings"
+    hierarchy.any { it.hasRoute(CameraScanner::class) } -> "CameraScanner"
+    hierarchy.any { it.hasRoute(ActiveWorkout::class) } -> "ActiveWorkout"
+    hierarchy.any { it.hasRoute(ExerciseHistory::class) } -> "ExerciseHistory"
+    else -> route.orEmpty().ifBlank { "Unknown" }
 }
 
 private fun Modifier.topLevelTabSwipeNavigation(

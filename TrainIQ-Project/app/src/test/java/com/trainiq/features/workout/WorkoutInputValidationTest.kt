@@ -27,6 +27,31 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun `set log start allows different exercise while another is pending`() {
+        val started = tryStartSetLog(emptySet(), exerciseId = 10L) as SetLogStartResult.Started
+        val next = tryStartSetLog(started.pendingExerciseIds, exerciseId = 20L)
+
+        assertTrue(next is SetLogStartResult.Started)
+        next as SetLogStartResult.Started
+        assertEquals(setOf(10L, 20L), next.pendingExerciseIds)
+    }
+
+    @Test
+    fun `decimal filter keeps digits and a single separator with limited decimals`() {
+        assertEquals("12.34", filterDecimalInput("1a2,3.456", maxDecimals = 2))
+    }
+
+    @Test
+    fun `decimal filter supports leading separator and rpe precision`() {
+        assertEquals(".5", filterDecimalInput(",56", maxDecimals = 1))
+    }
+
+    @Test
+    fun `integer filter keeps digits only`() {
+        assertEquals("123", filterIntegerInput("1a2,3"))
+    }
+
+    @Test
     fun `set input accepts comma decimal and blank rpe`() {
         val result = validateSetInput(SetInputDraft(weight = "80,5", reps = "8", rpe = ""))
 

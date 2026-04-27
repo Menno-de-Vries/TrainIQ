@@ -32,6 +32,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -428,9 +429,13 @@ private fun NextWorkoutCard(
                 Text("Er staat nog geen actieve trainingsdag klaar. Ga naar Train om je eerste sessie in te stellen.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
                 SecondaryActionButton(onClick = onOpenTrain) { Text("Train openen") }
             } else {
+                val exerciseSummary = remember(dashboard.nextWorkout.exercises) {
+                    dashboard.nextWorkout.exercises.joinToString { it.exercise.name }
+                        .ifBlank { "Voeg oefeningen toe aan deze dag." }
+                }
                 Text(dashboard.nextWorkout.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
                 Text(
-                    dashboard.nextWorkout.exercises.joinToString { it.exercise.name }.ifBlank { "Voeg oefeningen toe aan deze dag." },
+                    exerciseSummary,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.trainIqColors.mutedText,
                 )

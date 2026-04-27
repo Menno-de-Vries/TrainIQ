@@ -27,6 +27,15 @@ android {
             "GEMINI_BASE_URL",
             "\"https://generativelanguage.googleapis.com/\""
         )
+        buildConfigField("Boolean", "TELEMETRY_ENABLED", "false")
+        buildConfigField("String", "TELEMETRY_ENDPOINT_URL", "\"\"")
+        buildConfigField("String", "TELEMETRY_API_TOKEN", "\"\"")
+        buildConfigField("Double", "TELEMETRY_SAMPLE_RATE", "0.0")
+        buildConfigField("Boolean", "TELEMETRY_UPLOAD_WIFI_ONLY", "true")
+        buildConfigField("Integer", "TELEMETRY_MAX_BATCH_SIZE", "20")
+        buildConfigField("Long", "TELEMETRY_FLUSH_INTERVAL_MILLIS", "60000L")
+        buildConfigField("Boolean", "TELEMETRY_PERFETTO_ENABLED", "false")
+        buildConfigField("Boolean", "TELEMETRY_CRASH_CONTEXT_ENABLED", "true")
     }
 
     buildTypes {
@@ -76,6 +85,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.metrics.performance)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.compose.runtime)
     implementation(libs.compose.foundation)

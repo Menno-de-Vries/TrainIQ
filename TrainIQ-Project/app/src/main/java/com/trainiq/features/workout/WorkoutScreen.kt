@@ -110,6 +110,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -137,6 +138,7 @@ import com.trainiq.core.ui.bringIntoViewOnFocus
 import com.trainiq.core.audio.RestTimerSoundPlayer
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.datastore.WorkoutFeedbackPreferences
+import com.trainiq.core.diagnostics.DiagnosticsTracker
 import com.trainiq.core.theme.spacing
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.domain.model.ActiveWorkoutFocusTarget
@@ -332,6 +334,7 @@ class WorkoutViewModel @Inject constructor(
     private val updateRoutineSetUseCase: UpdateRoutineSetUseCase,
     private val deleteRoutineSetUseCase: DeleteRoutineSetUseCase,
     private val moveRoutineSetUseCase: MoveRoutineSetUseCase,
+    private val diagnosticsTracker: DiagnosticsTracker,
 ) : ViewModel() {
     val overview: StateFlow<WorkoutOverview?> = observeWorkoutOverviewUseCase()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -427,6 +430,7 @@ class WorkoutViewModel @Inject constructor(
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     fun loadWorkout(dayId: Long) {
+        diagnosticsTracker.state("Workout:Start")
         viewModelScope.launch {
             _debrief.value = null
             _message.value = null
@@ -501,6 +505,7 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun logSet(plan: WorkoutExercisePlan): Boolean {
+        diagnosticsTracker.tap("Workout:SetLogClicked")
         val loggedCount = _loggedSetsThisSession.value[plan.exercise.id].orEmpty().size
         val draft = _drafts.value[plan.exercise.id] ?: plan.nextPlannedDraft(loggedCount)
         val validation = validateSetInput(draft)
@@ -565,6 +570,7 @@ class WorkoutViewModel @Inject constructor(
                         undoEventId = summary.lastUndoableEventId,
                     ),
                 )
+                diagnosticsTracker.state("Workout:SetLogged")
             } catch (_: Exception) {
                 _message.value = "Set loggen is mislukt. Probeer opnieuw."
             } finally {
@@ -590,6 +596,7 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun finishWorkout(dayId: Long) {
+        diagnosticsTracker.state("Workout:Finished")
         viewModelScope.launch {
             stopRestTimer(persist = true)
             _debrief.value = finishActiveWorkoutUseCase(dayId)
@@ -602,6 +609,7 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun discardWorkout(dayId: Long) {
+        diagnosticsTracker.state("Workout:Discarded")
         viewModelScope.launch {
             stopRestTimer(persist = false)
             discardActiveWorkoutUseCase(dayId)
@@ -976,6 +984,7 @@ class WorkoutViewModel @Inject constructor(
 
     private fun startRestTimer(restSeconds: Int) {
         if (restSeconds <= 0) return
+        diagnosticsTracker.state("Workout:TimerStarted")
         val endsAt = System.currentTimeMillis() + restSeconds * 1_000L
         observedRestTimerEndsAt = endsAt
         restTimerFinishHandled = false
@@ -1449,7 +1458,7 @@ private fun RoutineGeneratorDialog(
     var experienceLevel by remember { mutableStateOf("intermediate") }
     var sessionDuration by remember { mutableFloatStateOf(60f) }
     var includeDeload by remember { mutableStateOf(true) }
-    val focusSuggestions = listOf("Push/Pull/Legs", "Upper/Lower", "Full Body", "Bro Split", "PHAT")
+    val focusSuggestions = remember { listOf("Push/Pull/Legs", "Upper/Lower", "Full Body", "Bro Split", "PHAT") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1464,7 +1473,7 @@ private fun RoutineGeneratorDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(focusSuggestions) { suggestion ->
+                    items(focusSuggestions, key = { it }) { suggestion ->
                         SuggestionChip(
                             onClick = { focus = suggestion },
                             label = { Text(suggestion) },
@@ -2572,6 +2581,7 @@ private fun EditSetBottomSheet(
                     suffix = "s",
                     keyboardType = KeyboardType.Number,
                     step = 15.0,
+                    showAdjustControls = true,
                     modifier = Modifier.weight(1f),
                     onValueChange = { rest = it },
                 )
@@ -2612,34 +2622,46 @@ private fun SheetNumberField(
     step: Double,
     modifier: Modifier = Modifier,
     suffix: String? = null,
+    showAdjustControls: Boolean = false,
     onValueChange: (String) -> Unit,
 ) {
+    val focusManager = LocalFocusManager.current
+    val filterInput: (String) -> String = { input ->
+        if (keyboardType == KeyboardType.Decimal) {
+            filterDecimalInput(input, maxDecimals = if (label == "RPE") 1 else 2)
+        } else {
+            filterIntegerInput(input)
+        }
+    }
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         OutlinedTextField(
             value = value,
-            onValueChange = onValueChange,
+            onValueChange = { onValueChange(filterInput(it)) },
             label = { Text(label) },
             suffix = suffix?.let { { Text(it) } },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(force = true) }),
             modifier = Modifier
                 .fillMaxWidth()
                 .bringIntoViewOnFocus(),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-            SecondaryActionButton(
-                onClick = { onValueChange(adjustNumberText(value, -step)) },
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(vertical = 8.dp),
-            ) {
-                Icon(Icons.Rounded.Remove, contentDescription = "$label verlagen")
-            }
-            SecondaryActionButton(
-                onClick = { onValueChange(adjustNumberText(value, step)) },
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(vertical = 8.dp),
-            ) {
-                Icon(Icons.Rounded.Add, contentDescription = "$label verhogen")
+        if (showAdjustControls) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                SecondaryActionButton(
+                    onClick = { onValueChange(adjustNumberText(value, -step)) },
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(vertical = 8.dp),
+                ) {
+                    Icon(Icons.Rounded.Remove, contentDescription = "$label verlagen")
+                }
+                SecondaryActionButton(
+                    onClick = { onValueChange(adjustNumberText(value, step)) },
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(vertical = 8.dp),
+                ) {
+                    Icon(Icons.Rounded.Add, contentDescription = "$label verhogen")
+                }
             }
         }
     }
@@ -2875,7 +2897,7 @@ private fun ExercisePickerSheet(
                     }
                 }
             }
-            itemsIndexed(filteredExercises, key = { index, exercise -> "${exercise.id}-$index" }) { _, exercise ->
+            items(filteredExercises, key = { it.id }) { exercise ->
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier
@@ -3472,6 +3494,11 @@ fun ActiveWorkoutScreen(
     var replacingActivePlan by remember { mutableStateOf<WorkoutExercisePlan?>(null) }
     var pendingRemoveActivePlan by remember { mutableStateOf<WorkoutExercisePlan?>(null) }
     val currentOnDismissMessage by rememberUpdatedState(onDismissMessage)
+    val workoutExercises = uiState.workout?.exercises.orEmpty()
+    val exerciseGroups = remember(workoutExercises) { workoutExerciseGroups(workoutExercises) }
+    val suggestionsByExerciseId = remember(uiState.progressionSuggestions) {
+        uiState.progressionSuggestions.associateBy { it.exerciseId }
+    }
 
     replacingActivePlan?.let { plan ->
         ExercisePickerSheet(
@@ -3570,7 +3597,7 @@ fun ActiveWorkoutScreen(
                 }
             }
             items(
-                workoutExerciseGroups(uiState.workout.exercises),
+                exerciseGroups,
                 key = { group -> group.joinToString("-") { it.id.toString() } },
             ) { group ->
                 if (group.size > 1) {
@@ -3586,6 +3613,7 @@ fun ActiveWorkoutScreen(
                             ActiveWorkoutPlanCard(
                                 plan = plan,
                                 uiState = uiState,
+                                suggestion = suggestionsByExerciseId[plan.exercise.id],
                                 isResting = uiState.restTimerSeconds > 0,
                                 isAutoAdvanceTarget = uiState.activeFocusTarget?.exerciseId == plan.exercise.id,
                                 hapticOnSuccess = {
@@ -3608,6 +3636,7 @@ fun ActiveWorkoutScreen(
                     ActiveWorkoutPlanCard(
                         plan = group.first(),
                         uiState = uiState,
+                        suggestion = suggestionsByExerciseId[group.first().exercise.id],
                         isResting = uiState.restTimerSeconds > 0,
                         isAutoAdvanceTarget = uiState.activeFocusTarget?.exerciseId == group.first().exercise.id,
                         hapticOnSuccess = {
@@ -3776,6 +3805,7 @@ private fun ActiveWorkoutBottomBar(uiState: ActiveWorkoutUiState, onFinishClick:
 private fun ActiveWorkoutPlanCard(
     plan: WorkoutExercisePlan,
     uiState: ActiveWorkoutUiState,
+    suggestion: ProgressionSuggestion?,
     isResting: Boolean,
     isAutoAdvanceTarget: Boolean,
     hapticOnSuccess: () -> Unit,
@@ -3797,7 +3827,7 @@ private fun ActiveWorkoutPlanCard(
     ActiveExerciseCard(
         plan = plan,
         loggedSets = loggedSets,
-        suggestion = uiState.progressionSuggestions.firstOrNull { it.exerciseId == plan.exercise.id },
+        suggestion = suggestion,
         draft = draft,
         draftErrors = draftErrors,
         isResting = isResting,
@@ -3914,7 +3944,9 @@ private fun ActiveExerciseCard(
     onRemoveExercise: () -> Unit,
 ) {
     val targetWeight = draft.weight.toFloatOrNull() ?: suggestion?.suggestedWeightKg?.toFloat()
-    val platePlan = targetWeight?.let { StrengthCalculator.calculatePlates(it) }.orEmpty()
+    val platePlan = remember(targetWeight) {
+        targetWeight?.let { StrengthCalculator.calculatePlates(it) }.orEmpty()
+    }
     val liveOneRepMax by remember(draft) {
         derivedStateOf {
             val weight = draft.weight.replace(',', '.').toDoubleOrNull() ?: 0.0
@@ -4004,7 +4036,9 @@ private fun ActiveExerciseCard(
             }
             suggestion?.let { CompactPreviousPerformance(it) } ?: PlannedPerformanceFallback(plan)
             val visibleSetRows = maxOf(plan.plannedSetCount(), loggedSets.size + 1)
-            val plannedSets = plan.sets.sortedWith(compareBy<RoutineSet> { it.orderIndex }.thenBy { it.id })
+            val plannedSets = remember(plan.sets) {
+                plan.sets.sortedWith(compareBy<RoutineSet> { it.orderIndex }.thenBy { it.id })
+            }
             repeat(visibleSetRows) { index ->
                 SetRow(
                     index = index + 1,
@@ -4051,6 +4085,7 @@ private fun ActiveExerciseCard(
                     errors = draftErrors,
                     lastSession = suggestion?.toLastSessionDraft(),
                     onDraftChange = onDraftChange,
+                    onSubmit = onLogSet,
                 )
                 liveOneRepMax?.let { oneRepMax ->
                     Text(
@@ -4130,7 +4165,7 @@ private fun SetTypeSelector(
         }
     } else {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = modifier.fillMaxWidth()) {
-            items(SetType.entries) { type ->
+            items(SetType.entries, key = { it.name }) { type ->
                 FilterChip(
                     selected = type == selectedType,
                     onClick = { onSelectedTypeChange(type) },
@@ -4147,6 +4182,7 @@ private fun SetLoggerFields(
     errors: SetInputFieldErrors,
     lastSession: SetInputDraft?,
     onDraftChange: (SetInputDraft) -> Unit,
+    onSubmit: () -> Unit,
 ) {
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
@@ -4161,10 +4197,12 @@ private fun SetLoggerFields(
             keyboardType = KeyboardType.Decimal,
             fallback = lastSession?.weight,
             errorText = errors.weight,
+            decimalPlaces = 2,
             modifier = Modifier
                 .weight(1f)
                 .width(108.dp),
             onValueChange = { onDraftChange(draft.copy(weight = it)) },
+            onSubmit = onSubmit,
         )
         QuickNumberField(
             value = draft.reps,
@@ -4177,6 +4215,7 @@ private fun SetLoggerFields(
                 .weight(1f)
                 .width(96.dp),
             onValueChange = { onDraftChange(draft.copy(reps = it)) },
+            onSubmit = onSubmit,
         )
         QuickNumberField(
             value = draft.rpe,
@@ -4185,10 +4224,12 @@ private fun SetLoggerFields(
             keyboardType = KeyboardType.Decimal,
             fallback = null,
             errorText = errors.rpe,
+            decimalPlaces = 1,
             modifier = Modifier
                 .weight(1f)
                 .width(96.dp),
             onValueChange = { onDraftChange(draft.copy(rpe = it)) },
+            onSubmit = onSubmit,
         )
     }
 }
@@ -4201,25 +4242,44 @@ private fun QuickNumberField(
     keyboardType: KeyboardType,
     fallback: String?,
     errorText: String? = null,
+    decimalPlaces: Int = 0,
     modifier: Modifier = Modifier,
     onValueChange: (String) -> Unit,
+    onSubmit: () -> Unit,
 ) {
     val focusManager = LocalFocusManager.current
     val fieldModifier = if (errorText == null) {
-        Modifier
+        Modifier.semantics { contentDescription = if (suffix.isBlank()) label else "$label, $suffix" }
     } else {
-        Modifier.semantics { error(errorText) }
+        Modifier.semantics {
+            contentDescription = if (suffix.isBlank()) label else "$label, $suffix"
+            error(errorText)
+        }
+    }
+    val filterInput: (String) -> String = {
+        if (keyboardType == KeyboardType.Decimal) {
+            filterDecimalInput(it, maxDecimals = decimalPlaces)
+        } else {
+            filterIntegerInput(it)
+        }
     }
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         OutlinedTextField(
             value = value,
-            onValueChange = onValueChange,
-            label = { Text(if (suffix.isBlank()) label else "$label ($suffix)") },
+            onValueChange = { onValueChange(filterInput(it)) },
+            label = { Text(label) },
             placeholder = { Text(fallback.orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)) },
+            suffix = suffix.takeIf { it.isNotBlank() }?.let { { Text(it) } },
             isError = errorText != null,
             supportingText = errorText?.let { message -> { Text(message) } },
+            singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(force = true) }),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    onSubmit()
+                    focusManager.clearFocus(force = true)
+                },
+            ),
             modifier = fieldModifier
                 .fillMaxWidth()
                 .defaultMinSize(minHeight = 64.dp)
@@ -4421,24 +4481,30 @@ private fun SuggestedNextSetRow(suggestion: ProgressionSuggestion) {
 @Composable
 private fun WorkoutSessionStatusCard(uiState: ActiveWorkoutUiState) {
     val workout = uiState.workout ?: return
-    val loggedSets = uiState.loggedSetsThisSession.values.flatten()
-    val targetSets = workout.exercises.sumOf { it.plannedSetCount() }
-    val remainingSets = (targetSets - loggedSets.size).coerceAtLeast(0)
-    val volume = loggedSets.sumOf { it.weight * it.reps }
-    val avgRpe = loggedSets.map { it.rpe }.filter { it > 0.0 }.average().takeIf { !it.isNaN() }
+    val summary = remember(uiState.loggedSetsThisSession, workout.exercises) {
+        val loggedSets = uiState.loggedSetsThisSession.values.flatten()
+        val targetSets = workout.exercises.sumOf { it.plannedSetCount() }
+        WorkoutSessionUiSummary(
+            loggedSetCount = loggedSets.size,
+            targetSets = targetSets,
+            remainingSets = (targetSets - loggedSets.size).coerceAtLeast(0),
+            volume = loggedSets.sumOf { it.weight * it.reps },
+            averageRpe = loggedSets.map { it.rpe }.filter { it > 0.0 }.average().takeIf { !it.isNaN() },
+        )
+    }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                StatusMetric("Sets", "${loggedSets.size}/$targetSets")
+                StatusMetric("Sets", "${summary.loggedSetCount}/${summary.targetSets}")
                 StatusMetric("Rest", if (uiState.restTimerSeconds > 0) formatTimer(uiState.restTimerSeconds) else "Klaar")
-                StatusMetric("Volume", "${volume.toInt()} kg")
+                StatusMetric("Volume", "${summary.volume.toInt()} kg")
             }
             LinearProgressIndicator(
-                progress = { if (targetSets > 0) (loggedSets.size / targetSets.toFloat()).coerceIn(0f, 1f) else 0f },
+                progress = { if (summary.targetSets > 0) (summary.loggedSetCount / summary.targetSets.toFloat()).coerceIn(0f, 1f) else 0f },
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(
-                "$remainingSets sets resterend${avgRpe?.let { " - gemiddelde RPE ${formatWeight(it)}" }.orEmpty()}",
+                "${summary.remainingSets} sets resterend${summary.averageRpe?.let { " - gemiddelde RPE ${formatWeight(it)}" }.orEmpty()}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -4462,19 +4528,24 @@ private fun StatusMetric(label: String, value: String, modifier: Modifier = Modi
 
 @Composable
 private fun WorkoutDebriefCard(result: WorkoutDebrief, uiState: ActiveWorkoutUiState) {
-    val sets = uiState.loggedSetsThisSession.values.flatten()
-    val volume = sets.sumOf { it.weight * it.reps }
-    val topSet = sets.maxByOrNull { it.weight * it.reps }
-    val highestRpe = sets.maxOfOrNull { it.rpe } ?: 0.0
+    val summary = remember(uiState.loggedSetsThisSession) {
+        val sets = uiState.loggedSetsThisSession.values.flatten()
+        WorkoutDebriefUiSummary(
+            setCount = sets.size,
+            volume = sets.sumOf { it.weight * it.reps },
+            topSet = sets.maxByOrNull { it.weight * it.reps },
+            highestRpe = sets.maxOfOrNull { it.rpe } ?: 0.0,
+        )
+    }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Workout samenvatting", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                StatusMetric("Volume", "${volume.toInt()} kg")
-                StatusMetric("Sets", sets.size.toString())
-                StatusMetric("Hoogste RPE", if (highestRpe > 0.0) formatWeight(highestRpe) else "-")
+                StatusMetric("Volume", "${summary.volume.toInt()} kg")
+                StatusMetric("Sets", summary.setCount.toString())
+                StatusMetric("Hoogste RPE", if (summary.highestRpe > 0.0) formatWeight(summary.highestRpe) else "-")
             }
-            topSet?.let {
+            summary.topSet?.let {
                 Text("Top set: ${formatWeight(it.weight)} kg x ${it.reps}", style = MaterialTheme.typography.labelMedium)
             }
             HorizontalDivider()
@@ -4495,6 +4566,21 @@ private fun WorkoutDebriefCard(result: WorkoutDebrief, uiState: ActiveWorkoutUiS
         }
     }
 }
+
+private data class WorkoutSessionUiSummary(
+    val loggedSetCount: Int,
+    val targetSets: Int,
+    val remainingSets: Int,
+    val volume: Double,
+    val averageRpe: Double?,
+)
+
+private data class WorkoutDebriefUiSummary(
+    val setCount: Int,
+    val volume: Double,
+    val topSet: LoggedSet?,
+    val highestRpe: Double,
+)
 
 private fun previousWeight(suggestion: ProgressionSuggestion): Double = when (suggestion.readinessSignal) {
     ReadinessLevel.INCREASE -> (suggestion.suggestedWeightKg - 2.5).coerceAtLeast(0.0)
@@ -4541,6 +4627,30 @@ private fun List<WorkoutExercisePlan>.focusLabel(): String {
 }
 
 private fun String.normalizedDecimal(): String = trim().replace(',', '.')
+
+internal fun filterDecimalInput(input: String, maxDecimals: Int): String {
+    val decimals = maxDecimals.coerceAtLeast(0)
+    val builder = StringBuilder()
+    var hasSeparator = false
+    var decimalCount = 0
+    input.forEach { char ->
+        when {
+            char.isDigit() && !hasSeparator -> builder.append(char)
+            char.isDigit() && decimalCount < decimals -> {
+                builder.append(char)
+                decimalCount++
+            }
+            (char == ',' || char == '.') && !hasSeparator -> {
+                builder.append('.')
+                hasSeparator = true
+            }
+        }
+    }
+    return builder.toString()
+}
+
+internal fun filterIntegerInput(input: String): String =
+    input.filter { it.isDigit() }
 
 internal sealed interface SetLogValidationResult {
     data class Valid(val weight: Double, val reps: Int, val rpe: Double) : SetLogValidationResult

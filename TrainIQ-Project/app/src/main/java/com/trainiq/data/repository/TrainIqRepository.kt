@@ -106,6 +106,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -146,7 +147,10 @@ class TrainIqRepository @Inject constructor(
     }.stateIn(scope, SharingStarted.Eagerly, RepositorySnapshot())
 
     init {
-        scope.launch { ensureExerciseLibrary() }
+        scope.launch {
+            delay(3_000L)
+            ensureExerciseLibrary()
+        }
         scope.launch {
             val persisted = healthConnectDataSource.getStepsFromPersistedCache()
             if (persisted > 0) _cachedSteps.value = persisted
@@ -154,7 +158,7 @@ class TrainIqRepository @Inject constructor(
     }
 
     override fun observeDashboard(): Flow<HomeDashboard> = combine(snapshotState, _cachedSteps) { snapshot, steps ->
-        val activeRoutine = buildWorkoutOverview(snapshot).activeRoutine
+        val activeRoutine = buildActiveRoutine(snapshot)
         val nextWorkout = activeRoutine?.days?.minByOrNull { it.orderIndex }
         val todaysMeals = snapshot.meals.filter { it.timestamp >= todayEpochMillis() }
         val todaysNutrition = todaysMeals.fold(NutritionFacts.Zero) { acc, meal -> acc + meal.totalNutrition }
@@ -1408,6 +1412,15 @@ class TrainIqRepository @Inject constructor(
             exercises = snapshot.exercises.map { it.toDomain() }.sortedBy { it.name },
             history = history,
         )
+    }
+
+    private fun buildActiveRoutine(snapshot: RepositorySnapshot): com.trainiq.domain.model.WorkoutRoutine? {
+        val routine = snapshot.routines.firstOrNull { it.active } ?: return null
+        val activeDays = snapshot.days
+            .filter { it.routineId == routine.id }
+            .sortedBy { it.orderIndex }
+            .mapNotNull { buildWorkoutDay(snapshot, it.id) }
+        return routine.toDomain(days = activeDays)
     }
 
     private fun buildWorkoutDay(snapshot: RepositorySnapshot, dayId: Long): WorkoutDay? {

@@ -22,9 +22,13 @@ import com.trainiq.domain.model.suggestMealType
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -35,11 +39,16 @@ class TrainIqLocalStore @Inject constructor(
     private val gson = Gson()
     private val mutex = Mutex()
     private val storageFile = context.filesDir.resolve("trainiq-state.json")
-    private val _state = MutableStateFlow(loadState())
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val _state = MutableStateFlow(TrainIqStorageState())
+    private val loadJob = scope.launch {
+        _state.value = loadState()
+    }
 
     val state: StateFlow<TrainIqStorageState> = _state.asStateFlow()
 
     suspend fun update(transform: (TrainIqStorageState) -> TrainIqStorageState) {
+        loadJob.join()
         mutex.withLock {
             val updated = transform(_state.value)
             val tempFile = storageFile.resolveSibling("${storageFile.name}.tmp")
@@ -53,6 +62,7 @@ class TrainIqLocalStore @Inject constructor(
     }
 
     suspend fun clearAll() {
+        loadJob.join()
         mutex.withLock {
             if (storageFile.exists()) {
                 storageFile.delete()
