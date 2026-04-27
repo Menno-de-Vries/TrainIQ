@@ -73,7 +73,7 @@ fun MessageCard(message: String, onDismiss: (() -> Unit)? = null) {
         ) {
             Text(message, modifier = Modifier.weight(1f), color = MaterialTheme.trainIqColors.mutedText)
             if (onDismiss != null) {
-                TextButton(onClick = onDismiss) { Text("Dismiss") }
+                TextButton(onClick = onDismiss) { Text("Sluiten") }
             }
         }
     }
@@ -170,14 +170,14 @@ fun PermissionManagerCard(
             Text("Health Connect", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
             Text(status.message, style = MaterialTheme.typography.bodyMedium)
             when (status.state) {
-                HealthConnectState.PROVIDER_MISSING -> FilledTonalButton(onClick = onOpenInstall) { Text("Install or update") }
-                HealthConnectState.PERMISSION_REQUIRED -> FilledTonalButton(onClick = onRequestPermission) { Text("Grant access") }
+                HealthConnectState.PROVIDER_MISSING -> FilledTonalButton(onClick = onOpenInstall) { Text("Installeren of bijwerken") }
+                HealthConnectState.PERMISSION_REQUIRED -> FilledTonalButton(onClick = onRequestPermission) { Text("Opnieuw verbinden") }
                 HealthConnectState.CONNECTED, HealthConnectState.NO_DATA -> OutlinedButton(onClick = onOpenSettings) { Text("Open Health Connect") }
-                HealthConnectState.ERROR -> OutlinedButton(onClick = onRefresh) { Text("Retry") }
-                HealthConnectState.UNSUPPORTED -> Text("This device does not support Health Connect.", style = MaterialTheme.typography.bodyMedium)
+                HealthConnectState.ERROR -> OutlinedButton(onClick = onRefresh) { Text("Opnieuw proberen") }
+                HealthConnectState.UNSUPPORTED -> Text("Dit apparaat ondersteunt Health Connect niet.", style = MaterialTheme.typography.bodyMedium)
             }
             status.lastSyncedAt?.let {
-                Text("Last sync: $it", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Laatst gesynchroniseerd: $it", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

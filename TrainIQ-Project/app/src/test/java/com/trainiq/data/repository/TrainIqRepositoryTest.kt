@@ -1,5 +1,6 @@
 package com.trainiq.data.repository
 
+import com.trainiq.analytics.AnalyticsEngine
 import com.trainiq.core.database.ExerciseEntity
 import com.trainiq.core.database.PerformedExerciseEntity
 import com.trainiq.core.database.RoutineSetEntity
@@ -21,12 +22,79 @@ import com.trainiq.domain.model.Recipe
 import com.trainiq.domain.model.RecipeIngredient
 import com.trainiq.domain.model.ReadinessLevel
 import com.trainiq.domain.model.SetType
+import com.trainiq.domain.model.BodyMeasurement
 import com.trainiq.domain.repository.MealEntryRequest
 import com.trainiq.domain.repository.MealEntryType
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class TrainIqRepositoryTest {
+    @Test
+    fun buildProgressOverviewFromHistory_aggregatesAllSessionsPerWeek() {
+        val monday = java.time.LocalDate.of(2026, 4, 20)
+            .atStartOfDay(java.time.ZoneId.systemDefault())
+            .toInstant()
+            .toEpochMilli()
+        val wednesday = java.time.LocalDate.of(2026, 4, 22)
+            .atStartOfDay(java.time.ZoneId.systemDefault())
+            .toInstant()
+            .toEpochMilli()
+        val sessions = listOf(
+            WorkoutSessionEntity(id = 1L, date = monday, duration = 1_800, status = "COMPLETED", completed = true),
+            WorkoutSessionEntity(id = 2L, date = wednesday, duration = 1_800, status = "COMPLETED", completed = true),
+        )
+        val sets = listOf(
+            WorkoutSetEntity(id = 1L, sessionId = 1L, exerciseId = 10L, weight = 100.0, reps = 5, rpe = 8.0, setType = SetType.NORMAL.name),
+            WorkoutSetEntity(id = 2L, sessionId = 2L, exerciseId = 10L, weight = 80.0, reps = 10, rpe = 8.0, setType = SetType.NORMAL.name),
+        )
+
+        val overview = buildProgressOverviewFromHistory(
+            measurements = emptyList(),
+            sessions = sessions,
+            sets = sets,
+            analyticsEngine = AnalyticsEngine(),
+        )
+
+        assertEquals(1, overview.volumeTrend.size)
+        assertEquals(1_300.0, overview.volumeTrend.single().value, 0.0)
+    }
+
+    @Test
+    fun buildProgressOverviewFromHistory_usesPerSessionStrengthAndMuscleMassTrend() {
+        val firstDay = java.time.LocalDate.of(2026, 4, 20)
+            .atStartOfDay(java.time.ZoneId.systemDefault())
+            .toInstant()
+            .toEpochMilli()
+        val secondDay = java.time.LocalDate.of(2026, 4, 27)
+            .atStartOfDay(java.time.ZoneId.systemDefault())
+            .toInstant()
+            .toEpochMilli()
+        val sessions = listOf(
+            WorkoutSessionEntity(id = 1L, date = firstDay, duration = 1_800, status = "COMPLETED", completed = true),
+            WorkoutSessionEntity(id = 2L, date = secondDay, duration = 1_800, status = "COMPLETED", completed = true),
+        )
+        val sets = listOf(
+            WorkoutSetEntity(id = 1L, sessionId = 1L, exerciseId = 10L, weight = 100.0, reps = 5, rpe = 8.0, setType = SetType.NORMAL.name),
+            WorkoutSetEntity(id = 2L, sessionId = 2L, exerciseId = 10L, weight = 120.0, reps = 5, rpe = 8.0, setType = SetType.NORMAL.name),
+        )
+        val measurements = listOf(
+            BodyMeasurement(id = 1L, date = firstDay, weight = 80.0, bodyFat = 18.0, muscleMass = 34.0),
+            BodyMeasurement(id = 2L, date = secondDay, weight = 81.0, bodyFat = 17.5, muscleMass = 35.0),
+        )
+
+        val overview = buildProgressOverviewFromHistory(
+            measurements = measurements,
+            sessions = sessions,
+            sets = sets,
+            analyticsEngine = AnalyticsEngine(),
+        )
+
+        assertEquals(2, overview.strengthTrend.size)
+        assertEquals(112.5, overview.strengthTrend.first().value, 0.1)
+        assertEquals(135.0, overview.strengthTrend.last().value, 0.1)
+        assertEquals(listOf(34.0, 35.0), overview.muscleMassTrend.map { it.value })
+    }
+
     @Test
     fun buildMealItemSnapshots_skipsMissingFoodAndRecipeReferences() {
         val items = buildMealItemSnapshots(

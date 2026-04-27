@@ -374,11 +374,17 @@ data class MealScanItem(
     val notes: String? = null,
 )
 
+enum class MealAnalysisSource {
+    API,
+    LOCAL_FALLBACK,
+}
+
 data class MealAnalysisResult(
     val items: List<MealScanItem>,
     val suggestedMealType: MealType? = null,
     val notes: String? = null,
     val rawResponse: String? = null,
+    val source: MealAnalysisSource = MealAnalysisSource.API,
 )
 
 data class WeeklyReportResult(
@@ -436,6 +442,7 @@ data class ProgressOverview(
     val measurements: List<BodyMeasurement>,
     val weightTrend: List<ChartPoint>,
     val bodyFatTrend: List<ChartPoint>,
+    val muscleMassTrend: List<ChartPoint>,
     val strengthTrend: List<ChartPoint>,
     val volumeTrend: List<ChartPoint>,
     val estimatedOneRepMax: Double,

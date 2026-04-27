@@ -172,7 +172,7 @@ class CoachViewModel @Inject constructor(
             ephemeral.update {
                 it.copy(
                     generatedReport = result.getOrNull(),
-                    message = if (result.isSuccess) "Weekrapport gemaakt." else "Weekrapport maken lukt nu niet.",
+                    message = if (result.isSuccess) "Samenvatting bijgewerkt." else "Weekrapport maken lukt nu niet.",
                     isGeneratingReport = false,
                 )
             }
@@ -379,7 +379,19 @@ fun CoachScreen(
                     if (profileInputError == null) state.message?.let { message ->
                         item { MessageCard(message = message, onDismiss = onDismissMessage) }
                     }
-                    item {
+                    if (state.currentProfile == null) {
+                        item {
+                            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                                Column(
+                                    modifier = Modifier.padding(MaterialTheme.spacing.medium),
+                                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+                                ) {
+                                    Text("Profiel instellen", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                                    Text("Vul eerst je profiel en doel in. Daarna worden weekrapporten en voedingsadvies zichtbaar op basis van jouw gegevens.")
+                                }
+                            }
+                        }
+                    } else item {
                         ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier.padding(MaterialTheme.spacing.medium),
@@ -405,7 +417,7 @@ fun CoachScreen(
                                     },
                                     enabled = !state.isGeneratingReport,
                                 ) {
-                                    Text(if (state.isGeneratingReport) "Bezig met nadenken..." else "AI-rapport maken")
+                                    Text(if (state.isGeneratingReport) "Rapport maken..." else "Weekrapport maken")
                                 }
                                 if (state.isGeneratingReport) {
                                     ShimmerCardPlaceholder(lineCount = 3)

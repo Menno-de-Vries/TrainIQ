@@ -71,6 +71,8 @@ import com.trainiq.core.datastore.AiPreferences
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.theme.spacing
 import com.trainiq.core.ui.ShimmerCardPlaceholder
+import com.trainiq.domain.model.MealAnalysisResult
+import com.trainiq.domain.model.MealAnalysisSource
 import com.trainiq.domain.model.MealType
 import com.trainiq.domain.usecase.AnalyzeMealUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -96,6 +98,9 @@ sealed interface CameraScannerUiState {
 
     data object Processing : CameraScannerUiState
     data class Completed(val suggestedMealType: MealType?, val itemCount: Int = 0) : CameraScannerUiState
+    data class Empty(val contextHint: String, val message: String) : CameraScannerUiState
+    data class NoConfig(val contextHint: String, val message: String) : CameraScannerUiState
+    data class LocalFallback(val contextHint: String, val message: String) : CameraScannerUiState
     data class Error(val contextHint: String, val message: String) : CameraScannerUiState
 }
 
@@ -112,7 +117,7 @@ class CameraScannerViewModel @Inject constructor(
         val itemCount: Int = 0,
     )
 
-    private enum class Phase { Preview, Processing, Completed, Error }
+    private enum class Phase { Preview, Processing, Completed, Empty, NoConfig, LocalFallback, Error }
 
     private val aiPreferences: StateFlow<AiPreferences> = preferencesRepository.aiPreferences
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AiPreferences(false, ""))
@@ -134,9 +139,21 @@ class CameraScannerViewModel @Inject constructor(
                 suggestedMealType = temp.suggestedMealType,
                 itemCount = temp.itemCount,
             )
+            Phase.Empty -> CameraScannerUiState.Empty(
+                contextHint = temp.contextHint,
+                message = temp.message ?: "Geen producten gevonden.",
+            )
+            Phase.NoConfig -> CameraScannerUiState.NoConfig(
+                contextHint = temp.contextHint,
+                message = temp.message ?: "AI-scan niet ingesteld. Zet AI aan en voeg een Gemini API-sleutel toe in Instellingen.",
+            )
+            Phase.LocalFallback -> CameraScannerUiState.LocalFallback(
+                contextHint = temp.contextHint,
+                message = temp.message ?: "Lokale fallback gebruikt. Voeg de maaltijd handmatig toe.",
+            )
             Phase.Error -> CameraScannerUiState.Error(
                 contextHint = temp.contextHint,
-                message = temp.message ?: "Deze foto kan nu niet geanalyseerd worden.",
+                message = temp.message ?: "Scan mislukt. Probeer opnieuw.",
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CameraScannerUiState.Preview("", false))
@@ -146,14 +163,15 @@ class CameraScannerViewModel @Inject constructor(
     }
 
     fun analyze(path: String) {
+        if (ephemeral.value.phase == Phase.Processing) return
         val capturedAtMillis = System.currentTimeMillis()
         val contextHint = ephemeral.value.contextHint
         val ai = aiPreferences.value
         if (!ai.enabled || ai.apiKey.isBlank()) {
             ephemeral.update {
                 it.copy(
-                    phase = Phase.Error,
-                    message = if (!ai.enabled) "Zet AI aan in Instellingen voordat je scant." else "Voeg eerst een Gemini API-sleutel toe.",
+                    phase = Phase.NoConfig,
+                    message = "AI-scan niet ingesteld. Zet AI aan en voeg een Gemini API-sleutel toe in Instellingen.",
                 )
             }
             return
@@ -162,20 +180,36 @@ class CameraScannerViewModel @Inject constructor(
             ephemeral.update { it.copy(phase = Phase.Processing, message = null) }
             runCatching { analyzeMealUseCase(path, contextHint, capturedAtMillis) }
                 .onSuccess { result ->
+                    val resultState = classifyMealScanResultForScanner(result, contextHint)
                     ephemeral.update {
-                        it.copy(
-                            phase = Phase.Completed,
-                            suggestedMealType = result.suggestedMealType,
-                            itemCount = result.items.size,
-                            message = null,
-                        )
+                        when (resultState) {
+                            is CameraScannerUiState.Completed -> it.copy(
+                                phase = Phase.Completed,
+                                suggestedMealType = resultState.suggestedMealType,
+                                itemCount = resultState.itemCount,
+                                message = null,
+                            )
+                            is CameraScannerUiState.Empty -> it.copy(
+                                phase = Phase.Empty,
+                                suggestedMealType = result.suggestedMealType,
+                                itemCount = 0,
+                                message = resultState.message,
+                            )
+                            is CameraScannerUiState.LocalFallback -> it.copy(
+                                phase = Phase.LocalFallback,
+                                suggestedMealType = result.suggestedMealType,
+                                itemCount = 0,
+                                message = resultState.message,
+                            )
+                            else -> it
+                        }
                     }
                 }
                 .onFailure {
                     ephemeral.update {
                         it.copy(
                             phase = Phase.Error,
-                            message = "Maaltijdanalyse mislukt. Maak opnieuw een foto of voer de maaltijd handmatig in.",
+                            message = "Scan mislukt. Probeer opnieuw.",
                         )
                     }
                 }
@@ -186,6 +220,25 @@ class CameraScannerViewModel @Inject constructor(
         ephemeral.update { it.copy(phase = Phase.Preview, message = null) }
     }
 }
+
+internal fun classifyMealScanResultForScanner(
+    result: MealAnalysisResult,
+    contextHint: String,
+): CameraScannerUiState =
+    when {
+        result.source == MealAnalysisSource.LOCAL_FALLBACK -> CameraScannerUiState.LocalFallback(
+            contextHint = contextHint,
+            message = result.notes ?: "Lokale fallback gebruikt. Voeg de maaltijd handmatig toe.",
+        )
+        result.items.isEmpty() -> CameraScannerUiState.Empty(
+            contextHint = contextHint,
+            message = "Geen producten gevonden. Probeer opnieuw met betere belichting of voeg de maaltijd handmatig toe.",
+        )
+        else -> CameraScannerUiState.Completed(
+            suggestedMealType = result.suggestedMealType,
+            itemCount = result.items.size,
+        )
+    }
 
 @Composable
 fun CameraScannerRoute(
@@ -237,6 +290,7 @@ private fun CameraScannerScreen(
     val haptics = LocalHapticFeedback.current
     var hasPermission by remember { mutableStateOf(false) }
     var cameraError by remember { mutableStateOf<String?>(null) }
+    var isCapturing by remember { mutableStateOf(false) }
     val hasDetectedBarcode = remember { AtomicBoolean(false) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { hasPermission = it }
     LaunchedEffect(Unit) { permissionLauncher.launch(Manifest.permission.CAMERA) }
@@ -310,6 +364,9 @@ private fun CameraScannerScreen(
                         "Zet het volledige bord of de verpakking duidelijk in beeld. TrainIQ maakt er bewerkbare producten en macro's van."
                     }
                     uiState is CameraScannerUiState.Error -> uiState.contextHint.ifBlank { "" }
+                    uiState is CameraScannerUiState.Empty -> uiState.contextHint.ifBlank { "" }
+                    uiState is CameraScannerUiState.NoConfig -> uiState.contextHint.ifBlank { "" }
+                    uiState is CameraScannerUiState.LocalFallback -> uiState.contextHint.ifBlank { "" }
                     else -> null
                 }
                 val topTitle = if (scannerMode == ScannerMode.BARCODE) "Barcodescanner" else "Camerascanner"
@@ -373,11 +430,24 @@ private fun CameraScannerScreen(
                             OutlinedButton(onClick = onBack) { Text("Terug") }
                             Button(
                                 onClick = {
+                                    if (isCapturing) return@Button
                                     cameraError = null
-                                    takeScannerPhoto(context, controller, onAnalyze) { cameraError = it }
+                                    isCapturing = true
+                                    takeScannerPhoto(
+                                        context = context,
+                                        controller = controller,
+                                        onPhotoSaved = {
+                                            isCapturing = false
+                                            onAnalyze(it)
+                                        },
+                                        onError = {
+                                            isCapturing = false
+                                            cameraError = it
+                                        },
+                                    )
                                 },
-                                enabled = uiState.isEnabled,
-                            ) { Text("Foto maken") }
+                                enabled = uiState.isEnabled && !isCapturing,
+                            ) { Text(if (isCapturing) "Foto maken..." else "Foto maken") }
                         }
                     }
                 }
@@ -388,7 +458,11 @@ private fun CameraScannerScreen(
     if (showSheet) {
         ModalBottomSheet(
             onDismissRequest = {
-                if (uiState is CameraScannerUiState.Error) onDismissError()
+                if (
+                    uiState is CameraScannerUiState.Error ||
+                    uiState is CameraScannerUiState.NoConfig ||
+                    uiState is CameraScannerUiState.LocalFallback
+                ) onDismissError()
             },
             sheetState = sheetState,
             containerColor = MaterialTheme.colorScheme.surface,
@@ -401,13 +475,56 @@ private fun CameraScannerScreen(
                     onScanAgain = onScanAgain,
                     onReviewItems = onReviewItems,
                 )
+                is CameraScannerUiState.Empty -> EmptySheetContent(
+                    message = uiState.message,
+                    onRetry = onScanAgain,
+                    onManual = onBack,
+                )
+                is CameraScannerUiState.NoConfig -> ErrorSheetContent(
+                    title = "AI-scan niet ingesteld",
+                    message = uiState.message,
+                    onRetry = onDismissError,
+                    onBack = onBack,
+                )
+                is CameraScannerUiState.LocalFallback -> ErrorSheetContent(
+                    title = "Lokale fallback",
+                    message = uiState.message,
+                    onRetry = onScanAgain,
+                    onBack = onBack,
+                )
                 is CameraScannerUiState.Error -> ErrorSheetContent(
+                    title = "Scan mislukt",
                     message = uiState.message,
                     onRetry = onDismissError,
                     onBack = onBack,
                 )
                 else -> {}
             }
+        }
+    }
+}
+
+@Composable
+private fun EmptySheetContent(
+    message: String,
+    onRetry: () -> Unit,
+    onManual: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = MaterialTheme.spacing.large, vertical = MaterialTheme.spacing.medium)
+            .windowInsetsPadding(WindowInsets.navigationBars),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+    ) {
+        Text("Geen producten gevonden", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+        Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+        ) {
+            OutlinedButton(onClick = onRetry) { Text("Opnieuw proberen") }
+            Button(onClick = onManual, modifier = Modifier.weight(1f)) { Text("Handmatig toevoegen") }
         }
     }
 }
@@ -495,6 +612,7 @@ private val MealType.dutchLabel: String
 
 @Composable
 private fun ErrorSheetContent(
+    title: String,
     message: String,
     onRetry: () -> Unit,
     onBack: () -> Unit,
@@ -506,7 +624,7 @@ private fun ErrorSheetContent(
             .windowInsetsPadding(WindowInsets.navigationBars),
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
     ) {
-        Text("Scan niet beschikbaar", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+        Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
         Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(
             modifier = Modifier.fillMaxWidth(),

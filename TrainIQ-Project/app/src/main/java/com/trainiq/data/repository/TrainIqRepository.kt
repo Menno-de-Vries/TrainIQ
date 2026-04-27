@@ -151,10 +151,6 @@ class TrainIqRepository @Inject constructor(
             delay(3_000L)
             ensureExerciseLibrary()
         }
-        scope.launch {
-            val persisted = healthConnectDataSource.getStepsFromPersistedCache()
-            if (persisted > 0) _cachedSteps.value = persisted
-        }
     }
 
     override fun observeDashboard(): Flow<HomeDashboard> = combine(snapshotState, _cachedSteps) { snapshot, steps ->
@@ -194,19 +190,16 @@ class TrainIqRepository @Inject constructor(
 
     override suspend fun getHealthConnectStatus(): HealthConnectStatus {
         val status = healthConnectDataSource.getStatus()
-        status.metrics?.stepsToday?.let { _cachedSteps.value = it }
+        _cachedSteps.value = when (status.state) {
+            com.trainiq.domain.model.HealthConnectState.CONNECTED,
+            com.trainiq.domain.model.HealthConnectState.NO_DATA -> status.metrics?.stepsToday ?: 0
+            else -> 0
+        }
         return status
     }
 
     override suspend fun refreshDashboardData() {
-        val live = healthConnectDataSource.getTodayStepsLive()
-        if (live > 0) {
-            _cachedSteps.value = live
-        } else {
-            // HC unavailable or permissions not granted — fall back to the last persisted snapshot.
-            val cached = healthConnectDataSource.getStepsFromPersistedCache()
-            if (cached > 0) _cachedSteps.value = cached
-        }
+        _cachedSteps.value = healthConnectDataSource.getTodayStepsLive()
     }
 
     override fun observeWorkoutOverview(): Flow<WorkoutOverview> = snapshotState.map(::buildWorkoutOverview)
@@ -492,7 +485,7 @@ class TrainIqRepository @Inject constructor(
                 summary = "Geen sets gelogd.",
                 progressionFeedback = "Log minimaal een set om voortgang op te slaan.",
                 recommendation = "Voeg tijdens je training sets toe voordat je afrondt.",
-                nextSessionFocus = "Maintain current weights",
+                nextSessionFocus = "Huidige gewichten vasthouden",
                 recoveryScore = 75,
                 intensitySignal = "MAINTAIN",
             )
@@ -1131,9 +1124,11 @@ class TrainIqRepository @Inject constructor(
 
     override suspend fun deleteFood(foodId: Long) {
         localStore.update { state ->
+            if (state.recipeIngredients.any { it.foodItemId == foodId }) {
+                throw IllegalStateException("Product wordt nog gebruikt in recepten.")
+            }
             state.copy(
                 foods = state.foods.filterNot { it.id == foodId },
-                recipeIngredients = state.recipeIngredients.filterNot { it.foodItemId == foodId },
             )
         }
     }
@@ -1212,7 +1207,7 @@ class TrainIqRepository @Inject constructor(
             )
         } else {
             weeklyReportService.generateWeeklyReport(
-                volume = progress.volumeTrend.takeLast(7).sumOf { it.value },
+                volume = progress.currentWeekVolume(),
                 weightTrend = progress.weightTrend.lastOrNull()?.value ?: snapshot.profile?.weight ?: 0.0,
                 adherence = calculateAdherence(snapshot),
             )
@@ -1314,9 +1309,9 @@ class TrainIqRepository @Inject constructor(
         if (snapshot.sessions.isEmpty() && snapshot.meals.isEmpty()) {
             return "Log je eerste training of maaltijd om je wekelijkse samenvatting te ontgrendelen."
         }
-        val volume = progress.volumeTrend.takeLast(7).sumOf { it.value }.toInt()
+        val volume = progress.currentWeekVolume().toInt()
         val adherence = calculateAdherence(snapshot)
-        return "This week: $volume kg training volume, ${progress.estimatedOneRepMax.toInt()} kg estimated 1RM, and $adherence% adherence."
+        return "Deze week: $volume kg trainingsvolume, beste geschatte 1RM ${progress.estimatedOneRepMax.toInt()} kg en $adherence% consistentie."
     }
 
     private fun buildTrainingInsights(snapshot: RepositorySnapshot, progress: ProgressOverview): List<String> {
@@ -1330,7 +1325,7 @@ class TrainIqRepository @Inject constructor(
         if (snapshot.sessions.isEmpty()) {
             insights += "Er is nog geen trainingshistorie. Rond een workout af om volume en herstel te volgen."
         } else {
-            insights += "Je laatste geschatte 1RM staat op ${progress.estimatedOneRepMax.toInt()} kg."
+            insights += "Je beste geschatte 1RM staat op ${progress.estimatedOneRepMax.toInt()} kg."
             insights += "De huidige fatigue index is ${"%.2f".format(progress.fatigueIndex)}."
         }
         return insights
@@ -1515,25 +1510,11 @@ class TrainIqRepository @Inject constructor(
     }
 
     private fun buildProgressOverview(snapshot: RepositorySnapshot): ProgressOverview {
-        val weightTrend = snapshot.measurements.map { ChartPoint(it.date.toReadableDate(), it.weight) }
-        val bodyFatTrend = snapshot.measurements.map { ChartPoint(it.date.toReadableDate(), it.bodyFat) }
-        val progressionSets = snapshot.sets.filter(::isProgressionSet)
-        val volumeBySession = progressionSets.groupBy { it.sessionId }.mapValues { analyticsEngine.trainingVolume(it.value) }
-        val volumeTrend = snapshot.sessions
-            .sortedBy { it.date }
-            .map { ChartPoint(it.date.toReadableDate(), volumeBySession[it.id] ?: 0.0) }
-        val heaviestSet = progressionSets.maxByOrNull { it.weight }
-        val estimatedOneRepMax = heaviestSet?.let { analyticsEngine.estimatedOneRepMax(it.weight, it.reps) } ?: 0.0
-        val weeklyVolume = volumeTrend.takeLast(1).sumOf { it.value }
-        val baseline = volumeTrend.dropLast(1).takeLast(3).map { it.value }.average().takeIf { !it.isNaN() && it > 0.0 } ?: weeklyVolume
-        return ProgressOverview(
+        return buildProgressOverviewFromHistory(
             measurements = snapshot.measurements,
-            weightTrend = weightTrend,
-            bodyFatTrend = bodyFatTrend,
-            strengthTrend = volumeTrend.map { ChartPoint(it.label, estimatedOneRepMax) },
-            volumeTrend = volumeTrend,
-            estimatedOneRepMax = estimatedOneRepMax,
-            fatigueIndex = if (weeklyVolume == 0.0 || baseline == 0.0) 0.0 else analyticsEngine.fatigueIndex(weeklyVolume, baseline),
+            sessions = snapshot.sessions,
+            sets = snapshot.sets,
+            analyticsEngine = analyticsEngine,
         )
     }
 
@@ -2308,6 +2289,68 @@ private fun isProgressionSet(set: WorkoutSetEntity): Boolean =
     set.completed && set.reps > 0 && set.weight >= 0.0 && set.progressionSetType().isProgressionType()
 
 private fun SetType.isProgressionType(): Boolean = this == SetType.NORMAL || this == SetType.BACK_OFF
+
+internal fun buildProgressOverviewFromHistory(
+    measurements: List<BodyMeasurement>,
+    sessions: List<WorkoutSessionEntity>,
+    sets: List<WorkoutSetEntity>,
+    analyticsEngine: AnalyticsEngine,
+): ProgressOverview {
+    val completedSessions = sessions
+        .filter { it.completed && it.status == "COMPLETED" }
+        .sortedBy { it.date }
+    val completedSessionIds = completedSessions.map { it.id }.toSet()
+    val progressionSets = sets
+        .filter { it.sessionId in completedSessionIds }
+        .filter(::isProgressionSet)
+    val weeklyVolumeTrend = completedSessions
+        .groupBy { it.date.weekStartMillis() }
+        .toSortedMap()
+        .map { (weekStart, weekSessions) ->
+            val weekSessionIds = weekSessions.map { it.id }.toSet()
+            val weekVolume = analyticsEngine.trainingVolume(progressionSets.filter { it.sessionId in weekSessionIds })
+            ChartPoint(weekStart.toReadableDate(), weekVolume)
+        }
+    val strengthTrend = completedSessions.mapNotNull { session ->
+        val bestOneRepMax = progressionSets
+            .filter { it.sessionId == session.id }
+            .maxOfOrNull { analyticsEngine.estimatedOneRepMax(it.weight, it.reps) }
+            ?: return@mapNotNull null
+        ChartPoint(session.date.toReadableDate(), bestOneRepMax)
+    }
+    val estimatedOneRepMax = strengthTrend.maxOfOrNull { it.value } ?: 0.0
+    val weeklyVolume = weeklyVolumeTrend.lastOrNull()?.value ?: 0.0
+    val baseline = weeklyVolumeTrend
+        .dropLast(1)
+        .takeLast(3)
+        .map { it.value }
+        .average()
+        .takeIf { !it.isNaN() && it > 0.0 }
+        ?: weeklyVolume
+
+    return ProgressOverview(
+        measurements = measurements,
+        weightTrend = measurements.map { ChartPoint(it.date.toReadableDate(), it.weight) },
+        bodyFatTrend = measurements.map { ChartPoint(it.date.toReadableDate(), it.bodyFat) },
+        muscleMassTrend = measurements.map { ChartPoint(it.date.toReadableDate(), it.muscleMass) },
+        strengthTrend = strengthTrend,
+        volumeTrend = weeklyVolumeTrend,
+        estimatedOneRepMax = estimatedOneRepMax,
+        fatigueIndex = if (weeklyVolume == 0.0 || baseline == 0.0) 0.0 else analyticsEngine.fatigueIndex(weeklyVolume, baseline),
+    )
+}
+
+private fun ProgressOverview.currentWeekVolume(): Double =
+    volumeTrend.lastOrNull()?.value ?: 0.0
+
+private fun Long.weekStartMillis(): Long =
+    java.time.Instant.ofEpochMilli(this)
+        .atZone(java.time.ZoneId.systemDefault())
+        .toLocalDate()
+        .with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+        .atStartOfDay(java.time.ZoneId.systemDefault())
+        .toInstant()
+        .toEpochMilli()
 
 private fun com.trainiq.ai.services.GeneratedRoutine.toDomainGeneratedRoutine() = GeneratedRoutine(
     routineName = routineName,

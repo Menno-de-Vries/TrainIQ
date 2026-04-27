@@ -3,21 +3,17 @@ package com.trainiq.navigation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -40,8 +36,8 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -150,11 +146,7 @@ fun TrainIqApp(diagnosticsTracker: DiagnosticsTracker) {
         AppScaffold(
             modifier = Modifier.fillMaxSize(),
             bottomBar = {
-                if (
-                    currentDestination?.hierarchy?.any {
-                        it.hasRoute(ActiveWorkout::class) || it.hasRoute(CameraScanner::class)
-                    } != true
-                ) {
+                if (currentTopLevelIndex != null && !imeVisible) {
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -185,28 +177,23 @@ fun TrainIqApp(diagnosticsTracker: DiagnosticsTracker) {
                                         navController.navigateTopLevel(screen)
                                     },
                                     icon = {
-                                        AnimatedContent(
-                                            targetState = selected,
-                                            transitionSpec = { fadeIn(animationSpec = spring(stiffness = 450f)) togetherWith fadeOut(animationSpec = spring(stiffness = 450f)) },
-                                            label = "nav-icon",
-                                        ) { isSelected ->
-                                            Box(
-                                                modifier = Modifier
-                                                    .background(
-                                                        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f) else Color.Transparent,
-                                                        shape = CircleShape,
-                                                    )
-                                                    .padding(horizontal = 15.dp, vertical = 11.dp),
-                                            ) {
-                                                Icon(
-                                                    imageVector = screen.icon,
-                                                    contentDescription = screen.label,
-                                                    modifier = Modifier
-                                                        .scale(if (isSelected) 1.15f else 1f),
-                                                )
-                                            }
+                                        Box(
+                                            modifier = Modifier
+                                                .size(width = 44.dp, height = 34.dp)
+                                                .background(
+                                                    color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f) else Color.Transparent,
+                                                    shape = CircleShape,
+                                                ),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Icon(
+                                                imageVector = screen.icon,
+                                                contentDescription = screen.label,
+                                                modifier = Modifier.size(24.dp),
+                                            )
                                         }
                                     },
+                                    alwaysShowLabel = false,
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = MaterialTheme.colorScheme.primary,
                                         selectedTextColor = MaterialTheme.colorScheme.primary,
@@ -250,6 +237,14 @@ private fun NavHostController.navigateTopLevel(screen: TopLevelDestination) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true
         restoreState = true
+    }
+}
+
+private fun NavHostController.navigateToActiveWorkout(dayId: Long) {
+    val alreadyActiveWorkout = currentBackStackEntry?.destination?.hierarchy?.any { it.hasRoute(ActiveWorkout::class) } == true
+    if (alreadyActiveWorkout) return
+    navigate(ActiveWorkout(dayId)) {
+        launchSingleTop = true
     }
 }
 
@@ -311,7 +306,7 @@ private fun TrainIqNavHost(
     ) {
         composable<Home> {
             HomeRoute(
-                onStartWorkout = { dayId -> navController.navigate(ActiveWorkout(dayId)) },
+                onStartWorkout = { dayId -> navController.navigateToActiveWorkout(dayId) },
                 onOpenCoach = { navController.navigate(Coach) },
                 onOpenTrain = { navController.navigate(Train) },
                 onOpenSettings = { navController.navigate(Settings) },
@@ -319,7 +314,7 @@ private fun TrainIqNavHost(
         }
         composable<Train> {
             WorkoutRoute(
-                onStartWorkout = { dayId -> navController.navigate(ActiveWorkout(dayId)) },
+                onStartWorkout = { dayId -> navController.navigateToActiveWorkout(dayId) },
                 onOpenExerciseHistory = { exerciseId -> navController.navigate(ExerciseHistory(exerciseId)) },
             )
         }

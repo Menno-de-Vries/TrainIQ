@@ -30,4 +30,8 @@ class PerformanceSessionStore @Inject constructor(
     }
 
     fun latestCompactSummary(): String = preferences.getString("latest_summary", "").orEmpty()
+
+    fun clearAll() {
+        preferences.edit().clear().apply()
+    }
 }

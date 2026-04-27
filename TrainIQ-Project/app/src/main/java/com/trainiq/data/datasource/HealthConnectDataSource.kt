@@ -71,15 +71,21 @@ class HealthConnectDataSource @Inject constructor(
 
     suspend fun getStatus(): HealthConnectStatus {
         return when (HealthConnectClient.getSdkStatus(context)) {
-            HealthConnectClient.SDK_UNAVAILABLE -> HealthConnectStatus(
-                state = HealthConnectState.UNSUPPORTED,
-                message = "Health Connect is not supported on this device.",
-            )
+            HealthConnectClient.SDK_UNAVAILABLE -> {
+                preferencesRepository.clearHealthConnectSyncPreferences()
+                HealthConnectStatus(
+                    state = HealthConnectState.UNSUPPORTED,
+                    message = "Health Connect wordt niet ondersteund op dit apparaat.",
+                )
+            }
 
-            HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> HealthConnectStatus(
-                state = HealthConnectState.PROVIDER_MISSING,
-                message = "Install or update Health Connect before TrainIQ can read steps, heart rate, and sleep.",
-            )
+            HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> {
+                preferencesRepository.clearHealthConnectSyncPreferences()
+                HealthConnectStatus(
+                    state = HealthConnectState.PROVIDER_MISSING,
+                    message = "Installeer of update Health Connect voordat TrainIQ stappen, hartslag, slaap, calorieen en gewicht kan lezen.",
+                )
+            }
 
             HealthConnectClient.SDK_AVAILABLE -> fetchConnectedStatus()
             else -> HealthConnectStatus(
@@ -94,9 +100,10 @@ class HealthConnectDataSource @Inject constructor(
             val client = HealthConnectClient.getOrCreate(context)
             val grantedPermissions = client.permissionController.getGrantedPermissions()
             if (!grantedPermissions.containsAll(readPermissions)) {
+                preferencesRepository.clearHealthConnectSyncPreferences()
                 HealthConnectStatus(
                     state = HealthConnectState.PERMISSION_REQUIRED,
-                    message = "Grant steps, heart rate, sleep, calories burned, and weight permissions to connect Health Connect.",
+                    message = "Geen toegang tot Health Connect. Verbind opnieuw om stappen, hartslag, slaap, calorieen en gewicht te lezen.",
                 )
             } else {
                 val syncPayload = syncTrackedMetrics(client)
@@ -110,7 +117,7 @@ class HealthConnectDataSource @Inject constructor(
         }.getOrElse { throwable ->
             HealthConnectStatus(
                 state = HealthConnectState.ERROR,
-                message = throwable.message ?: "Health Connect could not be read right now.",
+                message = throwable.message ?: "Health Connect kan nu niet worden gelezen.",
             )
         }
     }
@@ -307,18 +314,18 @@ class HealthConnectDataSource @Inject constructor(
 
     private fun buildMessage(metrics: HealthConnectMetrics, state: HealthConnectState): String {
         if (state == HealthConnectState.NO_DATA) {
-            return "Health Connect is connected, but no recent step, heart rate, sleep, calorie, or weight data is available yet."
+            return "Health Connect is verbonden, maar er is nog geen recente data voor stappen, hartslag, slaap, calorieen of gewicht."
         }
         val parts = buildList {
-            add("${metrics.stepsToday} steps")
-            metrics.averageHeartRateBpm?.let { add("avg HR $it bpm") }
+            add("${metrics.stepsToday} stappen")
+            metrics.averageHeartRateBpm?.let { add("gem. hartslag $it bpm") }
             if (metrics.sleepSessionCount > 0) {
-                add("${metrics.sleepMinutes} min sleep")
+                add("${metrics.sleepMinutes} min slaap")
             }
-            metrics.caloriesBurnedToday?.let { add("${it.toInt()} kcal burned") }
-            metrics.latestWeightKg?.let { add("${"%.1f".format(it)} kg latest weight") }
+            metrics.caloriesBurnedToday?.let { add("${it.toInt()} kcal verbrand") }
+            metrics.latestWeightKg?.let { add("${"%.1f".format(it)} kg laatste gewicht") }
         }
-        return "Health Connect synced ${parts.joinToString(", ")}."
+        return "Health Connect gesynchroniseerd: ${parts.joinToString(", ")}."
     }
 
     private fun HealthConnectMetrics.hasAnyData(): Boolean =
@@ -334,7 +341,10 @@ class HealthConnectDataSource @Inject constructor(
         return runCatching {
             val client = HealthConnectClient.getOrCreate(context)
             val granted = client.permissionController.getGrantedPermissions()
-            if (!granted.contains(HealthPermission.getReadPermission(StepsRecord::class))) return@runCatching 0
+            if (!granted.containsAll(readPermissions)) {
+                preferencesRepository.clearHealthConnectSyncPreferences()
+                return@runCatching 0
+            }
             aggregateStepsToday(client).toInt()
         }.getOrElse { 0 }
     }

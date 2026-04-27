@@ -173,12 +173,12 @@ class ProgressViewModel @Inject constructor(
 
     fun deleteMeasurement(measurementId: Long) {
         if (overview.value?.measurements?.none { it.id == measurementId } != false) {
-            _message.value = "Measurement could not be found."
+            _message.value = "Meting kon niet worden gevonden."
             return
         }
         viewModelScope.launch {
             deleteMeasurementUseCase(measurementId)
-            _message.value = "Measurement deleted."
+            _message.value = "Meting verwijderd."
         }
     }
 
@@ -299,6 +299,7 @@ fun ProgressScreen(
         if (
             overview.weightTrend.isEmpty() &&
             overview.bodyFatTrend.isEmpty() &&
+            overview.muscleMassTrend.isEmpty() &&
             overview.strengthTrend.isEmpty() &&
             overview.volumeTrend.isEmpty()
         ) {
@@ -320,10 +321,23 @@ fun ProgressScreen(
                 AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.purple) {
                     Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                         Text("Meetgeschiedenis", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
-                        overview.measurements.forEach { measurement ->
+                        overview.measurements.sortedByDescending { it.date }.forEachIndexed { index, measurement ->
+                            val previous = overview.measurements.sortedByDescending { it.date }.getOrNull(index + 1)
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("${measurement.date.toReadableDate()}: ${measurement.weight} kg, ${measurement.bodyFat}% vet", color = MaterialTheme.trainIqColors.mutedText)
-                                TextButton(onClick = { onDeleteMeasurement(measurement.id) }) { Text("Verwijderen") }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "${measurement.date.toReadableDate()}: ${measurement.weight} kg, ${measurement.bodyFat}% vet, ${measurement.muscleMass} kg spier",
+                                        color = MaterialTheme.trainIqColors.mutedText,
+                                    )
+                                    previous?.let {
+                                        Text(
+                                            measurementDeltaText(measurement, it),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                TextButton(onClick = { onDeleteMeasurement(measurement.id) }) { Text("Meting verwijderen") }
                             }
                         }
                     }
@@ -331,6 +345,7 @@ fun ProgressScreen(
             }
             item { ChartComposable("Lichaamsgewicht", overview.weightTrend, Modifier.fillMaxWidth()) }
             item { ChartComposable("Vetpercentage", overview.bodyFatTrend, Modifier.fillMaxWidth()) }
+            item { ChartComposable("Spiermassa", overview.muscleMassTrend, Modifier.fillMaxWidth()) }
             item { ChartComposable("Krachtprogressie", overview.strengthTrend, Modifier.fillMaxWidth()) }
             item { ChartComposable("Trainingsvolume", overview.volumeTrend, Modifier.fillMaxWidth()) }
         }
@@ -356,3 +371,16 @@ private fun MeasurementTextField(
         supportingText = error?.let { { Text(it.message) } },
     )
 }
+
+private fun measurementDeltaText(
+    current: com.trainiq.domain.model.BodyMeasurement,
+    previous: com.trainiq.domain.model.BodyMeasurement,
+): String {
+    val weight = current.weight - previous.weight
+    val bodyFat = current.bodyFat - previous.bodyFat
+    val muscle = current.muscleMass - previous.muscleMass
+    return "Sinds vorige: gewicht ${signedOneDecimal(weight)} kg, vet ${signedOneDecimal(bodyFat)} pp, spier ${signedOneDecimal(muscle)} kg"
+}
+
+private fun signedOneDecimal(value: Double): String =
+    String.format(Locale.getDefault(), "%+.1f", value)

@@ -1,6 +1,5 @@
 package com.trainiq.ai.services
 
-import android.util.Base64
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.trainiq.ai.prompts.GeminiPrompts
@@ -9,6 +8,7 @@ import com.trainiq.data.remote.GeminiApi
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.GoalAdvice
 import com.trainiq.domain.model.MealAnalysisResult
+import com.trainiq.domain.model.MealAnalysisSource
 import com.trainiq.domain.model.MealScanItem
 import com.trainiq.domain.model.MealType
 import com.trainiq.domain.model.NutritionFacts
@@ -18,35 +18,61 @@ import java.io.File
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Base64
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.trainiq.domain.model.buildGoalBaseline
 import com.trainiq.domain.model.suggestMealType
 
+class MealAnalysisUnavailableException(
+    message: String = "Scan mislukt. Probeer opnieuw.",
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)
+
 @Singleton
-class MealAnalysisService @Inject constructor(
+class MealAnalysisService internal constructor(
     private val api: GeminiApi,
-    private val aiUsageGate: AiUsageGate,
+    private val isAiReady: suspend () -> Boolean,
+    private val apiKeyProvider: suspend () -> String?,
 ) {
+    internal constructor(
+        api: GeminiApi,
+        apiKeyProvider: suspend () -> String?,
+    ) : this(
+        api = api,
+        isAiReady = { apiKeyProvider() != null },
+        apiKeyProvider = apiKeyProvider,
+    )
+
+    @Inject
+    constructor(
+        api: GeminiApi,
+        aiUsageGate: AiUsageGate,
+    ) : this(
+        api = api,
+        isAiReady = { aiUsageGate.isAiReady() },
+        apiKeyProvider = { aiUsageGate.currentApiKeyOrNull() },
+    )
+
     private val gson = Gson()
     private val captureTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
-    suspend fun analyzeMealImage(path: String, userContext: String, capturedAtMillis: Long): MealAnalysisResult =
-        runCatching {
-            if (!aiUsageGate.isAiReady()) return fallbackMealScan()
-            val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return fallbackMealScan()
-            val file = File(path)
-            val suggestedMealType = suggestMealType(capturedAtMillis)
-            val captureTime = Instant.ofEpochMilli(capturedAtMillis)
-                .atZone(ZoneId.systemDefault())
-                .format(captureTimeFormatter)
-            val scanContext = buildString {
-                append("User took this photo at $captureTime. ")
-                append("Suggested meal type: ${suggestedMealType.label}. ")
-                append(userContext.ifBlank { "Identify the food, estimate portion sizes, and return exact macros." })
-            }
-            val response = api.generateContent(
+    suspend fun analyzeMealImage(path: String, userContext: String, capturedAtMillis: Long): MealAnalysisResult {
+        if (!isAiReady()) return fallbackMealScan()
+        val apiKey = apiKeyProvider() ?: return fallbackMealScan()
+        val file = File(path)
+        val suggestedMealType = suggestMealType(capturedAtMillis)
+        val captureTime = Instant.ofEpochMilli(capturedAtMillis)
+            .atZone(ZoneId.systemDefault())
+            .format(captureTimeFormatter)
+        val scanContext = buildString {
+            append("User took this photo at $captureTime. ")
+            append("Suggested meal type: ${suggestedMealType.label}. ")
+            append(userContext.ifBlank { "Identify the food, estimate portion sizes, and return exact macros." })
+        }
+        val response = runCatching {
+            api.generateContent(
                 model = GEMINI_FLASH_MODEL,
                 apiKey = apiKey,
                 request = GeminiRequest(
@@ -57,7 +83,7 @@ class MealAnalysisService @Inject constructor(
                                 GeminiRequest.Part(
                                     inlineData = GeminiRequest.InlineData(
                                         mimeType = "image/jpeg",
-                                        data = Base64.encodeToString(file.readBytes(), Base64.NO_WRAP),
+                                        data = Base64.getEncoder().encodeToString(file.readBytes()),
                                     ),
                                 ),
                             ),
@@ -68,12 +94,15 @@ class MealAnalysisService @Inject constructor(
                     ),
                 ),
             )
-            val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
-            parseMealScan(text, suggestedMealType)
-        }.getOrElse { fallbackMealScan() }
+        }.getOrElse { error ->
+            throw MealAnalysisUnavailableException(cause = error)
+        }
+        val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
+        return parseMealScan(text, suggestedMealType)
+    }
 
     private fun parseMealScan(text: String, fallbackMealType: MealType): MealAnalysisResult {
-        if (text.isBlank()) return fallbackMealScan()
+        if (text.isBlank()) throw MealAnalysisUnavailableException()
         return runCatching {
             val root = JsonParser.parseString(text).asJsonObject
             val items = root.getAsJsonArray("items")?.mapNotNull { element ->
@@ -104,27 +133,15 @@ class MealAnalysisService @Inject constructor(
                 notes = root.get("notes")?.asString,
                 rawResponse = text,
             )
-        }.getOrElse {
-            MealAnalysisResult(
-                items = listOf(
-                    MealScanItem(
-                        name = text.lineSequence().firstOrNull()?.take(40).orEmpty().ifBlank { "Meal estimate" },
-                        estimatedGrams = 100.0,
-                        nutrition = NutritionFacts(0.0, 0.0, 0.0, 0.0),
-                        confidence = "low",
-                        notes = "The AI response was not structured, so review and edit before saving.",
-                    ),
-                ),
-                suggestedMealType = fallbackMealType,
-                notes = "Structured parsing failed. Please review the estimate carefully.",
-                rawResponse = text,
-            )
+        }.getOrElse { error ->
+            throw MealAnalysisUnavailableException(cause = error)
         }
     }
 
     private fun fallbackMealScan(): MealAnalysisResult = MealAnalysisResult(
         items = emptyList(),
-        notes = "AI meal analysis is unavailable right now. You can still add the meal manually.",
+        notes = "AI-maaltijdanalyse is nu niet beschikbaar. Je kunt de maaltijd handmatig toevoegen.",
+        source = MealAnalysisSource.LOCAL_FALLBACK,
     )
 }
 
@@ -284,11 +301,11 @@ class GoalAdvisorService @Inject constructor(
             goal = goal,
         )
         val trainingFocus = when {
-            goal.contains("bulk", ignoreCase = true) -> "Progressive overload on compounds"
-            goal.contains("cut", ignoreCase = true) || goal.contains("fat", ignoreCase = true) -> "High adherence, steps, and recovery"
-            bodyFat > 20 -> "Body recomposition with consistent strength work"
-            height > 0 && weight / ((height / 100.0) * (height / 100.0)) < 22 -> "Build muscle with steady weekly volume"
-            else -> "Balanced strength and recovery"
+            goal.contains("bulk", ignoreCase = true) -> "Progressieve overload op compoundoefeningen"
+            goal.contains("cut", ignoreCase = true) || goal.contains("fat", ignoreCase = true) -> "Consistentie, stappen en herstel"
+            bodyFat > 20 -> "Body recomposition met consistente krachttraining"
+            height > 0 && weight / ((height / 100.0) * (height / 100.0)) < 22 -> "Spiermassa opbouwen met stabiel weekvolume"
+            else -> "Gebalanceerde krachtopbouw en herstel"
         }
         return GoalAdvice(
             bmr = baseline.bmr,
@@ -299,7 +316,7 @@ class GoalAdvisorService @Inject constructor(
             carbsTarget = baseline.carbsTarget,
             fatTarget = baseline.fatTarget,
             trainingFocus = trainingFocus,
-            summary = "Baseline: BMR ${baseline.bmr} kcal, maintenance ${baseline.maintenanceCalories} kcal, target ${baseline.targetCalories} kcal. Aim for ${baseline.proteinTarget} g protein and keep training focused on $trainingFocus.",
+            summary = "Lokale berekening: BMR ${baseline.bmr} kcal, onderhoud ${baseline.maintenanceCalories} kcal, doel ${baseline.targetCalories} kcal. Richt je op ${baseline.proteinTarget} g eiwit en train met focus op $trainingFocus.",
             rawResponse = null,
         )
     }
@@ -343,7 +360,7 @@ class WeeklyReportService @Inject constructor(
                 summary = root.get("summary")?.asString ?: fallbackWeeklyReport(adherence).summary,
                 wins = root.getAsJsonArray("wins")?.map { it.asString }.orEmpty(),
                 risks = root.getAsJsonArray("risks")?.map { it.asString }.orEmpty(),
-                nextWeekFocus = root.get("nextWeekFocus")?.asString ?: "Protect recovery before adding more volume.",
+                nextWeekFocus = root.get("nextWeekFocus")?.asString ?: "Bescherm herstel voordat je extra volume toevoegt.",
                 thinkingProcess = root.getAsJsonArray("thinkingProcess")?.map { it.asString }.orEmpty(),
                 rawResponse = text,
             )
@@ -351,10 +368,10 @@ class WeeklyReportService @Inject constructor(
 
     private fun fallbackWeeklyReport(adherence: Int): WeeklyReportResult =
         WeeklyReportResult(
-            summary = "Weekly report: training volume is trending up, body weight is stable, and adherence is $adherence%. Prioritize sleep before increasing volume again.",
-            wins = listOf("Training consistency is improving."),
-            risks = listOf("Recovery may limit progress if sleep stays low."),
-            nextWeekFocus = "Hold volume steady and improve sleep quality before pushing load.",
+            summary = "Lokale samenvatting: er is nog te weinig betrouwbare context voor een AI-weekrapport. Consistentie staat nu op $adherence%.",
+            wins = listOf("Training en voeding blijven lokaal beschikbaar."),
+            risks = listOf("Zonder compleet profiel en recente logs kan TrainIQ geen betrouwbaar weekadvies geven."),
+            nextWeekFocus = "Vul je profiel aan en log een paar trainingen of maaltijden voordat je het volume verhoogt.",
         )
 }
 
@@ -365,12 +382,12 @@ internal fun parseWorkoutDebriefResponse(
 ): WorkoutDebrief = runCatching {
     val root = JsonParser.parseString(text).asJsonObject
     WorkoutDebrief(
-        summary = root.get("summary")?.asString ?: "Great session.",
-        progressionFeedback = root.get("progressionFeedback")?.asString ?: "Progression remained stable.",
+        summary = root.get("summary")?.asString ?: "Training opgeslagen.",
+        progressionFeedback = root.get("progressionFeedback")?.asString ?: "Progressie bleef stabiel.",
         recommendation = root.get("recommendation")?.asString
-            ?: "Repeat this session and aim for one extra rep on main lifts.",
+            ?: "Herhaal deze sessie en mik op een extra herhaling bij de belangrijkste oefeningen.",
         nextSessionFocus = root.get("nextSessionFocus")?.asString?.trim().orEmpty()
-            .ifBlank { "Maintain current weights" },
+            .ifBlank { "Huidige gewichten vasthouden" },
         recoveryScore = (root.get("recoveryScore")?.asInt ?: 75).coerceIn(0, 100),
         intensitySignal = root.get("intensitySignal")?.asString?.trim()?.uppercase().orEmpty()
             .ifBlank { "MAINTAIN" },
@@ -382,14 +399,14 @@ internal fun parseWorkoutDebriefResponse(
 }.getOrElse { fallbackWorkoutDebriefResult(totalVolume, progression) }
 
 internal fun fallbackWorkoutDebriefResult(totalVolume: Double, progression: Double) = WorkoutDebrief(
-    summary = "Great session. Volume reached ${totalVolume.toInt()} kg.",
-    progressionFeedback = "Volume changed by ${String.format(Locale.US, "%.1f", progression)}% versus the previous session.",
-    recommendation = "Keep the same split and add load to the first compound lift next week.",
-    nextSessionFocus = "Maintain current weights",
+    summary = "Lokale samenvatting: volume ${totalVolume.toInt()} kg.",
+    progressionFeedback = "Volume veranderde met ${String.format(Locale.US, "%.1f", progression)}% ten opzichte van de vorige sessie.",
+    recommendation = "Houd dezelfde opzet aan en verhoog pas als uitvoering en herstel goed blijven.",
+    nextSessionFocus = "Huidige gewichten vasthouden",
     recoveryScore = 75,
     intensitySignal = "MAINTAIN",
-    wins = listOf("Training volume was captured locally."),
-    risks = if (progression > 5.0) listOf("Volume jumped more than 5%; watch recovery.") else emptyList(),
-    nextLoadTarget = "Repeat current working weights and add reps only if RPE stays under 8.",
-    recoveryAdvice = "Use sleep, steps, and soreness to decide whether to push or hold load.",
+    wins = listOf("Trainingsvolume lokaal vastgelegd."),
+    risks = if (progression > 5.0) listOf("Volume steeg meer dan 5%; let op herstel.") else emptyList(),
+    nextLoadTarget = "Herhaal de huidige werkgewichten en voeg alleen herhalingen toe als RPE onder 8 blijft.",
+    recoveryAdvice = "Gebruik slaap, stappen en spierpijn om te bepalen of je verhoogt of vasthoudt.",
 )

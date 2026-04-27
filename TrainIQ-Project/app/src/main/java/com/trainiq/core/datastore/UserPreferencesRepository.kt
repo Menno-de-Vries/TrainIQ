@@ -115,4 +115,10 @@ class UserPreferencesRepository @Inject constructor(
             preferences.remove(healthLastSyncedAtKey)
         }
     }
+
+    suspend fun clearLocalPrivateData() {
+        context.dataStore.edit { preferences ->
+            preferences.clear()
+        }
+    }
 }

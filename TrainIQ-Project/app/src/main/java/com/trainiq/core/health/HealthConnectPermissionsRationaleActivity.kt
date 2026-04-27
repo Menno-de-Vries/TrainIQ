@@ -44,7 +44,7 @@ class HealthConnectPermissionsRationaleActivity : ComponentActivity() {
                     if (grantedPermissions.containsAll(HealthConnectReadPermissions)) {
                         openTrainIq()
                     } else {
-                        statusMessage = "TrainIQ needs all five Health Connect signals together so the AI coach can combine workload, recovery, energy balance, and progress trends reliably."
+                        statusMessage = "TrainIQ heeft alle vijf Health Connect-signalen samen nodig om belasting, herstel, energiebalans en voortgang eerlijk te combineren."
                     }
                 }
 
@@ -70,11 +70,11 @@ class HealthConnectPermissionsRationaleActivity : ComponentActivity() {
                                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                                 ) {
                                     Text(
-                                        "Why TrainIQ needs Health Connect",
+                                        "Waarom TrainIQ Health Connect gebruikt",
                                         style = MaterialTheme.typography.headlineSmall,
                                     )
                                     Text(
-                                        "TrainIQ reads five signals to coach like a senior strength and longevity specialist. Each permission explains a different part of your physiology, so the app can avoid generic advice and keep the dashboard honest.",
+                                        "TrainIQ leest vijf signalen om training, herstel en voeding beter te duiden. Elke toestemming verklaart een ander deel van je belasting en herstel, zodat het dashboard niet doet alsof ontbrekende data bekend is.",
                                         style = MaterialTheme.typography.bodyMedium,
                                     )
                                 }
@@ -112,12 +112,12 @@ class HealthConnectPermissionsRationaleActivity : ComponentActivity() {
                                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                                 ) {
                                     Text(
-                                        "Connect TrainIQ",
+                                        "TrainIQ verbinden",
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.SemiBold,
                                     )
                                     Text(
-                                        "Health Connect keeps the permission switch in one private place. TrainIQ only asks for read access to power coaching, sync the dashboard, and write better AI summaries.",
+                                        "Health Connect beheert toestemmingen op een centrale plek. TrainIQ vraagt alleen leestoegang om het dashboard te synchroniseren en coaching beter te onderbouwen.",
                                         style = MaterialTheme.typography.bodyMedium,
                                     )
                                     Button(
@@ -127,13 +127,13 @@ class HealthConnectPermissionsRationaleActivity : ComponentActivity() {
                                             permissionLauncher.launch(HealthConnectReadPermissions)
                                         },
                                     ) {
-                                        Text("Grant Health Connect access")
+                                        Text("Health Connect-toegang geven")
                                     }
                                     OutlinedButton(
                                         modifier = Modifier.fillMaxWidth(),
                                         onClick = ::openTrainIq,
                                     ) {
-                                        Text("Continue to TrainIQ")
+                                        Text("Doorgaan naar TrainIQ")
                                     }
                                 }
                             }
@@ -155,23 +155,23 @@ class HealthConnectPermissionsRationaleActivity : ComponentActivity() {
 
 private enum class PermissionReason(val title: String, val description: String) {
     Steps(
-        title = "Steps",
-        description = "Steps show movement volume and consistency, which lets TrainIQ separate a truly active week from a week where you only trained hard for short windows.",
+        title = "Stappen",
+        description = "Stappen tonen bewegingsvolume en consistentie, zodat TrainIQ een actieve week kan onderscheiden van alleen korte zware trainingsmomenten.",
     ),
     HeartRate(
-        title = "Heart rate",
-        description = "Heart rate gives the coach an intensity and recovery signal, so recommendations can reflect stress, conditioning, and fatigue instead of guessing.",
+        title = "Hartslag",
+        description = "Hartslag geeft een signaal voor intensiteit en herstel, zodat adviezen minder hoeven te gokken naar stress, conditie en vermoeidheid.",
     ),
     Sleep(
-        title = "Sleep",
-        description = "Sleep tells TrainIQ how recovered you are. It keeps readiness, deload signals, and next-session advice grounded in actual recovery quality.",
+        title = "Slaap",
+        description = "Slaap helpt TrainIQ inschatten hoe hersteld je bent en maakt readiness, deload-signalen en sessieadvies concreter.",
     ),
     Calories(
-        title = "Calories burned",
-        description = "Calories burned provide energy-expenditure context, which helps the AI explain whether training output and nutrition intake are aligned.",
+        title = "Verbrande calorieen",
+        description = "Verbrande calorieen geven context voor energieverbruik en helpen training en voeding realistischer naast elkaar te zetten.",
     ),
     Weight(
-        title = "Weight",
-        description = "Weight trends anchor progress. TrainIQ uses them to connect performance and nutrition patterns to real body-direction changes over time.",
+        title = "Gewicht",
+        description = "Gewichtstrends geven voortgang context. TrainIQ gebruikt ze om prestaties en voeding te verbinden aan echte lichaamsverandering.",
     ),
 }

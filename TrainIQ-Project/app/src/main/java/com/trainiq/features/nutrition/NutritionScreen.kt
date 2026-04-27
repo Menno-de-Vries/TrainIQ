@@ -302,12 +302,18 @@ class NutritionViewModel @Inject constructor(
     }
 
     fun deleteFood(foodId: Long) {
+        if (overview.value?.recipes.orEmpty().any { recipe -> recipe.ingredients.any { it.foodItemId == foodId } }) {
+            ephemeral.update { it.copy(message = "Dit product wordt nog gebruikt in recepten. Verwijder het eerst uit die recepten.") }
+            return
+        }
         if (NutritionSubmitKey.Delete in ephemeral.value.pendingSubmits) return
         ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits + NutritionSubmitKey.Delete, message = null) }
         viewModelScope.launch {
             try {
                 deleteFoodUseCase(foodId)
                 ephemeral.update { it.copy(message = "Product verwijderd.") }
+            } catch (_: Exception) {
+                ephemeral.update { it.copy(message = "Product verwijderen mislukt. Probeer opnieuw.") }
             } finally {
                 ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits - NutritionSubmitKey.Delete) }
             }
@@ -690,11 +696,17 @@ fun NutritionScreen(
                                             validateEditableAiItem(item).takeIf { it.hasErrors }?.let { index to it }
                                         }.toMap()
                                         aiItemErrors = errors
-                                        if (errors.isNotEmpty() || isAiSaving) return@AiMealAnalysisCard
+                                        if (errors.isNotEmpty() || isAiSaving || editableAiItems.isEmpty()) return@AiMealAnalysisCard
+                                        val batchItems = buildValidAiBatchItems(editableAiItems.toList())
+                                        if (batchItems == null || batchItems.isEmpty()) {
+                                            aiItemErrors = aiBatchNutritionErrors(editableAiItems.size)
+                                            return@AiMealAnalysisCard
+                                        }
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        aiSaveProgress = startAiBatchSaveProgress(editableAiItems.size)
-                                        editableAiItems.toList().forEach { item ->
-                                            val grams = item.grams.toNutritionNumberOrNull(max = 100_000.0) ?: return@forEach
+                                        aiSaveProgress = startAiBatchSaveProgress(batchItems.size)
+                                        batchItems.forEach { batchItem ->
+                                            val item = batchItem.item
+                                            val grams = batchItem.grams
                                             onSaveFood(
                                                 null,
                                                 item.name,
@@ -741,11 +753,17 @@ fun NutritionScreen(
                                                 validateEditableAiItem(item).takeIf { it.hasErrors }?.let { index to it }
                                             }.toMap()
                                             aiItemErrors = errors
-                                            if (errors.isNotEmpty() || isAiSaving) return@PhotoFoodReviewCard
+                                            if (errors.isNotEmpty() || isAiSaving || editableAiItems.isEmpty()) return@PhotoFoodReviewCard
+                                            val batchItems = buildValidAiBatchItems(editableAiItems.toList())
+                                            if (batchItems == null || batchItems.isEmpty()) {
+                                                aiItemErrors = aiBatchNutritionErrors(editableAiItems.size)
+                                                return@PhotoFoodReviewCard
+                                            }
                                             recipeName = recipeName.ifBlank { "AI-fotorecept" }
-                                            aiSaveProgress = startAiBatchSaveProgress(editableAiItems.size)
-                                            editableAiItems.toList().forEach { item ->
-                                                val grams = item.grams.toNutritionNumberOrNull(max = 100_000.0) ?: return@forEach
+                                            aiSaveProgress = startAiBatchSaveProgress(batchItems.size)
+                                            batchItems.forEach { batchItem ->
+                                                val item = batchItem.item
+                                                val grams = batchItem.grams
                                                 onSaveFood(
                                                     null,
                                                     item.name,
@@ -771,10 +789,16 @@ fun NutritionScreen(
                                                 validateEditableAiItem(item).takeIf { it.hasErrors }?.let { index to it }
                                             }.toMap()
                                             aiItemErrors = errors
-                                            if (errors.isNotEmpty() || isAiSaving) return@PhotoFoodReviewCard
-                                            aiSaveProgress = startAiBatchSaveProgress(editableAiItems.size)
-                                            editableAiItems.toList().forEach { item ->
-                                                val grams = item.grams.toNutritionNumberOrNull(max = 100_000.0) ?: return@forEach
+                                            if (errors.isNotEmpty() || isAiSaving || editableAiItems.isEmpty()) return@PhotoFoodReviewCard
+                                            val batchItems = buildValidAiBatchItems(editableAiItems.toList())
+                                            if (batchItems == null || batchItems.isEmpty()) {
+                                                aiItemErrors = aiBatchNutritionErrors(editableAiItems.size)
+                                                return@PhotoFoodReviewCard
+                                            }
+                                            aiSaveProgress = startAiBatchSaveProgress(batchItems.size)
+                                            batchItems.forEach { batchItem ->
+                                                val item = batchItem.item
+                                                val grams = batchItem.grams
                                                 onSaveFood(
                                                     null,
                                                     item.name,
@@ -2043,7 +2067,7 @@ private fun EditableAiItemCard(item: EditableAiItem, errors: AiItemFieldErrors, 
                 NutritionNumberField(value = item.carbs, onValueChange = { onChange(item.copy(carbs = it)) }, label = "Koolhydraten", modifier = Modifier.weight(1f), error = errors.carbs)
                 NutritionNumberField(value = item.fat, onValueChange = { onChange(item.copy(fat = it)) }, label = "Vet", modifier = Modifier.weight(1f), error = errors.fat)
             }
-            item.confidence?.let { Text("Zekerheid: $it") }
+            item.confidence?.let { Text("Zekerheid: ${it.toDutchConfidenceLabel()}") }
             item.notes?.let { Text(it) }
             Text("Per 100g: ${per100Value(item.calories, item.grams.toNutritionNumberOrNull(max = 100_000.0) ?: 100.0)} kcal", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.trainIqColors.mutedText)
             TextButton(onClick = onDelete) { Text("Item verwijderen") }
@@ -2075,14 +2099,54 @@ internal data class EditableAiItem(
     }
 }
 
+private data class AiBatchItem(
+    val item: EditableAiItem,
+    val grams: Double,
+)
+
 private fun formatNumber(value: Double): String = if (value % 1.0 == 0.0) value.toInt().toString() else String.format("%.1f", value)
 
 private fun formatNullableNumber(value: Double?): String = value?.let(::formatNumber).orEmpty()
 
 private fun per100Value(total: String, grams: Double): String {
+    return formatNumber(per100Number(total, grams))
+}
+
+private fun per100Number(total: String, grams: Double): Double {
     val parsed = total.toNutritionNumberOrNull(max = 100_000.0) ?: 0.0
-    val normalized = if (grams <= 0.0) 0.0 else parsed / grams * 100.0
-    return formatNumber(normalized)
+    return if (grams <= 0.0) 0.0 else parsed / grams * 100.0
+}
+
+private fun buildValidAiBatchItems(items: List<EditableAiItem>): List<AiBatchItem>? {
+    val batchItems = items.mapNotNull { item ->
+        val grams = item.grams.toNutritionNumberOrNull(max = 100_000.0) ?: return@mapNotNull null
+        val caloriesPer100g = per100Number(item.calories, grams)
+        val proteinPer100g = per100Number(item.protein, grams)
+        val carbsPer100g = per100Number(item.carbs, grams)
+        val fatPer100g = per100Number(item.fat, grams)
+        if (
+            caloriesPer100g !in 0.0..5000.0 ||
+            proteinPer100g !in 0.0..1000.0 ||
+            carbsPer100g !in 0.0..1000.0 ||
+            fatPer100g !in 0.0..1000.0
+        ) {
+            return@mapNotNull null
+        }
+        AiBatchItem(item, grams)
+    }
+    return batchItems.takeIf { it.size == items.size }
+}
+
+private fun aiBatchNutritionErrors(itemCount: Int): Map<Int, AiItemFieldErrors> =
+    (0 until itemCount).associateWith {
+        AiItemFieldErrors(calories = "Controleer portie en voedingswaarden.")
+    }
+
+private fun String.toDutchConfidenceLabel(): String = when (trim().lowercase()) {
+    "low" -> "laag"
+    "medium" -> "gemiddeld"
+    "high" -> "hoog"
+    else -> this
 }
 
 private val MealType.dutchLabel: String

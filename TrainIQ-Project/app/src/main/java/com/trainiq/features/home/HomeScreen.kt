@@ -290,15 +290,25 @@ fun HomeScreen(
                         item(span = { GridItemSpan(2) }) {
                             DiscoveryCard(onOpenCoach = onOpenCoach)
                         }
-                    }
-                    item(span = { GridItemSpan(2) }) {
+                        item(span = { GridItemSpan(2) }) {
+                            SetupChecklistCard(
+                                hasRoutine = dashboard.nextWorkout != null,
+                                hasLoggedFood = dashboard.calorieProgress > 0,
+                                healthConnectStatus = healthConnectStatus,
+                                onOpenCoach = onOpenCoach,
+                                onOpenTrain = onOpenTrain,
+                                onRequestHealthPermission = onRequestHealthPermission,
+                            )
+                        }
+                    } else {
+                        item(span = { GridItemSpan(2) }) {
                             EnergyBalanceCard(
                                 energyBalance = dashboard.energyBalance,
                                 calorieTarget = dashboard.calorieTarget,
                                 modifier = Modifier,
                             )
-                    }
-                    item(span = { GridItemSpan(2) }) {
+                        }
+                        item(span = { GridItemSpan(2) }) {
                             MacroBreakdownCard(
                             protein = dashboard.proteinProgress,
                             proteinTarget = dashboard.proteinTarget,
@@ -308,70 +318,71 @@ fun HomeScreen(
                             fatTarget = dashboard.fatTarget,
                                 modifier = Modifier,
                             )
-                    }
-                    item {
-                        MetricCard(
-                            title = "Reeks",
-                            value = "${dashboard.streak} dagen",
-                            subtitle = if (dashboard.streak > 0) "Je ritme staat stevig" else "Log een training of maaltijd om momentum op te bouwen",
-                            modifier = Modifier.height(170.dp),
-                        )
-                    }
-                    item {
-                        MetricCard(
-                            title = "Herstel",
-                            value = when (healthConnectStatus.state) {
-                                HealthConnectState.CONNECTED, HealthConnectState.NO_DATA -> "${healthConnectStatus.stepsToday ?: 0}"
-                                else -> "Offline"
-                            },
-                            subtitle = buildHomeRecoverySubtitle(
-                                averageHeartRateBpm = healthConnectStatus.averageHeartRateBpm,
-                                todaysWorkoutCalories = dashboard.todaysWorkoutCalories,
-                            ),
-                            modifier = Modifier.height(170.dp),
-                        )
-                    }
-                    item(span = { GridItemSpan(2) }) {
-                        PermissionManagerCard(
-                            status = healthConnectStatus,
-                            onRequestPermission = {
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onRequestHealthPermission()
-                            },
-                            onOpenInstall = {
-                                val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata"))
-                                val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata"))
-                                if (!context.startActivityIfResolvable(marketIntent)) {
-                                    context.startActivityIfResolvable(webIntent)
-                                }
-                            },
-                            onOpenSettings = {
-                                val settingsIntent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
-                                if (!context.startActivityIfResolvable(settingsIntent)) {
+                        }
+                        item {
+                            MetricCard(
+                                title = "Reeks",
+                                value = "${dashboard.streak} dagen",
+                                subtitle = if (dashboard.streak > 0) "Je ritme staat stevig" else "Log een training of maaltijd om momentum op te bouwen",
+                                modifier = Modifier.height(170.dp),
+                            )
+                        }
+                        item {
+                            MetricCard(
+                                title = "Herstel",
+                                value = when (healthConnectStatus.state) {
+                                    HealthConnectState.CONNECTED, HealthConnectState.NO_DATA -> "${healthConnectStatus.stepsToday ?: 0}"
+                                    else -> "Offline"
+                                },
+                                subtitle = buildHomeRecoverySubtitle(
+                                    averageHeartRateBpm = healthConnectStatus.averageHeartRateBpm,
+                                    todaysWorkoutCalories = dashboard.todaysWorkoutCalories,
+                                ),
+                                modifier = Modifier.height(170.dp),
+                            )
+                        }
+                        item(span = { GridItemSpan(2) }) {
+                            PermissionManagerCard(
+                                status = healthConnectStatus,
+                                onRequestPermission = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onRequestHealthPermission()
+                                },
+                                onOpenInstall = {
+                                    val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata"))
+                                    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata"))
+                                    if (!context.startActivityIfResolvable(marketIntent)) {
+                                        context.startActivityIfResolvable(webIntent)
+                                    }
+                                },
+                                onOpenSettings = {
+                                    val settingsIntent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
+                                    if (!context.startActivityIfResolvable(settingsIntent)) {
+                                        onRefreshHealth()
+                                    }
+                                },
+                                onRefresh = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                     onRefreshHealth()
-                                }
-                            },
-                            onRefresh = {
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onRefreshHealth()
-                            },
-                        )
-                    }
-                    item(span = { GridItemSpan(2) }) {
-                        NextWorkoutCard(
-                            dashboard = dashboard,
-                            onOpenTrain = onOpenTrain,
-                            onStartWorkout = {
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onStartWorkout(it)
-                            },
-                        )
-                    }
-                    item(span = { GridItemSpan(2) }) {
-                        CoachInsightCard(
-                            insight = dashboard.aiInsight,
-                            onOpenCoach = onOpenCoach,
-                        )
+                                },
+                            )
+                        }
+                        item(span = { GridItemSpan(2) }) {
+                            NextWorkoutCard(
+                                dashboard = dashboard,
+                                onOpenTrain = onOpenTrain,
+                                onStartWorkout = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onStartWorkout(it)
+                                },
+                            )
+                        }
+                        item(span = { GridItemSpan(2) }) {
+                            CoachInsightCard(
+                                insight = dashboard.aiInsight,
+                                onOpenCoach = onOpenCoach,
+                            )
+                        }
                     }
                 }
             }
@@ -412,6 +423,51 @@ private fun DiscoveryCard(onOpenCoach: () -> Unit) {
             PrimaryActionButton(onClick = onOpenCoach) { Text("Instellen starten") }
         }
     }
+}
+
+@Composable
+private fun SetupChecklistCard(
+    hasRoutine: Boolean,
+    hasLoggedFood: Boolean,
+    healthConnectStatus: HealthConnectStatus,
+    onOpenCoach: () -> Unit,
+    onOpenTrain: () -> Unit,
+    onRequestHealthPermission: () -> Unit,
+) {
+    AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.primary) {
+        Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+            Text("Eerst instellen", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+            Text(
+                "TrainIQ toont je dashboard zodra de basis klopt. Zo voorkom je lege macrodoelen en misleidende energiebalans.",
+                color = MaterialTheme.trainIqColors.mutedText,
+            )
+            SetupChecklistRow("Profiel invullen", done = false)
+            SetupChecklistRow("Routine maken of starten", done = hasRoutine)
+            SetupChecklistRow("Eerste maaltijd loggen", done = hasLoggedFood)
+            SetupChecklistRow(
+                "Health Connect optioneel koppelen",
+                done = healthConnectStatus.state == HealthConnectState.CONNECTED || healthConnectStatus.state == HealthConnectState.NO_DATA,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+                PrimaryActionButton(onClick = onOpenCoach, modifier = Modifier.weight(1f)) { Text("Profiel invullen") }
+                SecondaryActionButton(onClick = onOpenTrain, modifier = Modifier.weight(1f)) { Text("Routine maken") }
+            }
+            if (healthConnectStatus.state == HealthConnectState.PERMISSION_REQUIRED) {
+                SecondaryActionButton(onClick = onRequestHealthPermission, modifier = Modifier.fillMaxWidth()) {
+                    Text("Health Connect koppelen")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SetupChecklistRow(label: String, done: Boolean) {
+    Text(
+        "${if (done) "Klaar" else "Nog te doen"} - $label",
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (done) MaterialTheme.colorScheme.primary else MaterialTheme.trainIqColors.mutedText,
+    )
 }
 
 @Composable

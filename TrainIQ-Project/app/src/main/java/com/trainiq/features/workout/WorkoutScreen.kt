@@ -112,6 +112,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -280,8 +281,8 @@ sealed interface WorkoutUiEvent {
     ) : WorkoutUiEvent
 }
 
-private val BuilderActionWidth = 40.dp
-private val BuilderRowActionWidth = 44.dp
+private val BuilderActionWidth = 48.dp
+private val BuilderRowActionWidth = 48.dp
 private val ActiveSetActionWidth = 96.dp
 private val ActiveSetLeadingWidth = 76.dp
 private val TopLevelBottomContentPadding = 132.dp
@@ -2206,7 +2207,14 @@ private fun RoutineExerciseCard(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .clickable(onClick = onOpenHistory),
+                        .clickable(
+                            onClickLabel = "Geschiedenis openen",
+                            role = Role.Button,
+                            onClick = onOpenHistory,
+                        )
+                        .semantics {
+                            contentDescription = "Geschiedenis van ${plan.exercise.name} openen"
+                        },
                     verticalArrangement = Arrangement.spacedBy(3.dp),
                 ) {
                     Text(
@@ -4005,32 +4013,12 @@ private fun ActiveExerciseCard(
                         expanded = menuExpanded,
                         onDismissRequest = { menuExpanded = false },
                     ) {
-                        DropdownMenuItem(
-                            text = { Text("Alleen nu vervangen") },
-                            leadingIcon = { Icon(Icons.Rounded.SwapHoriz, contentDescription = null) },
-                            enabled = loggedSets.isEmpty(),
-                            onClick = {
-                                menuExpanded = false
-                                onReplaceExercise()
-                            },
+                        Text(
+                            "Binnenkort beschikbaar: tijdelijk vervangen of verwijderen wordt pas aangezet zodra TrainIQ dit betrouwbaar binnen de actieve sessie bewaart.",
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.trainIqColors.mutedText,
                         )
-                        DropdownMenuItem(
-                            text = { Text("Alleen nu verwijderen") },
-                            leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null) },
-                            enabled = loggedSets.isEmpty(),
-                            onClick = {
-                                menuExpanded = false
-                                onRemoveExercise()
-                            },
-                        )
-                        if (loggedSets.isNotEmpty()) {
-                            Text(
-                                "Aanpassen kan voor het loggen van sets. Verwijder gelogde sets eerst als je deze oefening wilt vervangen.",
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.trainIqColors.mutedText,
-                            )
-                        }
                     }
                 }
             }
@@ -4380,7 +4368,7 @@ private fun SetRow(
             Box(modifier = Modifier.width(ActiveSetActionWidth), contentAlignment = Alignment.CenterEnd) {
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     IconButton(onClick = onEdit) {
-                        Icon(Icons.Rounded.Edit, contentDescription = "Set naar invoer kopiëren")
+                        Icon(Icons.Rounded.ContentCopy, contentDescription = "Set naar invoer kopieren")
                     }
                     IconButton(onClick = { showDeleteConfirm = true }) {
                         Icon(Icons.Rounded.Delete, contentDescription = "Set verwijderen")

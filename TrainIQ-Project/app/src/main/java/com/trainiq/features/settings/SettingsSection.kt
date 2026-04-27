@@ -57,6 +57,7 @@ import com.trainiq.core.ui.SectionCard
 import com.trainiq.core.ui.bringIntoViewOnFocus
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.datastore.UserPreferencesRepository
+import com.trainiq.core.diagnostics.PerformanceSessionStore
 import com.trainiq.core.theme.ThemeMode
 import com.trainiq.data.local.TrainIqLocalStore
 import com.trainiq.features.profile.DefaultProfileActivityLevel
@@ -89,6 +90,7 @@ class SettingsViewModel @Inject constructor(
     private val getHealthConnectStatusUseCase: GetHealthConnectStatusUseCase,
     private val goalAdvisorService: GoalAdvisorService,
     private val localStore: TrainIqLocalStore,
+    private val performanceSessionStore: PerformanceSessionStore,
 ) : ViewModel() {
     val themeMode: StateFlow<ThemeMode> = preferencesRepository.themeMode
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ThemeMode.SYSTEM)
@@ -235,7 +237,13 @@ class SettingsViewModel @Inject constructor(
     fun clearAllData() {
         viewModelScope.launch {
             localStore.clearAll()
-            _message.value = "Lokale training-, maaltijd- en profielgegevens gewist."
+            preferencesRepository.clearLocalPrivateData()
+            performanceSessionStore.clearAll()
+            _healthStatus.value = HealthConnectStatus(
+                state = HealthConnectState.PERMISSION_REQUIRED,
+                message = "Lokale data is gewist. Verbind Health Connect opnieuw als je die koppeling wilt gebruiken.",
+            )
+            _message.value = "Alle lokale appdata, AI-sleutel, voorkeuren en Health Connect-cache zijn gewist."
         }
     }
 
@@ -260,11 +268,7 @@ fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
     val healthStatus by viewModel.healthStatus.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val requestHealthPermission = rememberHealthConnectPermissionRequester(viewModel::refreshHealthConnectStatus)
-    HealthConnectRefreshOnResume(viewModel::refreshHealthConnectStatus)
-
-    LaunchedEffect(Unit) {
-        viewModel.refreshHealthConnectStatus()
-    }
+    HealthConnectRefreshOnResume(viewModel::refreshHealthConnectStatus, refreshOnFirstResume = false)
 
     SettingsScreen(
         themeMode = themeMode,
@@ -638,11 +642,19 @@ fun SettingsScreen(
                     when (action) {
                         PendingDestructiveSettingsAction.CLEAR_API_KEY -> "API-sleutel verwijderen?"
                         PendingDestructiveSettingsAction.RESET_PROFILE -> "Profiel resetten?"
-                        PendingDestructiveSettingsAction.CLEAR_ALL_DATA -> "Alle lokale data wissen?"
+                        PendingDestructiveSettingsAction.CLEAR_ALL_DATA -> "Alle lokale appdata wissen?"
                     },
                 )
             },
-            text = { Text("Deze actie kan niet automatisch ongedaan worden gemaakt.") },
+            text = {
+                Text(
+                    when (action) {
+                        PendingDestructiveSettingsAction.CLEAR_API_KEY -> "Je Gemini API-sleutel wordt verwijderd en AI wordt uitgeschakeld. Deze actie kan niet automatisch ongedaan worden gemaakt."
+                        PendingDestructiveSettingsAction.RESET_PROFILE -> "Je profiel en dashboarddoelen worden verwijderd. Trainingen en voeding blijven staan. Deze actie kan niet automatisch ongedaan worden gemaakt."
+                        PendingDestructiveSettingsAction.CLEAR_ALL_DATA -> "TrainIQ wist lokale trainingen, voeding, profiel, AI-sleutel, voorkeuren en Health Connect-cache op dit apparaat. Health Connect-permissies zelf beheer je in Android. Deze actie kan niet automatisch ongedaan worden gemaakt."
+                    },
+                )
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
