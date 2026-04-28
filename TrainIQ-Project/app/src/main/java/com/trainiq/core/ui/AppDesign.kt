@@ -66,6 +66,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
@@ -140,17 +145,72 @@ fun Modifier.clearFocusOnTapOutside(): Modifier {
 fun Modifier.clearFocusOnScrollOrDrag(): Modifier {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
-    return pointerInput(focusManager, keyboardController) {
+    val clearInputFocus = {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+    }
+    val scrollConnection = remember(focusManager, keyboardController) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput && available != Offset.Zero) {
+                    clearInputFocus()
+                }
+                return Offset.Zero
+            }
+        }
+    }
+    return nestedScroll(scrollConnection).pointerInput(focusManager, keyboardController) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
             val drag = awaitTouchSlopOrCancellation(down.id) { _, _ ->
-                focusManager.clearFocus(force = true)
-                keyboardController?.hide()
+                clearInputFocus()
             }
             if (drag != null) {
                 waitForUpOrCancellation(pass = PointerEventPass.Final)
+                clearInputFocus()
+            }
+        }
+    }
+}
+
+@Composable
+fun Modifier.focusOnTapOnly(): Modifier {
+    val requester = remember { FocusRequester() }
+    return focusOnTapOnly(requester)
+}
+
+@Composable
+fun Modifier.focusOnTapOnly(requester: FocusRequester): Modifier {
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val touchSlop = androidx.compose.ui.platform.LocalViewConfiguration.current.touchSlop
+    return focusRequester(requester).pointerInput(requester, focusManager, keyboardController, touchSlop) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            down.consume()
+            val startPosition = down.position
+            var isDrag = false
+            var isPressed: Boolean
+            do {
+                val event = awaitPointerEvent(pass = PointerEventPass.Initial)
+                val change = event.changes.firstOrNull { it.id == down.id } ?: event.changes.first()
+                if ((change.position - startPosition).getDistance() > touchSlop) {
+                    isDrag = true
+                    change.consume()
+                    focusManager.clearFocus(force = true)
+                    keyboardController?.hide()
+                }
+                isPressed = change.pressed
+                if (!isPressed) {
+                    change.consume()
+                }
+            } while (isPressed)
+            if (isDrag) {
                 focusManager.clearFocus(force = true)
                 keyboardController?.hide()
+            } else {
+                requester.requestFocus()
+                keyboardController?.show()
             }
         }
     }

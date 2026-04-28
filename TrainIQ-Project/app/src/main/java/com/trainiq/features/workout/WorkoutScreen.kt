@@ -1,4 +1,7 @@
-@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@file:OptIn(
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
+    androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
+)
 
 package com.trainiq.features.workout
 
@@ -9,6 +12,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -29,6 +33,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.LocalOverscrollConfiguration
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -90,6 +95,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -136,6 +142,7 @@ import com.trainiq.core.ui.EmptyStateCard
 import com.trainiq.core.ui.PrimaryActionButton
 import com.trainiq.core.ui.SecondaryActionButton
 import com.trainiq.core.ui.bringIntoViewOnFocus
+import com.trainiq.core.ui.focusOnTapOnly
 import com.trainiq.core.audio.RestTimerSoundPlayer
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.datastore.WorkoutFeedbackPreferences
@@ -1227,21 +1234,22 @@ fun WorkoutScreen(
         )
     }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .clearFocusOnScrollOrDrag()
-            .imeNestedScroll()
-            .navigationBarsPadding()
-            .imePadding(),
-        contentPadding = PaddingValues(
-            start = MaterialTheme.spacing.medium,
-            top = MaterialTheme.spacing.medium,
-            end = MaterialTheme.spacing.medium,
-            bottom = TopLevelBottomContentPadding,
-        ),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
+    TrainingWithoutOverscroll {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .clearFocusOnScrollOrDrag()
+                .imeNestedScroll()
+                .navigationBarsPadding()
+                .imePadding(),
+            contentPadding = PaddingValues(
+                start = MaterialTheme.spacing.medium,
+                top = MaterialTheme.spacing.medium,
+                end = MaterialTheme.spacing.medium,
+                bottom = TopLevelBottomContentPadding,
+            ),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
         item { ScreenHeader(title = "Train", subtitle = "Routines, progressie en actieve sessies") }
         if (message != null) item { MessageCard(message = message, onDismiss = onDismissMessage) }
         if (overview == null) {
@@ -1343,6 +1351,7 @@ fun WorkoutScreen(
                 HistoryCard(session.id, session.totalVolume, session.duration, onDeleteWorkoutSession)
             }
         }
+        }
     }
 }
 
@@ -1401,6 +1410,14 @@ private fun RoutineCreationCard(onShowCreateDialog: () -> Unit, onShowAiDialog: 
                 Text("Met AI genereren")
             }
         }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalFoundationApi::class)
+private fun TrainingWithoutOverscroll(content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
+        content()
     }
 }
 
@@ -1519,15 +1536,15 @@ private fun RoutineGeneratorDialog(
                         )
                     }
                 }
-                OutlinedTextField(focus, { focus = it }, label = { Text("Training focus / split") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(focus, { focus = it }, label = { Text("Training focus / split") }, modifier = Modifier.fillMaxWidth().focusOnTapOnly())
                 OutlinedTextField(
                     value = daysPerWeek,
                     onValueChange = { daysPerWeek = it },
                     label = { Text("Days per week") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().focusOnTapOnly(),
                 )
-                OutlinedTextField(equipment, { equipment = it }, label = { Text("Available equipment") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(equipment, { equipment = it }, label = { Text("Available equipment") }, modifier = Modifier.fillMaxWidth().focusOnTapOnly())
                 ExperienceLevelSelector(experienceLevel, onSelected = { experienceLevel = it })
                 SessionDurationSlider(durationMinutes = sessionDuration.toInt(), onValueChange = { sessionDuration = it })
                 IncludeDeloadRow(enabled = includeDeload, onCheckedChange = { includeDeload = it })
@@ -1772,8 +1789,8 @@ private fun RoutineCard(
     AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.primary) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (isEditing) {
-                OutlinedTextField(editName, { editName = it }, label = { Text("Routinenaam") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
-                OutlinedTextField(editDescription, { editDescription = it }, label = { Text("Beschrijving") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                OutlinedTextField(editName, { editName = it }, label = { Text("Routinenaam") }, modifier = Modifier.fillMaxWidth().focusOnTapOnly().bringIntoViewOnFocus())
+                OutlinedTextField(editDescription, { editDescription = it }, label = { Text("Beschrijving") }, modifier = Modifier.fillMaxWidth().focusOnTapOnly().bringIntoViewOnFocus())
                 editError?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
@@ -1887,7 +1904,7 @@ private fun RoutineCard(
             if (detailTab == "sessions") {
             Text("Sessie toevoegen", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(dayName, { dayName = it }, label = { Text("Sessienaam (optioneel)") }, modifier = Modifier.weight(1f).bringIntoViewOnFocus())
+                OutlinedTextField(dayName, { dayName = it }, label = { Text("Sessienaam (optioneel)") }, modifier = Modifier.weight(1f).focusOnTapOnly().bringIntoViewOnFocus())
                 Button(onClick = { onAddDay(routine.id, dayName); dayName = "" }) { Text("Toevoegen") }
             }
             if (routine.days.isEmpty()) {
@@ -2693,6 +2710,7 @@ private fun SheetNumberField(
             keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(force = true) }),
             modifier = Modifier
                 .fillMaxWidth()
+                .focusOnTapOnly()
                 .bringIntoViewOnFocus(),
         )
         if (showAdjustControls) {
@@ -2794,6 +2812,7 @@ private fun CompactSetNumberField(
             unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
         ),
         modifier = modifier
+            .focusOnTapOnly()
             .defaultMinSize(minHeight = 58.dp)
             .bringIntoViewOnFocus(),
     )
@@ -2858,17 +2877,18 @@ private fun ExercisePickerSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
     ) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.92f)
-                .clearFocusOnScrollOrDrag()
-                .navigationBarsPadding()
-                .imePadding()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            contentPadding = PaddingValues(bottom = 96.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
+        TrainingWithoutOverscroll {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.92f)
+                    .clearFocusOnScrollOrDrag()
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                contentPadding = PaddingValues(bottom = 96.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
             item {
                 Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             }
@@ -2880,6 +2900,7 @@ private fun ExercisePickerSheet(
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .focusOnTapOnly()
                         .bringIntoViewOnFocus(),
                 )
             }
@@ -2975,6 +2996,7 @@ private fun ExercisePickerSheet(
                     }
                 }
             }
+            }
         }
     }
 }
@@ -3011,9 +3033,9 @@ private fun CustomExerciseDialog(
                     .imePadding(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                OutlinedTextField(exerciseName, { exerciseName = it }, label = { Text("Oefening") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
-                OutlinedTextField(muscleGroup, { muscleGroup = it }, label = { Text("Spiergroep") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
-                OutlinedTextField(equipment, { equipment = it }, label = { Text("Materiaal") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                OutlinedTextField(exerciseName, { exerciseName = it }, label = { Text("Oefening") }, modifier = Modifier.fillMaxWidth().focusOnTapOnly().bringIntoViewOnFocus())
+                OutlinedTextField(muscleGroup, { muscleGroup = it }, label = { Text("Spiergroep") }, modifier = Modifier.fillMaxWidth().focusOnTapOnly().bringIntoViewOnFocus())
+                OutlinedTextField(equipment, { equipment = it }, label = { Text("Materiaal") }, modifier = Modifier.fillMaxWidth().focusOnTapOnly().bringIntoViewOnFocus())
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -3073,13 +3095,13 @@ private fun ExercisePlanEditDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(targetSets, { targetSets = it }, label = { Text("Sets") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).bringIntoViewOnFocus())
-                    OutlinedTextField(repRange, { repRange = it }, label = { Text("Reps") }, modifier = Modifier.weight(1f).bringIntoViewOnFocus())
+                    OutlinedTextField(targetSets, { targetSets = it }, label = { Text("Sets") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).focusOnTapOnly().bringIntoViewOnFocus())
+                    OutlinedTextField(repRange, { repRange = it }, label = { Text("Reps") }, modifier = Modifier.weight(1f).focusOnTapOnly().bringIntoViewOnFocus())
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(restSeconds, { restSeconds = it }, label = { Text("Rest s") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).bringIntoViewOnFocus())
-                    OutlinedTextField(targetWeightKg, { targetWeightKg = it }, label = { Text("Kg") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f).bringIntoViewOnFocus())
-                    OutlinedTextField(targetRpe, { targetRpe = it }, label = { Text("RPE") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f).bringIntoViewOnFocus())
+                    OutlinedTextField(restSeconds, { restSeconds = it }, label = { Text("Rest s") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).focusOnTapOnly().bringIntoViewOnFocus())
+                    OutlinedTextField(targetWeightKg, { targetWeightKg = it }, label = { Text("Kg") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f).focusOnTapOnly().bringIntoViewOnFocus())
+                    OutlinedTextField(targetRpe, { targetRpe = it }, label = { Text("RPE") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f).focusOnTapOnly().bringIntoViewOnFocus())
                 }
                 SetTypeSelector(
                     selectedType = setType,
@@ -3129,14 +3151,15 @@ private fun ExerciseHistoryScreen(
             )
         },
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .clearFocusOnScrollOrDrag()
-                .padding(padding),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
+        TrainingWithoutOverscroll {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clearFocusOnScrollOrDrag()
+                    .padding(padding),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
             if (history == null) {
                 item { ShimmerCardPlaceholder() }
                 return@LazyColumn
@@ -3180,6 +3203,7 @@ private fun ExerciseHistoryScreen(
             }
             items(history.sessions, key = { it.sessionId }) { session ->
                 ExerciseSessionLogCard(session)
+            }
             }
         }
     }
@@ -3609,7 +3633,8 @@ fun ActiveWorkoutScreen(
             )
         },
     ) { padding ->
-        LazyColumn(
+        TrainingWithoutOverscroll {
+            LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .clearFocusOnScrollOrDrag()
@@ -3617,14 +3642,14 @@ fun ActiveWorkoutScreen(
                     .padding(padding)
                     .navigationBarsPadding()
                     .imePadding(),
-            contentPadding = PaddingValues(
-                start = MaterialTheme.spacing.medium,
-                top = MaterialTheme.spacing.medium,
-                end = MaterialTheme.spacing.medium,
-                bottom = ActiveWorkoutBottomContentPadding,
-            ),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
+                contentPadding = PaddingValues(
+                    start = MaterialTheme.spacing.medium,
+                    top = MaterialTheme.spacing.medium,
+                    end = MaterialTheme.spacing.medium,
+                    bottom = ActiveWorkoutBottomContentPadding,
+                ),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
             uiState.message?.let { message ->
                 item { MessageCard(message = message, onDismiss = currentOnDismissMessage) }
             }
@@ -3711,6 +3736,7 @@ fun ActiveWorkoutScreen(
             }
             if (uiState.debrief != null) item { WorkoutDebriefCard(uiState.debrief, uiState) }
         }
+    }
     }
     if (showFinishConfirm) {
         AlertDialog(
@@ -4333,6 +4359,7 @@ private fun QuickNumberField(
             ),
             modifier = fieldModifier
                 .fillMaxWidth()
+                .focusOnTapOnly()
                 .defaultMinSize(minHeight = 64.dp)
                 .bringIntoViewOnFocus(),
         )
