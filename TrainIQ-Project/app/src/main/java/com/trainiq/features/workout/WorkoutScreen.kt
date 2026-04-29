@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -306,6 +307,9 @@ sealed interface WorkoutUiEvent {
 
 private val BuilderActionWidth = 48.dp
 private val BuilderRowActionWidth = 48.dp
+private val RoutineSessionHorizontalPadding = 12.dp
+private val RoutineExerciseHorizontalPadding = 8.dp
+private val RoutineSetHorizontalPadding = 6.dp
 private val ActiveSetActionWidth = 104.dp
 private val ActiveSetLeadingWidth = 76.dp
 private val TopLevelBottomContentPadding = 132.dp
@@ -1685,20 +1689,20 @@ private fun RoutineCard(
     onDeleteRoutineSet: (Long) -> Unit,
     onMoveRoutineSet: (Long, List<Long>) -> Unit,
 ) {
-    var isEditing by remember(routine.id) { mutableStateOf(false) }
-    var editName by remember(routine.id, routine.name) { mutableStateOf(routine.name) }
-    var editDescription by remember(routine.id, routine.description) { mutableStateOf(routine.description) }
-    var dayName by remember(routine.id) { mutableStateOf("") }
-    var starterTargetSets by remember(routine.id) { mutableStateOf("3") }
-    var starterRepRange by remember(routine.id) { mutableStateOf("8-12") }
-    var starterRestSeconds by remember(routine.id) { mutableStateOf("90") }
-    var starterTargetWeight by remember(routine.id) { mutableStateOf("") }
-    var starterTargetRpe by remember(routine.id) { mutableStateOf("") }
+    var isEditing by rememberSaveable(routine.id) { mutableStateOf(false) }
+    var editName by rememberSaveable(routine.id, routine.name) { mutableStateOf(routine.name) }
+    var editDescription by rememberSaveable(routine.id, routine.description) { mutableStateOf(routine.description) }
+    var dayName by rememberSaveable(routine.id) { mutableStateOf("") }
+    var starterTargetSets by rememberSaveable(routine.id) { mutableStateOf("3") }
+    var starterRepRange by rememberSaveable(routine.id) { mutableStateOf("8-12") }
+    var starterRestSeconds by rememberSaveable(routine.id) { mutableStateOf("90") }
+    var starterTargetWeight by rememberSaveable(routine.id) { mutableStateOf("") }
+    var starterTargetRpe by rememberSaveable(routine.id) { mutableStateOf("") }
     var showStarterExercisePicker by remember(routine.id) { mutableStateOf(false) }
     var showStarterCustomExerciseDialog by remember(routine.id) { mutableStateOf(false) }
     var showDeleteRoutineConfirm by remember(routine.id) { mutableStateOf(false) }
-    var detailTab by remember(routine.id) { mutableStateOf("info") }
-    var editError by remember(routine.id) { mutableStateOf<String?>(null) }
+    var detailTab by rememberSaveable(routine.id) { mutableStateOf("info") }
+    var editError by rememberSaveable(routine.id) { mutableStateOf<String?>(null) }
 
     if (showStarterExercisePicker) {
         ExercisePickerSheet(
@@ -2033,11 +2037,11 @@ private fun WorkoutDayEditor(
     onDeleteRoutineSet: (Long) -> Unit,
     onMoveRoutineSet: (Long, List<Long>) -> Unit,
 ) {
-    var targetSets by remember(day.id) { mutableStateOf("3") }
-    var repRange by remember(day.id) { mutableStateOf("8-12") }
-    var restSeconds by remember(day.id) { mutableStateOf("90") }
-    var targetWeight by remember(day.id) { mutableStateOf("") }
-    var targetRpe by remember(day.id) { mutableStateOf("") }
+    var targetSets by rememberSaveable(day.id) { mutableStateOf("3") }
+    var repRange by rememberSaveable(day.id) { mutableStateOf("8-12") }
+    var restSeconds by rememberSaveable(day.id) { mutableStateOf("90") }
+    var targetWeight by rememberSaveable(day.id) { mutableStateOf("") }
+    var targetRpe by rememberSaveable(day.id) { mutableStateOf("") }
     var showExercisePicker by remember(day.id) { mutableStateOf(false) }
     var showCustomExerciseDialog by remember(day.id) { mutableStateOf(false) }
     var showRemoveDayConfirm by remember(day.id) { mutableStateOf(false) }
@@ -2160,7 +2164,7 @@ private fun WorkoutDayEditor(
         modifier = Modifier.fillMaxWidth(),
         accent = MaterialTheme.trainIqColors.cyan,
         elevated = true,
-        contentPadding = PaddingValues(MaterialTheme.spacing.medium),
+        contentPadding = PaddingValues(horizontal = RoutineSessionHorizontalPadding, vertical = MaterialTheme.spacing.medium),
     ) {
         val sessionMeta = "${dayFocusLabel(day)} - ${day.exercises.size} ${if (day.exercises.size == 1) "oefening" else "oefeningen"} - ±${dayEstimatedMinutes(day)} min"
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -2316,19 +2320,23 @@ private fun RoutineExerciseCard(
         modifier = Modifier.fillMaxWidth(),
         accent = if (plan.supersetGroupId != null) MaterialTheme.trainIqColors.purple else MaterialTheme.colorScheme.primary,
         elevated = false,
-        contentPadding = PaddingValues(MaterialTheme.spacing.compact),
+        contentPadding = PaddingValues(horizontal = RoutineExerciseHorizontalPadding, vertical = MaterialTheme.spacing.compact),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
             ) {
                 Box(
                     modifier = exerciseDragHandle.size(BuilderActionWidth),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Rounded.DragHandle, contentDescription = "Oefening verplaatsen")
+                    Icon(
+                        Icons.Rounded.DragHandle,
+                        contentDescription = "Oefening verplaatsen",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 Column(
                     modifier = Modifier
@@ -2341,11 +2349,11 @@ private fun RoutineExerciseCard(
                         .semantics {
                             contentDescription = "Geschiedenis van ${plan.exercise.name} openen"
                         },
-                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Text(
                         plan.exercise.name,
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -2391,6 +2399,7 @@ private fun RoutineExerciseCard(
                             )
                             DropdownMenuItem(
                                 text = { Text("Bewerken") },
+                                leadingIcon = { Icon(Icons.Rounded.Edit, contentDescription = null) },
                                 onClick = {
                                     menuExpanded = false
                                     onEditExercise()
@@ -2406,6 +2415,7 @@ private fun RoutineExerciseCard(
                             )
                             DropdownMenuItem(
                                 text = { Text("Verwijderen") },
+                                leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null) },
                                 onClick = {
                                     menuExpanded = false
                                     onRemoveExercise()
@@ -2510,13 +2520,21 @@ private fun RoutineSetHeaderRow() {
         shape = MaterialTheme.shapes.small,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = MaterialTheme.spacing.small, vertical = MaterialTheme.spacing.small),
+            modifier = Modifier.padding(horizontal = RoutineSetHorizontalPadding, vertical = MaterialTheme.spacing.small),
             horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Spacer(modifier = Modifier.width(BuilderRowActionWidth))
-            HeaderLabel("Sets", Modifier.weight(1f))
-            HeaderLabel("Reps - Kg - Rest - RPE", textAlign = TextAlign.End)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                HeaderLabel("Setconfiguratie")
+                Text(
+                    "Reps - Kg - Rust - RPE",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.trainIqColors.mutedText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Spacer(modifier = Modifier.width(BuilderRowActionWidth))
         }
     }
@@ -2548,64 +2566,151 @@ private fun RoutineSetRow(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val detail = routineSetDetailText(set)
-    Row(
+    val metricCells = routineSetMetricCells(set)
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.50f), MaterialTheme.shapes.medium)
             .clickable(onClick = onEdit)
-            .padding(horizontal = MaterialTheme.spacing.small, vertical = MaterialTheme.spacing.compact),
-        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = RoutineSetHorizontalPadding, vertical = MaterialTheme.spacing.compact),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box(
-            modifier = dragHandle.size(BuilderRowActionWidth),
-            contentAlignment = Alignment.Center,
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                Icons.Rounded.DragHandle,
-                contentDescription = "Set verplaatsen",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Box(
+                modifier = dragHandle.size(BuilderRowActionWidth),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Rounded.DragHandle,
+                    contentDescription = "Set verplaatsen",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "#$index",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    set.setType.label(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            IconButton(modifier = Modifier.size(BuilderRowActionWidth), onClick = onDelete) {
+                Icon(
+                    Icons.Rounded.Delete,
+                    contentDescription = "Set verwijderen",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
-        Column(
-            modifier = Modifier.weight(1.2f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                "#$index - ${set.setType.label()}",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                detail,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        IconButton(modifier = Modifier.size(BuilderRowActionWidth), onClick = onDelete) {
-            Icon(
-                Icons.Rounded.Delete,
-                contentDescription = "Set verwijderen",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            when (routineSetMetricLayoutForWidth(maxWidth)) {
+                RoutineSetMetricLayout.OneRow -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        metricCells.forEach { cell ->
+                            RoutineSetMetricValue(cell = cell, modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+                RoutineSetMetricLayout.BalancedGrid -> {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        metricCells.chunked(2).forEach { rowCells ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                rowCells.forEach { cell ->
+                                    RoutineSetMetricValue(
+                                        cell = cell,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
-private fun routineSetDetailText(set: RoutineSet): String = listOf(
-    set.targetReps.takeIf { it > 0 }?.let { "$it reps" } ?: "Reps -",
-    set.targetWeightKg.takeIf { it > 0.0 }?.let { "${formatWeight(it)} kg" } ?: "Kg -",
-    set.restSeconds.takeIf { it > 0 }?.let { "${it}s rest" } ?: "Rest -",
-    set.targetRpe.takeIf { it > 0.0 }?.let { "RPE ${formatWeight(it)}" } ?: "RPE -",
-).joinToString(" - ")
+@Composable
+private fun RoutineSetMetricValue(cell: RoutineSetMetricCell, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .defaultMinSize(minWidth = 52.dp)
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.62f), MaterialTheme.shapes.small)
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(1.dp),
+    ) {
+        Text(
+            cell.label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            cell.value,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+internal data class RoutineSetMetricCell(
+    val label: String,
+    val value: String,
+)
+
+internal enum class RoutineSetMetricLayout {
+    OneRow,
+    BalancedGrid,
+}
+
+internal fun routineSetMetricLayoutForWidth(availableWidth: Dp): RoutineSetMetricLayout =
+    if (availableWidth >= 240.dp) RoutineSetMetricLayout.OneRow else RoutineSetMetricLayout.BalancedGrid
+
+internal fun routineSetMetricCells(set: RoutineSet): List<RoutineSetMetricCell> = listOf(
+    RoutineSetMetricCell("Reps", set.targetReps.takeIf { it > 0 }?.toString() ?: "-"),
+    RoutineSetMetricCell("Kg", set.targetWeightKg.takeIf { it > 0.0 }?.let { "${formatWeight(it)} kg" } ?: "-"),
+    RoutineSetMetricCell("Rust", set.restSeconds.takeIf { it > 0 }?.let { "${it}s" } ?: "-"),
+    RoutineSetMetricCell("RPE", set.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight) ?: "-"),
+)
 
 @Composable
 private fun RpeInfoButton(

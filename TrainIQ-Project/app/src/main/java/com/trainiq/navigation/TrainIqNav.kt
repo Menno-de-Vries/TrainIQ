@@ -142,7 +142,8 @@ fun TrainIqApp(diagnosticsTracker: DiagnosticsTracker) {
     }
     LaunchedEffect(currentDestination?.route) {
         diagnosticsTracker.screen(currentDestination.screenName())
-        if (currentDestination?.hierarchy?.any { it.hasRoute(Train::class) } != true) {
+        val isTrainDestination = currentDestination?.hierarchy?.any { it.hasRoute(Train::class) } == true
+        if (shouldClearTrainDetailMode(isTrainDestination, currentTopLevelIndex != null)) {
             trainDetailMode = false
         }
     }
@@ -255,6 +256,9 @@ private fun NavHostController.navigateToActiveWorkout(dayId: Long) {
         launchSingleTop = true
     }
 }
+
+internal fun shouldClearTrainDetailMode(isTrainDestination: Boolean, isTopLevelDestination: Boolean): Boolean =
+    !isTrainDestination && isTopLevelDestination
 
 private fun androidx.navigation.NavDestination?.screenName(): String = when {
     this == null -> "Unknown"

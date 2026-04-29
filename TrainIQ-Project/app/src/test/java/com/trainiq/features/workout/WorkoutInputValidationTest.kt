@@ -1,6 +1,8 @@
 package com.trainiq.features.workout
 
 import com.trainiq.domain.model.Exercise
+import com.trainiq.domain.model.RoutineSet
+import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutExercisePlan
 import com.trainiq.domain.model.WorkoutRoutine
@@ -11,6 +13,35 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WorkoutInputValidationTest {
+    @Test
+    fun `routine set metric cells keep fixed scan columns with placeholders`() {
+        val set = RoutineSet(
+            id = 1,
+            workoutExerciseId = 10,
+            orderIndex = 0,
+            setType = SetType.NORMAL,
+            targetReps = 8,
+            targetWeightKg = 80.0,
+            restSeconds = -1,
+            targetRpe = 0.0,
+        )
+
+        assertEquals(
+            listOf("8", "80 kg", "-", "-"),
+            routineSetMetricCells(set).map { it.value },
+        )
+    }
+
+    @Test
+    fun `routine set metric layout uses one row when enough width is available`() {
+        assertEquals(RoutineSetMetricLayout.OneRow, routineSetMetricLayoutForWidth(260.dp))
+    }
+
+    @Test
+    fun `routine set metric layout falls back to balanced grid on narrow widths`() {
+        assertEquals(RoutineSetMetricLayout.BalancedGrid, routineSetMetricLayoutForWidth(220.dp))
+    }
+
     @Test
     fun `set log start rejects duplicate pending submit`() {
         val started = tryStartSetLog(emptySet(), exerciseId = 10L)
