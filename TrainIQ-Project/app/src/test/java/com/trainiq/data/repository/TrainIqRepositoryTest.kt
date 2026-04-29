@@ -447,6 +447,41 @@ class TrainIqRepositoryTest {
     }
 
     @Test
+    fun withExerciseReplacedInActiveWorkout_preservesLoggedSetsUnderOriginalExercise() {
+        val state = TrainIqStorageState(
+            exercises = listOf(
+                ExerciseEntity(id = 3L, name = "Bench Press", muscleGroup = "Chest", equipment = "Barbell"),
+                ExerciseEntity(id = 9L, name = "Incline Press", muscleGroup = "Chest", equipment = "Dumbbell"),
+            ),
+            workoutExercises = listOf(
+                WorkoutExerciseEntity(id = 4L, dayId = 7L, exerciseId = 3L, targetSets = 2, repRange = "8-12", restSeconds = 90),
+            ),
+            activeWorkoutSession = ActiveWorkoutSessionStorage(
+                sessionId = 12L,
+                dayId = 7L,
+                loggedSets = listOf(
+                    ActiveWorkoutSetStorage(id = 20L, exerciseId = 3L, sourceWorkoutExerciseId = 4L, weight = 80.0, reps = 8),
+                ),
+                drafts = mapOf(4L to ActiveWorkoutDraftStorage(weight = "80", reps = "8")),
+                collapsedExerciseIds = setOf(4L),
+            ),
+        )
+
+        val updated = state.withExerciseReplacedInActiveWorkout(
+            workoutExerciseId = 4L,
+            newExerciseId = 9L,
+            now = 2_000L,
+        )
+
+        assertEquals(9L, updated.workoutExercises.single().exerciseId)
+        assertEquals(listOf(3L), updated.activeWorkoutSession?.loggedSets?.map { it.exerciseId })
+        assertEquals(listOf(4L), updated.activeWorkoutSession?.loggedSets?.map { it.sourceWorkoutExerciseId })
+        assertEquals(2_000L, updated.activeWorkoutSession?.updatedAt)
+        assertEquals(mapOf(4L to ActiveWorkoutDraftStorage(weight = "80", reps = "8")), updated.activeWorkoutSession?.drafts)
+        assertEquals(setOf(4L), updated.activeWorkoutSession?.collapsedExerciseIds)
+    }
+
+    @Test
     fun withExerciseRemovedFromDay_preservesActiveSetsWhenRemovedPlanIsNotActiveDay() {
         val state = TrainIqStorageState(
             workoutExercises = listOf(

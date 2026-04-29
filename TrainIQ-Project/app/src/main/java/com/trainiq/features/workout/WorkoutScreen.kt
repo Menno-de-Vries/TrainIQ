@@ -8,7 +8,6 @@ package com.trainiq.features.workout
 import android.app.Activity
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Canvas
@@ -87,6 +86,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -106,6 +106,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -208,6 +209,7 @@ import com.trainiq.domain.usecase.ObserveExerciseHistoryUseCase
 import com.trainiq.domain.usecase.RemoveExerciseFromDayUseCase
 import com.trainiq.domain.usecase.RemoveWorkoutDayUseCase
 import com.trainiq.domain.usecase.MoveRoutineSetUseCase
+import com.trainiq.domain.usecase.ReplaceExerciseInActiveWorkoutUseCase
 import com.trainiq.domain.usecase.ReplaceExerciseInPlanUseCase
 import com.trainiq.domain.usecase.ReorderExercisesUseCase
 import com.trainiq.domain.usecase.SaveGeneratedRoutineUseCase
@@ -216,6 +218,7 @@ import com.trainiq.domain.usecase.SetActiveWorkoutCollapsedUseCase
 import com.trainiq.domain.usecase.SetSupersetGroupUseCase
 import com.trainiq.domain.usecase.UpdateActiveWorkoutDraftUseCase
 import com.trainiq.domain.usecase.UpdateActiveWorkoutRestTimerUseCase
+import com.trainiq.domain.usecase.UpdateActiveWorkoutSetUseCase
 import com.trainiq.domain.usecase.UpdateActiveWorkoutSetTypeUseCase
 import com.trainiq.domain.usecase.UndoWorkoutLogEventUseCase
 import com.trainiq.domain.usecase.UpdateRoutineSetUseCase
@@ -265,6 +268,7 @@ data class ActiveWorkoutUiState(
     val progressionSuggestions: List<ProgressionSuggestion> = emptyList(),
     val loggedSetsThisSession: Map<Long, List<LoggedSet>> = emptyMap(),
     val pendingLoggingExerciseIds: Set<Long> = emptySet(),
+    val pendingCorrectionSetIds: Map<Long, Long> = emptyMap(),
     val restTimerSeconds: Int = 0,
     val restTimerTotalSeconds: Int = 0,
     val debrief: WorkoutDebrief? = null,
@@ -313,7 +317,7 @@ private val RoutineSetHorizontalPadding = 6.dp
 private val ActiveSetActionWidth = 104.dp
 private val ActiveSetLeadingWidth = 76.dp
 private val TopLevelBottomContentPadding = 132.dp
-private val ActiveWorkoutBottomContentPadding = 96.dp
+private val ActiveWorkoutBottomContentPadding = 72.dp
 private val ExercisePickerHandleDismissThreshold = 96.dp
 private val SetEditorHandleDismissThreshold = 96.dp
 private const val SetEditorSurfaceMaxHeightFraction = 0.92f
@@ -338,6 +342,7 @@ class WorkoutViewModel @Inject constructor(
     private val getOrStartActiveWorkoutSessionUseCase: GetOrStartActiveWorkoutSessionUseCase,
     private val updateActiveWorkoutDraftUseCase: UpdateActiveWorkoutDraftUseCase,
     private val logActiveWorkoutSetUseCase: LogActiveWorkoutSetUseCase,
+    private val updateActiveWorkoutSetUseCase: UpdateActiveWorkoutSetUseCase,
     private val updateActiveWorkoutSetTypeUseCase: UpdateActiveWorkoutSetTypeUseCase,
     private val deleteActiveWorkoutSetUseCase: DeleteActiveWorkoutSetUseCase,
     private val undoWorkoutLogEventUseCase: UndoWorkoutLogEventUseCase,
@@ -360,6 +365,7 @@ class WorkoutViewModel @Inject constructor(
     private val reorderExercisesUseCase: ReorderExercisesUseCase,
     private val setSupersetGroupUseCase: SetSupersetGroupUseCase,
     private val replaceExerciseInPlanUseCase: ReplaceExerciseInPlanUseCase,
+    private val replaceExerciseInActiveWorkoutUseCase: ReplaceExerciseInActiveWorkoutUseCase,
     private val updateWorkoutExercisePlanUseCase: UpdateWorkoutExercisePlanUseCase,
     private val addSetToExerciseUseCase: AddSetToExerciseUseCase,
     private val updateRoutineSetUseCase: UpdateRoutineSetUseCase,
@@ -385,6 +391,7 @@ class WorkoutViewModel @Inject constructor(
     private val _restTimerSeconds = MutableStateFlow(0)
     val restTimerSeconds: StateFlow<Int> = _restTimerSeconds.asStateFlow()
     private val _restTimerTotalSeconds = MutableStateFlow(0)
+    val restTimerTotalSeconds: StateFlow<Int> = _restTimerTotalSeconds.asStateFlow()
     private val _elapsedSeconds = MutableStateFlow(0L)
 
     private val _debrief = MutableStateFlow<WorkoutDebrief?>(null)
@@ -395,6 +402,7 @@ class WorkoutViewModel @Inject constructor(
     private val _loggingSummary = MutableStateFlow(WorkoutLoggingSummary())
     private val _activeFocusTarget = MutableStateFlow<ActiveWorkoutFocusTarget?>(null)
     private val _pendingLoggingExerciseIds = MutableStateFlow<Set<Long>>(emptySet())
+    private val _pendingCorrectionSetIds = MutableStateFlow<Map<Long, Long>>(emptyMap())
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
@@ -412,8 +420,7 @@ class WorkoutViewModel @Inject constructor(
         _activeSession,
         _progressionSuggestions,
         _loggedSetsThisSession,
-        _restTimerSeconds,
-    ) { workout, activeSession, suggestions, loggedSets, restTimerSeconds ->
+    ) { workout, activeSession, suggestions, loggedSets ->
         val allSets = loggedSets.values.flatten()
         val targetSets = workout?.exercises?.sumOf { it.plannedSetCount() } ?: 0
         ActiveWorkoutUiState(
@@ -421,7 +428,6 @@ class WorkoutViewModel @Inject constructor(
             activeSession = activeSession,
             progressionSuggestions = suggestions,
             loggedSetsThisSession = loggedSets,
-            restTimerSeconds = restTimerSeconds,
             collapsedExerciseIds = activeSession?.collapsedExerciseIds.orEmpty(),
             completedSets = allSets.size,
             targetSets = targetSets,
@@ -431,12 +437,18 @@ class WorkoutViewModel @Inject constructor(
         )
     }.combine(_pendingLoggingExerciseIds) { state, pendingLoggingExerciseIds ->
         state.copy(pendingLoggingExerciseIds = pendingLoggingExerciseIds)
+    }.combine(_pendingCorrectionSetIds) { state, pendingCorrectionSetIds ->
+        val correctionCount = pendingCorrectionSetIds.count { (key, setId) ->
+            state.loggedSetsThisSession[key].orEmpty().any { it.id == setId }
+        }
+        state.copy(
+            pendingCorrectionSetIds = pendingCorrectionSetIds,
+            completedSets = (state.completedSets - correctionCount).coerceAtLeast(0),
+        )
     }.combine(_debrief) { state, debrief ->
         state.copy(debrief = debrief)
     }.combine(_elapsedSeconds) { state, elapsedSeconds ->
         state.copy(elapsedSeconds = elapsedSeconds)
-    }.combine(_restTimerTotalSeconds) { state, restTimerTotalSeconds ->
-        state.copy(restTimerTotalSeconds = restTimerTotalSeconds)
     }.combine(_drafts) { state, drafts ->
         state.copy(drafts = drafts)
     }.combine(_draftErrors) { state, draftErrors ->
@@ -519,27 +531,29 @@ class WorkoutViewModel @Inject constructor(
         }
     }
 
-    fun updateLoggedSetType(exerciseId: Long, setIndex: Int, setType: SetType) {
+    fun updateLoggedSetType(setId: Long, setType: SetType) {
         viewModelScope.launch {
-            updateActiveWorkoutSetTypeUseCase(exerciseId, setIndex, setType)?.let(::applyActiveSession)
+            updateActiveWorkoutSetTypeUseCase(setId, setType)?.let(::applyActiveSession)
         }
     }
 
-    fun editLoggedSet(exerciseId: Long, setIndex: Int) {
+    fun editLoggedSet(exerciseId: Long, setId: Long) {
         val sets = _loggedSetsThisSession.value[exerciseId].orEmpty()
-        val set = sets.getOrNull(setIndex) ?: return
+        val set = sets.firstOrNull { it.id == setId } ?: return
         val draft = set.toDraft()
         _drafts.value = _drafts.value.toMutableMap().apply { put(exerciseId, draft) }
+        _pendingCorrectionSetIds.value = _pendingCorrectionSetIds.value.toMutableMap().apply { put(exerciseId, setId) }
         clearSetInputError(exerciseId)
         viewModelScope.launch {
             updateActiveWorkoutDraftUseCase(exerciseId, draft.toDomainDraft())?.let(::applyActiveSession)
         }
-        _message.value = "Set ${setIndex + 1} is gekopieerd naar de invoer. Verwijder de oude set alleen als je die wilt vervangen."
+        _message.value = "Set staat klaar voor correctie. Pas de invoer aan en kies Wijzig loggen."
     }
 
-    fun deleteLoggedSet(exerciseId: Long, setIndex: Int, showMessage: Boolean = true) {
+    fun deleteLoggedSet(setId: Long, showMessage: Boolean = true) {
+        _pendingCorrectionSetIds.value = _pendingCorrectionSetIds.value.filterValues { it != setId }
         viewModelScope.launch {
-            deleteActiveWorkoutSetUseCase(exerciseId, setIndex)?.let(::applyActiveSession)
+            deleteActiveWorkoutSetUseCase(setId)?.let(::applyActiveSession)
             if (showMessage) _message.value = "Set verwijderd."
         }
     }
@@ -547,7 +561,10 @@ class WorkoutViewModel @Inject constructor(
     fun logSet(plan: WorkoutExercisePlan): Boolean {
         diagnosticsTracker.tap("Workout:SetLogClicked")
         val key = plan.activeKey
-        val loggedCount = _loggedSetsThisSession.value[key].orEmpty().size
+        val correctionSetId = _pendingCorrectionSetIds.value[key]
+        val loggedSets = _loggedSetsThisSession.value[key].orEmpty()
+        val correctionSet = correctionSetId?.let { id -> loggedSets.firstOrNull { it.id == id } }
+        val loggedCount = loggedSets.size
         val draft = _drafts.value[key] ?: plan.nextPlannedDraft(loggedCount)
         val validation = validateSetInput(draft)
         if (validation is SetLogValidationResult.Invalid) {
@@ -568,26 +585,44 @@ class WorkoutViewModel @Inject constructor(
         }
         val validInput = validation as SetLogValidationResult.Valid
         val loggedSet = LoggedSet(
+            id = correctionSet?.id ?: 0L,
             exerciseId = plan.exercise.id,
-            sourceWorkoutExerciseId = plan.id,
+            performedExerciseId = correctionSet?.performedExerciseId ?: 0L,
+            sourceWorkoutExerciseId = correctionSet?.sourceWorkoutExerciseId ?: plan.id,
             weight = validInput.weight,
             reps = validInput.reps,
             rpe = validInput.rpe,
             repsInReserve = StrengthCalculator.estimateRepsInReserve(validInput.rpe),
             setType = draft.setType,
+            restSeconds = correctionSet?.restSeconds ?: 0,
+            orderIndex = correctionSet?.orderIndex ?: 0,
         )
         viewModelScope.launch {
-            val nextDraft = plan.nextPlannedDraft(loggedCount + 1).takeIf {
+            val nextDraftIndex = if (correctionSet != null) loggedCount else loggedCount + 1
+            val nextDraft = plan.nextPlannedDraft(nextDraftIndex).takeIf {
                 it.weight.isNotBlank() || it.reps.isNotBlank() || it.rpe.isNotBlank()
-            } ?: loggedSet.toDraft()
+            } ?: SetInputDraft(setType = draft.setType)
             try {
-                val active = logActiveWorkoutSetUseCase(
-                    dayId = dayId,
-                    set = loggedSet,
-                    draft = nextDraft.toDomainDraft(),
-                    restSeconds = plan.plannedRestSeconds(loggedCount),
-                )
+                val restSeconds = plan.plannedRestSeconds(correctionSet?.orderIndex ?: loggedCount)
+                val active = if (correctionSet != null) {
+                    updateActiveWorkoutSetUseCase(
+                        setId = correctionSet.id,
+                        set = loggedSet,
+                        draft = nextDraft.toDomainDraft(),
+                        restSeconds = restSeconds,
+                    ) ?: return@launch
+                } else {
+                    logActiveWorkoutSetUseCase(
+                        dayId = dayId,
+                        set = loggedSet,
+                        draft = nextDraft.toDomainDraft(),
+                        restSeconds = restSeconds,
+                    )
+                }
                 applyActiveSession(active)
+                if (correctionSet != null) {
+                    _pendingCorrectionSetIds.value = _pendingCorrectionSetIds.value - key
+                }
                 clearSetInputError(key)
                 val loggedSetsByExerciseId = active.loggedSets
                     .groupBy { it.activeKey }
@@ -599,16 +634,18 @@ class WorkoutViewModel @Inject constructor(
                 )
                 val summary = observeWorkoutLoggingSummaryUseCase(dayId).first()
                 _loggingSummary.value = summary.copy(activeFocusTarget = _activeFocusTarget.value)
-                val message = when (loggedSet.setType) {
+                val message = if (correctionSet != null) {
+                    "Set ${correctionSet.orderIndex + 1} bijgewerkt voor ${plan.exercise.name}."
+                } else when (loggedSet.setType) {
                     SetType.FAILURE -> "Failure set voltooid voor ${plan.exercise.name}."
                     SetType.DROP_SET -> "Drop set voltooid voor ${plan.exercise.name}."
                     else -> "Set ${active.loggedSets.count { it.activeKey == key }} gelogd voor ${plan.exercise.name}."
                 }
-                _events.emit(
+                _events.tryEmit(
                     WorkoutUiEvent.SetLogged(
                         id = ++eventId,
                         message = message,
-                        undoEventId = summary.lastUndoableEventId,
+                        undoEventId = if (correctionSet == null) summary.lastUndoableEventId else null,
                     ),
                 )
                 diagnosticsTracker.state("Workout:SetLogged")
@@ -643,7 +680,6 @@ class WorkoutViewModel @Inject constructor(
             stopRestTimer(persist = true)
             _debrief.value = finishActiveWorkoutUseCase(dayId)
             _activeSession.value = null
-            _loggedSetsThisSession.value = emptyMap()
             _drafts.value = emptyMap()
             _draftErrors.value = emptyMap()
             _progressionSuggestions.value = getProgressionSuggestionsUseCase(dayId)
@@ -905,14 +941,11 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun replaceExerciseInActiveWorkout(workoutExerciseId: Long, exercise: Exercise) {
-        val workout = _activeWorkout.value ?: return
-        val currentPlan = workout.exercises.firstOrNull { it.id == workoutExerciseId } ?: return
-        val key = currentPlan.activeKey
-        if (_loggedSetsThisSession.value[key].orEmpty().isNotEmpty()) {
-            _message.value = "Verwijder eerst gelogde sets voordat je deze oefening vervangt."
-            return
+        viewModelScope.launch {
+            replaceExerciseInActiveWorkoutUseCase(workoutExerciseId, exercise.id)?.let(::applyActiveSession)
+            _activeWorkout.value = getWorkoutDayUseCase(_activeWorkout.value?.id ?: return@launch)
+            _message.value = "Oefening vervangen door ${exercise.name}."
         }
-        _message.value = "Oefeningen vervangen tijdens een actieve training is tijdelijk uitgeschakeld. Pas de routine aan voordat je start."
     }
 
     fun removeExerciseFromActiveWorkout(workoutExerciseId: Long) {
@@ -1089,6 +1122,9 @@ class WorkoutViewModel @Inject constructor(
         _loggedSetsThisSession.value = session.loggedSets
             .groupBy { it.activeKey }
             .mapValues { (_, sets) -> sets.map { it.toLoggedSet() } }
+        _pendingCorrectionSetIds.value = _pendingCorrectionSetIds.value.filter { (key, setId) ->
+            session.loggedSets.any { it.activeKey == key && it.id == setId }
+        }
         _drafts.value = session.drafts.mapValues { it.value.toUiDraft() }
         _elapsedSeconds.value = ((System.currentTimeMillis() - session.startedAt) / 1_000).coerceAtLeast(0)
         updateRestTimerFromSession()
@@ -2712,6 +2748,31 @@ internal fun routineSetMetricCells(set: RoutineSet): List<RoutineSetMetricCell> 
     RoutineSetMetricCell("RPE", set.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight) ?: "-"),
 )
 
+internal fun activeSetMetricCells(
+    repRange: String,
+    plannedSet: RoutineSet?,
+    loggedSet: LoggedSet?,
+): List<RoutineSetMetricCell> {
+    val reps = loggedSet?.reps?.takeIf { it > 0 }?.toString()
+        ?: plannedSet?.targetReps?.takeIf { it > 0 }?.toString()
+        ?: repRange.ifBlank { "-" }
+    val weight = loggedSet?.weight?.takeIf { it > 0.0 }?.let { "${formatWeight(it)} kg" }
+        ?: plannedSet?.targetWeightKg?.takeIf { it > 0.0 }?.let { "${formatWeight(it)} kg" }
+        ?: "-"
+    val rest = loggedSet?.restSeconds?.takeIf { it > 0 }?.let { "${it}s" }
+        ?: plannedSet?.restSeconds?.takeIf { it > 0 }?.let { "${it}s" }
+        ?: "-"
+    val rpe = loggedSet?.rpe?.takeIf { it > 0.0 }?.let(::formatWeight)
+        ?: plannedSet?.targetRpe?.takeIf { it > 0.0 }?.let(::formatWeight)
+        ?: "-"
+    return listOf(
+        RoutineSetMetricCell("Reps", reps),
+        RoutineSetMetricCell("Kg", weight),
+        RoutineSetMetricCell("Rust", rest),
+        RoutineSetMetricCell("RPE", rpe),
+    )
+}
+
 @Composable
 private fun RpeInfoButton(
     compactText: Boolean = false,
@@ -3967,6 +4028,8 @@ fun ActiveWorkoutRoute(
     viewModel: WorkoutViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.activeWorkoutUiState.collectAsStateWithLifecycle()
+    val restTimerSeconds by viewModel.restTimerSeconds.collectAsStateWithLifecycle()
+    val restTimerTotalSeconds by viewModel.restTimerTotalSeconds.collectAsStateWithLifecycle()
     val overview by viewModel.overview.collectAsStateWithLifecycle()
     val workoutFeedbackPreferences by viewModel.workoutFeedbackPreferences.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -3986,13 +4049,21 @@ fun ActiveWorkoutRoute(
                     if (currentFeedbackPreferences.workoutHapticsEnabled) {
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     }
+                    snackbarHostState.currentSnackbarData?.dismiss()
                     snackbarHostState.showSnackbar(event.message)
                 }
                 is WorkoutUiEvent.SetLogged -> {
                     if (currentFeedbackPreferences.workoutHapticsEnabled) {
                         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     }
-                    snackbarHostState.showSnackbar(event.message)
+                    snackbarHostState.currentSnackbarData?.dismiss()
+                    val result = snackbarHostState.showSnackbar(
+                        message = event.message,
+                        actionLabel = event.undoEventId?.let { "Ongedaan maken" },
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        event.undoEventId?.let(viewModel::undoWorkoutLogEvent)
+                    }
                 }
             }
         }
@@ -4008,6 +4079,8 @@ fun ActiveWorkoutRoute(
 
     ActiveWorkoutScreen(
         uiState = uiState,
+        restTimerSeconds = restTimerSeconds,
+        restTimerTotalSeconds = restTimerTotalSeconds,
         exerciseLibrary = overview?.exercises.orEmpty(),
         snackbarHostState = snackbarHostState,
         workoutHapticsEnabled = workoutFeedbackPreferences.workoutHapticsEnabled,
@@ -4016,7 +4089,7 @@ fun ActiveWorkoutRoute(
         onDraftChange = viewModel::updateSetDraft,
         onSetTypeChange = viewModel::updateLoggedSetType,
         onEditSet = viewModel::editLoggedSet,
-        onDeleteSet = { exerciseId, setIndex -> viewModel.deleteLoggedSet(exerciseId, setIndex) },
+        onDeleteSet = { setId -> viewModel.deleteLoggedSet(setId) },
         onDismissMessage = viewModel::clearMessage,
         onLogSet = viewModel::logSet,
         onLogSameAgain = viewModel::logSameAgain,
@@ -4035,15 +4108,17 @@ fun ActiveWorkoutRoute(
 @Composable
 fun ActiveWorkoutScreen(
     uiState: ActiveWorkoutUiState,
+    restTimerSeconds: Int,
+    restTimerTotalSeconds: Int,
     exerciseLibrary: List<Exercise>,
     snackbarHostState: SnackbarHostState,
     workoutHapticsEnabled: Boolean,
     onBack: () -> Unit,
     onOpenExerciseHistory: (Long) -> Unit,
     onDraftChange: (Long, SetInputDraft) -> Unit,
-    onSetTypeChange: (Long, Int, SetType) -> Unit,
-    onEditSet: (Long, Int) -> Unit,
-    onDeleteSet: (Long, Int) -> Unit,
+    onSetTypeChange: (Long, SetType) -> Unit,
+    onEditSet: (Long, Long) -> Unit,
+    onDeleteSet: (Long) -> Unit,
     onDismissMessage: () -> Unit,
     onLogSet: (WorkoutExercisePlan) -> Boolean,
     onLogSameAgain: (WorkoutExercisePlan) -> Boolean,
@@ -4060,6 +4135,7 @@ fun ActiveWorkoutScreen(
     var showFinishConfirm by remember { mutableStateOf(false) }
     var showDiscardConfirm by remember { mutableStateOf(false) }
     var replacingActivePlan by remember { mutableStateOf<WorkoutExercisePlan?>(null) }
+    var pendingActiveReplacement by remember { mutableStateOf<Pair<WorkoutExercisePlan, Exercise>?>(null) }
     var pendingRemoveActivePlan by remember { mutableStateOf<WorkoutExercisePlan?>(null) }
     val currentOnDismissMessage by rememberUpdatedState(onDismissMessage)
     val workoutExercises = uiState.workout?.exercises.orEmpty()
@@ -4085,7 +4161,11 @@ fun ActiveWorkoutScreen(
             onTargetRpeChange = {},
             onSelect = { exercise ->
                 replacingActivePlan = null
-                onReplaceActiveExercise(plan.id, exercise)
+                if (uiState.loggedSetsThisSession[plan.activeKey].orEmpty().isNotEmpty()) {
+                    pendingActiveReplacement = plan to exercise
+                } else {
+                    onReplaceActiveExercise(plan.id, exercise)
+                }
             },
             onCustomExercise = {},
             onDismiss = { replacingActivePlan = null },
@@ -4096,36 +4176,16 @@ fun ActiveWorkoutScreen(
         modifier = Modifier.clearFocusOnTapOutside(),
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                ScreenHeader(
-                    title = "Actieve training",
-                    subtitle = "${uiState.workout?.name ?: "Workout"} · ${formatTimer(uiState.elapsedSeconds.toInt())}",
-                )
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    maxItemsInEachRow = 3,
-                ) {
-                    SecondaryActionButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Terug") }
-                    SecondaryActionButton(onClick = { showDiscardConfirm = true }, modifier = Modifier.weight(1f), accent = MaterialTheme.colorScheme.error) { Text("Weggooien") }
-                }
-                Text(
-                    "Terug sluit dit scherm; je training blijft actief.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.trainIqColors.mutedText,
-                )
-                ActiveWorkoutStickyStatus(uiState)
-            }
-        },
         bottomBar = {
-            ActiveWorkoutBottomBar(
-                uiState = uiState,
-                onFinishClick = {
-                    if (uiState.needsFinishConfirmation) showFinishConfirm = true else onFinish()
-                },
-            )
+            if (uiState.debrief == null) {
+                ActiveWorkoutBottomBar(
+                    uiState = uiState,
+                    restTimerSeconds = restTimerSeconds,
+                    onFinishClick = {
+                        if (uiState.needsFinishConfirmation) showFinishConfirm = true else onFinish()
+                    },
+                )
+            }
         },
     ) { padding ->
         TrainingWithoutOverscroll {
@@ -4144,8 +4204,41 @@ fun ActiveWorkoutScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+            item(key = "active-workout-header") {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ScreenHeader(
+                        title = if (uiState.debrief == null) "Actieve training" else "Training opgeslagen",
+                        subtitle = "${uiState.workout?.name ?: "Workout"} - ${formatTimer(uiState.elapsedSeconds.toInt())}",
+                    )
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        maxItemsInEachRow = 3,
+                    ) {
+                        SecondaryActionButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Terug") }
+                        if (uiState.debrief == null) {
+                            SecondaryActionButton(
+                                onClick = { showDiscardConfirm = true },
+                                modifier = Modifier.weight(1f),
+                                accent = MaterialTheme.colorScheme.error,
+                            ) { Text("Weggooien") }
+                        }
+                    }
+                    Text(
+                        if (uiState.debrief == null) {
+                            "Terug sluit dit scherm; je training blijft actief."
+                        } else {
+                            "Je sessie is lokaal opgeslagen."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.trainIqColors.mutedText,
+                    )
+                    ActiveWorkoutStickyStatus(uiState, restTimerSeconds)
+                }
+            }
             uiState.message?.let { message ->
-                item { MessageCard(message = message, onDismiss = currentOnDismissMessage) }
+                item(key = "active-workout-message") { MessageCard(message = message, onDismiss = currentOnDismissMessage) }
             }
             if (uiState.workout == null) {
                 item { EmptyCard("Training niet beschikbaar", "Deze training kon niet worden geladen.") }
@@ -4155,15 +4248,15 @@ fun ActiveWorkoutScreen(
                 item { EmptyCard("Geen oefeningen", "Voeg oefeningen toe aan deze routine voordat je een training start.") }
                 return@LazyColumn
             }
-            if (uiState.restTimerSeconds > 0) {
-                item {
+            if (restTimerSeconds > 0 && uiState.debrief == null) {
+                item(key = "active-workout-rest-timer") {
                     RestTimerCard(
-                        restTimerSeconds = uiState.restTimerSeconds,
-                        totalSeconds = uiState.restTimerTotalSeconds,
+                        restTimerSeconds = restTimerSeconds,
+                        totalSeconds = restTimerTotalSeconds,
                         onAdjust = onAdjustRestTimer,
                         onSkip = onSkipRestTimer,
                         onRestart = {
-                            val nextRest = uiState.workout.exercises.firstOrNull()?.restSeconds ?: uiState.restTimerTotalSeconds
+                            val nextRest = uiState.workout.exercises.firstOrNull()?.restSeconds ?: restTimerTotalSeconds
                             onRestartRestTimer(nextRest)
                         },
                     )
@@ -4187,7 +4280,7 @@ fun ActiveWorkoutScreen(
                                 plan = plan,
                                 uiState = uiState,
                                 suggestion = suggestionsByExerciseId[plan.exercise.id],
-                                isResting = uiState.restTimerSeconds > 0,
+                                isSessionFinished = uiState.debrief != null,
                                 isAutoAdvanceTarget = uiState.activeFocusTarget?.exerciseId == plan.activeKey,
                                 hapticOnSuccess = {
                                     if (workoutHapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -4210,7 +4303,7 @@ fun ActiveWorkoutScreen(
                         plan = group.first(),
                         uiState = uiState,
                         suggestion = suggestionsByExerciseId[group.first().exercise.id],
-                        isResting = uiState.restTimerSeconds > 0,
+                        isSessionFinished = uiState.debrief != null,
                         isAutoAdvanceTarget = uiState.activeFocusTarget?.exerciseId == group.first().activeKey,
                         hapticOnSuccess = {
                             if (workoutHapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -4294,10 +4387,30 @@ fun ActiveWorkoutScreen(
             dismissButton = { TextButton(onClick = { pendingRemoveActivePlan = null }) { Text("Annuleren") } },
         )
     }
+    pendingActiveReplacement?.let { (plan, exercise) ->
+        AlertDialog(
+            onDismissRequest = { pendingActiveReplacement = null },
+            title = { Text("Exercise vervangen?") },
+            text = {
+                Text(
+                    "Gelogde sets voor ${plan.exercise.name} blijven bewaard als uitgevoerde sets. Nieuwe sets gebruik je daarna voor ${exercise.name}.",
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        pendingActiveReplacement = null
+                        onReplaceActiveExercise(plan.id, exercise)
+                    },
+                ) { Text("Vervangen") }
+            },
+            dismissButton = { TextButton(onClick = { pendingActiveReplacement = null }) { Text("Annuleren") } },
+        )
+    }
 }
 
 @Composable
-private fun ActiveWorkoutStickyStatus(uiState: ActiveWorkoutUiState) {
+private fun ActiveWorkoutStickyStatus(uiState: ActiveWorkoutUiState, restTimerSeconds: Int) {
     val progress = if (uiState.targetSets > 0) {
         (uiState.completedSets / uiState.targetSets.toFloat()).coerceIn(0f, 1f)
     } else {
@@ -4313,7 +4426,7 @@ private fun ActiveWorkoutStickyStatus(uiState: ActiveWorkoutUiState) {
                 StatusMetric("Tijd", formatTimer(uiState.elapsedSeconds.toInt()), Modifier.weight(1f))
                 StatusMetric("Sets", "${uiState.completedSets}/${uiState.targetSets}", Modifier.weight(1f))
                 StatusMetric("Volume", "${uiState.totalVolume.toInt()} kg", Modifier.weight(1f))
-                StatusMetric("Rust", if (uiState.restTimerSeconds > 0) formatTimer(uiState.restTimerSeconds) else "Klaar", Modifier.weight(1f))
+                StatusMetric("Rust", if (restTimerSeconds > 0) formatTimer(restTimerSeconds) else "Klaar", Modifier.weight(1f))
             }
             if (uiState.loggingSummary.pendingCount > 0) {
                 Row(
@@ -4342,19 +4455,19 @@ private fun ActiveWorkoutStickyStatus(uiState: ActiveWorkoutUiState) {
 }
 
 @Composable
-private fun ActiveWorkoutBottomBar(uiState: ActiveWorkoutUiState, onFinishClick: () -> Unit) {
+private fun ActiveWorkoutBottomBar(uiState: ActiveWorkoutUiState, restTimerSeconds: Int, onFinishClick: () -> Unit) {
     Surface(color = MaterialTheme.colorScheme.background, tonalElevation = 0.dp) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    if (uiState.restTimerSeconds > 0) "Rust ${formatTimer(uiState.restTimerSeconds)}" else "Klaar voor volgende set",
+                    if (restTimerSeconds > 0) "Rust ${formatTimer(restTimerSeconds)}" else "Klaar voor volgende set",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                     maxLines = 1,
@@ -4368,7 +4481,14 @@ private fun ActiveWorkoutBottomBar(uiState: ActiveWorkoutUiState, onFinishClick:
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            PrimaryActionButton(onClick = onFinishClick, enabled = uiState.workout != null, modifier = Modifier.weight(1f)) {
+            PrimaryActionButton(
+                onClick = onFinishClick,
+                enabled = uiState.workout != null,
+                modifier = Modifier
+                    .weight(1f)
+                    .defaultMinSize(minHeight = 44.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+            ) {
                 Text("Training afronden")
             }
         }
@@ -4380,14 +4500,14 @@ private fun ActiveWorkoutPlanCard(
     plan: WorkoutExercisePlan,
     uiState: ActiveWorkoutUiState,
     suggestion: ProgressionSuggestion?,
-    isResting: Boolean,
+    isSessionFinished: Boolean,
     isAutoAdvanceTarget: Boolean,
     hapticOnSuccess: () -> Unit,
     onOpenHistory: () -> Unit,
     onDraftChange: (Long, SetInputDraft) -> Unit,
-    onSetTypeChange: (Long, Int, SetType) -> Unit,
-    onEditSet: (Long, Int) -> Unit,
-    onDeleteSet: (Long, Int) -> Unit,
+    onSetTypeChange: (Long, SetType) -> Unit,
+    onEditSet: (Long, Long) -> Unit,
+    onDeleteSet: (Long) -> Unit,
     onLogSet: (WorkoutExercisePlan) -> Boolean,
     onLogSameAgain: (WorkoutExercisePlan) -> Boolean,
     onToggleCollapsed: (Long, Boolean) -> Unit,
@@ -4405,15 +4525,16 @@ private fun ActiveWorkoutPlanCard(
         suggestion = suggestion,
         draft = draft,
         draftErrors = draftErrors,
-        isResting = isResting,
+        isSessionFinished = isSessionFinished,
         isAutoAdvanceTarget = isAutoAdvanceTarget,
         isLogPending = uiState.pendingLoggingExerciseIds.contains(key),
+        pendingCorrectionSetId = uiState.pendingCorrectionSetIds[key],
         collapsed = collapsed,
         onOpenHistory = onOpenHistory,
         onDraftChange = { next -> onDraftChange(key, next) },
-        onSetTypeChange = { setIndex, setType -> onSetTypeChange(key, setIndex, setType) },
-        onEditSet = { setIndex -> onEditSet(key, setIndex) },
-        onDeleteSet = { setIndex -> onDeleteSet(key, setIndex) },
+        onSetTypeChange = { setId, setType -> onSetTypeChange(setId, setType) },
+        onEditSet = { setId -> onEditSet(key, setId) },
+        onDeleteSet = { setId -> onDeleteSet(setId) },
         onToggleCollapsed = { onToggleCollapsed(key, !collapsed) },
         onCopyLastSet = {
             loggedSets.lastOrNull()?.let { lastSet ->
@@ -4502,15 +4623,16 @@ private fun ActiveExerciseCard(
     suggestion: ProgressionSuggestion?,
     draft: SetInputDraft,
     draftErrors: SetInputFieldErrors,
-    isResting: Boolean,
+    isSessionFinished: Boolean,
     isAutoAdvanceTarget: Boolean,
     isLogPending: Boolean,
+    pendingCorrectionSetId: Long?,
     collapsed: Boolean,
     onOpenHistory: () -> Unit,
     onDraftChange: (SetInputDraft) -> Unit,
-    onSetTypeChange: (Int, SetType) -> Unit,
-    onEditSet: (Int) -> Unit,
-    onDeleteSet: (Int) -> Unit,
+    onSetTypeChange: (Long, SetType) -> Unit,
+    onEditSet: (Long) -> Unit,
+    onDeleteSet: (Long) -> Unit,
     onToggleCollapsed: () -> Unit,
     onCopyLastSet: () -> Unit,
     onLogSet: () -> Unit,
@@ -4518,6 +4640,16 @@ private fun ActiveExerciseCard(
     onReplaceExercise: () -> Unit,
     onRemoveExercise: () -> Unit,
 ) {
+    var manualExtraSetCount by rememberSaveable(plan.id) { mutableIntStateOf(0) }
+    val plannedSetCount = plan.plannedSetCount()
+    val activeSetTargetCount = plannedSetCount + manualExtraSetCount
+    val hasPendingCorrection = pendingCorrectionSetId != null && loggedSets.any { it.id == pendingCorrectionSetId }
+    val showLogger = shouldShowActiveSetLogger(
+        isSessionFinished = isSessionFinished,
+        loggedSetCount = loggedSets.size,
+        activeSetTargetCount = activeSetTargetCount,
+        hasPendingCorrection = hasPendingCorrection,
+    )
     val targetWeight = draft.weight.toFloatOrNull() ?: suggestion?.suggestedWeightKg?.toFloat()
     val platePlan = remember(targetWeight) {
         targetWeight?.let { StrengthCalculator.calculatePlates(it) }.orEmpty()
@@ -4534,7 +4666,7 @@ private fun ActiveExerciseCard(
         modifier = Modifier.fillMaxWidth(),
         accent = when {
             isAutoAdvanceTarget -> MaterialTheme.colorScheme.secondary
-            loggedSets.size >= plan.plannedSetCount() -> MaterialTheme.trainIqColors.mint
+            loggedSets.size >= plannedSetCount -> MaterialTheme.trainIqColors.mint
             else -> MaterialTheme.colorScheme.primary
         },
     ) {
@@ -4563,7 +4695,7 @@ private fun ActiveExerciseCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        "${loggedSets.size}/${plan.plannedSetCount()} sets - ${plan.repRange} reps - ${plan.restSeconds}s rust",
+                        "${loggedSets.size}/$plannedSetCount sets - ${plan.repRange} reps - ${plan.restSeconds}s rust",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.trainIqColors.mutedText,
                         maxLines = 1,
@@ -4585,17 +4717,39 @@ private fun ActiveExerciseCard(
                         expanded = menuExpanded,
                         onDismissRequest = { menuExpanded = false },
                     ) {
-                        Text(
-                            "Binnenkort beschikbaar: tijdelijk vervangen of verwijderen wordt pas aangezet zodra TrainIQ dit betrouwbaar binnen de actieve sessie bewaart.",
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.trainIqColors.mutedText,
+                        DropdownMenuItem(
+                            text = { Text("Set toevoegen") },
+                            leadingIcon = { Icon(Icons.Rounded.Add, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                manualExtraSetCount += 1
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Exercise vervangen") },
+                            leadingIcon = { Icon(Icons.Rounded.SwapHoriz, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                onReplaceExercise()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Exercise verwijderen") },
+                            leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                onRemoveExercise()
+                            },
                         )
                     }
                 }
             }
             suggestion?.let { CompactPreviousPerformance(it) } ?: PlannedPerformanceFallback(plan)
-            val visibleSetRows = maxOf(plan.plannedSetCount(), loggedSets.size + 1)
+            val visibleSetRows = visibleActiveSetRows(
+                plannedSetCount = activeSetTargetCount,
+                loggedSetCount = loggedSets.size,
+                manualExtraSetRequested = false,
+            )
             val plannedSets = remember(plan.sets) {
                 plan.sets.sortedWith(compareBy<RoutineSet> { it.orderIndex }.thenBy { it.id })
             }
@@ -4605,14 +4759,15 @@ private fun ActiveExerciseCard(
                     repRange = plan.repRange,
                     plannedSet = plannedSets.getOrNull(index),
                     loggedSet = loggedSets.getOrNull(index),
-                    isCurrent = index == loggedSets.size,
+                    isCurrent = index == loggedSets.size || pendingCorrectionSetId?.let { loggedSets.getOrNull(index)?.id == it } == true,
+                    isCorrecting = pendingCorrectionSetId?.let { loggedSets.getOrNull(index)?.id == it } == true,
                     onCycleType = {
                         loggedSets.getOrNull(index)?.let { set ->
-                            onSetTypeChange(index, set.setType.next())
+                            onSetTypeChange(set.id, set.setType.next())
                         }
                     },
-                    onEdit = { onEditSet(index) },
-                    onDelete = { onDeleteSet(index) },
+                    onEdit = { loggedSets.getOrNull(index)?.let { onEditSet(it.id) } },
+                    onDelete = { loggedSets.getOrNull(index)?.let { onDeleteSet(it.id) } },
                 )
             }
             if (collapsed) return@Column
@@ -4624,18 +4779,7 @@ private fun ActiveExerciseCard(
                         .height(48.dp),
                 )
             }
-            AnimatedContent(targetState = isResting, label = "exercise-rest-state") { resting ->
-                Text(
-                    text = if (resting) {
-                        "Rustfase actief."
-                    } else {
-                        "Vul je volgende set in."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.trainIqColors.mutedText,
-                )
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (showLogger) Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 SetTypeSelector(
                     selectedType = draft.setType,
                     onSelectedTypeChange = { onDraftChange(draft.copy(setType = it)) },
@@ -4683,11 +4827,12 @@ private fun ActiveExerciseCard(
                             .defaultMinSize(minHeight = 44.dp),
                     ) {
                         Text(
-                            when {
-                                isLogPending -> "Opslaan..."
-                                loggedSets.size >= plan.plannedSetCount() -> "Extra set"
-                                else -> "Set loggen"
-                            },
+                            activeSetLogButtonLabel(
+                                isLogPending = isLogPending,
+                                hasPendingCorrection = hasPendingCorrection,
+                                loggedSetCount = loggedSets.size,
+                                plannedSetCount = plannedSetCount,
+                            ),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -4866,6 +5011,7 @@ private fun SetRow(
     plannedSet: RoutineSet?,
     loggedSet: LoggedSet?,
     isCurrent: Boolean,
+    isCorrecting: Boolean,
     onCycleType: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
@@ -4873,6 +5019,11 @@ private fun SetRow(
     var showDeleteConfirm by remember(index, loggedSet) { mutableStateOf(false) }
     val background = if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
     val rpeColor = loggedSet?.let { intensityContainerColor(it.rpe) } ?: background
+    val metricCells = activeSetMetricCells(
+        repRange = repRange,
+        plannedSet = plannedSet,
+        loggedSet = loggedSet,
+    )
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
@@ -4889,22 +5040,23 @@ private fun SetRow(
             dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Annuleren") } },
         )
     }
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(rpeColor, MaterialTheme.shapes.medium)
             .padding(horizontal = 12.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(
-            modifier = Modifier.width(ActiveSetLeadingWidth),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(modifier = Modifier.size(20.dp), contentAlignment = Alignment.Center) {
-                if (loggedSet != null && loggedSet.weight > 0.0 && loggedSet.reps > 0) {
+                if (loggedSet?.completed == true && !isCorrecting) {
                     Icon(Icons.Default.Check, contentDescription = "Voltooide set", modifier = Modifier.size(18.dp))
+                } else if (isCorrecting) {
+                    Icon(Icons.Rounded.Edit, contentDescription = "Set wordt gecorrigeerd", modifier = Modifier.size(18.dp))
                 }
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -4926,35 +5078,61 @@ private fun SetRow(
                     )
                 }
             }
-        }
-        Text(
-            loggedSet?.let {
-                buildString {
-                    append("${formatWeight(it.weight)} kg x ${it.reps}")
-                    if (it.rpe > 0.0) append(" - RPE ${formatWeight(it.rpe)}")
-                    if (it.repsInReserve != null) append(" - RIR ${it.repsInReserve}")
+            if (loggedSet != null) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.54f),
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    shape = MaterialTheme.shapes.small,
+                ) {
+                    Text(
+                        if (isCorrecting) "Bewerken" else "Voltooid",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                 }
-            } ?: plannedSet?.let {
-                buildString {
-                    append(if (it.targetReps > 0) "${it.targetReps} reps" else repRange)
-                    if (it.targetWeightKg > 0.0) append(" - ${formatWeight(it.targetWeightKg)} kg")
-                    if (it.restSeconds > 0) append(" - ${it.restSeconds}s")
-                    if (it.targetRpe > 0.0) append(" - RPE ${formatWeight(it.targetRpe)}")
-                }
-            } ?: repRange,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (loggedSet != null) {
-            Box(modifier = Modifier.width(ActiveSetActionWidth), contentAlignment = Alignment.CenterEnd) {
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    IconButton(onClick = onEdit) {
-                        Icon(Icons.Rounded.ContentCopy, contentDescription = "Set naar invoer kopiëren")
+                    IconButton(onClick = onEdit, modifier = Modifier.size(40.dp)) {
+                        Icon(Icons.Rounded.Edit, contentDescription = "Gelogde set corrigeren")
                     }
-                    IconButton(onClick = { showDeleteConfirm = true }) {
+                    IconButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.size(40.dp)) {
                         Icon(Icons.Rounded.Delete, contentDescription = "Set verwijderen")
+                    }
+                }
+            }
+        }
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            when (routineSetMetricLayoutForWidth(maxWidth)) {
+                RoutineSetMetricLayout.OneRow -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        metricCells.forEach { cell ->
+                            RoutineSetMetricValue(cell = cell, modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+                RoutineSetMetricLayout.BalancedGrid -> {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        metricCells.chunked(2).forEach { rowCells ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                rowCells.forEach { cell ->
+                                    RoutineSetMetricValue(
+                                        cell = cell,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -5294,6 +5472,33 @@ internal fun tryStartSetLog(pendingExerciseIds: Set<Long>, exerciseId: Long): Se
 
 internal fun finishSetLog(pendingExerciseIds: Set<Long>, exerciseId: Long): Set<Long> =
     pendingExerciseIds - exerciseId
+
+internal fun visibleActiveSetRows(
+    plannedSetCount: Int,
+    loggedSetCount: Int,
+    manualExtraSetRequested: Boolean,
+): Int =
+    maxOf(plannedSetCount, loggedSetCount + if (manualExtraSetRequested) 1 else 0)
+
+internal fun shouldShowActiveSetLogger(
+    isSessionFinished: Boolean,
+    loggedSetCount: Int,
+    activeSetTargetCount: Int,
+    hasPendingCorrection: Boolean,
+): Boolean =
+    !isSessionFinished && (hasPendingCorrection || loggedSetCount < activeSetTargetCount)
+
+internal fun activeSetLogButtonLabel(
+    isLogPending: Boolean,
+    hasPendingCorrection: Boolean,
+    loggedSetCount: Int,
+    plannedSetCount: Int,
+): String = when {
+    isLogPending -> "Opslaan..."
+    hasPendingCorrection -> "Wijzig loggen"
+    loggedSetCount >= plannedSetCount -> "Extra set loggen"
+    else -> "Set loggen"
+}
 
 internal fun validateSetInput(draft: SetInputDraft): SetLogValidationResult {
     val parsedWeight = draft.weight.normalizedDecimal().toDoubleOrNull()

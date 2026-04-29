@@ -99,4 +99,99 @@ class WorkoutLogEventTest {
         assertEquals(state.workoutLogEvents, updated.workoutLogEvents)
         assertNull(updated.workoutLoggingSummary(dayId = 7L, now = 20_001L).lastUndoableEventId)
     }
+
+    @Test
+    fun finalizeWorkoutLogEventsForCompletedSession_removesOnlyCompletedSessionEvents() {
+        val state = TrainIqStorageState(
+            workoutLogEvents = listOf(
+                com.trainiq.data.local.WorkoutLogEventStorage(id = 1L, sessionId = 12L, dayId = 7L),
+                com.trainiq.data.local.WorkoutLogEventStorage(id = 2L, sessionId = 13L, dayId = 7L),
+            ),
+        )
+
+        val updated = state.finalizeWorkoutLogEventsForCompletedSession(sessionId = 12L)
+
+        assertEquals(listOf(2L), updated.workoutLogEvents.map { it.id })
+    }
+
+    @Test
+    fun deleteActiveWorkoutSetById_removesMatchingSetWithoutDependingOnVisualIndex() {
+        val keptFirst = ActiveWorkoutSetStorage(id = 1L, exerciseId = 3L, sourceWorkoutExerciseId = 4L, weight = 70.0)
+        val removed = ActiveWorkoutSetStorage(id = 2L, exerciseId = 3L, sourceWorkoutExerciseId = 4L, weight = 80.0)
+        val keptLast = ActiveWorkoutSetStorage(id = 3L, exerciseId = 3L, sourceWorkoutExerciseId = 4L, weight = 90.0)
+        val state = TrainIqStorageState(
+            activeWorkoutSession = ActiveWorkoutSessionStorage(
+                sessionId = 12L,
+                dayId = 7L,
+                loggedSets = listOf(keptFirst, removed, keptLast),
+            ),
+        )
+
+        val updated = state.deleteActiveWorkoutSetById(setId = 2L, now = 2_000L)
+
+        assertEquals(listOf(1L, 3L), updated.activeWorkoutSession?.loggedSets?.map { it.id })
+        assertEquals(2_000L, updated.activeWorkoutSession?.updatedAt)
+    }
+
+    @Test
+    fun updateActiveWorkoutSetTypeById_updatesOnlyMatchingSetWhenEarlierSetsWereDeleted() {
+        val state = TrainIqStorageState(
+            activeWorkoutSession = ActiveWorkoutSessionStorage(
+                sessionId = 12L,
+                dayId = 7L,
+                loggedSets = listOf(
+                    ActiveWorkoutSetStorage(id = 3L, exerciseId = 3L, sourceWorkoutExerciseId = 4L, setType = SetType.NORMAL),
+                    ActiveWorkoutSetStorage(id = 8L, exerciseId = 3L, sourceWorkoutExerciseId = 4L, setType = SetType.NORMAL),
+                ),
+            ),
+        )
+
+        val updated = state.updateActiveWorkoutSetTypeById(setId = 8L, setType = SetType.DROP_SET, now = 2_000L)
+
+        assertEquals(listOf(SetType.NORMAL, SetType.DROP_SET), updated.activeWorkoutSession?.loggedSets?.map { it.setType })
+    }
+
+    @Test
+    fun updateActiveWorkoutSetById_replacesMatchingSetAndPendingEventWithoutAppendingDuplicate() {
+        val original = ActiveWorkoutSetStorage(
+            id = 8L,
+            exerciseId = 3L,
+            sourceWorkoutExerciseId = 4L,
+            weight = 80.0,
+            reps = 8,
+            rpe = 8.0,
+            restSeconds = 90,
+            orderIndex = 1,
+            completed = true,
+            loggedAt = 2_000L,
+        )
+        val corrected = original.copy(weight = 82.5, reps = 9, rpe = 7.5)
+        val state = TrainIqStorageState(
+            activeWorkoutSession = ActiveWorkoutSessionStorage(
+                sessionId = 12L,
+                dayId = 7L,
+                loggedSets = listOf(
+                    ActiveWorkoutSetStorage(id = 3L, exerciseId = 3L, sourceWorkoutExerciseId = 4L, weight = 70.0),
+                    original,
+                ),
+            ),
+            workoutLogEvents = listOf(
+                com.trainiq.data.local.WorkoutLogEventStorage(
+                    id = 1L,
+                    sessionId = 12L,
+                    dayId = 7L,
+                    type = WorkoutLogEventType.ADD_SET,
+                    set = original,
+                ),
+            ),
+        )
+
+        val updated = state.updateActiveWorkoutSetById(setId = 8L, set = corrected, now = 3_000L)
+
+        assertEquals(listOf(3L, 8L), updated.activeWorkoutSession?.loggedSets?.map { it.id })
+        assertEquals(82.5, updated.activeWorkoutSession?.loggedSets?.last()?.weight)
+        assertEquals(9, updated.activeWorkoutSession?.loggedSets?.last()?.reps)
+        assertEquals(3_000L, updated.activeWorkoutSession?.updatedAt)
+        assertEquals(corrected, updated.workoutLogEvents.single().set)
+    }
 }

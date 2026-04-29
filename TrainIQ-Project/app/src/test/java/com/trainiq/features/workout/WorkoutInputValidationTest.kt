@@ -1,6 +1,7 @@
 package com.trainiq.features.workout
 
 import com.trainiq.domain.model.Exercise
+import com.trainiq.domain.model.LoggedSet
 import com.trainiq.domain.model.RoutineSet
 import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.WorkoutDay
@@ -43,6 +44,42 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun `active set metric cells prefer logged values and keep routine editor labels`() {
+        val loggedSet = LoggedSet(
+            exerciseId = 1,
+            weight = 50.0,
+            reps = 12,
+            rpe = 6.5,
+            restSeconds = 90,
+        )
+
+        assertEquals(
+            listOf("Reps" to "12", "Kg" to "50 kg", "Rust" to "90s", "RPE" to "6.5"),
+            activeSetMetricCells(repRange = "8-12", plannedSet = null, loggedSet = loggedSet)
+                .map { it.label to it.value },
+        )
+    }
+
+    @Test
+    fun `active set metric cells use planned values with placeholders`() {
+        val plannedSet = RoutineSet(
+            id = 1,
+            workoutExerciseId = 10,
+            orderIndex = 0,
+            targetReps = 12,
+            targetWeightKg = 0.0,
+            restSeconds = 90,
+            targetRpe = 0.0,
+        )
+
+        assertEquals(
+            listOf("12", "-", "90s", "-"),
+            activeSetMetricCells(repRange = "8-12", plannedSet = plannedSet, loggedSet = null)
+                .map { it.value },
+        )
+    }
+
+    @Test
     fun `set log start rejects duplicate pending submit`() {
         val started = tryStartSetLog(emptySet(), exerciseId = 10L)
 
@@ -67,6 +104,12 @@ class WorkoutInputValidationTest {
         assertTrue(next is SetLogStartResult.Started)
         next as SetLogStartResult.Started
         assertEquals(setOf(10L, 20L), next.pendingExerciseIds)
+    }
+
+    @Test
+    fun `pending correction keeps logger visible and changes primary action label`() {
+        assertTrue(shouldShowActiveSetLogger(isSessionFinished = false, loggedSetCount = 3, activeSetTargetCount = 3, hasPendingCorrection = true))
+        assertEquals("Wijzig loggen", activeSetLogButtonLabel(isLogPending = false, hasPendingCorrection = true, loggedSetCount = 3, plannedSetCount = 3))
     }
 
     @Test

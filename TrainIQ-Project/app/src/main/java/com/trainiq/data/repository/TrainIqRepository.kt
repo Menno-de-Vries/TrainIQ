@@ -400,20 +400,57 @@ class TrainIqRepository @Inject constructor(
         return requireNotNull(result)
     }
 
-    override suspend fun updateActiveWorkoutSetType(exerciseId: Long, setIndex: Int, setType: SetType): ActiveWorkoutSession? =
+    override suspend fun updateActiveWorkoutSet(
+        setId: Long,
+        set: LoggedSet,
+        draft: ActiveWorkoutSetDraft,
+        restSeconds: Int,
+    ): ActiveWorkoutSession? {
+        var result: ActiveWorkoutSession? = null
+        val now = System.currentTimeMillis()
+        localStore.update { state ->
+            val active = state.activeWorkoutSession ?: return@update state
+            val updatedSet = active.loggedSets.firstOrNull { it.id == setId }?.let { existing ->
+                existing.copy(
+                    exerciseId = set.exerciseId,
+                    performedExerciseId = set.performedExerciseId.takeIf { it > 0L } ?: existing.performedExerciseId,
+                    sourceWorkoutExerciseId = set.sourceWorkoutExerciseId ?: existing.sourceWorkoutExerciseId,
+                    weight = set.weight,
+                    reps = set.reps,
+                    rpe = set.rpe,
+                    repsInReserve = set.repsInReserve,
+                    setType = set.setType,
+                    restSeconds = restSeconds.coerceAtLeast(0),
+                    completed = true,
+                    loggedAt = now,
+                )
+            } ?: return@update state
+            val updatedState = state.updateActiveWorkoutSetById(setId = setId, set = updatedSet, now = now)
+            val updated = updatedState
+                .copy(
+                    activeWorkoutSession = updatedState.activeWorkoutSession
+                        ?.copy(
+                            drafts = active.drafts.toMutableMap().apply {
+                                put(updatedSet.activeKey, draft.toStorage())
+                            },
+                            restTimerEndsAt = if (restSeconds > 0) now + restSeconds * 1_000L else null,
+                            restTimerTotalSeconds = restSeconds.coerceAtLeast(0),
+                        ),
+                )
+            result = updated.activeWorkoutSession?.toDomain()
+            updated
+        }
+        return result
+    }
+
+    override suspend fun updateActiveWorkoutSetType(setId: Long, setType: SetType): ActiveWorkoutSession? =
         mutateActiveWorkout { active, now ->
-            active.copy(
-                updatedAt = now,
-                loggedSets = active.loggedSets.replaceExerciseSet(exerciseId, setIndex) { it.copy(setType = setType) },
-            )
+            active.updateSetTypeById(setId = setId, setType = setType, now = now)
         }
 
-    override suspend fun deleteActiveWorkoutSet(exerciseId: Long, setIndex: Int): ActiveWorkoutSession? =
+    override suspend fun deleteActiveWorkoutSet(setId: Long): ActiveWorkoutSession? =
         mutateActiveWorkout { active, now ->
-            active.copy(
-                updatedAt = now,
-                loggedSets = active.loggedSets.filterIndexedForExercise(exerciseId) { index -> index != setIndex },
-            )
+            active.deleteSetById(setId = setId, now = now)
         }
 
     override suspend fun undoWorkoutLogEvent(eventId: Long): ActiveWorkoutSession? {
@@ -544,7 +581,7 @@ class TrainIqRepository @Inject constructor(
                 sessions = listOf(newSession) + state.sessions.filterNot { it.id == sessionId },
                 performedExercises = performedExercises + state.performedExercises.filterNot { it.sessionId == sessionId },
                 workoutSets = newSets + state.workoutSets.filterNot { it.sessionId == sessionId },
-            )
+            ).finalizeWorkoutLogEventsForCompletedSession(sessionId)
         }
 
         val debriefSets = loggedSets.filter { it.setType.isProgressionType() }.ifEmpty { loggedSets }
@@ -568,7 +605,7 @@ class TrainIqRepository @Inject constructor(
         val exerciseNameById = buildWorkoutDay(beforeSnapshot, dayId)
             ?.exercises
             ?.associate { it.exercise.id to it.exercise.name }
-            .orEmpty()
+            .orEmpty() + beforeSnapshot.exercises.associate { it.id to it.name }
         val topExercises = debriefSets
             .sortedByDescending { it.weight * it.reps }
             .take(3)
@@ -694,6 +731,17 @@ class TrainIqRepository @Inject constructor(
         localStore.update { state ->
             state.withExerciseReplacedInPlan(workoutExerciseId, newExerciseId)
         }
+    }
+
+    override suspend fun replaceExerciseInActiveWorkout(workoutExerciseId: Long, newExerciseId: Long): ActiveWorkoutSession? {
+        var result: ActiveWorkoutSession? = null
+        val now = System.currentTimeMillis()
+        localStore.update { state ->
+            val updated = state.withExerciseReplacedInActiveWorkout(workoutExerciseId, newExerciseId, now)
+            result = updated.activeWorkoutSession?.toDomain()
+            updated
+        }
+        return result
     }
 
     override suspend fun updateWorkoutExercisePlan(
@@ -1804,6 +1852,57 @@ internal fun TrainIqStorageState.workoutLoggingSummary(dayId: Long, now: Long): 
     )
 }
 
+internal fun TrainIqStorageState.finalizeWorkoutLogEventsForCompletedSession(sessionId: Long): TrainIqStorageState =
+    copy(workoutLogEvents = workoutLogEvents.filterNot { it.sessionId == sessionId })
+
+internal fun TrainIqStorageState.deleteActiveWorkoutSetById(setId: Long, now: Long): TrainIqStorageState =
+    copy(activeWorkoutSession = activeWorkoutSession?.deleteSetById(setId = setId, now = now))
+
+internal fun TrainIqStorageState.updateActiveWorkoutSetTypeById(
+    setId: Long,
+    setType: SetType,
+    now: Long,
+): TrainIqStorageState =
+    copy(activeWorkoutSession = activeWorkoutSession?.updateSetTypeById(setId = setId, setType = setType, now = now))
+
+internal fun TrainIqStorageState.updateActiveWorkoutSetById(
+    setId: Long,
+    set: ActiveWorkoutSetStorage,
+    now: Long,
+): TrainIqStorageState =
+    copy(
+        activeWorkoutSession = activeWorkoutSession?.updateSetById(setId = setId, set = set, now = now),
+        workoutLogEvents = workoutLogEvents.map { event ->
+            if (event.set?.id == setId) event.copy(set = set) else event
+        },
+    )
+
+private fun ActiveWorkoutSessionStorage.deleteSetById(setId: Long, now: Long): ActiveWorkoutSessionStorage =
+    copy(
+        updatedAt = now,
+        loggedSets = loggedSets.filterNot { it.id == setId },
+    )
+
+private fun ActiveWorkoutSessionStorage.updateSetTypeById(
+    setId: Long,
+    setType: SetType,
+    now: Long,
+): ActiveWorkoutSessionStorage =
+    copy(
+        updatedAt = now,
+        loggedSets = loggedSets.map { set -> if (set.id == setId) set.copy(setType = setType) else set },
+    )
+
+private fun ActiveWorkoutSessionStorage.updateSetById(
+    setId: Long,
+    set: ActiveWorkoutSetStorage,
+    now: Long,
+): ActiveWorkoutSessionStorage =
+    copy(
+        updatedAt = now,
+        loggedSets = loggedSets.map { existing -> if (existing.id == setId) set.copy(id = setId) else existing },
+    )
+
 internal fun defaultWorkoutSessionName(existingSessionCount: Int): String = "Session ${existingSessionCount + 1}"
 
 internal fun TrainIqStorageState.ensurePerformedExercisesForActiveSession(
@@ -2061,6 +2160,24 @@ internal fun TrainIqStorageState.withExerciseReplacedInPlan(
             }
         },
     )
+}
+
+internal fun TrainIqStorageState.withExerciseReplacedInActiveWorkout(
+    workoutExerciseId: Long,
+    newExerciseId: Long,
+    now: Long,
+): TrainIqStorageState {
+    if (exercises.none { it.id == newExerciseId }) return this
+    val currentPlan = workoutExercises.firstOrNull { it.id == workoutExerciseId } ?: return this
+    val updated = withExerciseReplacedInPlan(workoutExerciseId, newExerciseId)
+    val active = updated.activeWorkoutSession
+    return if (active == null || active.dayId != currentPlan.dayId) {
+        updated
+    } else {
+        updated.copy(
+            activeWorkoutSession = active.copy(updatedAt = now),
+        )
+    }
 }
 
 internal fun TrainIqStorageState.withExerciseRemovedFromDay(

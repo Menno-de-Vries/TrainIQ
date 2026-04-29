@@ -76,14 +76,19 @@ class LogActiveWorkoutSetUseCase @Inject constructor(private val repository: Wor
         repository.logActiveWorkoutSet(dayId, set, draft, restSeconds)
 }
 
+class UpdateActiveWorkoutSetUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(setId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int) =
+        repository.updateActiveWorkoutSet(setId, set, draft, restSeconds)
+}
+
 class UpdateActiveWorkoutSetTypeUseCase @Inject constructor(private val repository: WorkoutRepository) {
-    suspend operator fun invoke(exerciseId: Long, setIndex: Int, setType: SetType) =
-        repository.updateActiveWorkoutSetType(exerciseId, setIndex, setType)
+    suspend operator fun invoke(setId: Long, setType: SetType) =
+        repository.updateActiveWorkoutSetType(setId, setType)
 }
 
 class DeleteActiveWorkoutSetUseCase @Inject constructor(private val repository: WorkoutRepository) {
-    suspend operator fun invoke(exerciseId: Long, setIndex: Int) =
-        repository.deleteActiveWorkoutSet(exerciseId, setIndex)
+    suspend operator fun invoke(setId: Long) =
+        repository.deleteActiveWorkoutSet(setId)
 }
 
 class UndoWorkoutLogEventUseCase @Inject constructor(private val repository: WorkoutRepository) {
@@ -137,6 +142,11 @@ class SetSupersetGroupUseCase @Inject constructor(private val repository: Workou
 class ReplaceExerciseInPlanUseCase @Inject constructor(private val repository: WorkoutRepository) {
     suspend operator fun invoke(workoutExerciseId: Long, newExerciseId: Long) =
         repository.replaceExerciseInPlan(workoutExerciseId, newExerciseId)
+}
+
+class ReplaceExerciseInActiveWorkoutUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(workoutExerciseId: Long, newExerciseId: Long) =
+        repository.replaceExerciseInActiveWorkout(workoutExerciseId, newExerciseId)
 }
 
 class UpdateWorkoutExercisePlanUseCase @Inject constructor(private val repository: WorkoutRepository) {

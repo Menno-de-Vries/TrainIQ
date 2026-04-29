@@ -160,7 +160,10 @@ class AiServicesTest {
         assertEquals("Bench Press: 82.5 kg x 6-8 for 3 working sets", result.nextLoadTarget)
         assertEquals("Keep sleep above 7 hours.", result.recoveryAdvice)
         assertNotNull(api.lastRequest)
+        assertEquals("gemini-2.5-flash", api.lastModel)
+        assertEquals(GEMINI_FLASH_MODEL, api.lastModel)
         assertEquals("application/json", api.lastRequest?.generationConfig?.responseMimeType)
+        assertEquals(1000, api.lastRequest?.generationConfig?.thinkingConfig?.thinkingBudget)
     }
 
     @Test
@@ -223,6 +226,8 @@ class AiServicesTest {
             private set
         var lastRequest: GeminiRequest? = null
             private set
+        var lastModel: String? = null
+            private set
 
         override suspend fun generateContent(
             model: String,
@@ -231,6 +236,7 @@ class AiServicesTest {
         ): GeminiResponse {
             error?.let { throw it }
             called = true
+            lastModel = model
             lastRequest = request
             return response
         }

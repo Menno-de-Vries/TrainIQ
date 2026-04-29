@@ -9,6 +9,12 @@ import org.junit.Test
 
 class WorkoutAutoAdvanceTest {
     @Test
+    fun visibleActiveSetRows_afterLoggingPlannedSet_doesNotAppendExtraRowUntilManualAdd() {
+        assertEquals(3, visibleActiveSetRows(plannedSetCount = 3, loggedSetCount = 3, manualExtraSetRequested = false))
+        assertEquals(4, visibleActiveSetRows(plannedSetCount = 3, loggedSetCount = 3, manualExtraSetRequested = true))
+    }
+
+    @Test
     fun resolveNextFocusTarget_withRemainingSetsInSameExercise_targetsNextSet() {
         val bench = plan(id = 10L, exerciseId = 1L, targetSets = 3)
         val row = plan(id = 11L, exerciseId = 2L, targetSets = 3)

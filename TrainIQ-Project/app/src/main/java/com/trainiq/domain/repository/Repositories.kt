@@ -47,8 +47,9 @@ interface WorkoutRepository {
     suspend fun getOrStartActiveWorkoutSession(dayId: Long, initialDrafts: Map<Long, ActiveWorkoutSetDraft>): ActiveWorkoutSession
     suspend fun updateActiveWorkoutDraft(exerciseId: Long, draft: ActiveWorkoutSetDraft): ActiveWorkoutSession?
     suspend fun logActiveWorkoutSet(dayId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int): ActiveWorkoutSession
-    suspend fun updateActiveWorkoutSetType(exerciseId: Long, setIndex: Int, setType: SetType): ActiveWorkoutSession?
-    suspend fun deleteActiveWorkoutSet(exerciseId: Long, setIndex: Int): ActiveWorkoutSession?
+    suspend fun updateActiveWorkoutSet(setId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int): ActiveWorkoutSession?
+    suspend fun updateActiveWorkoutSetType(setId: Long, setType: SetType): ActiveWorkoutSession?
+    suspend fun deleteActiveWorkoutSet(setId: Long): ActiveWorkoutSession?
     suspend fun undoWorkoutLogEvent(eventId: Long): ActiveWorkoutSession?
     suspend fun setActiveWorkoutCollapsed(exerciseId: Long, collapsed: Boolean): ActiveWorkoutSession?
     suspend fun updateActiveWorkoutRestTimer(endsAt: Long?, totalSeconds: Int): ActiveWorkoutSession?
@@ -63,6 +64,7 @@ interface WorkoutRepository {
     suspend fun reorderExercises(dayId: Long, orderedIds: List<Long>)
     suspend fun setSupersetGroup(workoutExerciseIds: List<Long>, groupId: Long?)
     suspend fun replaceExerciseInPlan(workoutExerciseId: Long, newExerciseId: Long)
+    suspend fun replaceExerciseInActiveWorkout(workoutExerciseId: Long, newExerciseId: Long): ActiveWorkoutSession?
     suspend fun updateWorkoutExercisePlan(
         workoutExerciseId: Long,
         targetSets: Int,

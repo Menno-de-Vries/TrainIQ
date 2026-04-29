@@ -138,6 +138,7 @@ enum class ExerciseRank(val label: String, val threshold: Double) {
 }
 
 data class LoggedSet(
+    val id: Long = 0L,
     val exerciseId: Long,
     val weight: Double,
     val reps: Int,
@@ -174,6 +175,7 @@ data class ActiveWorkoutSetEntry(
     val sourceWorkoutExerciseId: Long? = null,
 ) {
     fun toLoggedSet() = LoggedSet(
+        id = id,
         exerciseId = exerciseId,
         performedExerciseId = performedExerciseId,
         sourceWorkoutExerciseId = sourceWorkoutExerciseId,
