@@ -19,21 +19,19 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.trainiq.core.ui.TapOnlyOutlinedTextField
+import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.domain.model.GeneratedRoutine
 
 @Composable
@@ -45,23 +43,17 @@ fun CreateRoutineDialog(
 ) {
     var name by remember(initialName) { mutableStateOf(initialName) }
     val trimmedName = name.trim()
-    val focusRequester = remember { FocusRequester() }
-
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-    }
 
     AlertDialog(
         modifier = modifier.imePadding(),
         onDismissRequest = onDismiss,
         title = { Text("Routine maken") },
         text = {
-            OutlinedTextField(
+            TapOnlyOutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(focusRequester),
+                    .fillMaxWidth(),
                 label = { Text("Routinenaam") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -108,6 +100,7 @@ fun GeneratedRoutinePreviewDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 520.dp)
+                    .clearFocusOnScrollOrDrag()
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {

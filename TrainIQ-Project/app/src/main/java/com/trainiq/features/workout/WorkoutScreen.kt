@@ -13,6 +13,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -20,6 +22,8 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,7 +31,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imeNestedScroll
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -39,6 +43,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -68,13 +73,12 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
@@ -89,7 +93,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -104,18 +107,25 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.Role
@@ -125,7 +135,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -141,8 +154,8 @@ import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.ui.EmptyStateCard
 import com.trainiq.core.ui.PrimaryActionButton
 import com.trainiq.core.ui.SecondaryActionButton
+import com.trainiq.core.ui.TapOnlyOutlinedTextField
 import com.trainiq.core.ui.bringIntoViewOnFocus
-import com.trainiq.core.ui.focusOnTapOnly
 import com.trainiq.core.audio.RestTimerSoundPlayer
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.datastore.WorkoutFeedbackPreferences
@@ -229,6 +242,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import sh.calvin.reorderable.ReorderableColumn
 import sh.calvin.reorderable.ReorderableItem
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 data class SetInputDraft(
     val weight: String = "",
@@ -295,6 +310,9 @@ private val ActiveSetActionWidth = 104.dp
 private val ActiveSetLeadingWidth = 76.dp
 private val TopLevelBottomContentPadding = 132.dp
 private val ActiveWorkoutBottomContentPadding = 96.dp
+private val ExercisePickerHandleDismissThreshold = 96.dp
+private val SetEditorHandleDismissThreshold = 96.dp
+private const val SetEditorSurfaceMaxHeightFraction = 0.92f
 
 private data class RoutineGenerationRequest(
     val daysPerWeek: Int,
@@ -1201,6 +1219,17 @@ fun WorkoutScreen(
             showAiDialog = false
         }
     }
+    val selectedRoutine = remember(selectedRoutineId, overview?.routines) {
+        selectedRoutineId?.let { id -> overview?.routines?.firstOrNull { it.id == id } }
+    }
+    val resolvedSelectedRoutineId = remember(selectedRoutineId, overview?.routines) {
+        resolveSelectedRoutineId(selectedRoutineId, overview?.routines.orEmpty())
+    }
+    LaunchedEffect(selectedRoutineId, resolvedSelectedRoutineId, overview) {
+        if (overview != null && selectedRoutineId != resolvedSelectedRoutineId) {
+            selectedRoutineId = resolvedSelectedRoutineId
+        }
+    }
     pendingGeneratedRoutine?.let { routine ->
         GeneratedRoutinePreviewDialog(
             routine = routine,
@@ -1239,7 +1268,6 @@ fun WorkoutScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .clearFocusOnScrollOrDrag()
-                .imeNestedScroll()
                 .navigationBarsPadding()
                 .imePadding(),
             contentPadding = PaddingValues(
@@ -1257,10 +1285,6 @@ fun WorkoutScreen(
             item { ShimmerCardPlaceholder(lineCount = 3) }
             item { ShimmerCardPlaceholder(lineCount = 5) }
             return@LazyColumn
-        }
-        val selectedRoutine = selectedRoutineId?.let { id -> overview.routines.firstOrNull { it.id == id } }
-        if (selectedRoutineId != null && selectedRoutine == null) {
-            selectedRoutineId = null
         }
         if (selectedRoutine != null) {
             item {
@@ -1307,7 +1331,7 @@ fun WorkoutScreen(
         if (overview.routines.isEmpty()) {
             item { EmptyCard("Nog geen routines", "Maak een routine, voeg trainingsdagen toe en koppel oefeningen om te starten.") }
         } else {
-            items(overview.routines, key = { it.id }) { routine ->
+            items(overview.routines, key = { workoutRoutineListKey(it.id) }) { routine ->
                 RoutineCard(
                     routine = routine,
                     exerciseLibrary = overview.exercises,
@@ -1339,7 +1363,7 @@ fun WorkoutScreen(
         if (overview.exercises.isEmpty()) {
             item { Text("Nog geen oefeningen beschikbaar.") }
         } else {
-            items(overview.exercises, key = { it.id }) { exercise ->
+            items(overview.exercises, key = { workoutExerciseLibraryListKey(it.id) }) { exercise ->
                 ExerciseLibraryCard(exercise.name, exercise.muscleGroup, exercise.equipment)
             }
         }
@@ -1347,7 +1371,7 @@ fun WorkoutScreen(
         if (overview.history.isEmpty()) {
             item { EmptyCard("Nog geen trainingsgeschiedenis", "Voltooi een training en je sessiegeschiedenis verschijnt hier.") }
         } else {
-            items(overview.history, key = { it.id }) { session ->
+            items(overview.history, key = { workoutHistoryListKey(it.id) }) { session ->
                 HistoryCard(session.id, session.totalVolume, session.duration, onDeleteWorkoutSession)
             }
         }
@@ -1358,37 +1382,48 @@ fun WorkoutScreen(
 @Composable
 private fun CreateRoutineDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf("") }
-    val focusRequester = remember { FocusRequester() }
-
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    fun closeInput() {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
     }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            closeInput()
+            onDismiss()
+        },
         title = { Text("Routine maken") },
         text = {
-            OutlinedTextField(
+            TapOnlyOutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
                 label = { Text("Routinenaam") },
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .focusRequester(focusRequester)
                     .bringIntoViewOnFocus(),
             )
         },
         confirmButton = {
             Button(
-                onClick = { onConfirm(name.trim()) },
+                onClick = {
+                    closeInput()
+                    onConfirm(name.trim())
+                },
                 enabled = name.isNotBlank(),
             ) {
                 Text("Maken")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Annuleren") }
+            TextButton(
+                onClick = {
+                    closeInput()
+                    onDismiss()
+                },
+            ) { Text("Annuleren") }
         },
     )
 }
@@ -1524,6 +1559,7 @@ private fun RoutineGeneratorDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 560.dp)
+                    .clearFocusOnScrollOrDrag()
                     .verticalScroll(rememberScrollState())
                     .imePadding(),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -1536,15 +1572,15 @@ private fun RoutineGeneratorDialog(
                         )
                     }
                 }
-                OutlinedTextField(focus, { focus = it }, label = { Text("Training focus / split") }, modifier = Modifier.fillMaxWidth().focusOnTapOnly())
-                OutlinedTextField(
+                TapOnlyOutlinedTextField(focus, { focus = it }, label = { Text("Training focus / split") }, modifier = Modifier.fillMaxWidth())
+                TapOnlyOutlinedTextField(
                     value = daysPerWeek,
                     onValueChange = { daysPerWeek = it },
                     label = { Text("Days per week") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth().focusOnTapOnly(),
+                    modifier = Modifier.fillMaxWidth(),
                 )
-                OutlinedTextField(equipment, { equipment = it }, label = { Text("Available equipment") }, modifier = Modifier.fillMaxWidth().focusOnTapOnly())
+                TapOnlyOutlinedTextField(equipment, { equipment = it }, label = { Text("Available equipment") }, modifier = Modifier.fillMaxWidth())
                 ExperienceLevelSelector(experienceLevel, onSelected = { experienceLevel = it })
                 SessionDurationSlider(durationMinutes = sessionDuration.toInt(), onValueChange = { sessionDuration = it })
                 IncludeDeloadRow(enabled = includeDeload, onCheckedChange = { includeDeload = it })
@@ -1789,8 +1825,8 @@ private fun RoutineCard(
     AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.primary) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (isEditing) {
-                OutlinedTextField(editName, { editName = it }, label = { Text("Routinenaam") }, modifier = Modifier.fillMaxWidth().focusOnTapOnly().bringIntoViewOnFocus())
-                OutlinedTextField(editDescription, { editDescription = it }, label = { Text("Beschrijving") }, modifier = Modifier.fillMaxWidth().focusOnTapOnly().bringIntoViewOnFocus())
+                TapOnlyOutlinedTextField(editName, { editName = it }, label = { Text("Routinenaam") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                TapOnlyOutlinedTextField(editDescription, { editDescription = it }, label = { Text("Beschrijving") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
                 editError?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
@@ -1872,22 +1908,15 @@ private fun RoutineCard(
                 TextButton(onClick = { showDeleteRoutineConfirm = true }) { Text("Verwijderen") }
             }
             HorizontalDivider()
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                FilterChip(
-                    selected = detailTab == "info",
-                    onClick = { detailTab = "info" },
-                    label = { Text("Info") },
-                )
-                FilterChip(
-                    selected = detailTab == "sessions",
-                    onClick = {
-                        detailTab = "sessions"
-                        isEditing = false
-                        editError = null
-                    },
-                    label = { Text("Sessies") },
-                )
-            }
+            RoutineDetailTabSwitcher(
+                selectedTab = detailTab,
+                onInfoClick = { detailTab = "info" },
+                onSessionsClick = {
+                    detailTab = "sessions"
+                    isEditing = false
+                    editError = null
+                },
+            )
             if (detailTab == "info" && !isEditing) {
                 Text("Routine-info", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(routine.description.ifBlank { "Geen beschrijving." }, style = MaterialTheme.typography.bodyMedium)
@@ -1904,7 +1933,7 @@ private fun RoutineCard(
             if (detailTab == "sessions") {
             Text("Sessie toevoegen", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(dayName, { dayName = it }, label = { Text("Sessienaam (optioneel)") }, modifier = Modifier.weight(1f).focusOnTapOnly().bringIntoViewOnFocus())
+                TapOnlyOutlinedTextField(dayName, { dayName = it }, label = { Text("Sessienaam (optioneel)") }, modifier = Modifier.weight(1f).bringIntoViewOnFocus())
                 Button(onClick = { onAddDay(routine.id, dayName); dayName = "" }) { Text("Toevoegen") }
             }
             if (routine.days.isEmpty()) {
@@ -1939,6 +1968,48 @@ private fun RoutineCard(
                 }
             }
             }
+        }
+    }
+}
+
+@Composable
+private fun RoutineDetailTabSwitcher(
+    selectedTab: String,
+    onInfoClick: () -> Unit,
+    onSessionsClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.trainIqColors.cardElevated,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val chipColors = FilterChipDefaults.filterChipColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+            FilterChip(
+                selected = selectedTab == "info",
+                onClick = onInfoClick,
+                label = { Text("Info") },
+                colors = chipColors,
+            )
+            FilterChip(
+                selected = selectedTab == "sessions",
+                onClick = onSessionsClick,
+                label = { Text("Sessies") },
+                colors = chipColors,
+            )
         }
     }
 }
@@ -2570,7 +2641,7 @@ private fun RpeInfoButton(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EditSetBottomSheet(
     set: RoutineSet,
@@ -2583,112 +2654,354 @@ private fun EditSetBottomSheet(
     var weight by remember(set.id) { mutableStateOf(set.targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
     var rest by remember(set.id) { mutableStateOf(set.restSeconds.takeIf { it > 0 }?.toString().orEmpty()) }
     var rpe by remember(set.id) { mutableStateOf(set.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
+    val scrollState = rememberScrollState()
+    val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+    val density = LocalDensity.current
+    val view = LocalView.current
+    val dismissThresholdPx = with(density) { SetEditorHandleDismissThreshold.toPx() }
+    val imeBottomPx = with(density) { imeBottomPadding.toPx() }
+    var scrollViewportBounds by remember { mutableStateOf<Rect?>(null) }
+    val visibleViewportBottomProvider = {
+        scrollViewportBounds?.let { viewportBounds ->
+            setEditorVisibleViewportBottom(
+                viewportBottom = viewportBounds.bottom,
+                rootHeight = view.height.toFloat(),
+                imeBottomPx = imeBottomPx,
+            )
+        }
+    }
 
-    ModalBottomSheet(
+    Dialog(
         onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.trainIqColors.card,
-        contentColor = MaterialTheme.colorScheme.onSurface,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .imePadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+        Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.08f)
+                    .align(Alignment.TopCenter)
+                    .clickable(onClick = onDismiss),
+            )
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .fillMaxHeight(SetEditorSurfaceMaxHeightFraction)
+                    .imePadding(),
+                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                color = MaterialTheme.trainIqColors.card,
+                contentColor = MaterialTheme.colorScheme.onSurface,
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Set #$setNumber bewerken", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-                    Text("Pas alleen de geplande waarden aan.", color = MaterialTheme.trainIqColors.mutedText)
-                }
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Rounded.Close, contentDescription = "Sluiten", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            Text("Type", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.mutedText)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SetType.entries.forEach { type ->
-                    AppChip(
-                        label = type.label(),
-                        selected = selectedType == type,
-                        onClick = { selectedType = type },
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .onGloballyPositioned { coordinates ->
+                                scrollViewportBounds = coordinates.boundsInRoot()
+                            }
+                            .clearFocusOnScrollOrDrag()
+                            .verticalScroll(scrollState)
+                            .padding(horizontal = 24.dp, vertical = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterHorizontally)
+                                .fillMaxWidth()
+                                .height(32.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(44.dp)
+                                    .height(5.dp)
+                                    .background(
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+                                        shape = RoundedCornerShape(999.dp),
+                                    ),
+                            )
+                        }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("Set #$setNumber bewerken", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+                            Text("Pas alleen de geplande waarden aan.", color = MaterialTheme.trainIqColors.mutedText)
+                        }
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.Rounded.Close, contentDescription = "Sluiten", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Text("Type", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.mutedText)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SetType.entries.forEach { type ->
+                            AppChip(
+                                label = type.label(),
+                                selected = selectedType == type,
+                                onClick = { selectedType = type },
+                            )
+                        }
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        SheetNumberField(
+                            value = reps,
+                            label = "Reps",
+                            revealKey = "${set.id}:reps",
+                            keyboardType = KeyboardType.Number,
+                            step = 1.0,
+                            modifier = Modifier.weight(1f),
+                            scrollState = scrollState,
+                            scrollViewportBoundsProvider = { scrollViewportBounds },
+                            visibleViewportBottomProvider = visibleViewportBottomProvider,
+                            onValueChange = { reps = it },
+                        )
+                        SheetNumberField(
+                            value = weight,
+                            label = "Gewicht",
+                            revealKey = "${set.id}:weight",
+                            suffix = "kg",
+                            keyboardType = KeyboardType.Decimal,
+                            step = 2.5,
+                            modifier = Modifier.weight(1f),
+                            scrollState = scrollState,
+                            scrollViewportBoundsProvider = { scrollViewportBounds },
+                            visibleViewportBottomProvider = visibleViewportBottomProvider,
+                            onValueChange = { weight = it },
+                        )
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        SheetNumberField(
+                            value = rest,
+                            label = "Rust",
+                            revealKey = "${set.id}:rest",
+                            suffix = "s",
+                            keyboardType = KeyboardType.Number,
+                            step = 15.0,
+                            showAdjustControls = true,
+                            modifier = Modifier.weight(1f),
+                            scrollState = scrollState,
+                            scrollViewportBoundsProvider = { scrollViewportBounds },
+                            visibleViewportBottomProvider = visibleViewportBottomProvider,
+                            onValueChange = { rest = it },
+                        )
+                        SheetNumberField(
+                            value = rpe,
+                            label = "RPE",
+                            revealKey = "${set.id}:rpe",
+                            keyboardType = KeyboardType.Decimal,
+                            step = 0.5,
+                            modifier = Modifier.weight(1f),
+                            scrollState = scrollState,
+                            scrollViewportBoundsProvider = { scrollViewportBounds },
+                            visibleViewportBottomProvider = visibleViewportBottomProvider,
+                            onValueChange = { rpe = it },
+                        )
+                    }
+                    PrimaryActionButton(
+                        onClick = {
+                            val nextSet = set.copy(
+                                setType = selectedType,
+                                targetReps = reps.toIntOrNull() ?: -1,
+                                targetWeightKg = weight.normalizedDecimal().takeIf { it.isNotBlank() }?.toDoubleOrNull() ?: 0.0,
+                                restSeconds = rest.toIntOrNull() ?: -1,
+                                targetRpe = rpe.normalizedDecimal().takeIf { it.isNotBlank() }?.toDoubleOrNull() ?: 0.0,
+                            )
+                            onSave(nextSet)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Set opslaan")
+                    }
+                    Spacer(
+                        modifier = Modifier.height(
+                            exerciseEditTrailingScrollPadding(imeBottomPadding = imeBottomPadding),
+                        ),
+                    )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .height(72.dp)
+                            .pointerInput(dismissThresholdPx, onDismiss) {
+                                var verticalDragPx = 0f
+                                var hasDismissed = false
+                                detectVerticalDragGestures(
+                                    onDragStart = {
+                                        verticalDragPx = 0f
+                                        hasDismissed = false
+                                    },
+                                    onVerticalDrag = { _, dragAmount ->
+                                        verticalDragPx = (verticalDragPx + dragAmount).coerceAtLeast(0f)
+                                        if (!hasDismissed && shouldDismissSetEditorFromHandleDrag(verticalDragPx, dismissThresholdPx)) {
+                                            hasDismissed = true
+                                            onDismiss()
+                                        }
+                                    },
+                                )
+                            }
+                            .semantics {
+                                contentDescription = "Set editor handle"
+                            },
                     )
                 }
             }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SheetNumberField(
-                    value = reps,
-                    label = "Reps",
-                    keyboardType = KeyboardType.Number,
-                    step = 1.0,
-                    modifier = Modifier.weight(1f),
-                    onValueChange = { reps = it },
-                )
-                SheetNumberField(
-                    value = weight,
-                    label = "Gewicht",
-                    suffix = "kg",
-                    keyboardType = KeyboardType.Decimal,
-                    step = 2.5,
-                    modifier = Modifier.weight(1f),
-                    onValueChange = { weight = it },
-                )
-            }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SheetNumberField(
-                    value = rest,
-                    label = "Rust",
-                    suffix = "s",
-                    keyboardType = KeyboardType.Number,
-                    step = 15.0,
-                    showAdjustControls = true,
-                    modifier = Modifier.weight(1f),
-                    onValueChange = { rest = it },
-                )
-                SheetNumberField(
-                    value = rpe,
-                    label = "RPE",
-                    keyboardType = KeyboardType.Decimal,
-                    step = 0.5,
-                    modifier = Modifier.weight(1f),
-                    onValueChange = { rpe = it },
-                )
-            }
-            PrimaryActionButton(
-                onClick = {
-                    val nextSet = set.copy(
-                        setType = selectedType,
-                        targetReps = reps.toIntOrNull() ?: -1,
-                        targetWeightKg = weight.normalizedDecimal().takeIf { it.isNotBlank() }?.toDoubleOrNull() ?: 0.0,
-                        restSeconds = rest.toIntOrNull() ?: -1,
-                        targetRpe = rpe.normalizedDecimal().takeIf { it.isNotBlank() }?.toDoubleOrNull() ?: 0.0,
-                    )
-                    onSave(nextSet)
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Set opslaan")
-            }
-            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
+
+internal fun setEditorUsesDialogBackedSurface(): Boolean = true
+
+internal fun exerciseEditTrailingScrollPadding(
+    imeBottomPadding: Dp = 0.dp,
+    minimumTrailingPadding: Dp = 24.dp,
+): Dp = minimumTrailingPadding + imeBottomPadding
+
+@Composable
+private fun Modifier.revealInSetEditorScrollOnFocus(
+    revealKey: Any,
+    scrollState: ScrollState?,
+    scrollViewportBoundsProvider: () -> Rect?,
+    visibleViewportBottomProvider: () -> Float?,
+    margin: Dp = 48.dp,
+    maxLayoutWaitFrames: Int = 10,
+    imeSettleFrames: Int = 3,
+): Modifier {
+    if (scrollState == null) return this
+
+    var fieldBounds by remember { mutableStateOf<Rect?>(null) }
+    val scope = rememberCoroutineScope()
+    val revealJob = remember(revealKey) { mutableStateOf<Job?>(null) }
+    val marginPx = with(LocalDensity.current) { margin.toPx() }
+    val currentScrollViewportBoundsProvider by rememberUpdatedState(scrollViewportBoundsProvider)
+    val currentVisibleViewportBottomProvider by rememberUpdatedState(visibleViewportBottomProvider)
+
+    suspend fun waitForMeasuredRevealTarget(requireImeInset: Boolean): Boolean {
+        repeat(maxLayoutWaitFrames.coerceAtLeast(1)) {
+            withFrameNanos { }
+            val viewport = currentScrollViewportBoundsProvider()
+            val field = fieldBounds
+            val visibleBottom = currentVisibleViewportBottomProvider()
+            if (
+                field != null &&
+                viewport != null &&
+                (!requireImeInset || (visibleBottom != null && visibleBottom < viewport.bottom))
+            ) {
+                return true
+            }
+        }
+        return fieldBounds != null && currentScrollViewportBoundsProvider() != null
+    }
+
+    suspend fun revealFocusedField(): Boolean {
+        val field = fieldBounds ?: return false
+        val viewport = currentScrollViewportBoundsProvider() ?: return false
+        val visibleBottom = currentVisibleViewportBottomProvider() ?: viewport.bottom
+        val scrollDelta = focusedInputRevealScrollDelta(
+            fieldTop = field.top,
+            fieldBottom = field.bottom,
+            viewportTop = viewport.top,
+            viewportBottom = visibleBottom,
+            marginPx = marginPx,
+        )
+        if (scrollDelta != 0f) {
+            val target = (scrollState.value + scrollDelta.roundToInt())
+                .coerceIn(0, scrollState.maxValue)
+            scrollState.animateScrollTo(target)
+        }
+        return scrollDelta != 0f
+    }
+
+    suspend fun revealAfterFocusGain() {
+        val imeAlreadyApplied = run {
+            val viewport = currentScrollViewportBoundsProvider()
+            val visibleBottom = currentVisibleViewportBottomProvider()
+            viewport != null && visibleBottom != null && visibleBottom < viewport.bottom
+        }
+        waitForMeasuredRevealTarget(requireImeInset = !imeAlreadyApplied)
+        repeat(imeSettleFrames.coerceAtLeast(0)) {
+            withFrameNanos { }
+        }
+        revealFocusedField()
+        withFrameNanos { }
+        if (!isFocusedInputVisibleInSetEditor(
+                field = fieldBounds,
+                viewport = currentScrollViewportBoundsProvider(),
+                visibleViewportBottom = currentVisibleViewportBottomProvider(),
+                marginPx = marginPx,
+            )
+        ) {
+            revealFocusedField()
+        }
+    }
+
+    DisposableEffect(revealKey) {
+        onDispose { revealJob.value?.cancel() }
+    }
+
+    return onGloballyPositioned { coordinates ->
+        fieldBounds = coordinates.boundsInRoot()
+    }.onFocusChanged { focusState ->
+        revealJob.value?.cancel()
+        if (focusState.isFocused) {
+            revealJob.value = scope.launch {
+                revealAfterFocusGain()
+            }
+        }
+    }
+}
+
+internal fun isFocusedInputVisibleInSetEditor(
+    field: Rect?,
+    viewport: Rect?,
+    visibleViewportBottom: Float?,
+    marginPx: Float,
+): Boolean {
+    if (field == null || viewport == null) return false
+    val visibleBottom = (visibleViewportBottom ?: viewport.bottom) - marginPx
+    val visibleTop = viewport.top + marginPx
+    return field.top >= visibleTop && field.bottom <= visibleBottom
+}
+
+internal fun focusedInputRevealScrollDelta(
+    fieldTop: Float,
+    fieldBottom: Float,
+    viewportTop: Float,
+    viewportBottom: Float,
+    marginPx: Float,
+): Float {
+    val visibleTop = viewportTop + marginPx
+    val visibleBottom = viewportBottom - marginPx
+    return when {
+        fieldBottom > visibleBottom -> fieldBottom - visibleBottom
+        fieldTop < visibleTop -> fieldTop - visibleTop
+        else -> 0f
+    }
+}
+
+internal fun setEditorVisibleViewportBottom(
+    viewportBottom: Float,
+    rootHeight: Float,
+    imeBottomPx: Float,
+): Float = min(viewportBottom, rootHeight - imeBottomPx)
 
 @Composable
 private fun SheetNumberField(
     value: String,
     label: String,
+    revealKey: Any,
     keyboardType: KeyboardType,
     step: Double,
     modifier: Modifier = Modifier,
     suffix: String? = null,
     showAdjustControls: Boolean = false,
+    scrollState: ScrollState? = null,
+    scrollViewportBoundsProvider: () -> Rect? = { null },
+    visibleViewportBottomProvider: () -> Float? = { null },
     onValueChange: (String) -> Unit,
 ) {
     val focusManager = LocalFocusManager.current
@@ -2700,7 +3013,7 @@ private fun SheetNumberField(
         }
     }
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        OutlinedTextField(
+        TapOnlyOutlinedTextField(
             value = value,
             onValueChange = { onValueChange(filterInput(it)) },
             label = { Text(label) },
@@ -2710,8 +3023,13 @@ private fun SheetNumberField(
             keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(force = true) }),
             modifier = Modifier
                 .fillMaxWidth()
-                .focusOnTapOnly()
-                .bringIntoViewOnFocus(),
+                .bringIntoViewOnFocus()
+                .revealInSetEditorScrollOnFocus(
+                    revealKey = revealKey,
+                    scrollState = scrollState,
+                    scrollViewportBoundsProvider = scrollViewportBoundsProvider,
+                    visibleViewportBottomProvider = visibleViewportBottomProvider,
+                ),
         )
         if (showAdjustControls) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
@@ -2795,7 +3113,7 @@ private fun CompactSetNumberField(
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     onValueChange: (String) -> Unit,
 ) {
-    OutlinedTextField(
+    TapOnlyOutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
@@ -2812,7 +3130,6 @@ private fun CompactSetNumberField(
             unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
         ),
         modifier = modifier
-            .focusOnTapOnly()
             .defaultMinSize(minHeight = 58.dp)
             .bringIntoViewOnFocus(),
     )
@@ -2857,7 +3174,7 @@ private fun ExercisePickerSheet(
 ) {
     var query by remember { mutableStateOf("") }
     var defaultsExpanded by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val dismissThresholdPx = with(LocalDensity.current) { ExercisePickerHandleDismissThreshold.toPx() }
     val filteredExercises by remember(query, exercises) {
         derivedStateOf {
             val normalized = query.trim()
@@ -2873,129 +3190,188 @@ private fun ExercisePickerSheet(
         }
     }
 
-    ModalBottomSheet(
+    Dialog(
         onDismissRequest = onDismiss,
-        sheetState = sheetState,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        TrainingWithoutOverscroll {
-            LazyColumn(
+        Box(modifier = Modifier.fillMaxSize()) {
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.92f)
-                    .clearFocusOnScrollOrDrag()
-                    .navigationBarsPadding()
-                    .imePadding()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                contentPadding = PaddingValues(bottom = 96.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                    .fillMaxHeight(0.08f)
+                    .align(Alignment.TopCenter)
+                    .clickable(onClick = onDismiss),
+            )
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.92f),
+                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                color = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.onSurface,
             ) {
-            item {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            }
-            item {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    label = { Text("Oefening zoeken") },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusOnTapOnly()
-                        .bringIntoViewOnFocus(),
-                )
-            }
-            if (showDefaults) {
-                item {
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                        shape = MaterialTheme.shapes.medium,
-                        modifier = Modifier.fillMaxWidth(),
+                TrainingWithoutOverscroll {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clearFocusOnScrollOrDrag()
+                            .navigationBarsPadding()
+                            .imePadding()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        contentPadding = PaddingValues(bottom = 96.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
+                    item {
                         Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .pointerInput(dismissThresholdPx, onDismiss) {
+                                    var verticalDragPx = 0f
+                                    var hasDismissed = false
+                                    detectVerticalDragGestures(
+                                        onDragStart = {
+                                            verticalDragPx = 0f
+                                            hasDismissed = false
+                                        },
+                                        onVerticalDrag = { _, dragAmount ->
+                                            verticalDragPx = (verticalDragPx + dragAmount).coerceAtLeast(0f)
+                                            if (!hasDismissed && shouldDismissExercisePickerFromHandleDrag(verticalDragPx, dismissThresholdPx)) {
+                                                hasDismissed = true
+                                                onDismiss()
+                                            }
+                                        },
+                                    )
+                                },
+                            horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 2.dp, bottom = 8.dp)
+                                    .width(44.dp)
+                                    .height(5.dp)
+                                    .background(
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+                                        shape = RoundedCornerShape(999.dp),
+                                    ),
+                            )
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                    Text("Standaardwaarden voor deze oefening", style = MaterialTheme.typography.labelLarge)
+                                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                IconButton(onClick = onDismiss) {
+                                    Icon(Icons.Rounded.Close, contentDescription = "Oefeningkiezer sluiten")
+                                }
+                            }
+                        }
+                    }
+                    item {
+                        TapOnlyOutlinedTextField(
+                            value = query,
+                            onValueChange = { query = it },
+                            label = { Text("Oefening zoeken") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .bringIntoViewOnFocus(),
+                        )
+                    }
+                    if (showDefaults) {
+                        item {
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                shape = MaterialTheme.shapes.medium,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Standaardwaarden voor deze oefening", style = MaterialTheme.typography.labelLarge)
+                                            Text(
+                                                "$targetSets sets - $repRange reps - ${restSeconds}s rust",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            RpeInfoButton(compactText = true)
+                                            IconButton(onClick = { defaultsExpanded = !defaultsExpanded }) {
+                                                Icon(
+                                                    if (defaultsExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                                    contentDescription = if (defaultsExpanded) "Standaardwaarden inklappen" else "Standaardwaarden openen",
+                                                )
+                                            }
+                                        }
+                                    }
+                                    if (defaultsExpanded) {
+                                        Text(
+                                            "Worden toegepast wanneer je een oefening kiest.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        FlowRow(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.fillMaxWidth(),
+                                        ) {
+                                            CompactSetNumberField(targetSets, "Sets", null, KeyboardType.Number, Modifier.weight(1f), onValueChange = onTargetSetsChange)
+                                            CompactSetNumberField(repRange, "Reps", null, KeyboardType.Text, Modifier.weight(1f), onValueChange = onRepRangeChange)
+                                            CompactSetNumberField(restSeconds, "Rust", "sec", KeyboardType.Number, Modifier.weight(1f), onValueChange = onRestSecondsChange)
+                                            CompactSetNumberField(targetWeightKg, "Gewicht", "kg", KeyboardType.Decimal, Modifier.weight(1f), onValueChange = onTargetWeightChange)
+                                            CompactSetNumberField(targetRpe, "RPE", null, KeyboardType.Decimal, Modifier.weight(1f), onValueChange = onTargetRpeChange)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        item {
+                            TextButton(onClick = onCustomExercise, modifier = Modifier.fillMaxWidth()) {
+                                Text("Voeg eigen oefening toe")
+                            }
+                        }
+                    }
+                    items(filteredExercises, key = { it.id }) { exercise ->
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     Text(
-                                        "$targetSets sets - $repRange reps - ${restSeconds}s rust",
+                                        exercise.name,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        "${exercise.muscleGroup} - ${exercise.equipment}",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                 }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    RpeInfoButton(compactText = true)
-                                    IconButton(onClick = { defaultsExpanded = !defaultsExpanded }) {
-                                        Icon(
-                                            if (defaultsExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                            contentDescription = if (defaultsExpanded) "Standaardwaarden inklappen" else "Standaardwaarden openen",
-                                        )
-                                    }
-                                }
-                            }
-                            if (defaultsExpanded) {
-                                Text(
-                                    "Worden toegepast wanneer je een oefening kiest.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    CompactSetNumberField(targetSets, "Sets", null, KeyboardType.Number, Modifier.weight(1f), onValueChange = onTargetSetsChange)
-                                    CompactSetNumberField(repRange, "Reps", null, KeyboardType.Text, Modifier.weight(1f), onValueChange = onRepRangeChange)
-                                    CompactSetNumberField(restSeconds, "Rust", "sec", KeyboardType.Number, Modifier.weight(1f), onValueChange = onRestSecondsChange)
-                                    CompactSetNumberField(targetWeightKg, "Gewicht", "kg", KeyboardType.Decimal, Modifier.weight(1f), onValueChange = onTargetWeightChange)
-                                    CompactSetNumberField(targetRpe, "RPE", null, KeyboardType.Decimal, Modifier.weight(1f), onValueChange = onTargetRpeChange)
-                                }
+                                TextButton(onClick = { onSelect(exercise) }) { Text(if (showDefaults) "Toevoegen" else "Vervangen") }
                             }
                         }
                     }
-                }
-                item {
-                    TextButton(onClick = onCustomExercise, modifier = Modifier.fillMaxWidth()) {
-                        Text("Voeg eigen oefening toe")
                     }
                 }
-            }
-            items(filteredExercises, key = { it.id }) { exercise ->
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                exercise.name,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                "${exercise.muscleGroup} - ${exercise.equipment}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        TextButton(onClick = { onSelect(exercise) }) { Text(if (showDefaults) "Toevoegen" else "Vervangen") }
-                    }
-                }
-            }
             }
         }
     }
@@ -3020,22 +3396,24 @@ private fun CustomExerciseDialog(
     var exerciseName by remember { mutableStateOf("") }
     var muscleGroup by remember { mutableStateOf("") }
     var equipment by remember { mutableStateOf("") }
+    val scrollState = rememberScrollState()
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.imePadding(),
         title = { Text("Voeg eigen oefening toe") },
         text = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 560.dp)
-                    .verticalScroll(rememberScrollState())
-                    .imePadding(),
+                    .clearFocusOnScrollOrDrag()
+                    .verticalScroll(scrollState),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                OutlinedTextField(exerciseName, { exerciseName = it }, label = { Text("Oefening") }, modifier = Modifier.fillMaxWidth().focusOnTapOnly().bringIntoViewOnFocus())
-                OutlinedTextField(muscleGroup, { muscleGroup = it }, label = { Text("Spiergroep") }, modifier = Modifier.fillMaxWidth().focusOnTapOnly().bringIntoViewOnFocus())
-                OutlinedTextField(equipment, { equipment = it }, label = { Text("Materiaal") }, modifier = Modifier.fillMaxWidth().focusOnTapOnly().bringIntoViewOnFocus())
+                TapOnlyOutlinedTextField(exerciseName, { exerciseName = it }, label = { Text("Oefening") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                TapOnlyOutlinedTextField(muscleGroup, { muscleGroup = it }, label = { Text("Spiergroep") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                TapOnlyOutlinedTextField(equipment, { equipment = it }, label = { Text("Materiaal") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -3055,6 +3433,11 @@ private fun CustomExerciseDialog(
                     CompactSetNumberField(targetWeightKg, "Gewicht", "kg", KeyboardType.Decimal, Modifier.weight(1f), onValueChange = onTargetWeightChange)
                     CompactSetNumberField(targetRpe, "RPE", null, KeyboardType.Decimal, Modifier.weight(1f), onValueChange = onTargetRpeChange)
                 }
+                Spacer(
+                    modifier = Modifier.height(
+                        exerciseEditTrailingScrollPadding(),
+                    ),
+                )
             }
         },
         confirmButton = {
@@ -3081,31 +3464,38 @@ private fun ExercisePlanEditDialog(
     var targetWeightKg by remember(plan.id) { mutableStateOf(plan.targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
     var targetRpe by remember(plan.id) { mutableStateOf(plan.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
     var setType by remember(plan.id) { mutableStateOf(plan.setType) }
+    val scrollState = rememberScrollState()
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.imePadding(),
         title = { Text(plan.exercise.name) },
         text = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 520.dp)
-                    .verticalScroll(rememberScrollState())
-                    .imePadding(),
+                    .clearFocusOnScrollOrDrag()
+                    .verticalScroll(scrollState),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(targetSets, { targetSets = it }, label = { Text("Sets") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).focusOnTapOnly().bringIntoViewOnFocus())
-                    OutlinedTextField(repRange, { repRange = it }, label = { Text("Reps") }, modifier = Modifier.weight(1f).focusOnTapOnly().bringIntoViewOnFocus())
+                    TapOnlyOutlinedTextField(targetSets, { targetSets = it }, label = { Text("Sets") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).bringIntoViewOnFocus())
+                    TapOnlyOutlinedTextField(repRange, { repRange = it }, label = { Text("Reps") }, modifier = Modifier.weight(1f).bringIntoViewOnFocus())
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(restSeconds, { restSeconds = it }, label = { Text("Rest s") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).focusOnTapOnly().bringIntoViewOnFocus())
-                    OutlinedTextField(targetWeightKg, { targetWeightKg = it }, label = { Text("Kg") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f).focusOnTapOnly().bringIntoViewOnFocus())
-                    OutlinedTextField(targetRpe, { targetRpe = it }, label = { Text("RPE") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f).focusOnTapOnly().bringIntoViewOnFocus())
+                    TapOnlyOutlinedTextField(restSeconds, { restSeconds = it }, label = { Text("Rest s") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).bringIntoViewOnFocus())
+                    TapOnlyOutlinedTextField(targetWeightKg, { targetWeightKg = it }, label = { Text("Kg") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f).bringIntoViewOnFocus())
+                    TapOnlyOutlinedTextField(targetRpe, { targetRpe = it }, label = { Text("RPE") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f).bringIntoViewOnFocus())
                 }
                 SetTypeSelector(
                     selectedType = setType,
                     onSelectedTypeChange = { setType = it },
+                )
+                Spacer(
+                    modifier = Modifier.height(
+                        exerciseEditTrailingScrollPadding(),
+                    ),
                 )
             }
         },
@@ -3638,7 +4028,6 @@ fun ActiveWorkoutScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .clearFocusOnScrollOrDrag()
-                    .imeNestedScroll()
                     .padding(padding)
                     .navigationBarsPadding()
                     .imePadding(),
@@ -4341,7 +4730,7 @@ private fun QuickNumberField(
         }
     }
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        OutlinedTextField(
+        TapOnlyOutlinedTextField(
             value = value,
             onValueChange = { onValueChange(filterInput(it)) },
             label = { Text(label) },
@@ -4359,7 +4748,6 @@ private fun QuickNumberField(
             ),
             modifier = fieldModifier
                 .fillMaxWidth()
-                .focusOnTapOnly()
                 .defaultMinSize(minHeight = 64.dp)
                 .bringIntoViewOnFocus(),
         )
@@ -4683,6 +5071,45 @@ private fun routineFocusLabel(routine: WorkoutRoutine): String =
 internal fun WorkoutRoutine.firstStartableDay(): WorkoutDay? =
     days.firstOrNull { it.exercises.isNotEmpty() }
 
+internal fun resolveSelectedRoutineId(selectedRoutineId: Long?, routines: List<WorkoutRoutine>): Long? =
+    selectedRoutineId?.takeIf { id -> routines.any { it.id == id } }
+
+internal fun workoutOverviewListKeys(
+    routines: List<WorkoutRoutine>,
+    exercises: List<Exercise>,
+    historySessionIds: List<Long>,
+    hasMessage: Boolean,
+): List<String> = buildList {
+    add("workout:header")
+    if (hasMessage) add("workout:message")
+    add("workout:routine-creation")
+    add("workout:active-routine")
+    add("workout:routines-section")
+    if (routines.isEmpty()) {
+        add("workout:routines-empty")
+    } else {
+        routines.forEach { add(workoutRoutineListKey(it.id)) }
+    }
+    add("workout:exercise-library-section")
+    if (exercises.isEmpty()) {
+        add("workout:exercise-library-empty")
+    } else {
+        exercises.forEach { add(workoutExerciseLibraryListKey(it.id)) }
+    }
+    add("workout:history-section")
+    if (historySessionIds.isEmpty()) {
+        add("workout:history-empty")
+    } else {
+        historySessionIds.forEach { add(workoutHistoryListKey(it)) }
+    }
+}
+
+private fun workoutRoutineListKey(routineId: Long): String = "workout:routine:$routineId"
+
+private fun workoutExerciseLibraryListKey(exerciseId: Long): String = "workout:exercise:$exerciseId"
+
+private fun workoutHistoryListKey(sessionId: Long): String = "workout:history:$sessionId"
+
 private fun dayEstimatedMinutes(day: WorkoutDay): Int {
     val seconds = day.exercises.sumOf { plan ->
         val setCount = plan.plannedSetCount().coerceAtLeast(1)
@@ -4729,6 +5156,16 @@ internal fun filterDecimalInput(input: String, maxDecimals: Int): String {
 
 internal fun filterIntegerInput(input: String): String =
     input.filter { it.isDigit() }
+
+internal fun shouldDismissExercisePickerFromHandleDrag(
+    verticalDragPx: Float,
+    thresholdPx: Float,
+): Boolean = verticalDragPx >= thresholdPx
+
+internal fun shouldDismissSetEditorFromHandleDrag(
+    verticalDragPx: Float,
+    thresholdPx: Float,
+): Boolean = verticalDragPx >= thresholdPx
 
 internal sealed interface SetLogValidationResult {
     data class Valid(val weight: Double, val reps: Int, val rpe: Double) : SetLogValidationResult

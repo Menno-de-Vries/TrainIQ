@@ -1,10 +1,12 @@
 @file:OptIn(
     androidx.compose.foundation.ExperimentalFoundationApi::class,
     androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
+    androidx.compose.ui.ExperimentalComposeUiApi::class,
 )
 
 package com.trainiq.core.ui
 
+import android.view.MotionEvent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -26,6 +28,8 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -40,6 +44,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -49,10 +54,14 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextFieldColors
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,15 +74,15 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -84,6 +93,8 @@ import com.trainiq.domain.model.ChartPoint
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.max
+import kotlin.math.min
 
 @Composable
 fun AppScaffold(
@@ -109,7 +120,10 @@ fun AppScaffold(
 }
 
 @Composable
-fun Modifier.bringIntoViewOnFocus(delayMillis: Long = 250L): Modifier {
+fun Modifier.bringIntoViewOnFocus(
+    delayMillis: Long = 80L,
+    imeSettledDelayMillis: Long = 320L,
+): Modifier {
     val requester = remember { BringIntoViewRequester() }
     val scope = rememberCoroutineScope()
     val bringIntoViewJob = remember { mutableStateOf<Job?>(null) }
@@ -118,12 +132,27 @@ fun Modifier.bringIntoViewOnFocus(delayMillis: Long = 250L): Modifier {
             bringIntoViewJob.value?.cancel()
             if (focusState.isFocused) {
                 bringIntoViewJob.value = scope.launch {
-                    delay(delayMillis)
-                    requester.bringIntoView()
+                    var elapsedDelayMillis = 0L
+                    focusedInputBringIntoViewDelaysMillis(
+                        firstRequestDelayMillis = delayMillis,
+                        settledImeDelayMillis = imeSettledDelayMillis,
+                    ).forEach { requestDelayMillis ->
+                        delay(requestDelayMillis - elapsedDelayMillis)
+                        elapsedDelayMillis = requestDelayMillis
+                        requester.bringIntoView()
+                    }
                 }
             }
         }
 }
+
+internal fun focusedInputBringIntoViewDelaysMillis(
+    firstRequestDelayMillis: Long,
+    settledImeDelayMillis: Long,
+): List<Long> = listOf(firstRequestDelayMillis, settledImeDelayMillis)
+    .filter { it >= 0L }
+    .distinct()
+    .sorted()
 
 @Composable
 fun Modifier.clearFocusOnTapOutside(): Modifier {
@@ -149,25 +178,15 @@ fun Modifier.clearFocusOnScrollOrDrag(): Modifier {
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
     }
-    val scrollConnection = remember(focusManager, keyboardController) {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (source == NestedScrollSource.UserInput && available != Offset.Zero) {
-                    clearInputFocus()
-                }
-                return Offset.Zero
-            }
-        }
-    }
-    return nestedScroll(scrollConnection).pointerInput(focusManager, keyboardController) {
+    return pointerInput(focusManager, keyboardController) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
             val drag = awaitTouchSlopOrCancellation(down.id) { _, _ ->
                 clearInputFocus()
             }
             if (drag != null) {
-                waitForUpOrCancellation(pass = PointerEventPass.Final)
                 clearInputFocus()
+                waitForUpOrCancellation(pass = PointerEventPass.Final)
             }
         }
     }
@@ -184,35 +203,195 @@ fun Modifier.focusOnTapOnly(requester: FocusRequester): Modifier {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val touchSlop = androidx.compose.ui.platform.LocalViewConfiguration.current.touchSlop
-    return focusRequester(requester).pointerInput(requester, focusManager, keyboardController, touchSlop) {
-        awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-            down.consume()
-            val startPosition = down.position
-            var isDrag = false
-            var isPressed: Boolean
-            do {
-                val event = awaitPointerEvent(pass = PointerEventPass.Initial)
-                val change = event.changes.firstOrNull { it.id == down.id } ?: event.changes.first()
-                if ((change.position - startPosition).getDistance() > touchSlop) {
-                    isDrag = true
-                    change.consume()
-                    focusManager.clearFocus(force = true)
-                    keyboardController?.hide()
-                }
-                isPressed = change.pressed
-                if (!isPressed) {
-                    change.consume()
-                }
-            } while (isPressed)
-            if (isDrag) {
-                focusManager.clearFocus(force = true)
-                keyboardController?.hide()
-            } else {
-                requester.requestFocus()
-                keyboardController?.show()
+    val tapSlop = tapOnlyFocusSlop(touchSlop)
+    val touchFocusEnabled = remember { mutableStateOf(false) }
+    val focusRequestCount = remember { mutableIntStateOf(0) }
+    val gestureTracker = remember { TapOnlyFocusGestureTracker() }
+
+    LaunchedEffect(focusRequestCount.intValue) {
+        if (focusRequestCount.intValue > 0) {
+            withFrameNanos { }
+            requester.requestFocus()
+            keyboardController?.show()
+            focusRequestCount.intValue = 0
+        }
+    }
+
+    return focusRequester(requester)
+        .focusProperties { canFocus = touchFocusEnabled.value }
+        .onFocusChanged { focusState ->
+            if (!focusState.isFocused) {
+                touchFocusEnabled.value = false
             }
         }
+        .pointerInteropFilter { event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    gestureTracker.start(event.x, event.y)
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (gestureTracker.move(event.x, event.y, tapSlop)) {
+                        touchFocusEnabled.value = false
+                        focusManager.clearFocus(force = true)
+                        keyboardController?.hide()
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (gestureTracker.finish(event.x, event.y, tapSlop)) {
+                        touchFocusEnabled.value = true
+                        focusRequestCount.intValue += 1
+                    } else {
+                        touchFocusEnabled.value = false
+                        focusManager.clearFocus(force = true)
+                        keyboardController?.hide()
+                    }
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    gestureTracker.cancel()
+                    touchFocusEnabled.value = false
+                    focusManager.clearFocus(force = true)
+                    keyboardController?.hide()
+                    true
+                }
+                else -> true
+            }
+        }
+}
+
+@Composable
+fun TapOnlyOutlinedTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: @Composable (() -> Unit)? = null,
+    placeholder: @Composable (() -> Unit)? = null,
+    suffix: @Composable (() -> Unit)? = null,
+    supportingText: @Composable (() -> Unit)? = null,
+    isError: Boolean = false,
+    singleLine: Boolean = false,
+    textStyle: TextStyle = LocalTextStyle.current,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    colors: TextFieldColors = OutlinedTextFieldDefaults.colors(),
+) {
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val touchSlop = androidx.compose.ui.platform.LocalViewConfiguration.current.touchSlop
+    val tapSlop = tapOnlyFocusSlop(touchSlop)
+    val gestureTracker = remember { TapOnlyFocusGestureTracker() }
+
+    fun clearTextInputFocus() {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+    }
+
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier
+            .pointerInput(focusManager, keyboardController, tapSlop) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    gestureTracker.start(down.position.x, down.position.y)
+                    val drag = awaitTouchSlopOrCancellation(down.id) { change, _ ->
+                        if (gestureTracker.move(change.position.x, change.position.y, tapSlop)) {
+                            change.consume()
+                            clearTextInputFocus()
+                        }
+                    }
+                    if (drag == null) {
+                        gestureTracker.cancel()
+                    } else {
+                        clearTextInputFocus()
+                        do {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            event.changes.forEach { change ->
+                                if (change.pressed) {
+                                    change.consume()
+                                }
+                            }
+                        } while (event.changes.any { it.pressed })
+                        gestureTracker.cancel()
+                    }
+                }
+            },
+        readOnly = false,
+        label = label,
+        placeholder = placeholder,
+        suffix = suffix,
+        isError = isError,
+        supportingText = supportingText,
+        singleLine = singleLine,
+        textStyle = textStyle,
+        keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
+        colors = colors,
+    )
+}
+
+internal fun shouldSuppressTextInputGesture(
+    maxDistanceFromStart: Float,
+    totalDistance: Float,
+    tapSlop: Float,
+): Boolean = !shouldRequestTextInputFocusFromGesture(
+    maxDistanceFromStart = maxDistanceFromStart,
+    totalDistance = totalDistance,
+    tapSlop = tapSlop,
+)
+
+internal fun tapOnlyFocusSlop(touchSlop: Float): Float = min(10f, max(6f, touchSlop * 0.5f))
+
+internal fun shouldRequestTextInputFocusFromGesture(
+    maxDistanceFromStart: Float,
+    totalDistance: Float,
+    tapSlop: Float,
+): Boolean = maxDistanceFromStart <= tapSlop && totalDistance <= tapSlop
+
+private class TapOnlyFocusGestureTracker {
+    private var startX = 0f
+    private var startY = 0f
+    private var previousX = 0f
+    private var previousY = 0f
+    private var maxDistanceFromStart = 0f
+    private var totalDistance = 0f
+    private var isDrag = false
+
+    fun start(x: Float, y: Float) {
+        startX = x
+        startY = y
+        previousX = x
+        previousY = y
+        maxDistanceFromStart = 0f
+        totalDistance = 0f
+        isDrag = false
+    }
+
+    fun move(x: Float, y: Float, tapSlop: Float): Boolean {
+        maxDistanceFromStart = maxOf(maxDistanceFromStart, Offset(x - startX, y - startY).getDistance())
+        totalDistance += Offset(x - previousX, y - previousY).getDistance()
+        previousX = x
+        previousY = y
+        if (!isDrag && !shouldRequestTextInputFocusFromGesture(maxDistanceFromStart, totalDistance, tapSlop)) {
+            isDrag = true
+            return true
+        }
+        return false
+    }
+
+    fun finish(x: Float, y: Float, tapSlop: Float): Boolean {
+        move(x, y, tapSlop)
+        val isTap = !isDrag && shouldRequestTextInputFocusFromGesture(maxDistanceFromStart, totalDistance, tapSlop)
+        cancel()
+        return isTap
+    }
+
+    fun cancel() {
+        isDrag = false
+        maxDistanceFromStart = 0f
+        totalDistance = 0f
     }
 }
 

@@ -20,7 +20,6 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -35,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.trainiq.domain.model.Exercise
+import com.trainiq.core.ui.TapOnlyOutlinedTextField
 import com.trainiq.core.ui.bringIntoViewOnFocus
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 
@@ -94,7 +94,7 @@ fun ExercisePickerSheet(
                     Text("Close")
                 }
             }
-            OutlinedTextField(
+            TapOnlyOutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
                 modifier = Modifier
@@ -176,10 +176,11 @@ private fun CustomExerciseForm(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("Custom exercise", style = MaterialTheme.typography.titleSmall)
-            OutlinedTextField(
+            TapOnlyOutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth(),
                 label = { Text("Exercise name") },
                 singleLine = true,
             )
@@ -187,17 +188,21 @@ private fun CustomExerciseForm(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                OutlinedTextField(
+                TapOnlyOutlinedTextField(
                     value = muscleGroup,
                     onValueChange = { muscleGroup = it },
-                    modifier = Modifier.weight(1f).bringIntoViewOnFocus(),
+                    modifier = Modifier
+                        .weight(1f)
+                        .bringIntoViewOnFocus(),
                     label = { Text("Muscle") },
                     singleLine = true,
                 )
-                OutlinedTextField(
+                TapOnlyOutlinedTextField(
                     value = equipment,
                     onValueChange = { equipment = it },
-                    modifier = Modifier.weight(1f).bringIntoViewOnFocus(),
+                    modifier = Modifier
+                        .weight(1f)
+                        .bringIntoViewOnFocus(),
                     label = { Text("Equipment") },
                     singleLine = true,
                 )

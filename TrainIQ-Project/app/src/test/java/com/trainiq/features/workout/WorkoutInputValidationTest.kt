@@ -4,6 +4,8 @@ import com.trainiq.domain.model.Exercise
 import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutExercisePlan
 import com.trainiq.domain.model.WorkoutRoutine
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -126,6 +128,145 @@ class WorkoutInputValidationTest {
         )
 
         assertEquals(startableDay, routine.firstStartableDay())
+    }
+
+    @Test
+    fun `selected routine id is cleared when restored routine no longer exists`() {
+        val routine = WorkoutRoutine(
+            id = 1,
+            name = "Routine",
+            description = "",
+            active = true,
+            days = emptyList(),
+        )
+
+        assertEquals(1L, resolveSelectedRoutineId(1L, listOf(routine)))
+        assertEquals(null, resolveSelectedRoutineId(2L, listOf(routine)))
+        assertEquals(null, resolveSelectedRoutineId(null, listOf(routine)))
+    }
+
+    @Test
+    fun `workout list keys do not collide with saved routine ids`() {
+        val routine = WorkoutRoutine(
+            id = 1,
+            name = "Routine",
+            description = "",
+            active = true,
+            days = emptyList(),
+        )
+        val keys = workoutOverviewListKeys(
+            routines = listOf(routine),
+            exercises = listOf(Exercise(id = 1, name = "Bench press", muscleGroup = "Chest", equipment = "Barbell")),
+            historySessionIds = listOf(1),
+            hasMessage = true,
+        )
+
+        assertEquals(keys.distinct(), keys)
+    }
+
+    @Test
+    fun `exercise picker handle dismiss requires clear downward drag threshold`() {
+        val thresholdPx = 96f
+
+        assertEquals(false, shouldDismissExercisePickerFromHandleDrag(verticalDragPx = 24f, thresholdPx = thresholdPx))
+        assertEquals(false, shouldDismissExercisePickerFromHandleDrag(verticalDragPx = 95f, thresholdPx = thresholdPx))
+        assertEquals(true, shouldDismissExercisePickerFromHandleDrag(verticalDragPx = 96f, thresholdPx = thresholdPx))
+        assertEquals(true, shouldDismissExercisePickerFromHandleDrag(verticalDragPx = 140f, thresholdPx = thresholdPx))
+    }
+
+    @Test
+    fun `exercise edit trailing scroll padding includes ime in dialog set editor`() {
+        val padding = exerciseEditTrailingScrollPadding(
+            imeBottomPadding = 280.dp,
+            minimumTrailingPadding = 24.dp,
+        )
+
+        assertEquals(304.dp, padding)
+    }
+
+    @Test
+    fun `set editor uses dialog backed surface instead of material bottom sheet`() {
+        assertEquals(true, setEditorUsesDialogBackedSurface())
+    }
+
+    @Test
+    fun `set editor handle dismiss requires clear downward drag threshold`() {
+        val thresholdPx = 96f
+
+        assertEquals(false, shouldDismissSetEditorFromHandleDrag(verticalDragPx = 24f, thresholdPx = thresholdPx))
+        assertEquals(false, shouldDismissSetEditorFromHandleDrag(verticalDragPx = 95f, thresholdPx = thresholdPx))
+        assertEquals(true, shouldDismissSetEditorFromHandleDrag(verticalDragPx = 96f, thresholdPx = thresholdPx))
+        assertEquals(true, shouldDismissSetEditorFromHandleDrag(verticalDragPx = 140f, thresholdPx = thresholdPx))
+    }
+
+    @Test
+    fun `set editor focused input reveal scrolls only enough to clear visible viewport`() {
+        assertEquals(
+            148f,
+            focusedInputRevealScrollDelta(
+                fieldTop = 1223f,
+                fieldBottom = 1391f,
+                viewportTop = 444f,
+                viewportBottom = 1291f,
+                marginPx = 48f,
+            ),
+        )
+        assertEquals(
+            0f,
+            focusedInputRevealScrollDelta(
+                fieldTop = 900f,
+                fieldBottom = 1050f,
+                viewportTop = 444f,
+                viewportBottom = 1291f,
+                marginPx = 48f,
+            ),
+        )
+    }
+
+    @Test
+    fun `set editor visible viewport bottom accounts for ime overlay`() {
+        assertEquals(
+            1291f,
+            setEditorVisibleViewportBottom(
+                viewportBottom = 1849f,
+                rootHeight = 2400f,
+                imeBottomPx = 1109f,
+            ),
+        )
+        assertEquals(
+            1849f,
+            setEditorVisibleViewportBottom(
+                viewportBottom = 1849f,
+                rootHeight = 2400f,
+                imeBottomPx = 0f,
+            ),
+        )
+    }
+
+    @Test
+    fun `set editor reveal verifies focused field against ime-reduced viewport`() {
+        val viewport = Rect(left = 0f, top = 444f, right = 1079f, bottom = 1849f)
+        val hiddenByIme = Rect(left = 555f, top = 1223f, right = 1016f, bottom = 1391f)
+        val visibleAfterScroll = Rect(left = 555f, top = 1000f, right = 1016f, bottom = 1168f)
+
+        assertEquals(
+            false,
+            isFocusedInputVisibleInSetEditor(
+                field = hiddenByIme,
+                viewport = viewport,
+                visibleViewportBottom = 1291f,
+                marginPx = 48f,
+            ),
+        )
+        assertEquals(
+            true,
+            isFocusedInputVisibleInSetEditor(
+                field = visibleAfterScroll,
+                viewport = viewport,
+                visibleViewportBottom = 1291f,
+                marginPx = 48f,
+            ),
+        )
     }
 
     @Test
