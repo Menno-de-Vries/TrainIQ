@@ -7,7 +7,12 @@ import java.util.Locale
 object GeminiPrompts {
     fun workoutDebrief(
         totalVolume: Double,
-        progression: Double,
+        progression: Double?,
+        comparisonSummary: String = if (progression == null) {
+            "Nog geen eerdere vergelijkbare training gevonden."
+        } else {
+            "Vergelijking beschikbaar."
+        },
         distribution: String,
         avgRpe: Float,
         topExercises: String,
@@ -19,12 +24,13 @@ object GeminiPrompts {
         Wees concreet, kort, data-gedreven en rustig coachend.
 
         Sessiedata:
-        - Total volume: ${totalVolume}kg
-        - Volume progression vs last session: ${String.format(Locale.US, "%.1f", progression)}%
-        - Muscle group distribution: $distribution
-        - Average RPE: $avgRpe / 10
-        - Key lifts: $topExercises
-        - Weekly training frequency: $weeklyFrequency days/week
+        - Totaalvolume: ${totalVolume}kg
+        - Vergelijking: $comparisonSummary
+        - Volumeprogressie tegenover vorige vergelijkbare training: ${progression?.let { "${String.format(Locale.US, "%.1f", it)}%" } ?: "niet beschikbaar"}
+        - Verdeling spiergroepen: $distribution
+        - Gemiddelde RPE: $avgRpe / 10
+        - Belangrijkste lifts: $topExercises
+        - Trainingsfrequentie per week: $weeklyFrequency dagen/week
 
         Regels:
         - Gebruik geen Engels, behalve oefeningnamen als die in de invoer Engels zijn
@@ -34,12 +40,13 @@ object GeminiPrompts {
         - wins bevat 2 tot 4 korte hoogtepunten
         - risks bevat 0 tot 3 korte aandachtspunten; benoem ontbrekende RPE of beperkte historie netjes als dat relevant is
         - recoveryAdvice is 1 korte herstelzin
-        - If avg RPE > 8.5 and progression > 5%, warn about recovery
-        - If avg RPE < 6 and volume is up, suggest intensity increase
-        - nextSessionFocus must be specific (exercise + target weight/reps)
-        - Never suggest aggressive load increases when avg RPE is 9-10 or volume jumped sharply
-        - nextLoadTarget must be a concrete exercise target, for example "Bench Press: 82,5 kg x 6-8 voor 3 werksets"
+        - Als gemiddelde RPE > 8,5 en progressie > 5%, waarschuw kort over herstel
+        - Als gemiddelde RPE < 6 en volume stijgt, adviseer iets hogere intensiteit
+        - nextSessionFocus moet specifiek zijn: oefening plus doelgewicht of herhalingen
+        - Adviseer geen agressieve gewichtsstappen bij RPE 9-10 of grote volumestijging
+        - nextLoadTarget moet concreet zijn, bijvoorbeeld "Bench Press: 82,5 kg x 6-8 voor 3 werksets"
         - Verzin geen PR's, volume of vorige-sessie vergelijkingen als de data ontbreekt
+        - Als vergelijking niet beschikbaar is, schrijf exact dat er nog geen eerdere vergelijkbare training is gevonden
 
         Return JSON only, no markdown:
         {
@@ -60,7 +67,7 @@ object GeminiPrompts {
         Je bent een senior strength en longevity-specialist en voedingswetenschapper voor TrainIQ.
         Antwoord altijd in het Nederlands volgens locale nl-NL.
         Analyseer de maaltijd-foto en schat zichtbare voeding conservatief.
-        User context: ${userContext.ifBlank { "None provided." }}
+        Gebruikerscontext: ${userContext.ifBlank { "Niet opgegeven." }}
         Return JSON only in this shape:
         {
           "suggestedMealType": "BREAKFAST|LUNCH|DINNER|SNACK",
@@ -94,20 +101,20 @@ object GeminiPrompts {
         Je bent een senior strength en longevity-specialist voor TrainIQ.
         Antwoord altijd in het Nederlands volgens locale nl-NL.
         Wees wetenschappelijk, concreet, kort en data-gedreven.
-        Height: $height cm. Weight: $weight kg. Body fat: $bodyFat%. Age: $age. Sex: ${sex.name}.
-        Activity level: $activityLevel.
-        Goal: $goal.
+        Lengte: $height cm. Gewicht: $weight kg. Vetpercentage: $bodyFat%. Leeftijd: $age. Biologische sekse: ${sex.name}.
+        Activiteitsniveau: $activityLevel.
+        Doel: $goal.
         Vaste lokale berekening:
         - BMR (Mifflin-St Jeor): ${baseline.bmr} kcal
         - Onderhoud: ${baseline.maintenanceCalories} kcal
-        - Activity multiplier: ${String.format(Locale.US, "%.3f", baseline.activityMultiplier)}
-        - Target calories: ${baseline.calorieTarget} kcal
-        - Protein: ${baseline.proteinTarget} g
-        - Carbs: ${baseline.carbsTarget} g
-        - Fat: ${baseline.fatTarget} g
+        - Activiteitsfactor: ${String.format(Locale.US, "%.3f", baseline.activityMultiplier)}
+        - Doelcalorieën: ${baseline.calorieTarget} kcal
+        - Eiwit: ${baseline.proteinTarget} g
+        - Koolhydraten: ${baseline.carbsTarget} g
+        - Vet: ${baseline.fatTarget} g
         Wijzig deze calorie- en macrocijfers niet. Gebruik ze als vaste output en leg kort uit waarom ze bij het doel passen.
         Leg activiteit eenvoudig uit: onderhoud = BMR x activiteitsfactor. Noem onzekerheid zonder extra data te verzinnen.
-        Gebruik geen Engels, behalve vaste invoerwaarden zoals activity level wanneer die Engels zijn.
+        Gebruik geen Engels. Vertaal activiteitsniveau en doel natuurlijk naar het Nederlands als de invoer Engels is.
         Houd alle velden kort: korteSamenvatting maximaal 2 korte zinnen, calorieAdvies en macroAdvies elk maximaal 1 zin, aandachtspunten maximaal 3 bullets.
         Return JSON only:
         {
@@ -126,9 +133,9 @@ object GeminiPrompts {
         Je bent een senior strength en longevity-specialist voor TrainIQ.
         Antwoord altijd in het Nederlands volgens locale nl-NL.
         Maak een kort weekrapport van:
-        Weekly volume: $volume
-        Weight trend: $weightTrend
-        Meal adherence: $adherence%
+        Weekvolume: $volume
+        Gewichtstrend: $weightTrend
+        Voedingsconsistentie: $adherence%
         Return JSON only:
         {
           "summary": "string",
@@ -151,25 +158,25 @@ object GeminiPrompts {
         Je bent een senior strength coach en periodisering-specialist voor TrainIQ.
         Antwoord altijd in het Nederlands volgens locale nl-NL.
 
-        User profile:
-        - Goal: $goal
-        - Training split: $targetFocus
-        - Days per week: $daysPerWeek
-        - Equipment: $equipment
-        - Experience level: $experienceLevel
-        - Session duration: ~$sessionDurationMinutes minutes
-        - Include deload guidance: $includeDeload
+        Gebruikersprofiel:
+        - Doel: $goal
+        - Trainingssplit: $targetFocus
+        - Dagen per week: $daysPerWeek
+        - Beschikbaar materiaal: $equipment
+        - Ervaringsniveau: $experienceLevel
+        - Sessieduur: ongeveer $sessionDurationMinutes minuten
+        - Deload-richtlijn opnemen: $includeDeload
 
-        Periodization rules by level:
-        - Beginner: linear progression, 3x8-12, full-body preferred
-        - Intermediate: upper/lower or PPL, add weekly progressive overload (+2.5kg/week)
-        - Advanced: undulating periodization, RPE-based loading (RPE 7-9), deload every 4th week
+        Periodiseringsregels per niveau:
+        - Beginner: lineaire progressie, 3x8-12, bij voorkeur volledig lichaam
+        - Gemiddeld: boven/onder of push/pull/legs, wekelijkse progressieve overbelasting met kleine stappen
+        - Gevorderd: golvende periodisering, RPE-gestuurde belasting (RPE 7-9), deload rond elke vierde week
 
-        Exercise count per session:
-        - 30 min -> 3-4 exercises
-        - 45 min -> 4-5 exercises
-        - 60 min -> 5-6 exercises
-        - 90 min -> 6-8 exercises
+        Aantal oefeningen per sessie:
+        - 30 min -> 3-4 oefeningen
+        - 45 min -> 4-5 oefeningen
+        - 60 min -> 5-6 oefeningen
+        - 90 min -> 6-8 oefeningen
 
         Return JSON only, no markdown. Alle strings zijn Nederlands, behalve oefeningnamen als gebruikersinput Engels is:
         {

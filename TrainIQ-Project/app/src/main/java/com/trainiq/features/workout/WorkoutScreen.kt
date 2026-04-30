@@ -87,6 +87,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
@@ -1456,6 +1457,44 @@ class WorkoutCompletionViewModel @Inject constructor(
     }
 }
 
+sealed interface WorkoutProcessingUiState {
+    data object SavingWorkout : WorkoutProcessingUiState
+    data object BuildingSummary : WorkoutProcessingUiState
+    data class Complete(val sessionId: Long) : WorkoutProcessingUiState
+    data class Error(val message: String) : WorkoutProcessingUiState
+}
+
+@HiltViewModel
+class WorkoutProcessingViewModel @Inject constructor(
+    private val finishActiveWorkoutUseCase: FinishActiveWorkoutUseCase,
+) : ViewModel() {
+    private val _uiState = MutableStateFlow<WorkoutProcessingUiState>(WorkoutProcessingUiState.SavingWorkout)
+    val uiState: StateFlow<WorkoutProcessingUiState> = _uiState.asStateFlow()
+    private var started = false
+
+    fun finish(dayId: Long) {
+        if (started) return
+        started = true
+        viewModelScope.launch {
+            _uiState.value = WorkoutProcessingUiState.SavingWorkout
+            val result = runCatching {
+                _uiState.value = WorkoutProcessingUiState.BuildingSummary
+                finishActiveWorkoutUseCase(dayId)
+            }
+            _uiState.value = result.fold(
+                onSuccess = { completion ->
+                    if (completion.sessionId > 0L) {
+                        WorkoutProcessingUiState.Complete(completion.sessionId)
+                    } else {
+                        WorkoutProcessingUiState.Error("Er zijn geen sets opgeslagen voor deze training.")
+                    }
+                },
+                onFailure = { WorkoutProcessingUiState.Error("Training afronden is mislukt. Probeer opnieuw.") },
+            )
+        }
+    }
+}
+
 @Composable
 private fun CreateRoutineDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf("") }
@@ -1626,7 +1665,7 @@ private fun RoutineGeneratorDialog(
     var experienceLevel by remember { mutableStateOf("intermediate") }
     var sessionDuration by remember { mutableFloatStateOf(60f) }
     var includeDeload by remember { mutableStateOf(true) }
-    val focusSuggestions = remember { listOf("Push/Pull/Legs", "Upper/Lower", "Full Body", "Bro Split", "PHAT") }
+    val focusSuggestions = remember { listOf("Push/pull/legs", "Upper/lower", "Volledig lichaam", "Onderlichaam", "Kracht") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1649,15 +1688,15 @@ private fun RoutineGeneratorDialog(
                         )
                     }
                 }
-                TapOnlyOutlinedTextField(focus, { focus = it }, label = { Text("Training focus / split") }, modifier = Modifier.fillMaxWidth())
+                TapOnlyOutlinedTextField(focus, { focus = it }, label = { Text("Trainingsfocus / split") }, modifier = Modifier.fillMaxWidth())
                 TapOnlyOutlinedTextField(
                     value = daysPerWeek,
                     onValueChange = { daysPerWeek = it },
-                    label = { Text("Days per week") },
+                    label = { Text("Dagen per week") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                TapOnlyOutlinedTextField(equipment, { equipment = it }, label = { Text("Available equipment") }, modifier = Modifier.fillMaxWidth())
+                TapOnlyOutlinedTextField(equipment, { equipment = it }, label = { Text("Beschikbaar materiaal") }, modifier = Modifier.fillMaxWidth())
                 ExperienceLevelSelector(experienceLevel, onSelected = { experienceLevel = it })
                 SessionDurationSlider(durationMinutes = sessionDuration.toInt(), onValueChange = { sessionDuration = it })
                 IncludeDeloadRow(enabled = includeDeload, onCheckedChange = { includeDeload = it })
@@ -1684,7 +1723,7 @@ private fun RoutineGeneratorDialog(
 @Composable
 private fun ExperienceLevelSelector(experienceLevel: String, onSelected: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Experience level", style = MaterialTheme.typography.labelMedium)
+        Text("Ervaringsniveau", style = MaterialTheme.typography.labelMedium)
         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
             listOf("beginner", "intermediate", "advanced").forEachIndexed { index, option ->
                 SegmentedButton(
@@ -1692,7 +1731,7 @@ private fun ExperienceLevelSelector(experienceLevel: String, onSelected: (String
                     onClick = { onSelected(option) },
                     selected = option == experienceLevel,
                 ) {
-                    Text(option.replaceFirstChar { it.uppercase() })
+                    Text(option.toDutchExperienceLabel())
                 }
             }
         }
@@ -1702,7 +1741,7 @@ private fun ExperienceLevelSelector(experienceLevel: String, onSelected: (String
 @Composable
 private fun SessionDurationSlider(durationMinutes: Int, onValueChange: (Float) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Session duration: $durationMinutes min", style = MaterialTheme.typography.labelMedium)
+        Text("Sessieduur: $durationMinutes min", style = MaterialTheme.typography.labelMedium)
         Slider(value = durationMinutes.toFloat(), onValueChange = onValueChange, valueRange = 30f..90f, steps = 3)
     }
 }
@@ -1715,8 +1754,8 @@ private fun IncludeDeloadRow(enabled: Boolean, onCheckedChange: (Boolean) -> Uni
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Include deload guidance", style = MaterialTheme.typography.labelMedium)
-            Text("Adds recovery instructions for lower-stress weeks.", style = MaterialTheme.typography.bodySmall)
+            Text("Deload-richtlijn opnemen", style = MaterialTheme.typography.labelMedium)
+            Text("Voegt hersteladvies toe voor lichtere weken.", style = MaterialTheme.typography.bodySmall)
         }
         Switch(checked = enabled, onCheckedChange = onCheckedChange)
     }
@@ -4063,6 +4102,7 @@ fun ActiveWorkoutRoute(
     onBack: () -> Unit,
     onOpenExerciseHistory: (Long) -> Unit,
     onWorkoutCompleted: (Long) -> Unit,
+    onWorkoutProcessing: (Long) -> Unit,
     viewModel: WorkoutViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.activeWorkoutUiState.collectAsStateWithLifecycle()
@@ -4098,6 +4138,7 @@ fun ActiveWorkoutRoute(
                     val result = snackbarHostState.showSnackbar(
                         message = event.message,
                         actionLabel = event.undoEventId?.let { "Ongedaan maken" },
+                        duration = SnackbarDuration.Short,
                     )
                     if (result == SnackbarResult.ActionPerformed) {
                         event.undoEventId?.let(viewModel::undoWorkoutLogEvent)
@@ -4143,9 +4184,73 @@ fun ActiveWorkoutRoute(
         onToggleExerciseCollapsed = viewModel::setExerciseCollapsed,
         onReplaceActiveExercise = viewModel::replaceExerciseInActiveWorkout,
         onRemoveActiveExercise = viewModel::removeExerciseFromActiveWorkout,
-        onFinish = { viewModel.finishWorkout(dayId) },
+        onFinish = { onWorkoutProcessing(dayId) },
         onDiscard = { viewModel.discardWorkout(dayId) },
     )
+}
+
+@Composable
+fun WorkoutProcessingRoute(
+    dayId: Long,
+    onComplete: (Long) -> Unit,
+    onBackToTraining: () -> Unit,
+    viewModel: WorkoutProcessingViewModel = hiltViewModel(),
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(dayId) { viewModel.finish(dayId) }
+    LaunchedEffect(uiState) {
+        (uiState as? WorkoutProcessingUiState.Complete)?.let { onComplete(it.sessionId) }
+    }
+    WorkoutProcessingScreen(uiState = uiState, onBackToTraining = onBackToTraining)
+}
+
+@Composable
+private fun WorkoutProcessingScreen(
+    uiState: WorkoutProcessingUiState,
+    onBackToTraining: () -> Unit,
+) {
+    Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .navigationBarsPadding()
+                .padding(MaterialTheme.spacing.large),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.primary, elevated = true) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    CircularProgressIndicator()
+                    Text("Training verwerken...", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+                    Text(
+                        when (uiState) {
+                            WorkoutProcessingUiState.SavingWorkout -> "Workout opslaan"
+                            WorkoutProcessingUiState.BuildingSummary -> "Samenvatting maken"
+                            is WorkoutProcessingUiState.Complete -> "Synchronisatie voorbereiden"
+                            is WorkoutProcessingUiState.Error -> uiState.message
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.trainIqColors.mutedText,
+                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AppChip(label = "Opslaan", accent = MaterialTheme.colorScheme.primary)
+                        AppChip(label = "Gemini 2.5 Flash", accent = MaterialTheme.colorScheme.secondary)
+                        AppChip(label = "Fallback klaar", accent = MaterialTheme.colorScheme.tertiary)
+                    }
+                    if (uiState is WorkoutProcessingUiState.Error) {
+                        Button(onClick = onBackToTraining, modifier = Modifier.fillMaxWidth()) {
+                            Text("Terug naar training")
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -4239,6 +4344,20 @@ private fun WorkoutCompletionScreen(
                 is WorkoutCompletionUiState.Success -> {
                     val summary = uiState.summary
                     item { CompletionHeader(summary) }
+                    item {
+                        CompletionActions(
+                            countdown = countdown,
+                            autoReturnActive = autoReturnActive,
+                            onBackToTraining = {
+                                cancelAutoReturn()
+                                onBackToTraining()
+                            },
+                            onHome = {
+                                cancelAutoReturn()
+                                onHome()
+                            },
+                        )
+                    }
                     item { CompletionStats(summary) }
                     item { CompletionSmartSummary(summary) }
                     item { CompletionExerciseOverview(summary.exercises) }
@@ -4452,13 +4571,13 @@ private fun CompletionActions(
 ) {
     AppCard {
         Text(
-            if (autoReturnActive) "Automatisch terug naar Home over $countdown seconden" else "Automatisch terugkeren gepauzeerd",
+            if (autoReturnActive) "Automatisch terug naar start over $countdown seconden" else "Automatisch terugkeren gepauzeerd",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.trainIqColors.mutedText,
         )
         FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SecondaryActionButton(onClick = onBackToTraining, modifier = Modifier.weight(1f)) { Text("Terug naar krachttraining") }
-            PrimaryActionButton(onClick = onHome, modifier = Modifier.weight(1f)) { Text("Naar home") }
+            PrimaryActionButton(onClick = onHome, modifier = Modifier.weight(1f)) { Text("Naar start") }
         }
     }
 }
@@ -6000,6 +6119,12 @@ private fun formatPlateWeight(weight: Float): String =
     if (weight % 1f == 0f) weight.toInt().toString() else "%.2f".format(Locale.US, weight)
 
 private fun formatTimer(seconds: Int): String = "%d:%02d".format(Locale.US, seconds / 60, seconds % 60)
+
+private fun String.toDutchExperienceLabel(): String = when (this) {
+    "beginner" -> "Beginner"
+    "advanced" -> "Gevorderd"
+    else -> "Gemiddeld"
+}
 
 private val historyDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm", Locale.forLanguageTag("nl-NL"))
 

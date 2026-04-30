@@ -131,9 +131,9 @@ data class ExerciseRankProgress(
 
 enum class ExerciseRank(val label: String, val threshold: Double) {
     BEGINNER("Beginner", 0.0),
-    NOVICE("Novice", 75.0),
-    INTERMEDIATE("Intermediate", 150.0),
-    ADVANCED("Advanced", 300.0),
+    NOVICE("Nieuw", 75.0),
+    INTERMEDIATE("Gemiddeld", 150.0),
+    ADVANCED("Gevorderd", 300.0),
     ELITE("Elite", 550.0),
 }
 

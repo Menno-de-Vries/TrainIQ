@@ -42,12 +42,22 @@ data class EnergyBalanceSnapshot(
 private const val TefRate = 0.10
 
 fun String.toActivityMultiplier(): Double = when (trim().lowercase()) {
+    "zittend" -> 1.2
+    "licht actief" -> 1.375
+    "gemiddeld actief" -> 1.55
+    "zeer actief" -> 1.725
+    "atleet" -> 1.9
     "sedentary" -> 1.2
     "lightly active" -> 1.375
     "moderately active" -> 1.55
     "very active" -> 1.725
     "athlete" -> 1.9
     else -> when {
+        contains("zitt", ignoreCase = true) -> 1.2
+        contains("licht", ignoreCase = true) -> 1.375
+        contains("gemiddeld", ignoreCase = true) -> 1.55
+        contains("zeer", ignoreCase = true) -> 1.725
+        contains("atleet", ignoreCase = true) -> 1.9
         contains("sedent", ignoreCase = true) -> 1.2
         contains("light", ignoreCase = true) -> 1.375
         contains("very", ignoreCase = true) -> 1.725

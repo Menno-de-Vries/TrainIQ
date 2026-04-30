@@ -73,6 +73,31 @@ class NutritionMathTest {
     }
 
     @Test
+    fun buildGoalBaseline_supportsDutchActivityLevelLabels() {
+        val dutch = buildGoalBaseline(
+            heightCm = 180.0,
+            weightKg = 82.0,
+            bodyFat = 18.0,
+            age = 32,
+            sex = BiologicalSex.MALE,
+            activityLevel = "Gemiddeld actief",
+            goal = "recomp",
+        )
+        val legacyEnglish = buildGoalBaseline(
+            heightCm = 180.0,
+            weightKg = 82.0,
+            bodyFat = 18.0,
+            age = 32,
+            sex = BiologicalSex.MALE,
+            activityLevel = "Moderately active",
+            goal = "recomp",
+        )
+
+        assertEquals(legacyEnglish.activityMultiplier, dutch.activityMultiplier, 0.0)
+        assertEquals(legacyEnglish.maintenanceCalories, dutch.maintenanceCalories)
+    }
+
+    @Test
     fun buildGoalBaseline_forFatLossUsesModerateDeficitBelowMaintenance() {
         val result = buildGoalBaseline(
             heightCm = 195.0,

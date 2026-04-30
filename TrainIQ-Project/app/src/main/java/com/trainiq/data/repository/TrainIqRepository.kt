@@ -612,16 +612,18 @@ class TrainIqRepository @Inject constructor(
 
         val debriefSets = loggedSets.filter { it.setType.isProgressionType() }.ifEmpty { loggedSets }
         val currentVolume = debriefSets.sumOf { it.weight * it.reps }
-        val previousVolume = beforeSnapshot.sessions
-            .firstOrNull()
-            ?.let { latest ->
-                beforeSnapshot.sets
-                    .filter { it.sessionId == latest.id && isProgressionSet(it) }
-                    .sumOf { it.weight * it.reps }
-            }
-            ?.takeIf { it > 0.0 }
-            ?: currentVolume
-        val progression = if (previousVolume == 0.0) 0.0 else ((currentVolume - previousVolume) / previousVolume) * 100
+        val comparison = buildWorkoutProgressComparison(
+            dayId = dayId,
+            routineId = newSession.routineId,
+            startedAt = startedAt,
+            activeSessionId = activeSessionId,
+            currentSets = debriefSets,
+            sessions = beforeSnapshot.sessions,
+            sets = beforeSnapshot.sets,
+            days = beforeSnapshot.days,
+            exercises = beforeSnapshot.exercises,
+        )
+        val progression = comparison?.progressionPercent
         val distribution = buildWorkoutDay(beforeSnapshot, dayId)?.exercises
             ?.groupBy { it.exercise.muscleGroup }
             ?.map { "${it.key} ${it.value.size}" }
@@ -649,6 +651,7 @@ class TrainIqRepository @Inject constructor(
         val debrief = workoutDebriefService.generateWorkoutDebrief(
             totalVolume = currentVolume,
             progression = progression,
+            comparisonSummary = comparison?.summary ?: "Nog geen eerdere vergelijkbare training gevonden.",
             distribution = distribution,
             avgRpe = avgRpe,
             topExercises = topExercises,
@@ -2005,6 +2008,92 @@ private fun WorkoutSessionEntity.toStoredDebrief(): WorkoutDebrief = WorkoutDebr
 
 private fun formatSummaryWeight(weight: Double): String =
     if (weight % 1.0 == 0.0) weight.toInt().toString() else String.format(Locale.US, "%.1f", weight)
+
+internal data class WorkoutProgressComparison(
+    val previousSessionId: Long,
+    val previousVolume: Double,
+    val currentVolume: Double,
+    val progressionPercent: Double,
+    val matchedExerciseCount: Int,
+    val summary: String,
+)
+
+internal fun buildWorkoutProgressComparison(
+    dayId: Long,
+    routineId: Long?,
+    startedAt: Long,
+    activeSessionId: Long?,
+    currentSets: List<LoggedSet>,
+    sessions: List<WorkoutSessionEntity>,
+    sets: List<WorkoutSetEntity>,
+    days: List<WorkoutDayEntity>,
+    exercises: List<ExerciseEntity>,
+): WorkoutProgressComparison? {
+    val currentExerciseIds = currentSets.map { it.exerciseId }.toSet()
+    if (currentExerciseIds.isEmpty()) return null
+    val exerciseNameById = exercises.associate { it.id to it.name.trim().lowercase(Locale.US) }
+    val currentExerciseNames = currentExerciseIds.mapNotNull { exerciseNameById[it] }.toSet()
+    val routineByDayId = days.associate { it.id to it.routineId }
+    val candidates = sessions
+        .asSequence()
+        .filter { it.completed && it.status == "COMPLETED" }
+        .filter { it.id != activeSessionId }
+        .filter { (it.startedAt.takeIf { value -> value > 0L } ?: it.date) < startedAt }
+        .mapNotNull { session ->
+            val sessionSets = sets.filter { it.sessionId == session.id && isProgressionSet(it) }
+            val sessionExerciseIds = sessionSets.map { it.exerciseId }.toSet()
+            val idOverlap = sessionExerciseIds.intersect(currentExerciseIds).size
+            val nameOverlap = sessionExerciseIds.mapNotNull { exerciseNameById[it] }.toSet().intersect(currentExerciseNames).size
+            val matchedExerciseCount = maxOf(idOverlap, nameOverlap)
+            if (matchedExerciseCount == 0) return@mapNotNull null
+            val sessionRoutineId = session.routineId ?: session.workoutDayId?.let { routineByDayId[it] }
+            val matchScore = when {
+                session.workoutDayId == dayId -> 3
+                routineId != null && sessionRoutineId == routineId -> 2
+                else -> 1
+            }
+            if (matchScore == 1 && nameOverlap == 0) return@mapNotNull null
+            val volume = sessionSets
+                .filter { set ->
+                    set.exerciseId in currentExerciseIds || exerciseNameById[set.exerciseId] in currentExerciseNames
+                }
+                .sumOf { it.weight * it.reps }
+                .takeIf { it > 0.0 }
+                ?: return@mapNotNull null
+            PreviousWorkoutCandidate(
+                session = session,
+                volume = volume,
+                matchedExerciseCount = matchedExerciseCount,
+                matchScore = matchScore,
+            )
+        }
+        .sortedWith(
+            compareByDescending<PreviousWorkoutCandidate> { it.matchScore }
+                .thenByDescending { it.session.startedAt.takeIf { value -> value > 0L } ?: it.session.date },
+        )
+        .toList()
+    val previous = candidates.firstOrNull() ?: return null
+    val currentVolume = currentSets
+        .filter { it.exerciseId in currentExerciseIds || exerciseNameById[it.exerciseId] in currentExerciseNames }
+        .sumOf { it.weight * it.reps }
+    if (currentVolume <= 0.0 || previous.volume <= 0.0) return null
+    val progression = ((currentVolume - previous.volume) / previous.volume) * 100.0
+    return WorkoutProgressComparison(
+        previousSessionId = previous.session.id,
+        previousVolume = previous.volume,
+        currentVolume = currentVolume,
+        progressionPercent = progression,
+        matchedExerciseCount = previous.matchedExerciseCount,
+        summary = "Vergelijking met vorige vergelijkbare training: ${formatSummaryWeight(previous.volume)} kg naar ${formatSummaryWeight(currentVolume)} kg (${String.format(Locale.US, "%.1f", progression)}%).",
+    )
+}
+
+private data class PreviousWorkoutCandidate(
+    val session: WorkoutSessionEntity,
+    val volume: Double,
+    val matchedExerciseCount: Int,
+    val matchScore: Int,
+)
 
 internal fun TrainIqStorageState.deleteActiveWorkoutSetById(setId: Long, now: Long): TrainIqStorageState =
     copy(activeWorkoutSession = activeWorkoutSession?.deleteSetById(setId = setId, now = now))

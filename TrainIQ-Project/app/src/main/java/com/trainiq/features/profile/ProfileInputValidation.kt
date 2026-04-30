@@ -3,6 +3,14 @@ package com.trainiq.features.profile
 import com.trainiq.domain.model.BiologicalSex
 
 internal val ProfileActivityLevels = listOf(
+    "Zittend",
+    "Licht actief",
+    "Gemiddeld actief",
+    "Zeer actief",
+    "Atleet",
+)
+
+internal val LegacyProfileActivityLevels = listOf(
     "Sedentary",
     "Lightly active",
     "Moderately active",
@@ -10,7 +18,7 @@ internal val ProfileActivityLevels = listOf(
     "Athlete",
 )
 
-internal const val DefaultProfileActivityLevel = "Moderately active"
+internal const val DefaultProfileActivityLevel = "Gemiddeld actief"
 
 internal data class ValidatedProfileInput(
     val name: String,
@@ -91,7 +99,7 @@ internal fun validateProfileInput(
         parsedHeight == null || parsedHeight !in 80.0..250.0 -> ProfileInputValidationError.InvalidHeight
         parsedWeight == null || parsedWeight !in 30.0..300.0 -> ProfileInputValidationError.InvalidWeight
         parsedBodyFat == null || parsedBodyFat !in 0.0..100.0 -> ProfileInputValidationError.InvalidBodyFat
-        trimmedActivityLevel.isBlank() || trimmedActivityLevel !in ProfileActivityLevels -> ProfileInputValidationError.InvalidActivityLevel
+        trimmedActivityLevel.isBlank() || trimmedActivityLevel !in ProfileActivityLevels + LegacyProfileActivityLevels -> ProfileInputValidationError.InvalidActivityLevel
         trimmedGoal.isBlank() -> ProfileInputValidationError.GoalRequired
         else -> null
     }

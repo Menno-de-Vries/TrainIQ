@@ -170,7 +170,12 @@ class WorkoutDebriefService internal constructor(
 
     suspend fun generateWorkoutDebrief(
         totalVolume: Double,
-        progression: Double,
+        progression: Double?,
+        comparisonSummary: String = if (progression == null) {
+            "Nog geen eerdere vergelijkbare training gevonden."
+        } else {
+            "Vergelijking beschikbaar: ${String.format(Locale.US, "%.1f", progression)}%."
+        },
         distribution: String,
         avgRpe: Float,
         topExercises: String,
@@ -189,6 +194,7 @@ class WorkoutDebriefService internal constructor(
                                     text = GeminiPrompts.workoutDebrief(
                                         totalVolume = totalVolume,
                                         progression = progression,
+                                        comparisonSummary = comparisonSummary,
                                         distribution = distribution,
                                         avgRpe = avgRpe,
                                         topExercises = topExercises,
@@ -297,6 +303,16 @@ class GoalAdvisorService internal constructor(
     private fun parseGoalAdvice(text: String, baseline: GoalAdvice): GoalAdvice =
         runCatching {
             val root = JsonParser.parseString(text).asJsonObject
+            val textFields = listOf(
+                root.get("trainingFocus")?.asString.orEmpty(),
+                root.get("korteSamenvatting")?.asString ?: root.get("summary")?.asString.orEmpty(),
+                root.get("calorieAdvies")?.asString.orEmpty(),
+                root.get("macroAdvies")?.asString.orEmpty(),
+                root.get("activiteitUitleg")?.asString.orEmpty(),
+                root.get("advies")?.asString.orEmpty(),
+                root.get("dataKwaliteit")?.asString.orEmpty(),
+            ) + root.getAsJsonArray("aandachtspunten")?.map { it.asString }.orEmpty()
+            if (!textFields.isUsableDutchAiText()) return baseline
             baseline.copy(
                 trainingFocus = root.get("trainingFocus")?.asString ?: baseline.trainingFocus,
                 summary = root.get("korteSamenvatting")?.asString
@@ -441,7 +457,7 @@ class WeeklyReportService @Inject constructor(
 internal fun parseWorkoutDebriefResponse(
     text: String,
     totalVolume: Double,
-    progression: Double,
+    progression: Double?,
 ): WorkoutDebrief = runCatching {
     val root = JsonParser.parseString(text).asJsonObject
     val summary = root.get("summary")?.asString ?: "Training opgeslagen."
@@ -479,15 +495,17 @@ internal fun parseWorkoutDebriefResponse(
     )
 }.getOrElse { fallbackWorkoutDebriefResult(totalVolume, progression) }
 
-internal fun fallbackWorkoutDebriefResult(totalVolume: Double, progression: Double) = WorkoutDebrief(
+internal fun fallbackWorkoutDebriefResult(totalVolume: Double, progression: Double?) = WorkoutDebrief(
     summary = "Lokale samenvatting: volume ${totalVolume.toInt()} kg.",
-    progressionFeedback = "Volume veranderde met ${String.format(Locale.US, "%.1f", progression)}% ten opzichte van de vorige sessie.",
+    progressionFeedback = progression?.let {
+        "Volume veranderde met ${String.format(Locale.US, "%.1f", it)}% ten opzichte van de vorige sessie."
+    } ?: "Nog geen eerdere vergelijkbare training gevonden.",
     recommendation = "Houd dezelfde opzet aan en verhoog pas als uitvoering en herstel goed blijven.",
     nextSessionFocus = "Huidige gewichten vasthouden",
     recoveryScore = 75,
     intensitySignal = "MAINTAIN",
     wins = listOf("Trainingsvolume lokaal vastgelegd."),
-    risks = if (progression > 5.0) listOf("Volume steeg meer dan 5%; let op herstel.") else emptyList(),
+    risks = if ((progression ?: 0.0) > 5.0) listOf("Volume steeg meer dan 5%; let op herstel.") else emptyList(),
     nextLoadTarget = "Herhaal de huidige werkgewichten en voeg alleen herhalingen toe als RPE onder 8 blijft.",
     recoveryAdvice = "Gebruik slaap, stappen en spierpijn om te bepalen of je verhoogt of vasthoudt.",
     source = WorkoutDebriefSource.LOCAL_FALLBACK,

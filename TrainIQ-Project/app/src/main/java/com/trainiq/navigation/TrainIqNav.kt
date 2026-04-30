@@ -68,6 +68,7 @@ import com.trainiq.features.settings.SettingsRoute
 import com.trainiq.features.workout.ActiveWorkoutRoute
 import com.trainiq.features.workout.ExerciseHistoryRoute
 import com.trainiq.features.workout.WorkoutCompletionRoute
+import com.trainiq.features.workout.WorkoutProcessingRoute
 import com.trainiq.features.workout.WorkoutRoute
 import com.trainiq.core.diagnostics.DiagnosticsTracker
 import com.trainiq.core.theme.radii
@@ -97,6 +98,9 @@ data object Settings
 
 @Serializable
 data class ActiveWorkout(val dayId: Long)
+
+@Serializable
+data class WorkoutProcessing(val dayId: Long)
 
 @Serializable
 data class WorkoutCompletion(val sessionId: Long)
@@ -253,6 +257,14 @@ private fun NavHostController.navigateTopLevel(screen: TopLevelDestination) {
     }
 }
 
+private fun NavHostController.navigateTopLevelAfterCompletedWorkout(screen: TopLevelDestination) {
+    navigate(screen.route) {
+        popUpTo(graph.findStartDestination().id) { saveState = false }
+        launchSingleTop = true
+        restoreState = false
+    }
+}
+
 private fun NavHostController.navigateToActiveWorkout(dayId: Long) {
     val alreadyActiveWorkout = currentBackStackEntry?.destination?.hierarchy?.any { it.hasRoute(ActiveWorkout::class) } == true
     if (alreadyActiveWorkout) return
@@ -274,6 +286,7 @@ private fun androidx.navigation.NavDestination?.screenName(): String = when {
     hierarchy.any { it.hasRoute(Settings::class) } -> "Instellingen"
     hierarchy.any { it.hasRoute(CameraScanner::class) } -> "CameraScanner"
     hierarchy.any { it.hasRoute(ActiveWorkout::class) } -> "ActiveWorkout"
+    hierarchy.any { it.hasRoute(WorkoutProcessing::class) } -> "WorkoutProcessing"
     hierarchy.any { it.hasRoute(WorkoutCompletion::class) } -> "WorkoutCompletion"
     hierarchy.any { it.hasRoute(ExerciseHistory::class) } -> "ExerciseHistory"
     else -> route.orEmpty().ifBlank { "Unknown" }
@@ -365,8 +378,9 @@ private fun TrainIqNavHost(
             )
         }
         composable<ActiveWorkout> { entry ->
+            val route = entry.toRoute<ActiveWorkout>()
             ActiveWorkoutRoute(
-                dayId = entry.toRoute<ActiveWorkout>().dayId,
+                dayId = route.dayId,
                 onBack = { navController.popBackStack() },
                 onOpenExerciseHistory = { exerciseId -> navController.navigate(ExerciseHistory(exerciseId)) },
                 onWorkoutCompleted = { sessionId ->
@@ -378,16 +392,36 @@ private fun TrainIqNavHost(
                         launchSingleTop = true
                     }
                 },
+                onWorkoutProcessing = { dayId ->
+                    navController.navigate(WorkoutProcessing(dayId)) {
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
+        composable<WorkoutProcessing> { entry ->
+            WorkoutProcessingRoute(
+                dayId = entry.toRoute<WorkoutProcessing>().dayId,
+                onComplete = { sessionId ->
+                    navController.navigate(WorkoutCompletion(sessionId)) {
+                        popUpTo(Train::class) {
+                            inclusive = false
+                            saveState = false
+                        }
+                        launchSingleTop = true
+                    }
+                },
+                onBackToTraining = { navController.popBackStack() },
             )
         }
         composable<WorkoutCompletion> { entry ->
             WorkoutCompletionRoute(
                 sessionId = entry.toRoute<WorkoutCompletion>().sessionId,
                 onBackToTraining = {
-                    navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Train::class })
+                    navController.navigateTopLevelAfterCompletedWorkout(topLevelDestinations.first { it.routeClass == Train::class })
                 },
                 onHome = {
-                    navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Home::class })
+                    navController.navigateTopLevelAfterCompletedWorkout(topLevelDestinations.first { it.routeClass == Home::class })
                 },
             )
         }

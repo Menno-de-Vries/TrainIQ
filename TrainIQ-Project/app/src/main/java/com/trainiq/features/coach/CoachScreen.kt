@@ -7,6 +7,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -272,8 +274,8 @@ private fun GoalAdviceInput.toDeterministicGoalAdvice(): GoalAdvice {
         fatTarget = baseline.fatTarget,
         trainingFocus = trainingFocus,
         summary = "Lokale berekening opgeslagen. Je kunt AI-advies later gebruiken om dit te verfijnen.",
-        calorieAdvice = "Onderhoud is berekend als BMR x activiteitsfactor. Je doelcalorieen zijn daarvan afgeleid.",
-        macroAdvice = "Eiwit, vet en koolhydraten zijn verdeeld zodat de macrocalorieen rond je doel uitkomen.",
+        calorieAdvice = "Onderhoud is berekend als BMR x activiteitsfactor. Je doelcalorieën zijn daarvan afgeleid.",
+        macroAdvice = "Eiwit, vet en koolhydraten zijn verdeeld zodat de macrocalorieën rond je doel uitkomen.",
         activityExplanation = "Activiteitsfactor ${String.format(Locale.US, "%.3f", baseline.activityMultiplier)}: ${baseline.bmr} kcal x ${String.format(Locale.US, "%.3f", baseline.activityMultiplier)} = ${baseline.maintenanceCalories} kcal onderhoud.",
         attentionPoints = listOf("Dit blijft een lokale schatting totdat gewichtstrend, stappen en training genoeg context geven."),
         advice = "Gebruik deze waarden twee weken en stuur daarna bij op basis van trend en prestaties.",
@@ -423,7 +425,7 @@ fun CoachScreen(
     var height by remember { mutableStateOf("") }
     var weight by remember { mutableStateOf("") }
     var bodyFat by remember { mutableStateOf("") }
-    var activityLevel by remember { mutableStateOf("Moderately active") }
+    var activityLevel by remember { mutableStateOf("Gemiddeld actief") }
     var goal by remember { mutableStateOf("") }
     var profileInputError by remember { mutableStateOf<ProfileInputValidationError?>(null) }
     val haptics = LocalHapticFeedback.current
@@ -437,7 +439,7 @@ fun CoachScreen(
             height = it.height.toString()
             weight = it.weight.toString()
             bodyFat = it.bodyFat.toString()
-            activityLevel = it.activityLevel
+            activityLevel = it.activityLevel.toDutchActivityLevelLabel()
             goal = it.goal
         }
     }
@@ -690,6 +692,7 @@ fun CoachScreen(
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun GoalAdviceCard(advice: GoalAdvice, activityLevel: String) {
     val difference = advice.calorieTarget - advice.maintenanceCalories
     val macroCalories = advice.proteinTarget * 4 + advice.carbsTarget * 4 + advice.fatTarget * 9
@@ -728,34 +731,32 @@ private fun GoalAdviceCard(advice: GoalAdvice, activityLevel: String) {
             }
         }
         AdviceSurface {
-            Text("Calorieen", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+            Text("Calorieën", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                 MetricPill("BMR", "${advice.bmr} kcal")
                 MetricPill("Onderhoud", "${advice.maintenanceCalories} kcal")
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                 MetricPill("Doel", "${advice.calorieTarget} kcal")
                 MetricPill(if (difference < 0) "Tekort" else if (difference > 0) "Surplus" else "Balans", "${kotlin.math.abs(difference)} kcal")
             }
-            compactSentences(advice.calorieAdvice.ifBlank { "Doelcalorieen zijn afgeleid van onderhoud en doel." }, maxSentences = 2).forEach {
+            compactSentences(advice.calorieAdvice.ifBlank { "Doelcalorieën zijn afgeleid van onderhoud en doel." }, maxSentences = 2).forEach {
                 Text(it, style = MaterialTheme.typography.bodyMedium)
             }
         }
         AdviceSurface {
             Text("Macro's", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                 MetricPill("Eiwit", "${advice.proteinTarget} g")
                 MetricPill("Koolhydraten", "${advice.carbsTarget} g")
                 MetricPill("Vet", "${advice.fatTarget} g")
             }
             Text("Samen ongeveer $macroCalories kcal.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            compactSentences(advice.macroAdvice.ifBlank { "Koolhydraten vullen de resterende calorieen aan als trainingsbrandstof." }, maxSentences = 2).forEach {
+            compactSentences(advice.macroAdvice.ifBlank { "Koolhydraten vullen de resterende calorieën aan als trainingsbrandstof." }, maxSentences = 2).forEach {
                 Text(it, style = MaterialTheme.typography.bodyMedium)
             }
         }
         AdviceSurface {
             Text("Activiteit", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            MetricPill(activityLevel, "factor ${String.format(Locale.US, "%.3f", advice.activityMultiplier)}")
+            MetricPill(activityLevel.toDutchActivityLevelLabel(), "factor ${String.format(Locale.US, "%.3f", advice.activityMultiplier)}")
             compactSentences(advice.activityExplanation.ifBlank { "Onderhoud = BMR x activiteitsfactor." }, maxSentences = 2).forEach {
                 Text(it, style = MaterialTheme.typography.bodyMedium)
             }
@@ -811,8 +812,17 @@ private fun MetricPill(label: String, value: String) {
 }
 
 private fun GoalAdviceSource.label(): String = when (this) {
-    GoalAdviceSource.GEMINI_2_5_FLASH -> "AI advies"
+    GoalAdviceSource.GEMINI_2_5_FLASH -> "Gemini 2.5 Flash"
     GoalAdviceSource.LOCAL_CALCULATION -> "Lokale berekening"
+}
+
+private fun String.toDutchActivityLevelLabel(): String = when (trim().lowercase(Locale.ROOT)) {
+    "sedentary" -> "Zittend"
+    "lightly active" -> "Licht actief"
+    "moderately active" -> "Gemiddeld actief"
+    "very active" -> "Zeer actief"
+    "athlete" -> "Atleet"
+    else -> this
 }
 
 private fun compactSentences(text: String, maxSentences: Int): List<String> {

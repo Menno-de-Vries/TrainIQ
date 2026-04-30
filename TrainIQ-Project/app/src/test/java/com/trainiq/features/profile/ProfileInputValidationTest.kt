@@ -39,7 +39,7 @@ class ProfileInputValidationTest {
             bodyFat = "15,5",
             age = "34",
             sex = BiologicalSex.MALE,
-            activityLevel = " Moderately active ",
+            activityLevel = " Gemiddeld actief ",
             goal = " Lean bulk ",
         )
 
@@ -47,12 +47,20 @@ class ProfileInputValidationTest {
         val input = (result as ProfileInputValidationResult.Valid).input
         assertEquals("Sam", input.name)
         assertEquals(180.5, input.height, 0.0)
-        assertEquals("Moderately active", input.activityLevel)
+        assertEquals("Gemiddeld actief", input.activityLevel)
         assertEquals("Lean bulk", input.goal)
     }
 
     @Test
     fun buildValidatedProfileInput_withKnownActivityLevel_returnsTrimmedInput() {
+        val input = validInput(activityLevel = " Gemiddeld actief ")
+
+        assertNotNull(input)
+        assertEquals("Gemiddeld actief", input?.activityLevel)
+    }
+
+    @Test
+    fun buildValidatedProfileInput_acceptsLegacyEnglishActivityLevelForSavedProfiles() {
         val input = validInput(activityLevel = " Moderately active ")
 
         assertNotNull(input)

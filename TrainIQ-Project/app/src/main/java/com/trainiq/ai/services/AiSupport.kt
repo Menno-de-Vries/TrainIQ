@@ -20,18 +20,15 @@ internal fun List<String>.isUsableDutchAiText(): Boolean {
         .replace("\n", " ")
     if (joined.isBlank()) return false
     val englishSignals = listOf(
-        " strong ",
-        " session ",
-        " workout ",
-        " recovery ",
-        " build ",
+        " build muscle ",
         " muscle ",
         " progressive ",
-        " overload ",
         " keep ",
         " add weight ",
         " sleep ",
         " good form ",
+        " recovery is good ",
+        " when recovery ",
     )
     return englishSignals.none { signal -> joined.contains(signal) }
 }

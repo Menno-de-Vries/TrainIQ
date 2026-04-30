@@ -268,7 +268,7 @@ class AiServicesTest {
                       "korteSamenvatting": "Je onderhoud is realistisch berekend vanuit BMR en activiteit.",
                       "calorieAdvies": "Start met een matig tekort en evalueer na twee weken.",
                       "macroAdvies": "Eiwit is gebaseerd op vetvrije massa; koolhydraten vullen de training aan.",
-                      "activiteitUitleg": "Lightly active betekent lichte dagelijkse beweging met beperkte extra training.",
+                      "activiteitUitleg": "Licht actief betekent lichte dagelijkse beweging met beperkte extra training.",
                       "aandachtspunten": ["Vetpercentage en activiteit blijven schattingen."],
                       "advies": "Houd dit doel eerst stabiel en stuur op gewichtstrend.",
                       "dataKwaliteit": "Redelijk: profiel compleet, maar geen gevalideerde TDEE."
@@ -284,7 +284,7 @@ class AiServicesTest {
             bodyFat = 25.0,
             age = 30,
             sex = BiologicalSex.MALE,
-            activityLevel = "Lightly active",
+            activityLevel = "Licht actief",
             goal = "fat loss",
         )
 
@@ -294,7 +294,7 @@ class AiServicesTest {
         assertEquals("Je onderhoud is realistisch berekend vanuit BMR en activiteit.", result.summary)
         assertEquals("Start met een matig tekort en evalueer na twee weken.", result.calorieAdvice)
         assertEquals("Eiwit is gebaseerd op vetvrije massa; koolhydraten vullen de training aan.", result.macroAdvice)
-        assertEquals("Lightly active betekent lichte dagelijkse beweging met beperkte extra training.", result.activityExplanation)
+        assertEquals("Licht actief betekent lichte dagelijkse beweging met beperkte extra training.", result.activityExplanation)
         assertEquals(listOf("Vetpercentage en activiteit blijven schattingen."), result.attentionPoints)
         assertEquals("Houd dit doel eerst stabiel en stuur op gewichtstrend.", result.advice)
         assertEquals("Redelijk: profiel compleet, maar geen gevalideerde TDEE.", result.dataQuality)
@@ -305,6 +305,41 @@ class AiServicesTest {
         assertTrue(prompt.contains("\"activiteitUitleg\""))
         assertTrue(prompt.contains("korteSamenvatting maximaal 2 korte zinnen"))
         assertTrue(prompt.contains("Wijzig deze calorie- en macrocijfers niet"))
+    }
+
+    @Test
+    fun generateGoalAdvice_withEnglishJsonReturnsLocalDutchFallback() = runTest {
+        val api = FakeGeminiApi(
+            response = mealScanResponse(
+                """
+                    {
+                      "trainingFocus": "Keep strength training while cutting.",
+                      "korteSamenvatting": "Your maintenance is based on activity level.",
+                      "calorieAdvies": "Start with a moderate deficit.",
+                      "macroAdvies": "Protein supports muscle recovery.",
+                      "activiteitUitleg": "Lightly active means limited extra training.",
+                      "aandachtspunten": ["Activity level remains an estimate."],
+                      "advies": "Keep this target stable.",
+                      "dataKwaliteit": "Good profile data."
+                    }
+                """.trimIndent(),
+            ),
+        )
+        val service = GoalAdvisorService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+
+        val result = service.generateGoalAdvice(
+            height = 195.0,
+            weight = 107.2,
+            bodyFat = 25.0,
+            age = 30,
+            sex = BiologicalSex.MALE,
+            activityLevel = "Licht actief",
+            goal = "vetverlies",
+        )
+
+        assertEquals(GoalAdviceSource.LOCAL_CALCULATION, result.source)
+        assertTrue(result.summary.contains("Lokale berekening"))
+        assertTrue(result.activityExplanation.contains("Activiteitsfactor"))
     }
 
     @Test

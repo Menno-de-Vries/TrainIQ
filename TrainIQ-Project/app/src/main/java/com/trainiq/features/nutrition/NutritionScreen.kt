@@ -1350,26 +1350,67 @@ private fun MealSectionCard(
 }
 
 @Composable
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 private fun MealEntryRow(
     meal: LoggedMeal,
     onEditMeal: (LoggedMeal) -> Unit,
     onDeleteMeal: (Long) -> Unit,
 ) {
+    var showActions by remember { mutableStateOf(false) }
+    val actionSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 2.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        onClick = { showActions = true },
     ) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(meal.name, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("${formatNumber(meal.totalNutrition.calories)} kcal", color = MaterialTheme.colorScheme.primary)
             }
+            Text(
+                "E${formatNumber(meal.totalNutrition.protein)} · K${formatNumber(meal.totalNutrition.carbs)} · V${formatNumber(meal.totalNutrition.fat)}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             meal.items.forEach { item ->
-                Text("${item.name} · ${formatNumber(item.gramsUsed)}g", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.trainIqColors.mutedText)
+                Text("${item.name} · ${formatNumber(item.gramsUsed)}g", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.trainIqColors.mutedText, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                TextButton(onClick = { onEditMeal(meal) }, modifier = Modifier.fillMaxWidth()) { Text("Hoeveelheid aanpassen") }
-                TextButton(onClick = { onDeleteMeal(meal.id) }, modifier = Modifier.fillMaxWidth()) { Text("Maaltijd verwijderen") }
+        }
+    }
+    if (showActions) {
+        ModalBottomSheet(
+            onDismissRequest = { showActions = false },
+            sheetState = actionSheetState,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = MaterialTheme.spacing.large, vertical = MaterialTheme.spacing.medium)
+                    .navigationBarsPadding(),
+                verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+            ) {
+                Text(meal.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(
+                    "${formatNumber(meal.totalNutrition.calories)} kcal · E${formatNumber(meal.totalNutrition.protein)} K${formatNumber(meal.totalNutrition.carbs)} V${formatNumber(meal.totalNutrition.fat)}",
+                    color = MaterialTheme.trainIqColors.mutedText,
+                )
+                Button(
+                    onClick = {
+                        showActions = false
+                        onEditMeal(meal)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Hoeveelheid aanpassen") }
+                OutlinedButton(
+                    onClick = {
+                        showActions = false
+                        onDeleteMeal(meal.id)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Maaltijd verwijderen") }
             }
         }
     }

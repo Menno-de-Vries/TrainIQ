@@ -56,6 +56,50 @@ class RoutineGeneratorServiceTest {
     }
 
     @Test
+    fun parseGeneratedRoutine_withDutchCoachingTermsAndEnglishExerciseNames_usesGeminiResult() {
+        val fallback = fallbackGeneratedRoutine(
+            goal = "Spiermassa",
+            targetFocus = "Upper/lower",
+            daysPerWeek = 4,
+            equipment = "Halterstang",
+            experienceLevel = "intermediate",
+            sessionDurationMinutes = 60,
+            includeDeload = true,
+        )
+        val json = """
+            {
+              "routineName": "Upper lower krachtblok",
+              "routineDescription": "Vier dagen per week met progressieve overload en rustige deload-opbouw.",
+              "periodizationNote": "Verhoog alleen als techniek en herstel stabiel blijven.",
+              "estimatedDurationMinutes": 60,
+              "days": [
+                {
+                  "dayName": "Bovenlichaam A",
+                  "estimatedDurationMinutes": 60,
+                  "exercises": [
+                    {
+                      "exerciseName": "Bench Press",
+                      "muscleGroup": "Borst",
+                      "equipment": "Halterstang",
+                      "targetSets": 4,
+                      "repRange": "6-8",
+                      "restSeconds": 120,
+                      "coachingCue": "Houd spanning op je bovenrug en druk gecontroleerd uit."
+                    }
+                  ]
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val routine = parseGeneratedRoutine(json, fallback)
+
+        assertEquals(GeneratedRoutineSource.GEMINI_2_5_FLASH, routine.source)
+        assertEquals("Upper lower krachtblok", routine.routineName)
+        assertEquals("Bench Press", routine.days.first().exercises.first().exerciseName)
+    }
+
+    @Test
     fun parseGeneratedRoutine_withPartialJson_appliesFallbackDefaultsToMissingFields() {
         val fallback = fallbackGeneratedRoutine(
             goal = "Cut",
@@ -68,10 +112,10 @@ class RoutineGeneratorServiceTest {
         )
         val json = """
             {
-              "routineName": "Simple Plan",
+              "routineName": "Eenvoudig plan",
               "days": [
                 {
-                  "dayName": "Day 1",
+                  "dayName": "Dag 1",
                   "exercises": [
                     {
                       "exerciseName": "Squat"
@@ -84,13 +128,13 @@ class RoutineGeneratorServiceTest {
 
         val routine = parseGeneratedRoutine(json, fallback)
 
-        assertEquals("Simple Plan", routine.routineName)
+        assertEquals("Eenvoudig plan", routine.routineName)
         assertEquals("", routine.routineDescription)
         assertEquals("", routine.periodizationNote)
         assertEquals(fallback.estimatedDurationMinutes, routine.estimatedDurationMinutes)
         assertEquals(1, routine.days.size)
         assertEquals("Squat", routine.days.first().exercises.first().exerciseName)
-        assertEquals("General", routine.days.first().exercises.first().muscleGroup)
+        assertEquals("Algemeen", routine.days.first().exercises.first().muscleGroup)
         assertEquals("", routine.days.first().exercises.first().coachingCue)
     }
 
@@ -164,11 +208,11 @@ class RoutineGeneratorServiceTest {
             includeDeload = true,
         )
 
-        assertEquals("Gevorderde Lower body routine", routine.routineName)
+        assertEquals("Gevorderde onderlichaam routine", routine.routineName)
         assertEquals(90, routine.estimatedDurationMinutes)
         assertEquals("Gevorderd blok: golvende belasting op RPE 7-9 met elke vierde week een deload.", routine.periodizationNote)
         assertEquals(2, routine.days.size)
-        assertEquals("Bench Press", routine.days.first().exercises[1].exerciseName)
+        assertEquals("Bankdrukken", routine.days.first().exercises[1].exerciseName)
     }
 
     @Test
@@ -183,5 +227,36 @@ class RoutineGeneratorServiceTest {
         assertEquals(45, beginner.estimatedDurationMinutes)
         assertEquals(60, intermediate.estimatedDurationMinutes)
         assertEquals(90, advanced.estimatedDurationMinutes)
+    }
+
+    @Test
+    fun fallbackGeneratedRoutine_usesDutchExperienceLabels() {
+        val routine = fallbackGeneratedRoutine(
+            goal = "spiermassa opbouwen",
+            targetFocus = "onderlichaam",
+            daysPerWeek = 3,
+            equipment = "halterstang",
+            experienceLevel = "intermediate",
+            sessionDurationMinutes = 60,
+            includeDeload = false,
+        )
+
+        assertEquals("Gemiddelde onderlichaam routine", routine.routineName)
+    }
+
+    @Test
+    fun fallbackGeneratedRoutine_doesNotExposeEnglishProfileFocusInTitleOrDescription() {
+        val routine = fallbackGeneratedRoutine(
+            goal = "90 kg worden",
+            targetFocus = "strength training with progressive overload, complemented by cardiovascular exercise.",
+            daysPerWeek = 3,
+            equipment = "barbell",
+            experienceLevel = "intermediate",
+            sessionDurationMinutes = 60,
+            includeDeload = true,
+        )
+
+        assertEquals("Gemiddelde kracht routine", routine.routineName)
+        assertEquals("Lokale routine voor 90 kg worden met 3 sessies per week van ongeveer 60 minuten.", routine.routineDescription)
     }
 }
