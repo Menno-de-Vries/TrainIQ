@@ -75,6 +75,11 @@ import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WeeklyReportResult
 import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutDebrief
+import com.trainiq.domain.model.WorkoutDebriefSource
+import com.trainiq.domain.model.WorkoutCompletionExercise
+import com.trainiq.domain.model.WorkoutCompletionResult
+import com.trainiq.domain.model.WorkoutCompletionSet
+import com.trainiq.domain.model.WorkoutCompletionSummary
 import com.trainiq.domain.model.WorkoutLogEventType
 import com.trainiq.domain.model.WorkoutLoggingSummary
 import com.trainiq.domain.model.WorkoutOverview
@@ -94,6 +99,7 @@ import com.trainiq.domain.repository.ProgressRepository
 import com.trainiq.domain.repository.WorkoutRepository
 import javax.inject.Inject
 import javax.inject.Singleton
+import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -480,12 +486,12 @@ class TrainIqRepository @Inject constructor(
             )
         }
 
-    override suspend fun finishActiveWorkout(dayId: Long): WorkoutDebrief {
+    override suspend fun finishActiveWorkout(dayId: Long): WorkoutCompletionResult {
         val active = localStore.state.value.activeWorkoutSession?.takeIf { it.dayId == dayId }
         val durationSeconds = active?.let {
             ((System.currentTimeMillis() - it.startedAt) / 1_000).coerceAtLeast(1)
         } ?: 1L
-        val debrief = finishWorkout(
+        val result = finishWorkout(
             dayId = dayId,
             durationSeconds = durationSeconds,
             loggedSets = active?.loggedSets.orEmpty().map { it.toDomain().toLoggedSet() },
@@ -495,7 +501,23 @@ class TrainIqRepository @Inject constructor(
         localStore.update { state ->
             if (state.activeWorkoutSession?.dayId == dayId) state.copy(activeWorkoutSession = null) else state
         }
-        return debrief
+        return result
+    }
+
+    override suspend fun getWorkoutCompletionSummary(sessionId: Long): WorkoutCompletionSummary? = withContext(Dispatchers.IO) {
+        val state = localStore.state.value
+        val session = state.sessions.firstOrNull { it.id == sessionId && it.completed && it.status == "COMPLETED" }
+            ?: return@withContext null
+        buildWorkoutCompletionSummary(
+            session = session,
+            routines = state.routines,
+            days = state.days,
+            exercises = state.exercises,
+            workoutExercises = state.workoutExercises,
+            performedExercises = state.performedExercises,
+            sets = state.workoutSets,
+            fallbackDebrief = session.toStoredDebrief(),
+        )
     }
 
     override suspend fun discardActiveWorkout(dayId: Long) {
@@ -517,7 +539,7 @@ class TrainIqRepository @Inject constructor(
     }
 
     override suspend fun finishWorkout(dayId: Long, durationSeconds: Long, loggedSets: List<LoggedSet>): WorkoutDebrief =
-        finishWorkout(dayId = dayId, durationSeconds = durationSeconds, loggedSets = loggedSets, activeSessionId = null, activeStartedAt = null)
+        finishWorkout(dayId = dayId, durationSeconds = durationSeconds, loggedSets = loggedSets, activeSessionId = null, activeStartedAt = null).debrief
 
     private suspend fun finishWorkout(
         dayId: Long,
@@ -525,15 +547,19 @@ class TrainIqRepository @Inject constructor(
         loggedSets: List<LoggedSet>,
         activeSessionId: Long?,
         activeStartedAt: Long?,
-    ): WorkoutDebrief {
+    ): WorkoutCompletionResult {
         if (loggedSets.isEmpty()) {
-            return WorkoutDebrief(
+            return WorkoutCompletionResult(
+                sessionId = 0L,
+                debrief = WorkoutDebrief(
                 summary = "Geen sets gelogd.",
                 progressionFeedback = "Log minimaal een set om voortgang op te slaan.",
                 recommendation = "Voeg tijdens je training sets toe voordat je afrondt.",
                 nextSessionFocus = "Huidige gewichten vasthouden",
                 recoveryScore = 75,
                 intensitySignal = "MAINTAIN",
+                source = WorkoutDebriefSource.LOCAL_FALLBACK,
+                ),
             )
         }
 
@@ -620,7 +646,7 @@ class TrainIqRepository @Inject constructor(
             .map { normalizeToDay(it.date) }
             .distinct()
             .count()
-        return workoutDebriefService.generateWorkoutDebrief(
+        val debrief = workoutDebriefService.generateWorkoutDebrief(
             totalVolume = currentVolume,
             progression = progression,
             distribution = distribution,
@@ -628,6 +654,14 @@ class TrainIqRepository @Inject constructor(
             topExercises = topExercises,
             weeklyFrequency = weeklyFrequency,
         )
+        localStore.update { state ->
+            state.copy(
+                sessions = state.sessions.map { session ->
+                    if (session.id == sessionId) session.withDebrief(debrief) else session
+                },
+            )
+        }
+        return WorkoutCompletionResult(sessionId = sessionId, debrief = debrief)
     }
 
     override suspend fun createRoutine(name: String, description: String) {
@@ -1854,6 +1888,122 @@ internal fun TrainIqStorageState.workoutLoggingSummary(dayId: Long, now: Long): 
 
 internal fun TrainIqStorageState.finalizeWorkoutLogEventsForCompletedSession(sessionId: Long): TrainIqStorageState =
     copy(workoutLogEvents = workoutLogEvents.filterNot { it.sessionId == sessionId })
+
+internal fun buildWorkoutCompletionSummary(
+    session: WorkoutSessionEntity,
+    routines: List<WorkoutRoutineEntity>,
+    days: List<WorkoutDayEntity>,
+    exercises: List<ExerciseEntity>,
+    workoutExercises: List<WorkoutExerciseEntity>,
+    performedExercises: List<PerformedExerciseEntity>,
+    sets: List<WorkoutSetEntity>,
+    fallbackDebrief: WorkoutDebrief,
+): WorkoutCompletionSummary {
+    val sessionSets = sets
+        .filter { it.sessionId == session.id && it.completed }
+        .sortedWith(compareBy<WorkoutSetEntity> { it.performedExerciseId }.thenBy { it.orderIndex }.thenBy { it.id })
+    val sessionPerformed = performedExercises
+        .filter { it.sessionId == session.id }
+        .sortedBy { it.orderIndex }
+    val day = session.workoutDayId?.let { dayId -> days.firstOrNull { it.id == dayId } }
+    val routine = session.routineId?.let { routineId -> routines.firstOrNull { it.id == routineId } }
+        ?: day?.let { workoutDay -> routines.firstOrNull { it.id == workoutDay.routineId } }
+    val exerciseById = exercises.associateBy { it.id }
+    val plannedOrderByExerciseId = workoutExercises
+        .filter { it.dayId == session.workoutDayId }
+        .associate { it.exerciseId to it.orderIndex }
+    val performedByExerciseId = sessionPerformed.associateBy { it.exerciseId }
+    val setsByExercise = sessionSets.groupBy { it.exerciseId }
+    val exerciseSummaries = setsByExercise.map { (exerciseId, exerciseSets) ->
+        val exercise = exerciseById[exerciseId]
+        val orderedSets = exerciseSets.sortedWith(compareBy<WorkoutSetEntity> { it.orderIndex }.thenBy { it.id })
+        WorkoutCompletionExercise(
+            exerciseId = exerciseId,
+            name = exercise?.name ?: "Oefening $exerciseId",
+            muscleGroup = exercise?.muscleGroup.orEmpty(),
+            sets = orderedSets.mapIndexed { index, set ->
+                WorkoutCompletionSet(
+                    setNumber = index + 1,
+                    weightKg = set.weight,
+                    reps = set.reps,
+                    rpe = set.rpe,
+                    restSeconds = set.restSeconds,
+                    setType = parseSetType(set.setType),
+                    completed = set.completed,
+                )
+            },
+            totalVolume = orderedSets.sumOf { it.weight * it.reps },
+            bestSetLabel = orderedSets.maxWithOrNull(compareBy<WorkoutSetEntity> { it.weight }.thenBy { it.reps })?.let { set ->
+                "${formatSummaryWeight(set.weight)} kg x ${set.reps}"
+            }.orEmpty(),
+        )
+    }.sortedWith(
+        compareBy<WorkoutCompletionExercise> {
+            performedByExerciseId[it.exerciseId]?.orderIndex ?: plannedOrderByExerciseId[it.exerciseId] ?: Int.MAX_VALUE
+        }.thenBy { it.name },
+    )
+    val debrief = session.toStoredDebrief().takeIf { it.summary.isNotBlank() } ?: fallbackDebrief
+    val strongestSet = sessionSets.maxWithOrNull(compareBy<WorkoutSetEntity> { it.weight }.thenBy { it.reps })
+    val workoutName = listOfNotNull(routine?.name, day?.name)
+        .filter { it.isNotBlank() }
+        .joinToString(" - ")
+        .ifBlank { "Krachttraining" }
+    return WorkoutCompletionSummary(
+        sessionId = session.id,
+        workoutName = workoutName,
+        startedAt = session.startedAt.takeIf { it > 0L } ?: session.date,
+        endedAt = session.endedAt.takeIf { it > 0L } ?: session.date,
+        durationSeconds = session.duration,
+        exercisesCompleted = exerciseSummaries.size,
+        setsLogged = sessionSets.size,
+        totalVolume = sessionSets.sumOf { it.weight * it.reps },
+        personalBests = 0,
+        strongestSetLabel = strongestSet?.let { "${formatSummaryWeight(it.weight)} kg x ${it.reps}" }.orEmpty(),
+        debrief = debrief,
+        sourceLabel = when (debrief.source) {
+            WorkoutDebriefSource.GEMINI_2_5_FLASH -> "Samenvatting gemaakt met Gemini 2.5 Flash"
+            WorkoutDebriefSource.LOCAL_FALLBACK -> "Samenvatting gemaakt op basis van je trainingsdata"
+        },
+        recommendationLabel = when (debrief.intensitySignal.uppercase(Locale.US)) {
+            "INCREASE" -> "Verhogen"
+            "DELOAD", "DECREASE" -> "Verlagen"
+            "REVIEW", "PLATEAU" -> "Review"
+            else -> "Vasthouden"
+        },
+        exercises = exerciseSummaries,
+    )
+}
+
+private fun WorkoutSessionEntity.withDebrief(debrief: WorkoutDebrief): WorkoutSessionEntity = copy(
+    debriefSummary = debrief.summary,
+    debriefProgressionFeedback = debrief.progressionFeedback,
+    debriefRecommendation = debrief.recommendation,
+    debriefNextSessionFocus = debrief.nextSessionFocus,
+    debriefRecoveryScore = debrief.recoveryScore,
+    debriefIntensitySignal = debrief.intensitySignal,
+    debriefWins = debrief.wins.joinToString("\n"),
+    debriefRisks = debrief.risks.joinToString("\n"),
+    debriefNextLoadTarget = debrief.nextLoadTarget,
+    debriefRecoveryAdvice = debrief.recoveryAdvice,
+    debriefSource = debrief.source.name,
+)
+
+private fun WorkoutSessionEntity.toStoredDebrief(): WorkoutDebrief = WorkoutDebrief(
+    summary = debriefSummary,
+    progressionFeedback = debriefProgressionFeedback,
+    recommendation = debriefRecommendation,
+    nextSessionFocus = debriefNextSessionFocus,
+    recoveryScore = debriefRecoveryScore.coerceIn(0, 100),
+    intensitySignal = debriefIntensitySignal.ifBlank { "MAINTAIN" },
+    wins = debriefWins.lines().map { it.trim() }.filter { it.isNotBlank() },
+    risks = debriefRisks.lines().map { it.trim() }.filter { it.isNotBlank() },
+    nextLoadTarget = debriefNextLoadTarget,
+    recoveryAdvice = debriefRecoveryAdvice,
+    source = runCatching { WorkoutDebriefSource.valueOf(debriefSource) }.getOrDefault(WorkoutDebriefSource.LOCAL_FALLBACK),
+)
+
+private fun formatSummaryWeight(weight: Double): String =
+    if (weight % 1.0 == 0.0) weight.toInt().toString() else String.format(Locale.US, "%.1f", weight)
 
 internal fun TrainIqStorageState.deleteActiveWorkoutSetById(setId: Long, now: Long): TrainIqStorageState =
     copy(activeWorkoutSession = activeWorkoutSession?.deleteSetById(setId = setId, now = now))

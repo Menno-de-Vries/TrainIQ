@@ -42,6 +42,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -183,6 +184,10 @@ import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.StrengthCalculator
 import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutDebrief
+import com.trainiq.domain.model.WorkoutDebriefSource
+import com.trainiq.domain.model.WorkoutCompletionExercise
+import com.trainiq.domain.model.WorkoutCompletionSummary
+import com.trainiq.domain.model.WorkoutCompletionUiState
 import com.trainiq.domain.model.WorkoutExercisePlan
 import com.trainiq.domain.model.WorkoutLoggingSummary
 import com.trainiq.domain.model.WorkoutOverview
@@ -200,6 +205,7 @@ import com.trainiq.domain.usecase.FinishActiveWorkoutUseCase
 import com.trainiq.domain.usecase.GenerateAiRoutineUseCase
 import com.trainiq.domain.usecase.GetProgressionSuggestionsUseCase
 import com.trainiq.domain.usecase.GetOrStartActiveWorkoutSessionUseCase
+import com.trainiq.domain.usecase.GetWorkoutCompletionSummaryUseCase
 import com.trainiq.domain.usecase.GetWorkoutDayUseCase
 import com.trainiq.domain.usecase.LogActiveWorkoutSetUseCase
 import com.trainiq.domain.usecase.DeleteRoutineSetUseCase
@@ -306,6 +312,11 @@ sealed interface WorkoutUiEvent {
         override val id: Long,
         val message: String,
         val undoEventId: Long?,
+    ) : WorkoutUiEvent
+
+    data class WorkoutCompleted(
+        override val id: Long,
+        val sessionId: Long,
     ) : WorkoutUiEvent
 }
 
@@ -414,6 +425,8 @@ class WorkoutViewModel @Inject constructor(
 
     private val _events = MutableSharedFlow<WorkoutUiEvent>(extraBufferCapacity = 1)
     val events: SharedFlow<WorkoutUiEvent> = _events.asSharedFlow()
+    private val _workoutCompletions = MutableSharedFlow<Long>(extraBufferCapacity = 1)
+    val workoutCompletions: SharedFlow<Long> = _workoutCompletions.asSharedFlow()
 
     val activeWorkoutUiState: StateFlow<ActiveWorkoutUiState> = combine(
         _activeWorkout,
@@ -678,11 +691,15 @@ class WorkoutViewModel @Inject constructor(
         diagnosticsTracker.state("Workout:Finished")
         viewModelScope.launch {
             stopRestTimer(persist = true)
-            _debrief.value = finishActiveWorkoutUseCase(dayId)
+            val result = finishActiveWorkoutUseCase(dayId)
+            _debrief.value = result.debrief
             _activeSession.value = null
             _drafts.value = emptyMap()
             _draftErrors.value = emptyMap()
             _progressionSuggestions.value = getProgressionSuggestionsUseCase(dayId)
+            if (result.sessionId > 0L) {
+                _workoutCompletions.tryEmit(result.sessionId)
+            }
         }
     }
 
@@ -1415,6 +1432,26 @@ fun WorkoutScreen(
                 HistoryCard(session.id, session.totalVolume, session.duration, onDeleteWorkoutSession)
             }
         }
+        }
+    }
+}
+
+@HiltViewModel
+class WorkoutCompletionViewModel @Inject constructor(
+    private val getWorkoutCompletionSummaryUseCase: GetWorkoutCompletionSummaryUseCase,
+) : ViewModel() {
+    private val _uiState = MutableStateFlow<WorkoutCompletionUiState>(WorkoutCompletionUiState.Loading)
+    val uiState: StateFlow<WorkoutCompletionUiState> = _uiState.asStateFlow()
+
+    fun load(sessionId: Long) {
+        _uiState.value = WorkoutCompletionUiState.Loading
+        viewModelScope.launch {
+            val summary = getWorkoutCompletionSummaryUseCase(sessionId)
+            _uiState.value = if (summary == null) {
+                WorkoutCompletionUiState.Error("Deze afgeronde training kon niet worden geladen.")
+            } else {
+                WorkoutCompletionUiState.Success(summary)
+            }
         }
     }
 }
@@ -4025,6 +4062,7 @@ fun ActiveWorkoutRoute(
     dayId: Long,
     onBack: () -> Unit,
     onOpenExerciseHistory: (Long) -> Unit,
+    onWorkoutCompleted: (Long) -> Unit,
     viewModel: WorkoutViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.activeWorkoutUiState.collectAsStateWithLifecycle()
@@ -4065,7 +4103,13 @@ fun ActiveWorkoutRoute(
                         event.undoEventId?.let(viewModel::undoWorkoutLogEvent)
                     }
                 }
+                is WorkoutUiEvent.WorkoutCompleted -> onWorkoutCompleted(event.sessionId)
             }
+        }
+    }
+    LaunchedEffect(Unit) {
+        viewModel.workoutCompletions.collect { sessionId ->
+            onWorkoutCompleted(sessionId)
         }
     }
     DisposableEffect(context) {
@@ -4102,6 +4146,321 @@ fun ActiveWorkoutRoute(
         onFinish = { viewModel.finishWorkout(dayId) },
         onDiscard = { viewModel.discardWorkout(dayId) },
     )
+}
+
+@Composable
+fun WorkoutCompletionRoute(
+    sessionId: Long,
+    onBackToTraining: () -> Unit,
+    onHome: () -> Unit,
+    viewModel: WorkoutCompletionViewModel = hiltViewModel(),
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(sessionId) { viewModel.load(sessionId) }
+    WorkoutCompletionScreen(
+        uiState = uiState,
+        onBackToTraining = onBackToTraining,
+        onHome = onHome,
+    )
+}
+
+@Composable
+private fun WorkoutCompletionScreen(
+    uiState: WorkoutCompletionUiState,
+    onBackToTraining: () -> Unit,
+    onHome: () -> Unit,
+) {
+    var autoReturnActive by rememberSaveable { mutableStateOf(true) }
+    var countdown by rememberSaveable { mutableIntStateOf(12) }
+    val listState = rememberLazyListState()
+    val cancelAutoReturn = {
+        autoReturnActive = false
+    }
+    LaunchedEffect(autoReturnActive) {
+        if (!autoReturnActive) return@LaunchedEffect
+        countdown = 12
+        while (countdown > 0 && autoReturnActive) {
+            delay(1_000L)
+            countdown -= 1
+        }
+        if (autoReturnActive) onHome()
+    }
+    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
+        if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
+            cancelAutoReturn()
+        }
+    }
+    BackHandler { onBackToTraining() }
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { padding ->
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .navigationBarsPadding()
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            if (event.changes.any { it.pressed }) {
+                                cancelAutoReturn()
+                            }
+                        }
+                    }
+                },
+            contentPadding = PaddingValues(
+                start = MaterialTheme.spacing.medium,
+                top = MaterialTheme.spacing.medium,
+                end = MaterialTheme.spacing.medium,
+                bottom = 160.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            when (uiState) {
+                WorkoutCompletionUiState.Loading -> {
+                    item { ScreenHeader(title = "Training opgeslagen", subtitle = "Samenvatting wordt geladen") }
+                    item { ShimmerCardPlaceholder() }
+                    item { ShimmerCardPlaceholder() }
+                }
+                is WorkoutCompletionUiState.Error -> {
+                    item { ScreenHeader(title = "Training opgeslagen", subtitle = "Samenvatting niet beschikbaar") }
+                    item {
+                        EmptyStateCard(
+                            title = "Geen samenvatting gevonden",
+                            body = uiState.message,
+                            actionLabel = "Terug naar krachttraining",
+                            onAction = onBackToTraining,
+                        )
+                    }
+                }
+                is WorkoutCompletionUiState.Success -> {
+                    val summary = uiState.summary
+                    item { CompletionHeader(summary) }
+                    item { CompletionStats(summary) }
+                    item { CompletionSmartSummary(summary) }
+                    item { CompletionExerciseOverview(summary.exercises) }
+                    item {
+                        CompletionActions(
+                            countdown = countdown,
+                            autoReturnActive = autoReturnActive,
+                            onBackToTraining = {
+                                cancelAutoReturn()
+                                onBackToTraining()
+                            },
+                            onHome = {
+                                cancelAutoReturn()
+                                onHome()
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompletionHeader(summary: WorkoutCompletionSummary) {
+    AppCard(accent = MaterialTheme.colorScheme.primary, elevated = true) {
+        AppChip(label = "Voltooid", accent = MaterialTheme.colorScheme.primary)
+        Text(summary.workoutName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+        Text(
+            "${formatTimer(summary.durationSeconds.toInt())} - klaar om ${formatHistoryDate(summary.endedAt)}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.trainIqColors.mutedText,
+        )
+        if (summary.strongestSetLabel.isNotBlank()) {
+            Text("Sterkste set: ${summary.strongestSetLabel}", style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+@Composable
+private fun CompletionStats(summary: WorkoutCompletionSummary) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        AppCard(modifier = Modifier.weight(1f), accent = MaterialTheme.colorScheme.primary) {
+            StatusMetric("Oefeningen", summary.exercisesCompleted.toString())
+        }
+        AppCard(modifier = Modifier.weight(1f), accent = MaterialTheme.colorScheme.secondary) {
+            StatusMetric("Sets", summary.setsLogged.toString())
+        }
+        AppCard(modifier = Modifier.weight(1f), accent = MaterialTheme.colorScheme.tertiary) {
+            StatusMetric("Volume", "${summary.totalVolume.toInt()} kg")
+        }
+    }
+}
+
+@Composable
+private fun CompletionSmartSummary(summary: WorkoutCompletionSummary) {
+    val debrief = summary.debrief
+    AppCard(accent = intensityContentColor(debrief.intensitySignal)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top,
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Slimme samenvatting", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                AppChip(label = debrief.source.shortLabel(), accent = intensityContentColor(debrief.intensitySignal))
+            }
+            AppChip(label = summary.recommendationLabel, accent = intensityContentColor(debrief.intensitySignal))
+        }
+        AiSummaryLead(text = debrief.summary)
+        CompletionInsightChips(summary)
+        AiBulletSection(title = "Hoogtepunten", items = debrief.wins.ifEmpty { listOf(debrief.progressionFeedback) })
+        AiBulletSection(title = "Aandachtspunten", items = debrief.risks.ifEmpty { listOf("Geen duidelijke aandachtspunten op basis van de beschikbare trainingsdata.") })
+        AiAdviceSection(
+            recommendation = debrief.recommendation,
+            nextWorkoutAdvice = debrief.nextLoadTarget.ifBlank { debrief.nextSessionFocus },
+            recoveryAdvice = debrief.recoveryAdvice,
+            recoveryScore = debrief.recoveryScore,
+            accent = intensityContentColor(debrief.intensitySignal),
+        )
+    }
+}
+
+private fun WorkoutDebriefSource.shortLabel(): String = when (this) {
+    WorkoutDebriefSource.GEMINI_2_5_FLASH -> "Gemini 2.5 Flash"
+    WorkoutDebriefSource.LOCAL_FALLBACK -> "Lokale analyse"
+}
+
+@Composable
+private fun AiSummaryLead(text: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        shape = RoundedCornerShape(14.dp),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(12.dp),
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+@Composable
+private fun CompletionInsightChips(summary: WorkoutCompletionSummary) {
+    val debrief = summary.debrief
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        AppChip(label = "Volume ${summary.totalVolume.toInt()} kg", accent = MaterialTheme.colorScheme.primary)
+        AppChip(label = "Sets ${summary.setsLogged}", accent = MaterialTheme.colorScheme.secondary)
+        AppChip(
+            label = when (debrief.intensitySignal.uppercase()) {
+                "INCREASE" -> "Advies verhogen"
+                "DELOAD" -> "Advies verlagen"
+                else -> "Advies gelijk houden"
+            },
+            accent = intensityContentColor(debrief.intensitySignal),
+        )
+        AppChip(
+            label = "Herstel ${debrief.recoveryScore.coerceIn(0, 100)}/100",
+            accent = intensityContentColor(debrief.intensitySignal),
+        )
+    }
+}
+
+@Composable
+private fun AiBulletSection(title: String, items: List<String>) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        items.filter { it.isNotBlank() }.take(4).forEach { item ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+                Text("•", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    item,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.trainIqColors.mutedText,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiAdviceSection(
+    recommendation: String,
+    nextWorkoutAdvice: String,
+    recoveryAdvice: String,
+    recoveryScore: Int,
+    accent: Color,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Advies voor volgende training", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        Text(recommendation, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+        if (nextWorkoutAdvice.isNotBlank()) {
+            Text(nextWorkoutAdvice, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
+        }
+        if (recoveryAdvice.isNotBlank()) {
+            Text("Herstel: $recoveryAdvice", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.trainIqColors.mutedText)
+        }
+        AppLinearProgress(progress = recoveryScore.coerceIn(0, 100) / 100f, accent = accent)
+    }
+}
+
+@Composable
+private fun CompletionExerciseOverview(exercises: List<WorkoutCompletionExercise>) {
+    AppCard(accent = MaterialTheme.colorScheme.secondary) {
+        Text("Oefeningen", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        if (exercises.isEmpty()) {
+            Text("Geen gelogde sets gevonden voor deze sessie.", color = MaterialTheme.trainIqColors.mutedText)
+        }
+        exercises.forEach { exercise ->
+            CompletionExerciseBlock(exercise)
+        }
+    }
+}
+
+@Composable
+private fun CompletionExerciseBlock(exercise: WorkoutCompletionExercise) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(exercise.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "${exercise.sets.size} sets - ${exercise.totalVolume.toInt()} kg",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.trainIqColors.mutedText,
+                )
+            }
+            if (exercise.bestSetLabel.isNotBlank()) {
+                Text(exercise.bestSetLabel, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+        exercise.sets.forEach { set ->
+            val rpe = if (set.rpe > 0.0) " - RPE ${formatWeight(set.rpe)}" else ""
+            Text(
+                "Set ${set.setNumber}: ${formatWeight(set.weightKg)} kg x ${set.reps}$rpe",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+        HorizontalDivider()
+    }
+}
+
+@Composable
+private fun CompletionActions(
+    countdown: Int,
+    autoReturnActive: Boolean,
+    onBackToTraining: () -> Unit,
+    onHome: () -> Unit,
+) {
+    AppCard {
+        Text(
+            if (autoReturnActive) "Automatisch terug naar Home over $countdown seconden" else "Automatisch terugkeren gepauzeerd",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.trainIqColors.mutedText,
+        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SecondaryActionButton(onClick = onBackToTraining, modifier = Modifier.weight(1f)) { Text("Terug naar krachttraining") }
+            PrimaryActionButton(onClick = onHome, modifier = Modifier.weight(1f)) { Text("Naar home") }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -95,4 +95,20 @@ object TrainIqMigrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS index_workout_sets_performed_exercise_id_order_index ON workout_sets(performed_exercise_id, order_index)")
         }
     }
+
+    val Migration8To9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE workout_sessions ADD COLUMN debrief_summary TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE workout_sessions ADD COLUMN debrief_progression_feedback TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE workout_sessions ADD COLUMN debrief_recommendation TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE workout_sessions ADD COLUMN debrief_next_session_focus TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE workout_sessions ADD COLUMN debrief_recovery_score INTEGER NOT NULL DEFAULT 75")
+            db.execSQL("ALTER TABLE workout_sessions ADD COLUMN debrief_intensity_signal TEXT NOT NULL DEFAULT 'MAINTAIN'")
+            db.execSQL("ALTER TABLE workout_sessions ADD COLUMN debrief_wins TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE workout_sessions ADD COLUMN debrief_risks TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE workout_sessions ADD COLUMN debrief_next_load_target TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE workout_sessions ADD COLUMN debrief_recovery_advice TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE workout_sessions ADD COLUMN debrief_source TEXT NOT NULL DEFAULT 'LOCAL_FALLBACK'")
+        }
+    }
 }

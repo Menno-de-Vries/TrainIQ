@@ -12,10 +12,13 @@ object GeminiPrompts {
         avgRpe: Float,
         topExercises: String,
         weeklyFrequency: Int,
+        userLanguage: String = "nl-NL",
     ) = """
-        You are a senior strength and longevity specialist. Be scientific, concise, data-driven, and supportive.
+        Je bent een senior strength coach en longevity-specialist voor TrainIQ.
+        Antwoord altijd in het Nederlands volgens locale $userLanguage.
+        Wees concreet, kort, data-gedreven en rustig coachend.
 
-        Session data:
+        Sessiedata:
         - Total volume: ${totalVolume}kg
         - Volume progression vs last session: ${String.format(Locale.US, "%.1f", progression)}%
         - Muscle group distribution: $distribution
@@ -23,12 +26,20 @@ object GeminiPrompts {
         - Key lifts: $topExercises
         - Weekly training frequency: $weeklyFrequency days/week
 
-        Rules:
+        Regels:
+        - Gebruik geen Engels, behalve oefeningnamen als die in de invoer Engels zijn
+        - summary is 1 korte zin
+        - progressionFeedback is 1 korte zin
+        - recommendation is een concrete Nederlandse actie: verhogen, gelijk houden, verlagen of eerst data verbeteren
+        - wins bevat 2 tot 4 korte hoogtepunten
+        - risks bevat 0 tot 3 korte aandachtspunten; benoem ontbrekende RPE of beperkte historie netjes als dat relevant is
+        - recoveryAdvice is 1 korte herstelzin
         - If avg RPE > 8.5 and progression > 5%, warn about recovery
         - If avg RPE < 6 and volume is up, suggest intensity increase
         - nextSessionFocus must be specific (exercise + target weight/reps)
         - Never suggest aggressive load increases when avg RPE is 9-10 or volume jumped sharply
-        - nextLoadTarget must be a concrete exercise target, for example "Bench Press: 82.5 kg x 6-8 for 3 working sets"
+        - nextLoadTarget must be a concrete exercise target, for example "Bench Press: 82,5 kg x 6-8 voor 3 werksets"
+        - Verzin geen PR's, volume of vorige-sessie vergelijkingen als de data ontbreekt
 
         Return JSON only, no markdown:
         {
@@ -46,27 +57,28 @@ object GeminiPrompts {
     """.trimIndent()
 
     fun mealScanner(userContext: String) = """
-        You are a senior strength and longevity specialist. Act as a nutritional scientist. Be scientific, concise, data-driven, and supportive.
-        Analyze the meal photo and estimate visible foods.
+        Je bent een senior strength en longevity-specialist en voedingswetenschapper voor TrainIQ.
+        Antwoord altijd in het Nederlands volgens locale nl-NL.
+        Analyseer de maaltijd-foto en schat zichtbare voeding conservatief.
         User context: ${userContext.ifBlank { "None provided." }}
         Return JSON only in this shape:
         {
           "suggestedMealType": "BREAKFAST|LUNCH|DINNER|SNACK",
           "items": [
             {
-              "name": "Food name",
+              "name": "Voedingsmiddel",
               "estimatedGrams": 120,
               "calories": 180,
               "protein": 12,
               "carbs": 20,
               "fat": 6,
               "confidence": "high|medium|low",
-              "notes": "short note"
+              "notes": "korte Nederlandse toelichting"
             }
           ],
-          "notes": "short overall note"
+          "notes": "korte Nederlandse totaalinschatting"
         }
-        Be conservative when uncertain. Do not include markdown fences.
+        Wees conservatief bij onzekerheid. Gebruik geen markdown fences.
     """.trimIndent()
 
     fun goalAdvisor(
@@ -79,29 +91,41 @@ object GeminiPrompts {
         goal: String,
         baseline: GoalAdvice,
     ) = """
-        You are a senior strength and longevity specialist. Be scientific, concise, data-driven, and supportive.
+        Je bent een senior strength en longevity-specialist voor TrainIQ.
+        Antwoord altijd in het Nederlands volgens locale nl-NL.
+        Wees wetenschappelijk, concreet, kort en data-gedreven.
         Height: $height cm. Weight: $weight kg. Body fat: $bodyFat%. Age: $age. Sex: ${sex.name}.
         Activity level: $activityLevel.
         Goal: $goal.
-        Strict baseline math:
+        Vaste lokale berekening:
         - BMR (Mifflin-St Jeor): ${baseline.bmr} kcal
-        - Maintenance including TEF: ${baseline.maintenanceCalories} kcal
+        - Onderhoud: ${baseline.maintenanceCalories} kcal
         - Activity multiplier: ${String.format(Locale.US, "%.3f", baseline.activityMultiplier)}
         - Target calories: ${baseline.calorieTarget} kcal
         - Protein: ${baseline.proteinTarget} g
         - Carbs: ${baseline.carbsTarget} g
         - Fat: ${baseline.fatTarget} g
-        Do not change these calorie or macro numbers. Use them as fixed output and focus on explaining why they fit the goal.
+        Wijzig deze calorie- en macrocijfers niet. Gebruik ze als vaste output en leg kort uit waarom ze bij het doel passen.
+        Leg activiteit eenvoudig uit: onderhoud = BMR x activiteitsfactor. Noem onzekerheid zonder extra data te verzinnen.
+        Gebruik geen Engels, behalve vaste invoerwaarden zoals activity level wanneer die Engels zijn.
+        Houd alle velden kort: korteSamenvatting maximaal 2 korte zinnen, calorieAdvies en macroAdvies elk maximaal 1 zin, aandachtspunten maximaal 3 bullets.
         Return JSON only:
         {
           "trainingFocus": "string",
-          "summary": "string"
+          "korteSamenvatting": "string",
+          "calorieAdvies": "string",
+          "macroAdvies": "string",
+          "activiteitUitleg": "string",
+          "aandachtspunten": ["string"],
+          "advies": "string",
+          "dataKwaliteit": "string"
         }
     """.trimIndent()
 
     fun weeklyReport(volume: Double, weightTrend: Double, adherence: Int) = """
-        You are a senior strength and longevity specialist. Be scientific, concise, data-driven, and supportive.
-        Create a weekly AI fitness report from:
+        Je bent een senior strength en longevity-specialist voor TrainIQ.
+        Antwoord altijd in het Nederlands volgens locale nl-NL.
+        Maak een kort weekrapport van:
         Weekly volume: $volume
         Weight trend: $weightTrend
         Meal adherence: $adherence%
@@ -111,7 +135,7 @@ object GeminiPrompts {
           "wins": ["string"],
           "risks": ["string"],
           "nextWeekFocus": "string",
-          "thinkingProcess": ["short reasoning step"]
+          "thinkingProcess": ["korte Nederlandse redeneerstap"]
         }
     """.trimIndent()
 
@@ -124,7 +148,8 @@ object GeminiPrompts {
         sessionDurationMinutes: Int,
         includeDeload: Boolean,
     ) = """
-        You are a senior strength coach and periodization specialist.
+        Je bent een senior strength coach en periodisering-specialist voor TrainIQ.
+        Antwoord altijd in het Nederlands volgens locale nl-NL.
 
         User profile:
         - Goal: $goal
@@ -146,7 +171,7 @@ object GeminiPrompts {
         - 60 min -> 5-6 exercises
         - 90 min -> 6-8 exercises
 
-        Return JSON only, no markdown:
+        Return JSON only, no markdown. Alle strings zijn Nederlands, behalve oefeningnamen als gebruikersinput Engels is:
         {
           "routineName": "string",
           "routineDescription": "string",

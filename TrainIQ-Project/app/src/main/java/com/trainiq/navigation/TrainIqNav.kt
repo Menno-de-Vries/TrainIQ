@@ -67,6 +67,7 @@ import com.trainiq.features.progress.ProgressRoute
 import com.trainiq.features.settings.SettingsRoute
 import com.trainiq.features.workout.ActiveWorkoutRoute
 import com.trainiq.features.workout.ExerciseHistoryRoute
+import com.trainiq.features.workout.WorkoutCompletionRoute
 import com.trainiq.features.workout.WorkoutRoute
 import com.trainiq.core.diagnostics.DiagnosticsTracker
 import com.trainiq.core.theme.radii
@@ -96,6 +97,9 @@ data object Settings
 
 @Serializable
 data class ActiveWorkout(val dayId: Long)
+
+@Serializable
+data class WorkoutCompletion(val sessionId: Long)
 
 @Serializable
 data class ExerciseHistory(val exerciseId: Long)
@@ -270,6 +274,7 @@ private fun androidx.navigation.NavDestination?.screenName(): String = when {
     hierarchy.any { it.hasRoute(Settings::class) } -> "Instellingen"
     hierarchy.any { it.hasRoute(CameraScanner::class) } -> "CameraScanner"
     hierarchy.any { it.hasRoute(ActiveWorkout::class) } -> "ActiveWorkout"
+    hierarchy.any { it.hasRoute(WorkoutCompletion::class) } -> "WorkoutCompletion"
     hierarchy.any { it.hasRoute(ExerciseHistory::class) } -> "ExerciseHistory"
     else -> route.orEmpty().ifBlank { "Unknown" }
 }
@@ -364,6 +369,26 @@ private fun TrainIqNavHost(
                 dayId = entry.toRoute<ActiveWorkout>().dayId,
                 onBack = { navController.popBackStack() },
                 onOpenExerciseHistory = { exerciseId -> navController.navigate(ExerciseHistory(exerciseId)) },
+                onWorkoutCompleted = { sessionId ->
+                    val activeDestinationId = navController.currentBackStackEntry?.destination?.id
+                    navController.navigate(WorkoutCompletion(sessionId)) {
+                        if (activeDestinationId != null) {
+                            popUpTo(activeDestinationId) { inclusive = true }
+                        }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
+        composable<WorkoutCompletion> { entry ->
+            WorkoutCompletionRoute(
+                sessionId = entry.toRoute<WorkoutCompletion>().sessionId,
+                onBackToTraining = {
+                    navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Train::class })
+                },
+                onHome = {
+                    navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Home::class })
+                },
             )
         }
         composable<ExerciseHistory> { entry ->

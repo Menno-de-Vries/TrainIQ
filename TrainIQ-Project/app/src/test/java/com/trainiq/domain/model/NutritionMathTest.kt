@@ -1,7 +1,9 @@
 package com.trainiq.domain.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.roundToInt
 
 class NutritionMathTest {
 
@@ -53,5 +55,68 @@ class NutritionMathTest {
         assertEquals(12.3, result.protein, 0.0)
         assertEquals(45.6, result.carbs, 0.0)
         assertEquals(7.0, result.fat, 0.0)
+    }
+
+    @Test
+    fun buildGoalBaseline_maintenanceEqualsBmrTimesActivityMultiplier() {
+        val result = buildGoalBaseline(
+            heightCm = 195.0,
+            weightKg = 107.2,
+            bodyFat = 25.0,
+            age = 30,
+            sex = BiologicalSex.MALE,
+            activityLevel = "Lightly active",
+            goal = "fat loss",
+        )
+
+        assertEquals((result.bmr * result.activityMultiplier).roundToInt().toLong(), result.maintenanceCalories.toLong())
+    }
+
+    @Test
+    fun buildGoalBaseline_forFatLossUsesModerateDeficitBelowMaintenance() {
+        val result = buildGoalBaseline(
+            heightCm = 195.0,
+            weightKg = 107.2,
+            bodyFat = 25.0,
+            age = 30,
+            sex = BiologicalSex.MALE,
+            activityLevel = "Lightly active",
+            goal = "fat loss",
+        )
+
+        assertEquals(2_951, result.maintenanceCalories)
+        assertEquals(2_656, result.targetCalories)
+    }
+
+    @Test
+    fun buildGoalBaseline_macroCaloriesApproximatelyMatchTarget() {
+        val result = buildGoalBaseline(
+            heightCm = 195.0,
+            weightKg = 107.2,
+            bodyFat = 25.0,
+            age = 30,
+            sex = BiologicalSex.MALE,
+            activityLevel = "Lightly active",
+            goal = "fat loss",
+        )
+
+        val macroCalories = result.proteinTarget * 4 + result.carbsTarget * 4 + result.fatTarget * 9
+
+        assertTrue(kotlin.math.abs(result.targetCalories - macroCalories) <= 8)
+    }
+
+    @Test
+    fun buildGoalBaseline_usesLeanMassForProteinWhenBodyFatIsAvailable() {
+        val result = buildGoalBaseline(
+            heightCm = 195.0,
+            weightKg = 107.2,
+            bodyFat = 25.0,
+            age = 30,
+            sex = BiologicalSex.MALE,
+            activityLevel = "Lightly active",
+            goal = "fat loss",
+        )
+
+        assertEquals(177, result.proteinTarget)
     }
 }

@@ -468,8 +468,20 @@ data class GoalAdvice(
     val fatTarget: Int,
     val trainingFocus: String,
     val summary: String,
+    val calorieAdvice: String = "",
+    val macroAdvice: String = "",
+    val activityExplanation: String = "",
+    val attentionPoints: List<String> = emptyList(),
+    val advice: String = "",
+    val dataQuality: String = "",
+    val source: GoalAdviceSource = GoalAdviceSource.GEMINI_2_5_FLASH,
     val rawResponse: String? = null,
 )
+
+enum class GoalAdviceSource {
+    GEMINI_2_5_FLASH,
+    LOCAL_CALCULATION,
+}
 
 data class WorkoutDebrief(
     val summary: String,
@@ -482,6 +494,59 @@ data class WorkoutDebrief(
     val risks: List<String> = emptyList(),
     val nextLoadTarget: String = "",
     val recoveryAdvice: String = "",
+    val source: WorkoutDebriefSource = WorkoutDebriefSource.GEMINI_2_5_FLASH,
+)
+
+enum class WorkoutDebriefSource {
+    GEMINI_2_5_FLASH,
+    LOCAL_FALLBACK,
+}
+
+data class WorkoutCompletionResult(
+    val sessionId: Long,
+    val debrief: WorkoutDebrief,
+)
+
+sealed interface WorkoutCompletionUiState {
+    data object Loading : WorkoutCompletionUiState
+    data class Success(val summary: WorkoutCompletionSummary) : WorkoutCompletionUiState
+    data class Error(val message: String) : WorkoutCompletionUiState
+}
+
+data class WorkoutCompletionSummary(
+    val sessionId: Long,
+    val workoutName: String,
+    val startedAt: Long,
+    val endedAt: Long,
+    val durationSeconds: Long,
+    val exercisesCompleted: Int,
+    val setsLogged: Int,
+    val totalVolume: Double,
+    val personalBests: Int,
+    val strongestSetLabel: String,
+    val debrief: WorkoutDebrief,
+    val sourceLabel: String,
+    val recommendationLabel: String,
+    val exercises: List<WorkoutCompletionExercise>,
+)
+
+data class WorkoutCompletionExercise(
+    val exerciseId: Long,
+    val name: String,
+    val muscleGroup: String,
+    val sets: List<WorkoutCompletionSet>,
+    val totalVolume: Double,
+    val bestSetLabel: String,
+)
+
+data class WorkoutCompletionSet(
+    val setNumber: Int,
+    val weightKg: Double,
+    val reps: Int,
+    val rpe: Double,
+    val restSeconds: Int,
+    val setType: SetType,
+    val completed: Boolean,
 )
 
 data class WorkoutOverview(

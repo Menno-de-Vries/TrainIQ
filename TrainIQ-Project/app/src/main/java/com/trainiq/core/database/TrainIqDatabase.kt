@@ -17,7 +17,7 @@ import androidx.room.RoomDatabase
         MealEntity::class,
         BodyMeasurementEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = false,
 )
 abstract class TrainIqDatabase : RoomDatabase() {

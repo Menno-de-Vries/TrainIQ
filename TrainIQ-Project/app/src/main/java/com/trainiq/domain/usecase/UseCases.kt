@@ -109,6 +109,10 @@ class FinishActiveWorkoutUseCase @Inject constructor(private val repository: Wor
     suspend operator fun invoke(dayId: Long) = repository.finishActiveWorkout(dayId)
 }
 
+class GetWorkoutCompletionSummaryUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(sessionId: Long) = repository.getWorkoutCompletionSummary(sessionId)
+}
+
 class DiscardActiveWorkoutUseCase @Inject constructor(private val repository: WorkoutRepository) {
     suspend operator fun invoke(dayId: Long) = repository.discardActiveWorkout(dayId)
 }

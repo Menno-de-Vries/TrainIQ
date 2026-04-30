@@ -6,6 +6,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -53,6 +54,7 @@ import com.trainiq.features.profile.validateProfileInput
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.CoachOverview
 import com.trainiq.domain.model.GoalAdvice
+import com.trainiq.domain.model.GoalAdviceSource
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WeeklyReportResult
 import com.trainiq.domain.model.buildGoalBaseline
@@ -62,6 +64,7 @@ import com.trainiq.domain.usecase.ObserveCoachUseCase
 import com.trainiq.domain.usecase.ObserveUserProfileUseCase
 import com.trainiq.domain.usecase.SaveUserProfileUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -268,6 +271,13 @@ private fun GoalAdviceInput.toDeterministicGoalAdvice(): GoalAdvice {
         fatTarget = baseline.fatTarget,
         trainingFocus = trainingFocus,
         summary = "Lokale berekening opgeslagen. Je kunt AI-advies later gebruiken om dit te verfijnen.",
+        calorieAdvice = "Onderhoud is berekend als BMR x activiteitsfactor. Je doelcalorieen zijn daarvan afgeleid.",
+        macroAdvice = "Eiwit, vet en koolhydraten zijn verdeeld zodat de macrocalorieen rond je doel uitkomen.",
+        activityExplanation = "Activiteitsfactor ${String.format(Locale.US, "%.3f", baseline.activityMultiplier)}: ${baseline.bmr} kcal x ${String.format(Locale.US, "%.3f", baseline.activityMultiplier)} = ${baseline.maintenanceCalories} kcal onderhoud.",
+        attentionPoints = listOf("Dit blijft een lokale schatting totdat gewichtstrend, stappen en training genoeg context geven."),
+        advice = "Gebruik deze waarden twee weken en stuur daarna bij op basis van trend en prestaties.",
+        dataQuality = "Lokale berekening op basis van profieldata.",
+        source = GoalAdviceSource.LOCAL_CALCULATION,
     )
 }
 
@@ -628,13 +638,7 @@ fun CoachScreen(
                                     ShimmerCardPlaceholder(lineCount = 4)
                                 }
                                 state.goalAdvice?.let { advice ->
-                                    Text("BMR: ${advice.bmr} kcal", style = MaterialTheme.typography.bodyMedium)
-                                    Text("Onderhoud: ${advice.maintenanceCalories} kcal", style = MaterialTheme.typography.bodyMedium)
-                                    Text("Activiteitsfactor: ${"%.3f".format(advice.activityMultiplier)}", style = MaterialTheme.typography.bodyMedium)
-                                    Text("Calorieën: ${advice.calorieTarget} kcal", style = MaterialTheme.typography.bodyMedium)
-                                    Text("Macro's: P${advice.proteinTarget} C${advice.carbsTarget} F${advice.fatTarget}", style = MaterialTheme.typography.bodyMedium)
-                                    Text("Trainingsfocus: ${advice.trainingFocus}", style = MaterialTheme.typography.bodyMedium)
-                                    Text(advice.summary, style = MaterialTheme.typography.bodyMedium)
+                                    GoalAdviceCard(advice = advice, activityLevel = activityLevel)
                                     Button(
                                         onClick = {
                                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -662,6 +666,142 @@ fun CoachScreen(
             }
         }
     }
+}
+
+@Composable
+private fun GoalAdviceCard(advice: GoalAdvice, activityLevel: String) {
+    val difference = advice.calorieTarget - advice.maintenanceCalories
+    val macroCalories = advice.proteinTarget * 4 + advice.carbsTarget * 4 + advice.fatTarget * 9
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("Voedingsadvies", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            ) {
+                Text(
+                    advice.source.label(),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+        AdviceSurface {
+            compactSentences(advice.summary, maxSentences = 2).forEach { sentence ->
+                Text(sentence, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            }
+            if (advice.dataQuality.isNotBlank()) {
+                Text(
+                    compactSentences(advice.dataQuality, maxSentences = 1).joinToString(" "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        AdviceSurface {
+            Text("Calorieen", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+                MetricPill("BMR", "${advice.bmr} kcal")
+                MetricPill("Onderhoud", "${advice.maintenanceCalories} kcal")
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+                MetricPill("Doel", "${advice.calorieTarget} kcal")
+                MetricPill(if (difference < 0) "Tekort" else if (difference > 0) "Surplus" else "Balans", "${kotlin.math.abs(difference)} kcal")
+            }
+            compactSentences(advice.calorieAdvice.ifBlank { "Doelcalorieen zijn afgeleid van onderhoud en doel." }, maxSentences = 2).forEach {
+                Text(it, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        AdviceSurface {
+            Text("Macro's", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+                MetricPill("Eiwit", "${advice.proteinTarget} g")
+                MetricPill("Koolhydraten", "${advice.carbsTarget} g")
+                MetricPill("Vet", "${advice.fatTarget} g")
+            }
+            Text("Samen ongeveer $macroCalories kcal.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            compactSentences(advice.macroAdvice.ifBlank { "Koolhydraten vullen de resterende calorieen aan als trainingsbrandstof." }, maxSentences = 2).forEach {
+                Text(it, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        AdviceSurface {
+            Text("Activiteit", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            MetricPill(activityLevel, "factor ${String.format(Locale.US, "%.3f", advice.activityMultiplier)}")
+            compactSentences(advice.activityExplanation.ifBlank { "Onderhoud = BMR x activiteitsfactor." }, maxSentences = 2).forEach {
+                Text(it, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        AdviceSurface {
+            Text("Advies", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            compactSentences(advice.advice.ifBlank { advice.trainingFocus }, maxSentences = 2).forEach {
+                Text(it, style = MaterialTheme.typography.bodyMedium)
+            }
+            if (advice.trainingFocus.isNotBlank()) {
+                Text("Trainingsfocus: ${advice.trainingFocus}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (advice.attentionPoints.isNotEmpty()) {
+            AdviceSurface {
+                Text("Aandachtspunten", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                advice.attentionPoints.forEach { point ->
+                    Text("- $point", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdviceSurface(content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+    ) {
+        Column(
+            modifier = Modifier.padding(MaterialTheme.spacing.medium),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+            content = content,
+        )
+    }
+}
+
+@Composable
+private fun MetricPill(label: String, value: String) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+private fun GoalAdviceSource.label(): String = when (this) {
+    GoalAdviceSource.GEMINI_2_5_FLASH -> "AI advies"
+    GoalAdviceSource.LOCAL_CALCULATION -> "Lokale berekening"
+}
+
+private fun compactSentences(text: String, maxSentences: Int): List<String> {
+    val cleaned = text.trim()
+    if (cleaned.isBlank()) return emptyList()
+    val sentences = cleaned
+        .split(Regex("(?<=[.!?])\\s+"))
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+    return sentences.take(maxSentences).ifEmpty { listOf(cleaned) }
 }
 
 private fun ProfileInputValidationError?.isFor(field: ProfileInputField): Boolean = this?.field == field

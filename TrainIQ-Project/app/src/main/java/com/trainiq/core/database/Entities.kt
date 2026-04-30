@@ -97,6 +97,17 @@ data class WorkoutSessionEntity(
     @ColumnInfo(name = "ended_at", defaultValue = "0") val endedAt: Long = 0L,
     @ColumnInfo(name = "status", defaultValue = "COMPLETED") val status: String = "COMPLETED",
     @ColumnInfo(name = "completed", defaultValue = "1") val completed: Boolean = true,
+    @ColumnInfo(name = "debrief_summary", defaultValue = "") val debriefSummary: String = "",
+    @ColumnInfo(name = "debrief_progression_feedback", defaultValue = "") val debriefProgressionFeedback: String = "",
+    @ColumnInfo(name = "debrief_recommendation", defaultValue = "") val debriefRecommendation: String = "",
+    @ColumnInfo(name = "debrief_next_session_focus", defaultValue = "") val debriefNextSessionFocus: String = "",
+    @ColumnInfo(name = "debrief_recovery_score", defaultValue = "75") val debriefRecoveryScore: Int = 75,
+    @ColumnInfo(name = "debrief_intensity_signal", defaultValue = "MAINTAIN") val debriefIntensitySignal: String = "MAINTAIN",
+    @ColumnInfo(name = "debrief_wins", defaultValue = "") val debriefWins: String = "",
+    @ColumnInfo(name = "debrief_risks", defaultValue = "") val debriefRisks: String = "",
+    @ColumnInfo(name = "debrief_next_load_target", defaultValue = "") val debriefNextLoadTarget: String = "",
+    @ColumnInfo(name = "debrief_recovery_advice", defaultValue = "") val debriefRecoveryAdvice: String = "",
+    @ColumnInfo(name = "debrief_source", defaultValue = "LOCAL_FALLBACK") val debriefSource: String = "LOCAL_FALLBACK",
 )
 
 @Entity(

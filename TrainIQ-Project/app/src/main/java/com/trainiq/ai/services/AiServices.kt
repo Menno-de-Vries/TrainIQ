@@ -7,6 +7,7 @@ import com.trainiq.data.model.GeminiRequest
 import com.trainiq.data.remote.GeminiApi
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.GoalAdvice
+import com.trainiq.domain.model.GoalAdviceSource
 import com.trainiq.domain.model.MealAnalysisResult
 import com.trainiq.domain.model.MealAnalysisSource
 import com.trainiq.domain.model.MealScanItem
@@ -14,6 +15,7 @@ import com.trainiq.domain.model.MealType
 import com.trainiq.domain.model.NutritionFacts
 import com.trainiq.domain.model.WeeklyReportResult
 import com.trainiq.domain.model.WorkoutDebrief
+import com.trainiq.domain.model.WorkoutDebriefSource
 import java.io.File
 import java.time.Instant
 import java.time.ZoneId
@@ -210,10 +212,21 @@ class WorkoutDebriefService internal constructor(
 }
 
 @Singleton
-class GoalAdvisorService @Inject constructor(
+class GoalAdvisorService internal constructor(
     private val api: GeminiApi,
-    private val aiUsageGate: AiUsageGate,
+    private val isAiReady: suspend () -> Boolean,
+    private val apiKeyProvider: suspend () -> String?,
 ) {
+
+    @Inject
+    constructor(
+        api: GeminiApi,
+        aiUsageGate: AiUsageGate,
+    ) : this(
+        api = api,
+        isAiReady = { aiUsageGate.isAiReady() },
+        apiKeyProvider = { aiUsageGate.currentApiKeyOrNull() },
+    )
     suspend fun generateGoalAdvice(
         height: Double,
         weight: Double,
@@ -233,8 +246,8 @@ class GoalAdvisorService @Inject constructor(
                 activityLevel = activityLevel,
                 goal = goal,
             )
-            if (!aiUsageGate.isAiReady()) return baseline
-            val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return baseline
+            if (!isAiReady()) return baseline
+            val apiKey = apiKeyProvider() ?: return baseline
             val response = api.generateContent(
                 model = GEMINI_FLASH_MODEL,
                 apiKey = apiKey,
@@ -285,7 +298,17 @@ class GoalAdvisorService @Inject constructor(
             val root = JsonParser.parseString(text).asJsonObject
             baseline.copy(
                 trainingFocus = root.get("trainingFocus")?.asString ?: baseline.trainingFocus,
-                summary = root.get("summary")?.asString ?: baseline.summary,
+                summary = root.get("korteSamenvatting")?.asString
+                    ?: root.get("summary")?.asString
+                    ?: baseline.summary,
+                calorieAdvice = root.get("calorieAdvies")?.asString ?: baseline.calorieAdvice,
+                macroAdvice = root.get("macroAdvies")?.asString ?: baseline.macroAdvice,
+                activityExplanation = root.get("activiteitUitleg")?.asString ?: baseline.activityExplanation,
+                attentionPoints = root.getAsJsonArray("aandachtspunten")?.map { it.asString }.orEmpty()
+                    .ifEmpty { baseline.attentionPoints },
+                advice = root.get("advies")?.asString ?: baseline.advice,
+                dataQuality = root.get("dataKwaliteit")?.asString ?: baseline.dataQuality,
+                source = GoalAdviceSource.GEMINI_2_5_FLASH,
                 rawResponse = text,
             )
         }.getOrElse { baseline }
@@ -324,9 +347,38 @@ class GoalAdvisorService @Inject constructor(
             carbsTarget = baseline.carbsTarget,
             fatTarget = baseline.fatTarget,
             trainingFocus = trainingFocus,
-            summary = "Lokale berekening: BMR ${baseline.bmr} kcal, onderhoud ${baseline.maintenanceCalories} kcal, doel ${baseline.targetCalories} kcal. Richt je op ${baseline.proteinTarget} g eiwit en train met focus op $trainingFocus.",
+            summary = "Lokale berekening: onderhoud ${baseline.maintenanceCalories} kcal en doel ${baseline.targetCalories} kcal op basis van je profiel.",
+            calorieAdvice = buildCalorieAdvice(baseline),
+            macroAdvice = "Macro's sluiten aan op ${baseline.targetCalories} kcal: ${baseline.proteinTarget} g eiwit, ${baseline.carbsTarget} g koolhydraten en ${baseline.fatTarget} g vet.",
+            activityExplanation = "Activiteitsfactor ${String.format(Locale.US, "%.3f", baseline.activityMultiplier)} betekent dat onderhoud is berekend als BMR x activiteit: ${baseline.bmr} x ${String.format(Locale.US, "%.3f", baseline.activityMultiplier)} = ${baseline.maintenanceCalories} kcal.",
+            attentionPoints = buildGoalAttentionPoints(bodyFat = bodyFat, activityLevel = activityLevel),
+            advice = buildGoalAdviceText(baseline, goal),
+            dataQuality = "Lokale schatting op basis van profielgegevens. Werkelijke behoefte kan afwijken door stappen, training, slaap en gewichtstrend.",
+            source = GoalAdviceSource.LOCAL_CALCULATION,
             rawResponse = null,
         )
+    }
+
+    private fun buildCalorieAdvice(baseline: com.trainiq.domain.model.GoalBaseline): String {
+        val difference = baseline.targetCalories - baseline.maintenanceCalories
+        return when {
+            difference < 0 -> "Je doel ligt ${-difference} kcal onder onderhoud: een matig tekort dat beter vol te houden is."
+            difference > 0 -> "Je doel ligt $difference kcal boven onderhoud voor gecontroleerde opbouw."
+            else -> "Je doel ligt rond onderhoud; stuur vooral op trend en trainingsprestatie."
+        }
+    }
+
+    private fun buildGoalAdviceText(baseline: com.trainiq.domain.model.GoalBaseline, goal: String): String = when {
+        goal.contains("cut", ignoreCase = true) || goal.contains("fat", ignoreCase = true) || goal.contains("lose", ignoreCase = true) ->
+            "Start twee weken met ${baseline.targetCalories} kcal, houd eiwit stabiel en verlaag pas verder als gewicht en taille niet bewegen."
+        goal.contains("bulk", ignoreCase = true) || goal.contains("gain", ignoreCase = true) ->
+            "Verhoog pas verder als gewicht niet langzaam stijgt en training niet vooruitgaat."
+        else -> "Houd deze targets stabiel en evalueer op basis van gewichtstrend, energie en krachtprestaties."
+    }
+
+    private fun buildGoalAttentionPoints(bodyFat: Double, activityLevel: String): List<String> = buildList {
+        if (bodyFat !in 5.0..60.0) add("Vetpercentage ontbreekt of lijkt onzeker; eiwit is daarom conservatief geschat.")
+        add("Activiteitsniveau '$activityLevel' blijft een keuze en is geen gemeten TDEE.")
     }
 }
 
@@ -403,6 +455,7 @@ internal fun parseWorkoutDebriefResponse(
         risks = root.getAsJsonArray("risks")?.map { it.asString }.orEmpty(),
         nextLoadTarget = root.get("nextLoadTarget")?.asString?.trim().orEmpty(),
         recoveryAdvice = root.get("recoveryAdvice")?.asString?.trim().orEmpty(),
+        source = WorkoutDebriefSource.GEMINI_2_5_FLASH,
     )
 }.getOrElse { fallbackWorkoutDebriefResult(totalVolume, progression) }
 
@@ -417,4 +470,5 @@ internal fun fallbackWorkoutDebriefResult(totalVolume: Double, progression: Doub
     risks = if (progression > 5.0) listOf("Volume steeg meer dan 5%; let op herstel.") else emptyList(),
     nextLoadTarget = "Herhaal de huidige werkgewichten en voeg alleen herhalingen toe als RPE onder 8 blijft.",
     recoveryAdvice = "Gebruik slaap, stappen en spierpijn om te bepalen of je verhoogt of vasthoudt.",
+    source = WorkoutDebriefSource.LOCAL_FALLBACK,
 )

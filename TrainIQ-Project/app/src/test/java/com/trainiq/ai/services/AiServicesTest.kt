@@ -1,9 +1,12 @@
 package com.trainiq.ai.services
 
 import com.google.gson.Gson
+import com.trainiq.ai.prompts.GeminiPrompts
 import com.trainiq.data.model.GeminiRequest
 import com.trainiq.data.model.GeminiResponse
 import com.trainiq.data.remote.GeminiApi
+import com.trainiq.domain.model.BiologicalSex
+import com.trainiq.domain.model.GoalAdviceSource
 import com.trainiq.domain.model.MealAnalysisSource
 import java.io.File
 import kotlinx.coroutines.test.runTest
@@ -119,16 +122,16 @@ class AiServicesTest {
                                 GeminiResponse.Part(
                                     text = """
                                         {
-                                          "summary": "Solid session.",
-                                          "progressionFeedback": "Progression is controlled.",
-                                          "recommendation": "Keep the same load and chase one extra rep.",
-                                          "nextSessionFocus": "Bench press 82.5kg x 8",
+                                          "summary": "Sterke sessie met controle over de belangrijkste werksets.",
+                                          "progressionFeedback": "De progressie is beheerst en bruikbaar voor je volgende training.",
+                                          "recommendation": "Houd het gewicht gelijk en mik op een extra herhaling.",
+                                          "nextSessionFocus": "Bench press 82,5 kg x 8",
                                           "recoveryScore": 88,
                                           "intensitySignal": "INCREASE",
-                                          "wins": ["Top set moved well."],
-                                          "risks": ["Volume jumped quickly."],
-                                          "nextLoadTarget": "Bench Press: 82.5 kg x 6-8 for 3 working sets",
-                                          "recoveryAdvice": "Keep sleep above 7 hours."
+                                          "wins": ["Topset voelde technisch stabiel."],
+                                          "risks": ["Volume steeg snel; let op herstel."],
+                                          "nextLoadTarget": "Bench Press: 82,5 kg x 6-8 voor 3 werksets",
+                                          "recoveryAdvice": "Houd slaap boven 7 uur voordat je verder verhoogt."
                                         }
                                     """.trimIndent(),
                                 ),
@@ -149,21 +152,42 @@ class AiServicesTest {
             weeklyFrequency = 4,
         )
 
-        assertEquals("Solid session.", result.summary)
-        assertEquals("Progression is controlled.", result.progressionFeedback)
-        assertEquals("Keep the same load and chase one extra rep.", result.recommendation)
-        assertEquals("Bench press 82.5kg x 8", result.nextSessionFocus)
+        assertEquals("Sterke sessie met controle over de belangrijkste werksets.", result.summary)
+        assertEquals("De progressie is beheerst en bruikbaar voor je volgende training.", result.progressionFeedback)
+        assertEquals("Houd het gewicht gelijk en mik op een extra herhaling.", result.recommendation)
+        assertEquals("Bench press 82,5 kg x 8", result.nextSessionFocus)
         assertEquals(88, result.recoveryScore)
         assertEquals("INCREASE", result.intensitySignal)
-        assertEquals(listOf("Top set moved well."), result.wins)
-        assertEquals(listOf("Volume jumped quickly."), result.risks)
-        assertEquals("Bench Press: 82.5 kg x 6-8 for 3 working sets", result.nextLoadTarget)
-        assertEquals("Keep sleep above 7 hours.", result.recoveryAdvice)
+        assertEquals(listOf("Topset voelde technisch stabiel."), result.wins)
+        assertEquals(listOf("Volume steeg snel; let op herstel."), result.risks)
+        assertEquals("Bench Press: 82,5 kg x 6-8 voor 3 werksets", result.nextLoadTarget)
+        assertEquals("Houd slaap boven 7 uur voordat je verder verhoogt.", result.recoveryAdvice)
+        assertEquals(com.trainiq.domain.model.WorkoutDebriefSource.GEMINI_2_5_FLASH, result.source)
         assertNotNull(api.lastRequest)
         assertEquals("gemini-2.5-flash", api.lastModel)
         assertEquals(GEMINI_FLASH_MODEL, api.lastModel)
         assertEquals("application/json", api.lastRequest?.generationConfig?.responseMimeType)
         assertEquals(1000, api.lastRequest?.generationConfig?.thinkingConfig?.thinkingBudget)
+        val prompt = api.lastRequest?.contents?.single()?.parts?.single()?.text.orEmpty()
+        assertTrue(prompt.contains("Antwoord altijd in het Nederlands volgens locale nl-NL."))
+        assertTrue(prompt.contains("Gebruik geen Engels"))
+    }
+
+    @Test
+    fun workoutDebriefPrompt_defaultsToDutchLocaleAndStructuredShortFields() {
+        val prompt = GeminiPrompts.workoutDebrief(
+            totalVolume = 1_500.0,
+            progression = 2.0,
+            distribution = "Borst 2, Rug 2",
+            avgRpe = 7.0f,
+            topExercises = "Bench Press 80 kg x 8",
+            weeklyFrequency = 3,
+        )
+
+        assertTrue(prompt.contains("nl-NL"))
+        assertTrue(prompt.contains("summary is 1 korte zin"))
+        assertTrue(prompt.contains("\"wins\": [\"string\"]"))
+        assertTrue(prompt.contains("\"risks\": [\"string\"]"))
     }
 
     @Test
@@ -196,6 +220,78 @@ class AiServicesTest {
         assertEquals("Huidige gewichten vasthouden", result.nextSessionFocus)
         assertEquals(75, result.recoveryScore)
         assertEquals("MAINTAIN", result.intensitySignal)
+        assertEquals(com.trainiq.domain.model.WorkoutDebriefSource.LOCAL_FALLBACK, result.source)
+    }
+
+    @Test
+    fun generateGoalAdvice_withStructuredDutchJson_returnsFormattedSectionsAndKeepsBaselineMath() = runTest {
+        val api = FakeGeminiApi(
+            response = mealScanResponse(
+                """
+                    {
+                      "trainingFocus": "Krachttraining behouden met gecontroleerd energietekort.",
+                      "korteSamenvatting": "Je onderhoud is realistisch berekend vanuit BMR en activiteit.",
+                      "calorieAdvies": "Start met een matig tekort en evalueer na twee weken.",
+                      "macroAdvies": "Eiwit is gebaseerd op vetvrije massa; koolhydraten vullen de training aan.",
+                      "activiteitUitleg": "Lightly active betekent lichte dagelijkse beweging met beperkte extra training.",
+                      "aandachtspunten": ["Vetpercentage en activiteit blijven schattingen."],
+                      "advies": "Houd dit doel eerst stabiel en stuur op gewichtstrend.",
+                      "dataKwaliteit": "Redelijk: profiel compleet, maar geen gevalideerde TDEE."
+                    }
+                """.trimIndent(),
+            ),
+        )
+        val service = GoalAdvisorService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+
+        val result = service.generateGoalAdvice(
+            height = 195.0,
+            weight = 107.2,
+            bodyFat = 25.0,
+            age = 30,
+            sex = BiologicalSex.MALE,
+            activityLevel = "Lightly active",
+            goal = "fat loss",
+        )
+
+        assertEquals(2_951, result.maintenanceCalories)
+        assertEquals(2_656, result.calorieTarget)
+        assertEquals(177, result.proteinTarget)
+        assertEquals("Je onderhoud is realistisch berekend vanuit BMR en activiteit.", result.summary)
+        assertEquals("Start met een matig tekort en evalueer na twee weken.", result.calorieAdvice)
+        assertEquals("Eiwit is gebaseerd op vetvrije massa; koolhydraten vullen de training aan.", result.macroAdvice)
+        assertEquals("Lightly active betekent lichte dagelijkse beweging met beperkte extra training.", result.activityExplanation)
+        assertEquals(listOf("Vetpercentage en activiteit blijven schattingen."), result.attentionPoints)
+        assertEquals("Houd dit doel eerst stabiel en stuur op gewichtstrend.", result.advice)
+        assertEquals("Redelijk: profiel compleet, maar geen gevalideerde TDEE.", result.dataQuality)
+        assertEquals(GoalAdviceSource.GEMINI_2_5_FLASH, result.source)
+        val prompt = api.lastRequest?.contents?.single()?.parts?.single()?.text.orEmpty()
+        assertTrue(prompt.contains("Antwoord altijd in het Nederlands volgens locale nl-NL."))
+        assertTrue(prompt.contains("\"korteSamenvatting\""))
+        assertTrue(prompt.contains("\"activiteitUitleg\""))
+        assertTrue(prompt.contains("korteSamenvatting maximaal 2 korte zinnen"))
+        assertTrue(prompt.contains("Wijzig deze calorie- en macrocijfers niet"))
+    }
+
+    @Test
+    fun generateGoalAdvice_withMalformedJsonReturnsLocalDutchFallback() = runTest {
+        val api = FakeGeminiApi(response = mealScanResponse("not json"))
+        val service = GoalAdvisorService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+
+        val result = service.generateGoalAdvice(
+            height = 180.0,
+            weight = 90.0,
+            bodyFat = 30.0,
+            age = 40,
+            sex = BiologicalSex.MALE,
+            activityLevel = "Moderately active",
+            goal = "weight loss",
+        )
+
+        assertEquals(GoalAdviceSource.LOCAL_CALCULATION, result.source)
+        assertTrue(result.summary.contains("Lokale berekening"))
+        assertTrue(result.activityExplanation.contains("Activiteitsfactor"))
+        assertTrue(result.dataQuality.contains("schatting"))
+        assertTrue(result.attentionPoints.isNotEmpty())
     }
 
     @Test
@@ -216,6 +312,7 @@ class AiServicesTest {
         assertEquals("Huidige gewichten vasthouden", result.nextSessionFocus)
         assertEquals(75, result.recoveryScore)
         assertEquals("MAINTAIN", result.intensitySignal)
+        assertEquals(com.trainiq.domain.model.WorkoutDebriefSource.LOCAL_FALLBACK, result.source)
     }
 
     private class FakeGeminiApi(
