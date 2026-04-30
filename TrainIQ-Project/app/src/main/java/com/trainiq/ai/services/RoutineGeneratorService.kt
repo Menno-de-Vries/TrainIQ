@@ -12,8 +12,14 @@ data class GeneratedRoutine(
     val routineDescription: String,
     val periodizationNote: String = "",
     val estimatedDurationMinutes: Int = 0,
+    val source: GeneratedRoutineSource = GeneratedRoutineSource.GEMINI_2_5_FLASH,
     val days: List<GeneratedDay>,
 )
+
+enum class GeneratedRoutineSource {
+    GEMINI_2_5_FLASH,
+    LOCAL_FALLBACK,
+}
 
 data class GeneratedDay(
     val dayName: String,
@@ -141,11 +147,19 @@ internal fun parseGeneratedRoutine(text: String, fallback: GeneratedRoutine): Ge
         )
     }.orEmpty()
     if (days.isEmpty() || days.any { it.exercises.isEmpty() }) return fallback
+    val textFields = listOf(routineName, routineDescription, periodizationNote) +
+        days.flatMap { day ->
+            listOf(day.dayName) + day.exercises.flatMap { exercise ->
+                listOf(exercise.muscleGroup, exercise.equipment, exercise.coachingCue)
+            }
+        }
+    if (!textFields.isUsableDutchAiText()) return fallback
     GeneratedRoutine(
         routineName = routineName,
         routineDescription = routineDescription,
         periodizationNote = periodizationNote,
         estimatedDurationMinutes = estimatedDurationMinutes,
+        source = GeneratedRoutineSource.GEMINI_2_5_FLASH,
         days = days,
     )
 }.getOrElse { fallback }
@@ -172,42 +186,42 @@ internal fun fallbackGeneratedRoutine(
         "beginner" -> Triple(
             "8-12",
             75,
-            "Beginner block: linear progression with full-body bias and conservative load jumps.",
+            "Beginnerblok: lineaire progressie met full-body focus en kleine, beheerste gewichtsstappen.",
         )
         "advanced" -> Triple(
             "4-6",
             150,
             if (includeDeload) {
-                "Advanced block: undulating loading at RPE 7-9 with a deload every 4th week."
+                "Gevorderd blok: golvende belasting op RPE 7-9 met elke vierde week een deload."
             } else {
-                "Advanced block: undulating loading at RPE 7-9 with fatigue-managed volume."
+                "Gevorderd blok: golvende belasting op RPE 7-9 met volume dat vermoeidheid bewaakt."
             },
         )
         else -> Triple(
             "6-10",
             105,
             if (includeDeload) {
-                "Intermediate block: upper/lower style progression with weekly overload and deload guidance."
+                "Intermediate blok: upper/lower progressie met wekelijkse overload en deload-richtlijn."
             } else {
-                "Intermediate block: weekly overload of roughly +2.5 kg on main lifts when recovery is good."
+                "Intermediate blok: verhoog hoofdlifts ongeveer 2,5 kg per week als herstel goed blijft."
             },
         )
     }
     val templates = listOf(
-        GeneratedExercise("Squat", "Legs", equipment.ifBlank { "Barbell" }, 3, repRange, restSeconds, "Brace and drive evenly through mid-foot."),
-        GeneratedExercise("Bench Press", "Chest", equipment.ifBlank { "Barbell" }, 3, repRange, restSeconds, "Lower under control and press with a stacked wrist."),
-        GeneratedExercise("Romanian Deadlift", "Hamstrings", equipment.ifBlank { "Barbell" }, 3, "8-10", 90, "Push hips back and keep the bar close."),
-        GeneratedExercise("Lat Pulldown", "Back", equipment.ifBlank { "Cable" }, 3, "8-12", 75, "Lead with elbows and pause at the chest."),
-        GeneratedExercise("Overhead Press", "Shoulders", equipment.ifBlank { "Barbell" }, 3, repRange, restSeconds, "Squeeze glutes and keep ribs down."),
-        GeneratedExercise("Split Squat", "Legs", equipment.ifBlank { "Dumbbell" }, 3, "8-12", 75, "Stay tall and load the front leg."),
-        GeneratedExercise("Cable Row", "Back", equipment.ifBlank { "Cable" }, 3, "10-12", 75, "Keep shoulders down and finish with upper-back tension."),
-        GeneratedExercise("Plank", "Core", "Bodyweight", 3, "30-45s", 45, "Brace abs and keep a straight line from heel to head."),
+        GeneratedExercise("Squat", "Benen", equipment.ifBlank { "Halterstang" }, 3, repRange, restSeconds, "Span je romp aan en duw gelijkmatig door de middenvoet."),
+        GeneratedExercise("Bench Press", "Borst", equipment.ifBlank { "Halterstang" }, 3, repRange, restSeconds, "Laat gecontroleerd zakken en houd je pols recht onder de stang."),
+        GeneratedExercise("Romanian Deadlift", "Hamstrings", equipment.ifBlank { "Halterstang" }, 3, "8-10", 90, "Duw je heupen naar achteren en houd de stang dicht bij je lichaam."),
+        GeneratedExercise("Lat Pulldown", "Rug", equipment.ifBlank { "Kabel" }, 3, "8-12", 75, "Trek met je ellebogen en pauzeer kort onderin."),
+        GeneratedExercise("Overhead Press", "Schouders", equipment.ifBlank { "Halterstang" }, 3, repRange, restSeconds, "Span bilspieren aan en houd je ribben laag."),
+        GeneratedExercise("Split Squat", "Benen", equipment.ifBlank { "Dumbbell" }, 3, "8-12", 75, "Blijf rechtop en belast vooral het voorste been."),
+        GeneratedExercise("Cable Row", "Rug", equipment.ifBlank { "Kabel" }, 3, "10-12", 75, "Houd schouders laag en eindig met spanning in je bovenrug."),
+        GeneratedExercise("Plank", "Core", "Lichaamsgewicht", 3, "30-45s", 45, "Span je buik aan en houd een rechte lijn van hak tot hoofd."),
     )
     val days = List(safeDays) { index ->
         val rotation = templates.drop(index % templates.size) + templates.take(index % templates.size)
         GeneratedDay(
             dayName = when {
-                normalizedLevel == "beginner" -> "Full Body ${index + 1}"
+                normalizedLevel == "beginner" -> "Full body ${index + 1}"
                 index % 2 == 0 -> "Upper ${index / 2 + 1}"
                 else -> "Lower ${index / 2 + 1}"
             },
@@ -216,10 +230,17 @@ internal fun fallbackGeneratedRoutine(
         )
     }
     return GeneratedRoutine(
-        routineName = "${normalizedLevel.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }} ${targetFocus.ifBlank { "Strength" }} Routine",
-        routineDescription = "Fallback routine for $goal with $safeDays sessions per week and about $duration minutes per session.",
+        routineName = "${normalizedLevel.dutchExperienceLabel()} ${targetFocus.ifBlank { "kracht" }} routine",
+        routineDescription = "Lokale routine voor $goal met $safeDays sessies per week van ongeveer $duration minuten.",
         periodizationNote = periodizationNote,
         estimatedDurationMinutes = duration,
+        source = GeneratedRoutineSource.LOCAL_FALLBACK,
         days = days,
     )
+}
+
+private fun String.dutchExperienceLabel(): String = when (this) {
+    "beginner" -> "Beginner"
+    "advanced" -> "Gevorderde"
+    else -> "Intermediate"
 }

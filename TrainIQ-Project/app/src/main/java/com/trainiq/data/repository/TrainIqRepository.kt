@@ -1299,6 +1299,7 @@ class TrainIqRepository @Inject constructor(
                 wins = emptyList(),
                 risks = emptyList(),
                 nextWeekFocus = "Voltooi eerst een training of maaltijdlog.",
+                source = com.trainiq.domain.model.WeeklyReportSource.LOCAL_FALLBACK,
             )
         } else {
             weeklyReportService.generateWeeklyReport(
@@ -2652,6 +2653,10 @@ private fun com.trainiq.ai.services.GeneratedRoutine.toDomainGeneratedRoutine() 
     routineDescription = routineDescription,
     periodizationNote = periodizationNote,
     estimatedDurationMinutes = estimatedDurationMinutes,
+    source = when (source) {
+        com.trainiq.ai.services.GeneratedRoutineSource.GEMINI_2_5_FLASH -> com.trainiq.domain.model.GeneratedRoutineSource.GEMINI_2_5_FLASH
+        com.trainiq.ai.services.GeneratedRoutineSource.LOCAL_FALLBACK -> com.trainiq.domain.model.GeneratedRoutineSource.LOCAL_FALLBACK
+    },
     days = days.map { day ->
         GeneratedDay(
             dayName = day.dayName,

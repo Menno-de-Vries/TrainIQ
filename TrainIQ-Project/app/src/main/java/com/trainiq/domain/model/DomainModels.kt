@@ -259,8 +259,14 @@ data class GeneratedRoutine(
     val routineDescription: String,
     val periodizationNote: String = "",
     val estimatedDurationMinutes: Int = 0,
+    val source: GeneratedRoutineSource = GeneratedRoutineSource.GEMINI_2_5_FLASH,
     val days: List<GeneratedDay>,
 )
+
+enum class GeneratedRoutineSource {
+    GEMINI_2_5_FLASH,
+    LOCAL_FALLBACK,
+}
 
 data class GeneratedDay(
     val dayName: String,
@@ -395,8 +401,14 @@ data class WeeklyReportResult(
     val risks: List<String>,
     val nextWeekFocus: String,
     val thinkingProcess: List<String> = emptyList(),
+    val source: WeeklyReportSource = WeeklyReportSource.GEMINI_2_5_FLASH,
     val rawResponse: String? = null,
 )
+
+enum class WeeklyReportSource {
+    GEMINI_2_5_FLASH,
+    LOCAL_FALLBACK,
+}
 
 data class NutritionOverview(
     val foods: List<FoodItem>,

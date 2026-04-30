@@ -19,9 +19,9 @@ class RoutineGeneratorServiceTest {
         )
         val json = """
             {
-              "routineName": "Upper Power",
-              "routineDescription": "Heavy upper-body focus",
-              "periodizationNote": "Wave loading with a planned deload.",
+              "routineName": "Upper kracht",
+              "routineDescription": "Zware focus op bovenlichaam met beheerste progressie.",
+              "periodizationNote": "Golfbelasting met een geplande deload.",
               "estimatedDurationMinutes": 75,
               "days": [
                 {
@@ -29,12 +29,12 @@ class RoutineGeneratorServiceTest {
                   "exercises": [
                     {
                       "exerciseName": "Bench Press",
-                      "muscleGroup": "Chest",
-                      "equipment": "Barbell",
+                      "muscleGroup": "Borst",
+                      "equipment": "Halterstang",
                       "targetSets": 4,
                       "repRange": "4-6",
                       "restSeconds": 150,
-                      "coachingCue": "Keep the bar path steady."
+                      "coachingCue": "Houd het stangpad stabiel."
                     }
                   ]
                 }
@@ -44,15 +44,15 @@ class RoutineGeneratorServiceTest {
 
         val routine = parseGeneratedRoutine(json, fallback)
 
-        assertEquals("Upper Power", routine.routineName)
-        assertEquals("Heavy upper-body focus", routine.routineDescription)
-        assertEquals("Wave loading with a planned deload.", routine.periodizationNote)
+        assertEquals("Upper kracht", routine.routineName)
+        assertEquals("Zware focus op bovenlichaam met beheerste progressie.", routine.routineDescription)
+        assertEquals("Golfbelasting met een geplande deload.", routine.periodizationNote)
         assertEquals(75, routine.estimatedDurationMinutes)
         assertEquals(1, routine.days.size)
         assertEquals("Upper A", routine.days.first().dayName)
         assertEquals(75, routine.days.first().estimatedDurationMinutes)
         assertEquals("Bench Press", routine.days.first().exercises.first().exerciseName)
-        assertEquals("Keep the bar path steady.", routine.days.first().exercises.first().coachingCue)
+        assertEquals("Houd het stangpad stabiel.", routine.days.first().exercises.first().coachingCue)
     }
 
     @Test
@@ -113,6 +113,46 @@ class RoutineGeneratorServiceTest {
     }
 
     @Test
+    fun parseGeneratedRoutine_withEnglishJson_returnsDutchFallback() {
+        val fallback = fallbackGeneratedRoutine(
+            goal = "Spiermassa",
+            targetFocus = "Upper/lower",
+            daysPerWeek = 3,
+            equipment = "Halterstang",
+            experienceLevel = "intermediate",
+            sessionDurationMinutes = 60,
+            includeDeload = false,
+        )
+        val json = """
+            {
+              "routineName": "Strength Routine",
+              "routineDescription": "Build muscle with progressive overload.",
+              "periodizationNote": "Add weight weekly when recovery is good.",
+              "days": [
+                {
+                  "dayName": "Upper Day",
+                  "exercises": [
+                    {
+                      "exerciseName": "Bench Press",
+                      "muscleGroup": "Chest",
+                      "equipment": "Barbell",
+                      "targetSets": 3,
+                      "repRange": "8-10",
+                      "restSeconds": 120,
+                      "coachingCue": "Keep shoulders down."
+                    }
+                  ]
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val routine = parseGeneratedRoutine(json, fallback)
+
+        assertEquals(fallback, routine)
+    }
+
+    @Test
     fun fallbackGeneratedRoutine_usesSessionDurationAndIncludeDeloadFlag() {
         val routine = fallbackGeneratedRoutine(
             goal = "Strength",
@@ -124,9 +164,9 @@ class RoutineGeneratorServiceTest {
             includeDeload = true,
         )
 
-        assertEquals("Advanced Lower body Routine", routine.routineName)
+        assertEquals("Gevorderde Lower body routine", routine.routineName)
         assertEquals(90, routine.estimatedDurationMinutes)
-        assertEquals("Advanced block: undulating loading at RPE 7-9 with a deload every 4th week.", routine.periodizationNote)
+        assertEquals("Gevorderd blok: golvende belasting op RPE 7-9 met elke vierde week een deload.", routine.periodizationNote)
         assertEquals(2, routine.days.size)
         assertEquals("Bench Press", routine.days.first().exercises[1].exerciseName)
     }

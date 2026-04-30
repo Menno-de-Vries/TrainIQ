@@ -14,6 +14,7 @@ import com.trainiq.domain.model.MealScanItem
 import com.trainiq.domain.model.MealType
 import com.trainiq.domain.model.NutritionFacts
 import com.trainiq.domain.model.WeeklyReportResult
+import com.trainiq.domain.model.WeeklyReportSource
 import com.trainiq.domain.model.WorkoutDebrief
 import com.trainiq.domain.model.WorkoutDebriefSource
 import java.io.File
@@ -422,6 +423,7 @@ class WeeklyReportService @Inject constructor(
                 risks = root.getAsJsonArray("risks")?.map { it.asString }.orEmpty(),
                 nextWeekFocus = root.get("nextWeekFocus")?.asString ?: "Bescherm herstel voordat je extra volume toevoegt.",
                 thinkingProcess = root.getAsJsonArray("thinkingProcess")?.map { it.asString }.orEmpty(),
+                source = WeeklyReportSource.GEMINI_2_5_FLASH,
                 rawResponse = text,
             )
         }.getOrElse { fallbackWeeklyReport(adherence) }
@@ -432,6 +434,7 @@ class WeeklyReportService @Inject constructor(
             wins = listOf("Training en voeding blijven lokaal beschikbaar."),
             risks = listOf("Zonder compleet profiel en recente logs kan TrainIQ geen betrouwbaar weekadvies geven."),
             nextWeekFocus = "Vul je profiel aan en log een paar trainingen of maaltijden voordat je het volume verhoogt.",
+            source = WeeklyReportSource.LOCAL_FALLBACK,
         )
 }
 
@@ -441,20 +444,37 @@ internal fun parseWorkoutDebriefResponse(
     progression: Double,
 ): WorkoutDebrief = runCatching {
     val root = JsonParser.parseString(text).asJsonObject
+    val summary = root.get("summary")?.asString ?: "Training opgeslagen."
+    val progressionFeedback = root.get("progressionFeedback")?.asString ?: "Progressie bleef stabiel."
+    val recommendation = root.get("recommendation")?.asString
+        ?: "Herhaal deze sessie en mik op een extra herhaling bij de belangrijkste oefeningen."
+    val nextSessionFocus = root.get("nextSessionFocus")?.asString?.trim().orEmpty()
+        .ifBlank { "Huidige gewichten vasthouden" }
+    val wins = root.getAsJsonArray("wins")?.map { it.asString }.orEmpty()
+    val risks = root.getAsJsonArray("risks")?.map { it.asString }.orEmpty()
+    val nextLoadTarget = root.get("nextLoadTarget")?.asString?.trim().orEmpty()
+    val recoveryAdvice = root.get("recoveryAdvice")?.asString?.trim().orEmpty()
+    val fields = listOf(
+        summary,
+        progressionFeedback,
+        recommendation,
+        nextSessionFocus,
+        nextLoadTarget,
+        recoveryAdvice,
+    ) + wins + risks
+    if (!fields.isUsableDutchAiText()) return fallbackWorkoutDebriefResult(totalVolume, progression)
     WorkoutDebrief(
-        summary = root.get("summary")?.asString ?: "Training opgeslagen.",
-        progressionFeedback = root.get("progressionFeedback")?.asString ?: "Progressie bleef stabiel.",
-        recommendation = root.get("recommendation")?.asString
-            ?: "Herhaal deze sessie en mik op een extra herhaling bij de belangrijkste oefeningen.",
-        nextSessionFocus = root.get("nextSessionFocus")?.asString?.trim().orEmpty()
-            .ifBlank { "Huidige gewichten vasthouden" },
+        summary = summary,
+        progressionFeedback = progressionFeedback,
+        recommendation = recommendation,
+        nextSessionFocus = nextSessionFocus,
         recoveryScore = (root.get("recoveryScore")?.asInt ?: 75).coerceIn(0, 100),
         intensitySignal = root.get("intensitySignal")?.asString?.trim()?.uppercase().orEmpty()
             .ifBlank { "MAINTAIN" },
-        wins = root.getAsJsonArray("wins")?.map { it.asString }.orEmpty(),
-        risks = root.getAsJsonArray("risks")?.map { it.asString }.orEmpty(),
-        nextLoadTarget = root.get("nextLoadTarget")?.asString?.trim().orEmpty(),
-        recoveryAdvice = root.get("recoveryAdvice")?.asString?.trim().orEmpty(),
+        wins = wins,
+        risks = risks,
+        nextLoadTarget = nextLoadTarget,
+        recoveryAdvice = recoveryAdvice,
         source = WorkoutDebriefSource.GEMINI_2_5_FLASH,
     )
 }.getOrElse { fallbackWorkoutDebriefResult(totalVolume, progression) }

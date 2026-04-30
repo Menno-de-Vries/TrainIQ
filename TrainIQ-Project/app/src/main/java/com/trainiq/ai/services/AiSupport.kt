@@ -13,3 +13,25 @@ internal fun Throwable.toAiUserMessage(defaultMessage: String): String = when (v
     is AiRateLimitException -> mapped.message ?: defaultMessage
     else -> mapped.message ?: defaultMessage
 }
+
+internal fun List<String>.isUsableDutchAiText(): Boolean {
+    val joined = joinToString(" ")
+        .lowercase()
+        .replace("\n", " ")
+    if (joined.isBlank()) return false
+    val englishSignals = listOf(
+        " strong ",
+        " session ",
+        " workout ",
+        " recovery ",
+        " build ",
+        " muscle ",
+        " progressive ",
+        " overload ",
+        " keep ",
+        " add weight ",
+        " sleep ",
+        " good form ",
+    )
+    return englishSignals.none { signal -> joined.contains(signal) }
+}

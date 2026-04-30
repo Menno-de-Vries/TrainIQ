@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import com.trainiq.core.ui.TapOnlyOutlinedTextField
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.domain.model.GeneratedRoutine
+import com.trainiq.domain.model.GeneratedRoutineSource
 
 @Composable
 fun CreateRoutineDialog(
@@ -94,7 +95,15 @@ fun GeneratedRoutinePreviewDialog(
     AlertDialog(
         modifier = modifier.imePadding(),
         onDismissRequest = onDismiss,
-        title = { Text(routine.routineName) },
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(routine.routineName)
+                AssistChip(
+                    onClick = {},
+                    label = { Text(routine.source.label()) },
+                )
+            }
+        },
         text = {
             Column(
                 modifier = Modifier
@@ -111,11 +120,21 @@ fun GeneratedRoutinePreviewDialog(
                 )
                 GeneratedRoutineMetaRow(routine)
                 if (routine.periodizationNote.isNotBlank()) {
-                    Text(
-                        text = routine.periodizationNote,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text("Opbouw", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                text = routine.periodizationNote,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                        }
+                    }
                 }
                 routine.days.forEach { day ->
                     Card(
@@ -150,10 +169,20 @@ fun GeneratedRoutinePreviewDialog(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             day.exercises.take(4).forEach { exercise ->
-                                Text(
-                                    text = "${exercise.exerciseName} - ${exercise.targetSets} x ${exercise.repRange}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(
+                                        text = "${exercise.exerciseName} - ${exercise.targetSets} x ${exercise.repRange}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Medium,
+                                    )
+                                    if (exercise.coachingCue.isNotBlank()) {
+                                        Text(
+                                            text = exercise.coachingCue,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
                             }
                             if (day.exercises.size > 4) {
                                 Text(
@@ -183,6 +212,11 @@ fun GeneratedRoutinePreviewDialog(
             }
         },
     )
+}
+
+private fun GeneratedRoutineSource.label(): String = when (this) {
+    GeneratedRoutineSource.GEMINI_2_5_FLASH -> "Gemini 2.5 Flash"
+    GeneratedRoutineSource.LOCAL_FALLBACK -> "Lokale analyse"
 }
 
 @OptIn(ExperimentalLayoutApi::class)

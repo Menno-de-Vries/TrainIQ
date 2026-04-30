@@ -755,7 +755,7 @@ class WorkoutViewModel @Inject constructor(
             sessionDurationMinutes = sessionDurationMinutes,
             includeDeload = includeDeload,
         )
-        _message.value = "Generating AI routine..."
+        _message.value = "AI-routine maken..."
         viewModelScope.launch {
             runCatching {
                 generateAiRoutineUseCase(

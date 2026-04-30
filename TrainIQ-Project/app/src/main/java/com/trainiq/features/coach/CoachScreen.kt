@@ -57,6 +57,7 @@ import com.trainiq.domain.model.GoalAdvice
 import com.trainiq.domain.model.GoalAdviceSource
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WeeklyReportResult
+import com.trainiq.domain.model.WeeklyReportSource
 import com.trainiq.domain.model.buildGoalBaseline
 import com.trainiq.domain.usecase.GenerateGoalAdviceUseCase
 import com.trainiq.domain.usecase.GenerateWeeklyReportUseCase
@@ -281,6 +282,54 @@ private fun GoalAdviceInput.toDeterministicGoalAdvice(): GoalAdvice {
     )
 }
 
+@Composable
+private fun WeekReportCard(report: WeeklyReportResult?, fallbackSummary: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Weekoverzicht", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            ) {
+                Text(
+                    report?.source?.label() ?: "Lokale analyse",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+        AdviceSurface {
+            compactSentences(report?.summary ?: fallbackSummary, maxSentences = 2).forEach {
+                Text(it, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            }
+        }
+        report?.let {
+            if (it.wins.isNotEmpty()) BulletAdviceSurface("Hoogtepunten", it.wins)
+            if (it.risks.isNotEmpty()) BulletAdviceSurface("Aandachtspunten", it.risks)
+            AdviceSurface {
+                Text("Volgende stap", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(it.nextWeekFocus, style = MaterialTheme.typography.bodyMedium)
+            }
+            if (it.thinkingProcess.isNotEmpty()) BulletAdviceSurface("Onderbouwing", it.thinkingProcess.take(3))
+        }
+    }
+}
+
+@Composable
+private fun BulletAdviceSurface(title: String, items: List<String>) {
+    AdviceSurface {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        items.forEach { point -> Text("- $point", style = MaterialTheme.typography.bodyMedium) }
+    }
+}
+
+private fun WeeklyReportSource.label(): String = when (this) {
+    WeeklyReportSource.GEMINI_2_5_FLASH -> "Gemini 2.5 Flash"
+    WeeklyReportSource.LOCAL_FALLBACK -> "Lokale analyse"
+}
+
 internal data class GoalAdviceInput(
     val name: String,
     val height: Double,
@@ -442,19 +491,7 @@ fun CoachScreen(
                                 modifier = Modifier.padding(MaterialTheme.spacing.medium),
                                 verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
                             ) {
-                                Text("Weekoverzicht", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(24.dp),
-                                    color = MaterialTheme.colorScheme.secondaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                ) {
-                                    Text(
-                                        text = state.generatedReport?.summary ?: state.overview.weeklyReport,
-                                        modifier = Modifier.padding(MaterialTheme.spacing.medium),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                    )
-                                }
+                                WeekReportCard(report = state.generatedReport, fallbackSummary = state.overview.weeklyReport)
                                 Button(
                                     onClick = {
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -466,22 +503,6 @@ fun CoachScreen(
                                 }
                                 if (state.isGeneratingReport) {
                                     ShimmerCardPlaceholder(lineCount = 3)
-                                }
-                                state.generatedReport?.let { report ->
-                                    if (report.wins.isNotEmpty()) {
-                                        Text("Successen", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                        report.wins.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
-                                    }
-                                    if (report.risks.isNotEmpty()) {
-                                        Text("Risico's", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                        report.risks.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
-                                    }
-                                    Text("Focus voor volgende week", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                    Text(report.nextWeekFocus, style = MaterialTheme.typography.bodyMedium)
-                                    if (report.thinkingProcess.isNotEmpty()) {
-                                        Text("Waarom dit advies?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                        report.thinkingProcess.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
-                                    }
                                 }
                                 Text("Trainingsinzichten", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                 (state.overview.trainingInsights.ifEmpty { listOf("Nog geen inzichten. Sla een doel op en voltooi een workout.") }).forEach {

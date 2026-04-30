@@ -224,6 +224,41 @@ class AiServicesTest {
     }
 
     @Test
+    fun generateWorkoutDebrief_withEnglishJson_usesDeterministicFallback() = runTest {
+        val api = FakeGeminiApi(
+            response = mealScanResponse(
+                """
+                    {
+                      "summary": "Strong session with good control.",
+                      "progressionFeedback": "Keep the same loading next time.",
+                      "recommendation": "Add more weight next workout.",
+                      "nextSessionFocus": "Bench press",
+                      "recoveryScore": 80,
+                      "intensitySignal": "MAINTAIN",
+                      "wins": ["Good form."],
+                      "risks": [],
+                      "nextLoadTarget": "Bench Press: 80 kg x 8",
+                      "recoveryAdvice": "Sleep well."
+                    }
+                """.trimIndent(),
+            ),
+        )
+        val service = WorkoutDebriefService(api) { "key" }
+
+        val result = service.generateWorkoutDebrief(
+            totalVolume = 8_000.0,
+            progression = 1.5,
+            distribution = "Borst 3, Rug 2",
+            avgRpe = 7.0f,
+            topExercises = "Bench Press 80kg x 8",
+            weeklyFrequency = 3,
+        )
+
+        assertEquals(com.trainiq.domain.model.WorkoutDebriefSource.LOCAL_FALLBACK, result.source)
+        assertTrue(result.summary.contains("Lokale samenvatting"))
+    }
+
+    @Test
     fun generateGoalAdvice_withStructuredDutchJson_returnsFormattedSectionsAndKeepsBaselineMath() = runTest {
         val api = FakeGeminiApi(
             response = mealScanResponse(
