@@ -231,10 +231,6 @@ Waar relevant:
 * UseCase tests
 * UI state checks
 
-### 4\. Prompt-regel
-
-Wanneer een verzoek het woord **prompt** bevat, moet er een **Codex-prompt** worden gegenereerd in plaats van dat de wijziging direct wordt uitgevoerd.
-
 \---
 
 ## ✅ Hoofdregel
