@@ -1633,7 +1633,11 @@ private fun EmptyCard(title: String, body: String) {
 private fun ExerciseLibraryCard(name: String, muscleGroup: String, equipment: String) {
     AppCard(modifier = Modifier.fillMaxWidth()) {
         Text(name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
-        Text("$muscleGroup - $equipment", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
+        Text(
+            exerciseHistorySubtitleText(muscleGroup, equipment),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.trainIqColors.mutedText,
+        )
     }
 }
 
@@ -2489,7 +2493,7 @@ private fun RoutineExerciseCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        "${plan.exercise.muscleGroup} - ${plan.exercise.equipment}",
+                        exerciseHistorySubtitleText(plan.exercise.muscleGroup, plan.exercise.equipment),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -3619,7 +3623,7 @@ private fun ExercisePickerSheet(
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                     Text(
-                                        "${exercise.muscleGroup} - ${exercise.equipment}",
+                                        exerciseHistorySubtitleText(exercise.muscleGroup, exercise.equipment),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
@@ -3878,10 +3882,10 @@ private fun ExerciseStatsHeader(history: ExerciseHistory) {
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                val subtitle = listOfNotNull(
-                    history.exercise?.muscleGroup?.takeIf { it.isNotBlank() },
-                    history.exercise?.equipment?.takeIf { it.isNotBlank() },
-                ).joinToString(" â€¢ ")
+                val subtitle = exerciseHistorySubtitleText(
+                    muscleGroup = history.exercise?.muscleGroup.orEmpty(),
+                    equipment = history.exercise?.equipment.orEmpty(),
+                )
                 if (subtitle.isNotBlank()) {
                     Text(
                         subtitle,
@@ -4059,7 +4063,10 @@ private fun ExerciseSessionLogCard(session: ExerciseHistorySession) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(formatHistoryDate(session.startedAt), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "${formatTimer(session.durationSeconds.toInt())} â€¢ ${session.sets.count { it.completed }} sets",
+                        exerciseHistorySessionMetaText(
+                            duration = formatTimer(session.durationSeconds.toInt()),
+                            completedSets = session.sets.count { it.completed },
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -4978,7 +4985,7 @@ private fun ActiveWorkoutBottomBar(uiState: ActiveWorkoutUiState, restTimerSecon
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    activeLoggedSetCountText(uiState.completedSets),
+                    activeLoggedSetCountText(uiState.visibleLoggedSetCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -5314,7 +5321,7 @@ private fun ActiveExerciseCard(
                         modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 44.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                     ) {
-                        Icon(Icons.Rounded.ContentCopy, contentDescription = "Vorige set kopiÃ«ren")
+                        Icon(Icons.Rounded.ContentCopy, contentDescription = copyPreviousSetContentDescription())
                     }
                     TextButton(
                         onClick = onLogSameAgain,
@@ -5862,6 +5869,17 @@ internal fun activeExerciseDeleteLabel(): String = "Oefening verwijderen"
 
 internal fun restTimerFinishedMessage(): String = "Rusttijd klaar - volgende set klaar"
 
+internal fun exerciseHistorySubtitleText(muscleGroup: String?, equipment: String?): String =
+    listOfNotNull(
+        muscleGroup?.takeIf { it.isNotBlank() }?.toDutchMuscleGroupLabel(),
+        equipment?.takeIf { it.isNotBlank() }?.toDutchEquipmentLabel(),
+    ).joinToString(" • ")
+
+internal fun exerciseHistorySessionMetaText(duration: String, completedSets: Int): String =
+    "$duration • $completedSets sets"
+
+internal fun copyPreviousSetContentDescription(): String = "Vorige set kopiëren"
+
 internal fun cleanCompletionBulletText(item: String): String =
     item.trim().trimStart('-', '•', '*').trim()
 
@@ -5928,11 +5946,28 @@ private fun String.toDutchMuscleGroupLabel(): String {
     }
 }
 
+private fun String.toDutchEquipmentLabel(): String {
+    val normalized = trim()
+    return when (normalized.lowercase(Locale.US)) {
+        "barbell" -> "Halterstang"
+        "bodyweight", "body weight" -> "Lichaamsgewicht"
+        "cable" -> "Kabel"
+        "machine" -> "Machine"
+        "dumbbell", "dumbbells" -> "Dumbbells"
+        "kettlebell", "kettlebells" -> "Kettlebells"
+        "ez bar", "ez-bar" -> "EZ-stang"
+        else -> normalized.ifBlank { "Materiaal onbekend" }
+    }
+}
+
 internal fun discardActiveWorkoutBodyText(): String =
     "Gelogde sets en ingevulde waarden voor deze actieve sessie worden verwijderd."
 
 internal fun activeLoggedSetCountText(count: Int): String =
     "$count ${if (count == 1) "set" else "sets"} gelogd"
+
+internal val ActiveWorkoutUiState.visibleLoggedSetCount: Int
+    get() = loggedSetsThisSession.values.sumOf { it.size }
 
 internal fun activeSetTitleText(index: Int, setType: SetType?): String =
     setType?.let { "Set $index - ${it.label()}" } ?: "Set $index"

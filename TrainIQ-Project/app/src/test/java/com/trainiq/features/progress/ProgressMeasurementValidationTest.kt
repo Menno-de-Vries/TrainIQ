@@ -76,6 +76,26 @@ class ProgressMeasurementValidationTest {
         assertEquals("Verwijderen", deleteMeasurementActionLabel())
     }
 
+    @Test
+    fun progressUiState_usesSingleSealedScreenState() {
+        val overview = com.trainiq.domain.model.ProgressOverview(
+            measurements = emptyList(),
+            weightTrend = emptyList(),
+            bodyFatTrend = emptyList(),
+            muscleMassTrend = emptyList(),
+            strengthTrend = emptyList(),
+            volumeTrend = emptyList(),
+            estimatedOneRepMax = 0.0,
+            fatigueIndex = 0.0,
+        )
+
+        assertEquals(ProgressUiState.Loading, progressUiState(overview = null, message = null))
+        assertEquals(
+            ProgressUiState.Success(overview = overview, message = "Meting opgeslagen."),
+            progressUiState(overview = overview, message = "Meting opgeslagen."),
+        )
+    }
+
     private fun assertValidationError(
         weight: String = "80",
         bodyFat: String = "15",

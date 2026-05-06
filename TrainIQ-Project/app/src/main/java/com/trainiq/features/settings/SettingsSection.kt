@@ -79,8 +79,31 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+
+sealed interface SettingsUiState {
+    data object Loading : SettingsUiState
+    data class Success(
+        val themeMode: ThemeMode,
+        val aiPreferences: AiPreferences,
+        val workoutFeedbackPreferences: WorkoutFeedbackPreferences,
+        val profile: UserProfile?,
+        val healthStatus: HealthConnectStatus,
+        val message: String? = null,
+        val maskedApiKey: String = maskedSettingsApiKey(aiPreferences.apiKey),
+    ) : SettingsUiState
+    data class Error(val message: String) : SettingsUiState
+}
+
+private data class SettingsUiInputs(
+    val themeMode: ThemeMode,
+    val aiPreferences: AiPreferences,
+    val workoutFeedbackPreferences: WorkoutFeedbackPreferences,
+    val profile: UserProfile?,
+    val healthStatus: HealthConnectStatus,
+)
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
@@ -92,13 +115,13 @@ class SettingsViewModel @Inject constructor(
     private val localStore: TrainIqLocalStore,
     private val performanceSessionStore: PerformanceSessionStore,
 ) : ViewModel() {
-    val themeMode: StateFlow<ThemeMode> = preferencesRepository.themeMode
+    private val themeMode: StateFlow<ThemeMode> = preferencesRepository.themeMode
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ThemeMode.SYSTEM)
-    val aiPreferences: StateFlow<AiPreferences> = preferencesRepository.aiPreferences
+    private val aiPreferences: StateFlow<AiPreferences> = preferencesRepository.aiPreferences
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AiPreferences(false, ""))
-    val workoutFeedbackPreferences: StateFlow<WorkoutFeedbackPreferences> = preferencesRepository.workoutFeedbackPreferences
+    private val workoutFeedbackPreferences: StateFlow<WorkoutFeedbackPreferences> = preferencesRepository.workoutFeedbackPreferences
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WorkoutFeedbackPreferences())
-    val profile: StateFlow<UserProfile?> = observeUserProfileUseCase()
+    private val profile: StateFlow<UserProfile?> = observeUserProfileUseCase()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val _healthStatus = MutableStateFlow(
@@ -107,10 +130,30 @@ class SettingsViewModel @Inject constructor(
             message = "Health Connect-status wordt geladen.",
         ),
     )
-    val healthStatus: StateFlow<HealthConnectStatus> = _healthStatus.asStateFlow()
+    private val healthStatus: StateFlow<HealthConnectStatus> = _healthStatus.asStateFlow()
 
     private val _message = MutableStateFlow<String?>(null)
-    val message: StateFlow<String?> = _message.asStateFlow()
+    val uiState: StateFlow<SettingsUiState> = combine(
+        combine(themeMode, aiPreferences, workoutFeedbackPreferences, profile, healthStatus) { theme, ai, feedback, userProfile, health ->
+            SettingsUiInputs(
+                themeMode = theme,
+                aiPreferences = ai,
+                workoutFeedbackPreferences = feedback,
+                profile = userProfile,
+                healthStatus = health,
+            )
+        },
+        _message,
+    ) { inputs, message ->
+        settingsUiState(
+            themeMode = inputs.themeMode,
+            aiPreferences = inputs.aiPreferences,
+            workoutFeedbackPreferences = inputs.workoutFeedbackPreferences,
+            profile = inputs.profile,
+            healthStatus = inputs.healthStatus,
+            message = message,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState.Loading)
 
     init {
         refreshHealthConnectStatus()
@@ -263,65 +306,99 @@ class SettingsViewModel @Inject constructor(
         _message.value = null
     }
 
-    fun maskedKey(): String {
-        val key = aiPreferences.value.apiKey
-        if (key.isBlank()) return "Niet ingesteld"
-        return if (key.length <= 8) "********" else "${key.take(4)}****${key.takeLast(4)}"
-    }
 }
 
 @Composable
 fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
     val context = LocalContext.current
-    val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
-    val aiPreferences by viewModel.aiPreferences.collectAsStateWithLifecycle()
-    val workoutFeedbackPreferences by viewModel.workoutFeedbackPreferences.collectAsStateWithLifecycle()
-    val profile by viewModel.profile.collectAsStateWithLifecycle()
-    val healthStatus by viewModel.healthStatus.collectAsStateWithLifecycle()
-    val message by viewModel.message.collectAsStateWithLifecycle()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val requestHealthPermission = rememberHealthConnectPermissionRequester(viewModel::refreshHealthConnectStatus)
     HealthConnectRefreshOnResume(viewModel::refreshHealthConnectStatus, refreshOnFirstResume = false)
 
-    SettingsScreen(
-        themeMode = themeMode,
-        aiPreferences = aiPreferences,
-        workoutFeedbackPreferences = workoutFeedbackPreferences,
-        maskedApiKey = viewModel.maskedKey(),
-        profile = profile,
-        healthStatus = healthStatus,
-        message = message,
-        onThemeSelected = viewModel::setThemeMode,
-        onToggleAi = viewModel::setAiEnabled,
-        onToggleRestTimerSound = viewModel::setRestTimerSoundEnabled,
-        onToggleWorkoutHaptics = viewModel::setWorkoutHapticsEnabled,
-        onSaveApiKey = viewModel::saveGeminiKey,
-        onClearApiKey = viewModel::clearGeminiKey,
-        onSaveProfile = viewModel::saveProfile,
-        onResetProfile = viewModel::resetProfile,
-        onClearAllData = viewModel::clearAllData,
-        onDismissMessage = viewModel::clearMessage,
-        onRequestHealthPermission = requestHealthPermission,
-        onRefreshHealth = viewModel::refreshHealthConnectStatus,
-        onOpenHealthSettings = {
-            val intent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
-            if (!context.startActivityIfResolvable(intent)) {
-                viewModel.refreshHealthConnectStatus()
-            }
-        },
-        onOpenHealthInstall = {
-            val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata"))
-            val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata"))
-            if (!context.startActivityIfResolvable(marketIntent) && !context.startActivityIfResolvable(webIntent)) {
-                viewModel.refreshHealthConnectStatus()
-            }
-        },
-    )
+    when (val state = uiState) {
+        SettingsUiState.Loading -> SettingsLoadingScreen()
+        is SettingsUiState.Error -> SettingsErrorScreen(state.message)
+        is SettingsUiState.Success -> {
+            SettingsScreen(
+                themeMode = state.themeMode,
+                aiPreferences = state.aiPreferences,
+                workoutFeedbackPreferences = state.workoutFeedbackPreferences,
+                maskedApiKey = state.maskedApiKey,
+                profile = state.profile,
+                healthStatus = state.healthStatus,
+                message = state.message,
+                onThemeSelected = viewModel::setThemeMode,
+                onToggleAi = viewModel::setAiEnabled,
+                onToggleRestTimerSound = viewModel::setRestTimerSoundEnabled,
+                onToggleWorkoutHaptics = viewModel::setWorkoutHapticsEnabled,
+                onSaveApiKey = viewModel::saveGeminiKey,
+                onClearApiKey = viewModel::clearGeminiKey,
+                onSaveProfile = viewModel::saveProfile,
+                onResetProfile = viewModel::resetProfile,
+                onClearAllData = viewModel::clearAllData,
+                onDismissMessage = viewModel::clearMessage,
+                onRequestHealthPermission = requestHealthPermission,
+                onRefreshHealth = viewModel::refreshHealthConnectStatus,
+                onOpenHealthSettings = {
+                    val intent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
+                    if (!context.startActivityIfResolvable(intent)) {
+                        viewModel.refreshHealthConnectStatus()
+                    }
+                },
+                onOpenHealthInstall = {
+                    val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata"))
+                    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata"))
+                    if (!context.startActivityIfResolvable(marketIntent) && !context.startActivityIfResolvable(webIntent)) {
+                        viewModel.refreshHealthConnectStatus()
+                    }
+                },
+            )
+        }
+    }
 }
 
 private enum class PendingDestructiveSettingsAction {
     CLEAR_API_KEY,
     RESET_PROFILE,
     CLEAR_ALL_DATA,
+}
+
+@Composable
+private fun SettingsLoadingScreen() {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .navigationBarsPadding(),
+        contentPadding = PaddingValues(
+            start = MaterialTheme.spacing.medium,
+            top = MaterialTheme.spacing.medium,
+            end = MaterialTheme.spacing.medium,
+            bottom = 132.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.large),
+    ) {
+        item { ScreenHeader(title = "Instellingen", subtitle = "Profiel, Health Connect en voorkeuren") }
+        item { SectionCard(title = "Laden") { Text("Instellingen worden geladen.") } }
+    }
+}
+
+@Composable
+private fun SettingsErrorScreen(message: String) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .navigationBarsPadding(),
+        contentPadding = PaddingValues(
+            start = MaterialTheme.spacing.medium,
+            top = MaterialTheme.spacing.medium,
+            end = MaterialTheme.spacing.medium,
+            bottom = 132.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.large),
+    ) {
+        item { ScreenHeader(title = "Instellingen", subtitle = "Profiel, Health Connect en voorkeuren") }
+        item { SectionCard(title = "Instellingen niet beschikbaar") { Text(message) } }
+    }
 }
 
 @Composable
@@ -720,6 +797,27 @@ private fun healthStatusLabel(status: HealthConnectStatus): String = when (statu
     HealthConnectState.CONNECTED -> "Verbonden"
     HealthConnectState.NO_DATA -> "Verbonden, nog geen data"
     HealthConnectState.ERROR -> "Fout"
+}
+
+internal fun settingsUiState(
+    themeMode: ThemeMode,
+    aiPreferences: AiPreferences,
+    workoutFeedbackPreferences: WorkoutFeedbackPreferences,
+    profile: UserProfile?,
+    healthStatus: HealthConnectStatus,
+    message: String?,
+): SettingsUiState = SettingsUiState.Success(
+    themeMode = themeMode,
+    aiPreferences = aiPreferences,
+    workoutFeedbackPreferences = workoutFeedbackPreferences,
+    profile = profile,
+    healthStatus = healthStatus,
+    message = message,
+)
+
+internal fun maskedSettingsApiKey(key: String): String {
+    if (key.isBlank()) return "Niet ingesteld"
+    return if (key.length <= 8) "********" else "${key.take(4)}****${key.takeLast(4)}"
 }
 
 private fun BiologicalSex.displayLabel(): String = when (this) {

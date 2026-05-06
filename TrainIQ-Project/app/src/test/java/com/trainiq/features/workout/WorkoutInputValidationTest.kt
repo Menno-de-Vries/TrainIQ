@@ -36,6 +36,20 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun `active workout bottom bar counts visible sets during correction`() {
+        val state = ActiveWorkoutUiState(
+            completedSets = 0,
+            loggedSetsThisSession = mapOf(
+                42L to listOf(sampleLoggedSet(id = 7L)),
+            ),
+            pendingCorrectionSetIds = mapOf(42L to 7L),
+        )
+
+        assertEquals(1, state.visibleLoggedSetCount)
+        assertEquals("1 set gelogd", activeLoggedSetCountText(state.visibleLoggedSetCount))
+    }
+
+    @Test
     fun `active set title combines number and type in one readable label`() {
         assertEquals("Set 1 - Normaal", activeSetTitleText(1, SetType.NORMAL))
         assertEquals("Set 2", activeSetTitleText(2, null))
@@ -81,6 +95,17 @@ class WorkoutInputValidationTest {
     @Test
     fun `rest timer finished message is fully Dutch`() {
         assertEquals("Rusttijd klaar - volgende set klaar", restTimerFinishedMessage())
+    }
+
+    @Test
+    fun `history metadata uses a real bullet separator`() {
+        assertEquals("Borst • Halterstang", exerciseHistorySubtitleText("Chest", "Barbell"))
+        assertEquals("12:30 • 4 sets", exerciseHistorySessionMetaText("12:30", 4))
+    }
+
+    @Test
+    fun `copy previous set accessibility label is readable Dutch`() {
+        assertEquals("Vorige set kopiëren", copyPreviousSetContentDescription())
     }
 
     @Test
@@ -486,3 +511,13 @@ class WorkoutInputValidationTest {
         assertEquals(emptySet<Long>(), finishSetLog(firstTap.pendingExerciseIds, exerciseId = 42L))
     }
 }
+
+private fun sampleLoggedSet(id: Long): LoggedSet =
+    LoggedSet(
+        id = id,
+        exerciseId = 42L,
+        weight = 77.5,
+        reps = 8,
+        rpe = 8.0,
+        restSeconds = 90,
+    )

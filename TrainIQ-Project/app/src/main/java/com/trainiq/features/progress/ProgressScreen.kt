@@ -53,7 +53,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -78,6 +78,15 @@ data class ProgressMeasurementValidationError(
 sealed interface ProgressMeasurementValidationResult {
     data class Valid(val measurement: ValidatedProgressMeasurement) : ProgressMeasurementValidationResult
     data class Invalid(val error: ProgressMeasurementValidationError) : ProgressMeasurementValidationResult
+}
+
+sealed interface ProgressUiState {
+    data object Loading : ProgressUiState
+    data class Success(
+        val overview: ProgressOverview,
+        val message: String? = null,
+    ) : ProgressUiState
+    data class Error(val message: String) : ProgressUiState
 }
 
 private data class ProgressMeasurementFieldSpec(
@@ -151,11 +160,12 @@ class ProgressViewModel @Inject constructor(
     private val addMeasurementUseCase: AddMeasurementUseCase,
     private val deleteMeasurementUseCase: DeleteMeasurementUseCase,
 ) : ViewModel() {
-    val overview: StateFlow<ProgressOverview?> = observeProgressUseCase()
+    private val overview: StateFlow<ProgressOverview?> = observeProgressUseCase()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val _message = MutableStateFlow<String?>(null)
-    val message: StateFlow<String?> = _message.asStateFlow()
+    val uiState: StateFlow<ProgressUiState> = combine(overview, _message, ::progressUiState)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ProgressUiState.Loading)
 
     fun addMeasurement(weight: String, bodyFat: String, muscleMass: String) {
         when (val validation = validateProgressMeasurementInput(weight, bodyFat, muscleMass)) {
@@ -197,11 +207,9 @@ class ProgressViewModel @Inject constructor(
 
 @Composable
 fun ProgressRoute(viewModel: ProgressViewModel = hiltViewModel()) {
-    val overview by viewModel.overview.collectAsStateWithLifecycle()
-    val message by viewModel.message.collectAsStateWithLifecycle()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     ProgressScreen(
-        overview = overview,
-        message = message,
+        uiState = uiState,
         onAddMeasurement = viewModel::addMeasurement,
         onDeleteMeasurement = viewModel::deleteMeasurement,
         onDismissMessage = viewModel::clearMessage,
@@ -210,8 +218,7 @@ fun ProgressRoute(viewModel: ProgressViewModel = hiltViewModel()) {
 
 @Composable
 fun ProgressScreen(
-    overview: ProgressOverview?,
-    message: String?,
+    uiState: ProgressUiState,
     onAddMeasurement: (String, String, String) -> Unit,
     onDeleteMeasurement: (Long) -> Unit,
     onDismissMessage: () -> Unit,
@@ -228,6 +235,9 @@ fun ProgressScreen(
     val muscleMassError = validateProgressMeasurementField(muscleMass, muscleMassSpec).takeIf { muscleMassTouched }
     val measurementValidation = validateProgressMeasurementInput(weight, bodyFat, muscleMass)
     val canSaveMeasurement = measurementValidation is ProgressMeasurementValidationResult.Valid
+    val successState = uiState as? ProgressUiState.Success
+    val overview = successState?.overview
+    val message = successState?.message
 
     LaunchedEffect(message) {
         if (message == "Meting opgeslagen.") {
@@ -257,6 +267,24 @@ fun ProgressScreen(
         item { ScreenHeader(title = "Voortgang", subtitle = "Metingen, grafieken en krachttrends") }
         message?.let {
             item { MessageCard(message = it, onDismiss = onDismissMessage) }
+        }
+        when (uiState) {
+            ProgressUiState.Loading -> {
+                item { ShimmerCardPlaceholder(lineCount = 4) }
+                item { ShimmerCardPlaceholder(lineCount = 3) }
+                item { ShimmerCardPlaceholder(lineCount = 5) }
+                return@LazyColumn
+            }
+            is ProgressUiState.Error -> {
+                item {
+                    AppCard(modifier = Modifier.fillMaxWidth()) {
+                        Text("Voortgang niet beschikbaar", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                        Text(uiState.message, color = MaterialTheme.trainIqColors.mutedText)
+                    }
+                }
+                return@LazyColumn
+            }
+            is ProgressUiState.Success -> Unit
         }
         if (overview == null) {
             item { ShimmerCardPlaceholder(lineCount = 4) }
@@ -375,6 +403,9 @@ fun ProgressScreen(
         }
     }
 }
+
+internal fun progressUiState(overview: ProgressOverview?, message: String?): ProgressUiState =
+    overview?.let { ProgressUiState.Success(overview = it, message = message) } ?: ProgressUiState.Loading
 
 @Composable
 private fun MeasurementTextField(
