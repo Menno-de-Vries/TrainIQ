@@ -115,6 +115,7 @@ private data class TopLevelDestination(
     val route: Any,
     val routeClass: KClass<*>,
     val label: String,
+    val bottomLabel: String = bottomNavigationLabel(label),
     val icon: ImageVector,
 )
 
@@ -123,12 +124,12 @@ fun TrainIqApp(diagnosticsTracker: DiagnosticsTracker) {
     val navController = rememberNavController()
     val haptics = LocalHapticFeedback.current
     val items = listOf(
-        TopLevelDestination(Home, Home::class, "Start", Icons.Default.Home),
-        TopLevelDestination(Train, Train::class, "Training", Icons.AutoMirrored.Filled.DirectionsRun),
-        TopLevelDestination(Nutrition, Nutrition::class, "Voeding", Icons.Default.Restaurant),
-        TopLevelDestination(Progress, Progress::class, "Voortgang", Icons.Default.AutoGraph),
-        TopLevelDestination(Coach, Coach::class, "Coach", Icons.Default.SmartToy),
-        TopLevelDestination(Settings, Settings::class, "Instellingen", Icons.Default.Settings),
+        TopLevelDestination(Home, Home::class, "Start", icon = Icons.Default.Home),
+        TopLevelDestination(Train, Train::class, "Training", icon = Icons.AutoMirrored.Filled.DirectionsRun),
+        TopLevelDestination(Nutrition, Nutrition::class, "Voeding", icon = Icons.Default.Restaurant),
+        TopLevelDestination(Progress, Progress::class, "Voortgang", icon = Icons.Default.AutoGraph),
+        TopLevelDestination(Coach, Coach::class, "Coach", icon = Icons.Default.SmartToy),
+        TopLevelDestination(Settings, Settings::class, "Instellingen", icon = Icons.Default.Settings),
     )
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
@@ -207,7 +208,7 @@ fun TrainIqApp(diagnosticsTracker: DiagnosticsTracker) {
                                             )
                                         }
                                     },
-                                    label = { Text(screen.label, maxLines = 1) },
+                                    label = { Text(screen.bottomLabel, maxLines = 1) },
                                     alwaysShowLabel = true,
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = MaterialTheme.colorScheme.primary,
@@ -275,6 +276,12 @@ private fun NavHostController.navigateToActiveWorkout(dayId: Long) {
 
 internal fun shouldClearTrainDetailMode(isTrainDestination: Boolean, isTopLevelDestination: Boolean): Boolean =
     !isTrainDestination && isTopLevelDestination
+
+internal fun bottomNavigationLabel(label: String): String = when (label) {
+    "Voortgang" -> "Trend"
+    "Instellingen" -> "Meer"
+    else -> label
+}
 
 private fun androidx.navigation.NavDestination?.screenName(): String = when {
     this == null -> "Unknown"

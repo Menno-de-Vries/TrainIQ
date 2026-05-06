@@ -116,14 +116,24 @@ class MealAnalysisService internal constructor(
                 val obj = element.asJsonObject
                 val name = obj.get("name")?.asString?.trim().orEmpty()
                 if (name.isBlank()) return@mapNotNull null
+                val estimatedGrams = obj.safeNumber("estimatedGrams", default = 100.0, min = 1.0, max = MaxMealScanGrams)
+                    ?: return@mapNotNull null
+                val calories = obj.safeNumber("calories", default = 0.0, min = 0.0, max = MaxMealScanCalories)
+                    ?: return@mapNotNull null
+                val protein = obj.safeNumber("protein", default = 0.0, min = 0.0, max = MaxMealScanMacro)
+                    ?: return@mapNotNull null
+                val carbs = obj.safeNumber("carbs", default = 0.0, min = 0.0, max = MaxMealScanMacro)
+                    ?: return@mapNotNull null
+                val fat = obj.safeNumber("fat", default = 0.0, min = 0.0, max = MaxMealScanMacro)
+                    ?: return@mapNotNull null
                 MealScanItem(
                     name = name,
-                    estimatedGrams = obj.get("estimatedGrams")?.asDouble ?: 100.0,
+                    estimatedGrams = estimatedGrams,
                     nutrition = NutritionFacts(
-                        calories = obj.get("calories")?.asDouble ?: 0.0,
-                        protein = obj.get("protein")?.asDouble ?: 0.0,
-                        carbs = obj.get("carbs")?.asDouble ?: 0.0,
-                        fat = obj.get("fat")?.asDouble ?: 0.0,
+                        calories = calories,
+                        protein = protein,
+                        carbs = carbs,
+                        fat = fat,
                     ),
                     confidence = obj.get("confidence")?.asString,
                     notes = obj.get("notes")?.asString,
@@ -150,6 +160,21 @@ class MealAnalysisService internal constructor(
         notes = "AI-maaltijdanalyse is nu niet beschikbaar. Je kunt de maaltijd handmatig toevoegen.",
         source = MealAnalysisSource.LOCAL_FALLBACK,
     )
+}
+
+private const val MaxMealScanGrams = 100_000.0
+private const val MaxMealScanCalories = 100_000.0
+private const val MaxMealScanMacro = 100_000.0
+
+private fun com.google.gson.JsonObject.safeNumber(
+    key: String,
+    default: Double,
+    min: Double,
+    max: Double,
+): Double? {
+    val value = get(key) ?: return default
+    val parsed = runCatching { value.asDouble }.getOrNull() ?: return null
+    return parsed.takeIf { it.isFinite() && it in min..max }
 }
 
 @Singleton
@@ -427,32 +452,41 @@ class WeeklyReportService @Inject constructor(
                 ),
             )
             val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
-            parseWeeklyReport(text, adherence)
+            parseWeeklyReportResponse(text, adherence)
         }.getOrElse { fallbackWeeklyReport(adherence) }
 
-    private fun parseWeeklyReport(text: String, adherence: Int): WeeklyReportResult =
-        runCatching {
-            val root = JsonParser.parseString(text).asJsonObject
-            WeeklyReportResult(
-                summary = root.get("summary")?.asString ?: fallbackWeeklyReport(adherence).summary,
-                wins = root.getAsJsonArray("wins")?.map { it.asString }.orEmpty(),
-                risks = root.getAsJsonArray("risks")?.map { it.asString }.orEmpty(),
-                nextWeekFocus = root.get("nextWeekFocus")?.asString ?: "Bescherm herstel voordat je extra volume toevoegt.",
-                thinkingProcess = root.getAsJsonArray("thinkingProcess")?.map { it.asString }.orEmpty(),
-                source = WeeklyReportSource.GEMINI_2_5_FLASH,
-                rawResponse = text,
-            )
-        }.getOrElse { fallbackWeeklyReport(adherence) }
-
-    private fun fallbackWeeklyReport(adherence: Int): WeeklyReportResult =
-        WeeklyReportResult(
-            summary = "Lokale samenvatting: er is nog te weinig betrouwbare context voor een AI-weekrapport. Consistentie staat nu op $adherence%.",
-            wins = listOf("Training en voeding blijven lokaal beschikbaar."),
-            risks = listOf("Zonder compleet profiel en recente logs kan TrainIQ geen betrouwbaar weekadvies geven."),
-            nextWeekFocus = "Vul je profiel aan en log een paar trainingen of maaltijden voordat je het volume verhoogt.",
-            source = WeeklyReportSource.LOCAL_FALLBACK,
-        )
 }
+
+internal fun parseWeeklyReportResponse(text: String, adherence: Int): WeeklyReportResult =
+    runCatching {
+        val root = JsonParser.parseString(text).asJsonObject
+        val summary = root.get("summary")?.asString?.trim().orEmpty()
+        if (summary.isBlank()) return fallbackWeeklyReport(adherence)
+        val wins = root.getAsJsonArray("wins")?.map { it.asString }.orEmpty()
+        val risks = root.getAsJsonArray("risks")?.map { it.asString }.orEmpty()
+        val nextWeekFocus = root.get("nextWeekFocus")?.asString ?: "Bescherm herstel voordat je extra volume toevoegt."
+        val thinkingProcess = root.getAsJsonArray("thinkingProcess")?.map { it.asString }.orEmpty()
+        val fields = listOf(summary, nextWeekFocus) + wins + risks + thinkingProcess
+        if (!fields.isUsableDutchAiText()) return fallbackWeeklyReport(adherence)
+        WeeklyReportResult(
+            summary = summary,
+            wins = wins,
+            risks = risks,
+            nextWeekFocus = nextWeekFocus,
+            thinkingProcess = thinkingProcess,
+            source = WeeklyReportSource.GEMINI_2_5_FLASH,
+            rawResponse = text,
+        )
+    }.getOrElse { fallbackWeeklyReport(adherence) }
+
+internal fun fallbackWeeklyReport(adherence: Int): WeeklyReportResult =
+    WeeklyReportResult(
+        summary = "Lokale samenvatting: er is nog te weinig betrouwbare context voor een AI-weekrapport. Consistentie staat nu op $adherence%.",
+        wins = listOf("Training en voeding blijven lokaal beschikbaar."),
+        risks = listOf("Zonder compleet profiel en recente logs kan TrainIQ geen betrouwbaar weekadvies geven."),
+        nextWeekFocus = "Vul je profiel aan en log een paar trainingen of maaltijden voordat je het volume verhoogt.",
+        source = WeeklyReportSource.LOCAL_FALLBACK,
+    )
 
 internal fun parseWorkoutDebriefResponse(
     text: String,

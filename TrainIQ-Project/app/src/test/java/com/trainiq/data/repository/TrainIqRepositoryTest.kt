@@ -31,6 +31,28 @@ import org.junit.Test
 
 class TrainIqRepositoryTest {
     @Test
+    fun generatedRoutineValidationMessagesStayDutchForUiSurfacedErrors() {
+        assertEquals(
+            "Vul eerst je profiel in voordat je een AI-routine maakt.",
+            missingProfileForAiRoutineMessage(),
+        )
+        assertEquals(
+            "AI gaf geen trainingsdagen terug. Probeer een specifiekere trainingsfocus.",
+            generatedRoutineMissingDaysMessage(),
+        )
+        assertEquals(
+            "AI gaf een dag zonder oefeningen terug. Probeer andere apparatuur of focus.",
+            generatedRoutineMissingExercisesMessage(),
+        )
+    }
+
+    @Test
+    fun trainingDayCountTextUsesDutchSingularAndPlural() {
+        assertEquals("1 trainingsdag", trainingDayCountText(1))
+        assertEquals("2 trainingsdagen", trainingDayCountText(2))
+    }
+
+    @Test
     fun buildProgressOverviewFromHistory_aggregatesAllSessionsPerWeek() {
         val monday = java.time.LocalDate.of(2026, 4, 20)
             .atStartOfDay(java.time.ZoneId.systemDefault())

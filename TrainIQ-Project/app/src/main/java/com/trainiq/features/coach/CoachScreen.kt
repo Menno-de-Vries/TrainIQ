@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -42,6 +41,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.trainiq.core.theme.spacing
+import com.trainiq.core.ui.AppCard
 import com.trainiq.core.ui.MessageCard
 import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.ShimmerCardPlaceholder
@@ -477,22 +477,13 @@ fun CoachScreen(
                     }
                     if (state.currentProfile == null) {
                         item {
-                            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                                Column(
-                                    modifier = Modifier.padding(MaterialTheme.spacing.medium),
-                                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-                                ) {
-                                    Text("Profiel instellen", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                                    Text("Vul eerst je profiel en doel in. Daarna worden weekrapporten en voedingsadvies zichtbaar op basis van jouw gegevens.")
-                                }
+                            AppCard(modifier = Modifier.fillMaxWidth()) {
+                                Text("Profiel instellen", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                                Text("Vul eerst je profiel en doel in. Daarna worden weekrapporten en voedingsadvies zichtbaar op basis van jouw gegevens.")
                             }
                         }
                     } else item {
-                        ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier.padding(MaterialTheme.spacing.medium),
-                                verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-                            ) {
+                        AppCard(modifier = Modifier.fillMaxWidth()) {
                                 WeekReportCard(report = state.generatedReport, fallbackSummary = state.overview.weeklyReport)
                                 Button(
                                     onClick = {
@@ -523,15 +514,10 @@ fun CoachScreen(
                                         style = MaterialTheme.typography.bodyMedium,
                                     )
                                 }
-                            }
                         }
                     }
                     item {
-                        ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier.padding(MaterialTheme.spacing.medium),
-                                verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-                            ) {
+                        AppCard(modifier = Modifier.fillMaxWidth()) {
                                 Text("Doeladvies", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                                 OutlinedTextField(
                                     value = name,
@@ -682,7 +668,6 @@ fun CoachScreen(
                                         Text("Profiel opslaan")
                                     }
                                 }
-                            }
                         }
                     }
                 }

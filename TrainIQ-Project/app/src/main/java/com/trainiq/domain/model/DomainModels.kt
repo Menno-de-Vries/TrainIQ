@@ -585,6 +585,8 @@ data class HealthConnectMetrics(
     val sleepSessionCount: Int = 0,
     val caloriesBurnedToday: Double? = null,
     val latestWeightKg: Double? = null,
+    val workoutSessionCountToday: Int = 0,
+    val workoutMinutesToday: Long = 0L,
 )
 
 data class HealthConnectStatus(
@@ -613,6 +615,12 @@ data class HealthConnectStatus(
 
     val latestWeightKg: Double?
         get() = metrics?.latestWeightKg
+
+    val workoutSessionCountToday: Int
+        get() = metrics?.workoutSessionCountToday ?: 0
+
+    val workoutMinutesToday: Long
+        get() = metrics?.workoutMinutesToday ?: 0L
 }
 
 data class ChartPoint(

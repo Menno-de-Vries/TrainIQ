@@ -8,6 +8,7 @@ import androidx.health.connect.client.changes.Change
 import androidx.health.connect.client.changes.DeletionChange
 import androidx.health.connect.client.changes.UpsertionChange
 import androidx.health.connect.client.permission.HealthPermission
+import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
@@ -20,8 +21,9 @@ import androidx.health.connect.client.time.TimeRangeFilter
 import com.google.gson.Gson
 import com.trainiq.core.datastore.HealthConnectSyncPreferences
 import com.trainiq.core.datastore.UserPreferencesRepository
-import com.trainiq.data.mapper.toCachedHeartRateRecord
 import com.trainiq.data.mapper.toCachedCaloriesBurnedRecord
+import com.trainiq.data.mapper.toCachedExerciseSessionRecord
+import com.trainiq.data.mapper.toCachedHeartRateRecord
 import com.trainiq.data.mapper.toCachedSleepSessionRecord
 import com.trainiq.data.mapper.toCachedStepRecord
 import com.trainiq.data.mapper.toCachedWeightRecord
@@ -50,6 +52,7 @@ class HealthConnectDataSource @Inject constructor(
         HealthPermission.getReadPermission(SleepSessionRecord::class),
         HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class),
         HealthPermission.getReadPermission(WeightRecord::class),
+        HealthPermission.getReadPermission(ExerciseSessionRecord::class),
     )
 
     private val trackedRecordTypes: Set<KClass<out androidx.health.connect.client.records.Record>> = setOf(
@@ -58,6 +61,7 @@ class HealthConnectDataSource @Inject constructor(
         SleepSessionRecord::class,
         TotalCaloriesBurnedRecord::class,
         WeightRecord::class,
+        ExerciseSessionRecord::class,
     )
 
     fun permissions(): Set<String> = readPermissions
@@ -83,7 +87,7 @@ class HealthConnectDataSource @Inject constructor(
                 preferencesRepository.clearHealthConnectSyncPreferences()
                 HealthConnectStatus(
                     state = HealthConnectState.PROVIDER_MISSING,
-                    message = "Installeer of update Health Connect voordat TrainIQ stappen, hartslag, slaap, calorieën en gewicht kan lezen.",
+                    message = "Installeer of update Health Connect voordat TrainIQ stappen, hartslag, slaap, calorieën, gewicht en workouts kan lezen.",
                 )
             }
 
@@ -103,7 +107,7 @@ class HealthConnectDataSource @Inject constructor(
                 preferencesRepository.clearHealthConnectSyncPreferences()
                 HealthConnectStatus(
                     state = HealthConnectState.PERMISSION_REQUIRED,
-                    message = "Geen toegang tot Health Connect. Verbind opnieuw om stappen, hartslag, slaap, calorieën en gewicht te lezen.",
+                    message = "Geen toegang tot Health Connect. Verbind opnieuw om stappen, hartslag, slaap, calorieën, gewicht en workouts te lezen.",
                 )
             } else {
                 val syncPayload = syncTrackedMetrics(client)
@@ -176,6 +180,12 @@ class HealthConnectDataSource @Inject constructor(
                     timeRangeFilter = TimeRangeFilter.between(startOfSleepWindow(), now),
                 ),
             ).records.map(WeightRecord::toCachedWeightRecord),
+            exerciseSessionRecords = client.readRecords(
+                ReadRecordsRequest(
+                    recordType = ExerciseSessionRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(startOfToday(), now),
+                ),
+            ).records.map(ExerciseSessionRecord::toCachedExerciseSessionRecord),
         ).prune(now)
 
         return SyncPayload(
@@ -277,6 +287,14 @@ class HealthConnectDataSource @Inject constructor(
                 ).prune(now)
             }
 
+            is ExerciseSessionRecord -> {
+                val mapped = record.toCachedExerciseSessionRecord()
+                copy(
+                    exerciseSessionRecords = exerciseSessionRecords.filterNot { it.recordId == mapped.recordId } +
+                        listOfNotNull(mapped.takeIf { it.endTimeMillis >= startOfToday().toEpochMilli() }),
+                ).prune(now)
+            }
+
             else -> this
         }
     }
@@ -287,6 +305,7 @@ class HealthConnectDataSource @Inject constructor(
         sleepSessionRecords = sleepSessionRecords.filterNot { it.recordId == recordId },
         caloriesBurnedRecords = caloriesBurnedRecords.filterNot { it.recordId == recordId },
         weightRecords = weightRecords.filterNot { it.recordId == recordId },
+        exerciseSessionRecords = exerciseSessionRecords.filterNot { it.recordId == recordId },
     )
 
     private fun HealthConnectCacheState.prune(now: Instant): HealthConnectCacheState {
@@ -299,6 +318,7 @@ class HealthConnectDataSource @Inject constructor(
             sleepSessionRecords = sleepSessionRecords.filter { it.endTimeMillis in sleepWindowStartMillis..nowMillis },
             caloriesBurnedRecords = caloriesBurnedRecords.filter { it.endTimeMillis in todayStartMillis..nowMillis },
             weightRecords = weightRecords.filter { it.timeMillis in sleepWindowStartMillis..nowMillis },
+            exerciseSessionRecords = exerciseSessionRecords.filter { it.endTimeMillis in todayStartMillis..nowMillis },
         )
     }
 
@@ -315,7 +335,7 @@ class HealthConnectDataSource @Inject constructor(
 
     private fun buildMessage(metrics: HealthConnectMetrics, state: HealthConnectState): String {
         if (state == HealthConnectState.NO_DATA) {
-            return "Health Connect is verbonden, maar er is nog geen recente data voor stappen, hartslag, slaap, calorieën of gewicht."
+            return "Health Connect is verbonden, maar er is nog geen recente data voor stappen, hartslag, slaap, calorieën, gewicht of workouts."
         }
         val parts = buildList {
             add("${metrics.stepsToday} stappen")
@@ -325,12 +345,20 @@ class HealthConnectDataSource @Inject constructor(
             }
             metrics.caloriesBurnedToday?.let { add("${it.toInt()} kcal verbrand") }
             metrics.latestWeightKg?.let { add("${"%.1f".format(it)} kg laatste gewicht") }
+            if (metrics.workoutSessionCountToday > 0) {
+                add("${metrics.workoutMinutesToday} min training")
+            }
         }
         return "Health Connect gesynchroniseerd: ${parts.joinToString(", ")}."
     }
 
     private fun HealthConnectMetrics.hasAnyData(): Boolean =
-        stepsToday > 0 || averageHeartRateBpm != null || sleepSessionCount > 0 || caloriesBurnedToday != null || latestWeightKg != null
+        stepsToday > 0 ||
+            averageHeartRateBpm != null ||
+            sleepSessionCount > 0 ||
+            caloriesBurnedToday != null ||
+            latestWeightKg != null ||
+            workoutSessionCountToday > 0
 
     /**
      * Fetches today's step count directly from the Health Connect aggregate API.
@@ -408,6 +436,14 @@ internal data class CachedWeightRecord(
     val weightKg: Double,
 )
 
+internal data class CachedExerciseSessionRecord(
+    val recordId: String,
+    val startTimeMillis: Long,
+    val endTimeMillis: Long,
+    val durationMinutes: Long,
+    val title: String?,
+)
+
 internal data class HealthConnectCacheState(
     /** Authoritative step count from the Health Connect aggregate API (deduplication-aware). */
     val aggregatedStepsToday: Long = 0L,
@@ -417,13 +453,15 @@ internal data class HealthConnectCacheState(
     val sleepSessionRecords: List<CachedSleepSessionRecord> = emptyList(),
     val caloriesBurnedRecords: List<CachedCaloriesBurnedRecord> = emptyList(),
     val weightRecords: List<CachedWeightRecord> = emptyList(),
+    val exerciseSessionRecords: List<CachedExerciseSessionRecord> = emptyList(),
 ) {
     fun isEmpty(): Boolean =
         aggregatedStepsToday == 0L &&
             heartRateRecords.isEmpty() &&
             sleepSessionRecords.isEmpty() &&
             caloriesBurnedRecords.isEmpty() &&
-            weightRecords.isEmpty()
+            weightRecords.isEmpty() &&
+            exerciseSessionRecords.isEmpty()
 }
 
 private data class SyncPayload(

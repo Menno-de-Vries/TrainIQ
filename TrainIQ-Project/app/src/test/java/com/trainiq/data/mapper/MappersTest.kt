@@ -4,6 +4,7 @@ import app.cash.turbine.test
 import com.trainiq.core.database.BodyMeasurementEntity
 import com.trainiq.core.database.ExerciseEntity
 import com.trainiq.core.database.UserProfileEntity
+import com.trainiq.data.datasource.CachedExerciseSessionRecord
 import com.trainiq.data.datasource.CachedHeartRateRecord
 import com.trainiq.data.datasource.CachedSleepSessionRecord
 import com.trainiq.data.datasource.CachedStepRecord
@@ -100,6 +101,10 @@ class MappersTest {
                 CachedSleepSessionRecord("sleep-1", 0L, 10L, 420),
                 CachedSleepSessionRecord("sleep-2", 11L, 20L, 95),
             ),
+            exerciseSessionRecords = listOf(
+                CachedExerciseSessionRecord("workout-1", 0L, 1_800_000L, 30L, "Push"),
+                CachedExerciseSessionRecord("workout-2", 2_000_000L, 5_600_000L, 60L, null),
+            ),
         )
 
         flowOf(cacheState)
@@ -111,6 +116,8 @@ class MappersTest {
                 assertEquals(84, metrics.latestHeartRateBpm)
                 assertEquals(515L, metrics.sleepMinutes)
                 assertEquals(2, metrics.sleepSessionCount)
+                assertEquals(2, metrics.workoutSessionCountToday)
+                assertEquals(90L, metrics.workoutMinutesToday)
                 awaitComplete()
             }
     }

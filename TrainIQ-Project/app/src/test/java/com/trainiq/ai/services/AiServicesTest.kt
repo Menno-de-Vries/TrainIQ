@@ -8,6 +8,7 @@ import com.trainiq.data.remote.GeminiApi
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.GoalAdviceSource
 import com.trainiq.domain.model.MealAnalysisSource
+import com.trainiq.domain.model.WeeklyReportSource
 import java.io.File
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -84,6 +85,43 @@ class AiServicesTest {
 
         assertEquals(MealAnalysisSource.API, result.source)
         assertTrue(result.items.isEmpty())
+    }
+
+    @Test
+    fun analyzeMealImage_discardsImpossibleNumericItemsBeforeReview() = runTest {
+        val api = FakeGeminiApi(
+            response = mealScanResponse(
+                """
+                    {
+                      "items": [
+                        {
+                          "name": "Onmogelijke maaltijd",
+                          "estimatedGrams": -20,
+                          "calories": 9999999,
+                          "protein": -4,
+                          "carbs": 10,
+                          "fat": 2
+                        },
+                        {
+                          "name": "Kwark",
+                          "estimatedGrams": 250,
+                          "calories": 150,
+                          "protein": 24,
+                          "carbs": 10,
+                          "fat": 1
+                        }
+                      ],
+                      "suggestedMealType": "BREAKFAST"
+                    }
+                """.trimIndent(),
+            ),
+        )
+        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+
+        val result = service.analyzeMealImage(tempImagePath(), "", 1_800_000L)
+
+        assertEquals(1, result.items.size)
+        assertEquals("Kwark", result.items.single().name)
     }
 
     @Test
@@ -383,6 +421,33 @@ class AiServicesTest {
         assertEquals(75, result.recoveryScore)
         assertEquals("MAINTAIN", result.intensitySignal)
         assertEquals(com.trainiq.domain.model.WorkoutDebriefSource.LOCAL_FALLBACK, result.source)
+    }
+
+    @Test
+    fun parseWeeklyReportResponse_withEnglishJsonReturnsLocalDutchFallback() {
+        val result = parseWeeklyReportResponse(
+            text = """
+                {
+                  "summary": "Keep training volume stable this week.",
+                  "wins": ["Good adherence."],
+                  "risks": ["Sleep is low."],
+                  "nextWeekFocus": "Add weight only when recovery is good.",
+                  "thinkingProcess": ["Recovery is good enough to progress."]
+                }
+            """.trimIndent(),
+            adherence = 72,
+        )
+
+        assertEquals(WeeklyReportSource.LOCAL_FALLBACK, result.source)
+        assertTrue(result.summary.contains("Lokale samenvatting"))
+    }
+
+    @Test
+    fun parseWeeklyReportResponse_withEmptyJsonReturnsLocalFallbackInsteadOfSyntheticGemini() {
+        val result = parseWeeklyReportResponse(text = "{}", adherence = 64)
+
+        assertEquals(WeeklyReportSource.LOCAL_FALLBACK, result.source)
+        assertTrue(result.summary.contains("Lokale samenvatting"))
     }
 
     private class FakeGeminiApi(

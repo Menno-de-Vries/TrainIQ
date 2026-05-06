@@ -13,6 +13,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
+import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
@@ -28,6 +29,7 @@ internal val HealthConnectReadPermissions = setOf(
     HealthPermission.getReadPermission(SleepSessionRecord::class),
     HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class),
     HealthPermission.getReadPermission(WeightRecord::class),
+    HealthPermission.getReadPermission(ExerciseSessionRecord::class),
 )
 
 @Composable
@@ -41,7 +43,7 @@ fun rememberHealthConnectPermissionRequester(onPermissionsResult: () -> Unit): (
             onDismissRequest = { showRationale = false },
             title = { Text("Health Connect verbinden") },
             text = {
-                Text("TrainIQ leest alleen stappen, hartslag, slaap, actieve calorieën en gewicht om je dashboard en coaching te vullen. Je beheert of trekt deze toegang altijd weer in via Android Health Connect.")
+                Text("TrainIQ leest alleen stappen, hartslag, slaap, actieve calorieën, gewicht en workouts om je dashboard en coaching te vullen. Je beheert of trekt deze toegang altijd weer in via Android Health Connect.")
             },
             confirmButton = {
                 TextButton(

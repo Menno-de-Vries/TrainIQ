@@ -89,9 +89,9 @@ fun ExercisePickerSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Choose exercise", style = MaterialTheme.typography.titleLarge)
+                Text(exercisePickerTitle(), style = MaterialTheme.typography.titleLarge)
                 TextButton(onClick = onDismiss) {
-                    Text("Close")
+                    Text(exercisePickerCloseLabel())
                 }
             }
             TapOnlyOutlinedTextField(
@@ -100,7 +100,7 @@ fun ExercisePickerSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .bringIntoViewOnFocus(),
-                label = { Text("Search exercises") },
+                label = { Text(exercisePickerSearchLabel()) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
             )
@@ -109,7 +109,7 @@ fun ExercisePickerSheet(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Icon(Icons.Default.Add, contentDescription = null)
-                Text(if (showCustomForm) "Hide custom exercise" else "Add custom exercise")
+                Text(exercisePickerAddCustomLabel(showCustomForm))
             }
             if (showCustomForm) {
                 CustomExerciseForm(
@@ -126,7 +126,7 @@ fun ExercisePickerSheet(
                 if (filteredExercises.isEmpty()) {
                     item {
                         Text(
-                            text = "No matching exercises.",
+                            text = exercisePickerEmptyText(),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(vertical = 12.dp),
@@ -153,7 +153,7 @@ private fun ExercisePickerRow(
     Card(onClick = onSelect) {
         ListItem(
             headlineContent = { Text(exercise.name) },
-            supportingContent = { Text("${exercise.muscleGroup} - ${exercise.equipment}") },
+            supportingContent = { Text(exercisePickerMetadataText(exercise.muscleGroup, exercise.equipment)) },
         )
     }
 }
@@ -175,13 +175,13 @@ private fun CustomExerciseForm(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Custom exercise", style = MaterialTheme.typography.titleSmall)
+            Text(customExerciseFormTitle(), style = MaterialTheme.typography.titleSmall)
             TapOnlyOutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
                 modifier = Modifier
                     .fillMaxWidth(),
-                label = { Text("Exercise name") },
+                label = { Text(customExerciseNameLabel()) },
                 singleLine = true,
             )
             Row(
@@ -194,7 +194,7 @@ private fun CustomExerciseForm(
                     modifier = Modifier
                         .weight(1f)
                         .bringIntoViewOnFocus(),
-                    label = { Text("Muscle") },
+                    label = { Text(customExerciseMuscleLabel()) },
                     singleLine = true,
                 )
                 TapOnlyOutlinedTextField(
@@ -203,7 +203,7 @@ private fun CustomExerciseForm(
                     modifier = Modifier
                         .weight(1f)
                         .bringIntoViewOnFocus(),
-                    label = { Text("Equipment") },
+                    label = { Text(customExerciseEquipmentLabel()) },
                     singleLine = true,
                 )
             }
@@ -220,8 +220,56 @@ private fun CustomExerciseForm(
                 enabled = canCreate,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Use custom exercise")
+                Text(customExerciseSubmitLabel())
             }
         }
     }
 }
+
+internal fun exercisePickerTitle(): String = "Oefening kiezen"
+
+internal fun exercisePickerCloseLabel(): String = "Sluiten"
+
+internal fun exercisePickerSearchLabel(): String = "Oefeningen zoeken"
+
+internal fun exercisePickerAddCustomLabel(showCustomForm: Boolean): String =
+    if (showCustomForm) "Aangepaste oefening verbergen" else "Aangepaste oefening toevoegen"
+
+internal fun exercisePickerEmptyText(): String = "Geen passende oefeningen gevonden."
+
+internal fun exercisePickerMetadataText(muscleGroup: String, equipment: String): String =
+    "${muscleGroup.toExercisePickerDutchMuscle()} - ${equipment.toExercisePickerDutchEquipment()}"
+
+private fun String.toExercisePickerDutchMuscle(): String {
+    val normalized = trim()
+    return when (normalized.lowercase()) {
+        "shoulders", "shoulder" -> "Schouders"
+        "chest", "pecs" -> "Borst"
+        "back", "lats" -> "Rug"
+        "legs", "quads", "hamstrings" -> "Benen"
+        "arms", "biceps", "triceps" -> "Armen"
+        "full body", "whole body" -> "Hele lichaam"
+        else -> normalized.ifBlank { "Algemeen" }
+    }
+}
+
+private fun String.toExercisePickerDutchEquipment(): String {
+    val normalized = trim()
+    return when (normalized.lowercase()) {
+        "barbell" -> "Halterstang"
+        "bodyweight", "body weight" -> "Lichaamsgewicht"
+        "cable" -> "Kabel"
+        "machine" -> "Machine"
+        else -> normalized.ifBlank { "Materiaal onbekend" }
+    }
+}
+
+internal fun customExerciseFormTitle(): String = "Aangepaste oefening"
+
+internal fun customExerciseNameLabel(): String = "Naam oefening"
+
+internal fun customExerciseMuscleLabel(): String = "Spiergroep"
+
+internal fun customExerciseEquipmentLabel(): String = "Materiaal"
+
+internal fun customExerciseSubmitLabel(): String = "Aangepaste oefening gebruiken"

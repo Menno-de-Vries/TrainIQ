@@ -41,7 +41,7 @@ class NutritionInputValidationTest {
         )
 
         assertEquals("Naam is verplicht.", errors.name)
-        assertEquals("Voeg minimaal een ingrediënt toe.", errors.ingredients)
+        assertEquals("Voeg minimaal een ingredient toe.", errors.ingredients)
         assertEquals("Vul een positief aantal gram in.", errors.cookedGrams)
     }
 

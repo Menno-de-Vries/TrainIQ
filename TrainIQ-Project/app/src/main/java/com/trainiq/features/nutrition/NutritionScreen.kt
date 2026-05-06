@@ -48,6 +48,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -298,6 +299,8 @@ class NutritionViewModel @Inject constructor(
             try {
                 deleteMealUseCase(mealId)
                 ephemeral.update { it.copy(message = "Maaltijd verwijderd.") }
+            } catch (_: Throwable) {
+                ephemeral.update { it.copy(message = "Maaltijd verwijderen mislukt. Probeer opnieuw.") }
             } finally {
                 ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits - NutritionSubmitKey.Delete) }
             }
@@ -330,6 +333,8 @@ class NutritionViewModel @Inject constructor(
             try {
                 deleteRecipeUseCase(recipeId)
                 ephemeral.update { it.copy(message = "Recept verwijderd.") }
+            } catch (_: Throwable) {
+                ephemeral.update { it.copy(message = "Recept verwijderen mislukt. Probeer opnieuw.") }
             } finally {
                 ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits - NutritionSubmitKey.Delete) }
             }
@@ -1127,6 +1132,7 @@ fun NutritionScreen(
         ) {
             RecipeActionBottomSheet(
                 aiEnabled = aiPreferences.enabled && aiPreferences.apiKey.isNotBlank(),
+                onDismiss = { showRecipeActions = false },
                 onManualRecipe = { showRecipeActions = false },
                 onBarcodeIngredient = {
                     showRecipeActions = false
@@ -1140,8 +1146,9 @@ fun NutritionScreen(
                 },
                 onPhotoDirect = {
                     showRecipeActions = false
-                    aiScanForRecipe = true
-                    onOpenAiScanner(recipeAiContext)
+                    selectedTab = 0
+                    aiScanForRecipe = false
+                    onOpenAiScanner(aiContext)
                 },
                 onExistingRecipeToMeal = {
                     showRecipeActions = false
@@ -1161,6 +1168,7 @@ fun NutritionScreen(
                 hasSavedRecipes = overview?.recipes?.isNotEmpty() == true,
                 hasDraft = mealDraft.isNotEmpty(),
                 aiEnabled = aiPreferences.enabled && aiPreferences.apiKey.isNotBlank(),
+                onDismiss = { showAddToMealActions = false },
                 onManualFood = {
                     showAddToMealActions = false
                     selectedTab = 2
@@ -1432,6 +1440,7 @@ private fun RecipesHeaderCard(recipeCount: Int, onCreateClick: () -> Unit) {
 @Composable
 private fun RecipeActionBottomSheet(
     aiEnabled: Boolean,
+    onDismiss: () -> Unit,
     onManualRecipe: () -> Unit,
     onBarcodeIngredient: () -> Unit,
     onPhotoIngredient: () -> Unit,
@@ -1446,11 +1455,11 @@ private fun RecipeActionBottomSheet(
             .padding(horizontal = MaterialTheme.spacing.large, vertical = MaterialTheme.spacing.medium),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text("Toevoegen of maken", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        BottomSheetHeader(title = "Toevoegen of maken", onDismiss = onDismiss)
         Button(onClick = onManualRecipe, modifier = Modifier.fillMaxWidth()) { Text("Recept handmatig maken") }
         OutlinedButton(onClick = onBarcodeIngredient, modifier = Modifier.fillMaxWidth()) { Text("Barcode-product in recept scannen") }
         OutlinedButton(onClick = onPhotoIngredient, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) { Text("Product via foto/AI toevoegen") }
-        OutlinedButton(onClick = onPhotoDirect, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) { Text("Foto nemen: recept of vandaag") }
+        OutlinedButton(onClick = onPhotoDirect, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) { Text("Foto naar maaltijdconcept") }
         OutlinedButton(onClick = onExistingRecipeToMeal, modifier = Modifier.fillMaxWidth()) { Text("Bestaand recept aan maaltijd toevoegen") }
     }
 }
@@ -1462,6 +1471,7 @@ private fun AddToMealActionSheet(
     hasSavedRecipes: Boolean,
     hasDraft: Boolean,
     aiEnabled: Boolean,
+    onDismiss: () -> Unit,
     onManualFood: () -> Unit,
     onSavedFood: () -> Unit,
     onRecipe: () -> Unit,
@@ -1477,7 +1487,7 @@ private fun AddToMealActionSheet(
             .padding(horizontal = MaterialTheme.spacing.large, vertical = MaterialTheme.spacing.medium),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text("Toevoegen aan ${mealType.dutchLabel}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        BottomSheetHeader(title = "Toevoegen aan ${mealType.dutchLabel}", onDismiss = onDismiss)
         Text("Kies een bron en controleer daarna voor opslaan.", color = MaterialTheme.trainIqColors.mutedText)
         Button(onClick = onManualFood, modifier = Modifier.fillMaxWidth()) { Text("Handmatig product maken") }
         OutlinedButton(onClick = onSavedFood, enabled = hasSavedFoods, modifier = Modifier.fillMaxWidth()) { Text("Opgeslagen product gebruiken") }
@@ -1485,6 +1495,23 @@ private fun AddToMealActionSheet(
         OutlinedButton(onClick = onPhotoAi, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) { Text("Foto / AI-inschatting") }
         if (hasDraft) {
             OutlinedButton(onClick = onOpenMealDraft, modifier = Modifier.fillMaxWidth()) { Text("Huidige maaltijd controleren") }
+        }
+    }
+}
+
+@Composable
+private fun BottomSheetHeader(
+    title: String,
+    onDismiss: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        TextButton(onClick = onDismiss) {
+            Text("Sluiten")
         }
     }
 }

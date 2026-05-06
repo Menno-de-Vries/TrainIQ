@@ -10,6 +10,7 @@ import com.trainiq.core.database.WorkoutRoutineEntity
 import com.trainiq.core.database.WorkoutSessionEntity
 import com.trainiq.data.datasource.CachedHeartRateRecord
 import com.trainiq.data.datasource.CachedCaloriesBurnedRecord
+import com.trainiq.data.datasource.CachedExerciseSessionRecord
 import com.trainiq.data.datasource.CachedSleepSessionRecord
 import com.trainiq.data.datasource.CachedStepRecord
 import com.trainiq.data.datasource.CachedWeightRecord
@@ -26,6 +27,7 @@ import com.trainiq.domain.model.WorkoutExercisePlan
 import com.trainiq.domain.model.WorkoutRoutine
 import com.trainiq.domain.model.WorkoutSessionSummary
 import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
@@ -146,6 +148,14 @@ internal fun SleepSessionRecord.toCachedSleepSessionRecord() = CachedSleepSessio
     durationMinutes = Duration.between(startTime, endTime).toMinutes(),
 )
 
+internal fun ExerciseSessionRecord.toCachedExerciseSessionRecord() = CachedExerciseSessionRecord(
+    recordId = metadata.id,
+    startTimeMillis = startTime.toEpochMilli(),
+    endTimeMillis = endTime.toEpochMilli(),
+    durationMinutes = Duration.between(startTime, endTime).toMinutes(),
+    title = title,
+)
+
 internal fun TotalCaloriesBurnedRecord.toCachedCaloriesBurnedRecord() = CachedCaloriesBurnedRecord(
     recordId = metadata.id,
     startTimeMillis = startTime.toEpochMilli(),
@@ -184,4 +194,6 @@ internal fun HealthConnectCacheState.toDomainMetrics(): HealthConnectMetrics = H
     sleepSessionCount = sleepSessionRecords.size,
     caloriesBurnedToday = caloriesBurnedRecords.takeIf { it.isNotEmpty() }?.sumOf(CachedCaloriesBurnedRecord::kcal),
     latestWeightKg = weightRecords.maxByOrNull(CachedWeightRecord::timeMillis)?.weightKg,
+    workoutSessionCountToday = exerciseSessionRecords.size,
+    workoutMinutesToday = exerciseSessionRecords.sumOf(CachedExerciseSessionRecord::durationMinutes),
 )

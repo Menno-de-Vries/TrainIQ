@@ -1,5 +1,6 @@
 package com.trainiq.navigation
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -33,5 +34,12 @@ class TrainDetailModeChromeTest {
                 isTopLevelDestination = true,
             ),
         )
+    }
+
+    @Test
+    fun bottomNavigationUsesShortLabelsForCrowdedDestinations() {
+        assertEquals("Start", bottomNavigationLabel("Start"))
+        assertEquals("Trend", bottomNavigationLabel("Voortgang"))
+        assertEquals("Meer", bottomNavigationLabel("Instellingen"))
     }
 }

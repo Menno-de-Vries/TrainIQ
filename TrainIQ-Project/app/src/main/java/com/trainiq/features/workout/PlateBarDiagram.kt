@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import java.util.Locale
 import kotlin.math.max
 
 @Composable
@@ -77,10 +78,13 @@ fun PlateBarDiagram(
 
 @Composable
 private fun rememberPlateDescription(plates: List<Float>): String =
+    plateBarContentDescription(plates)
+
+internal fun plateBarContentDescription(plates: List<Float>): String =
     if (plates.isEmpty()) {
-        "No plates loaded"
+        "Geen schijven geladen"
     } else {
-        "Plates per side: ${plates.joinToString(", ") { it.formatPlateKg() }}"
+        "Schijven per kant: ${plates.joinToString(", ") { it.formatPlateKg() }}"
     }
 
 private fun DrawScope.drawPlateStack(
@@ -121,4 +125,4 @@ private fun plateColor(weightKg: Float): Color = when {
 }
 
 private fun Float.formatPlateKg(): String =
-    if (this % 1f == 0f) "${toInt()} kg" else "%.2f kg".format(this)
+    if (this % 1f == 0f) "${toInt()} kg" else String.format(Locale.US, "%.2f kg", this)

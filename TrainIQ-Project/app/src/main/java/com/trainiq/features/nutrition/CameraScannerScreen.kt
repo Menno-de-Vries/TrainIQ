@@ -310,7 +310,6 @@ private fun CameraScannerScreen(
         hasPermission = it
         permissionDenied = !it
     }
-    LaunchedEffect(Unit) { permissionLauncher.launch(Manifest.permission.CAMERA) }
 
     val controller = remember(context, scannerMode) {
         LifecycleCameraController(context).apply {
@@ -559,6 +558,8 @@ private fun EmptySheetContent(
         }
     }
 }
+
+internal fun shouldAutoRequestCameraPermissionOnEntry(): Boolean = false
 
 @Composable
 private fun PermissionGate(

@@ -970,7 +970,7 @@ class TrainIqRepository @Inject constructor(
         includeDeload: Boolean,
     ): GeneratedRoutine = withContext(Dispatchers.IO) {
         val profile = snapshotState.value.profile
-            ?: error("User profile is required to generate an AI routine. Please complete your profile first.")
+            ?: error(missingProfileForAiRoutineMessage())
         val generated = routineGeneratorService.generateRoutine(
             goal = profile.goal,
             targetFocus = targetFocus.ifBlank { profile.trainingFocus },
@@ -982,20 +982,20 @@ class TrainIqRepository @Inject constructor(
         )
 
         check(generated.days.isNotEmpty()) {
-            "The AI returned a routine with no workout days. Try a more specific training focus."
+            generatedRoutineMissingDaysMessage()
         }
         check(generated.days.none { it.exercises.isEmpty() }) {
-            "The AI returned a day with no exercises. Try again with different equipment or focus."
+            generatedRoutineMissingExercisesMessage()
         }
         generated.toDomainGeneratedRoutine()
     }
 
     override suspend fun saveGeneratedRoutine(routine: GeneratedRoutine) = withContext(Dispatchers.IO) {
         check(routine.days.isNotEmpty()) {
-            "Generated routine has no workout days."
+            generatedRoutineMissingDaysMessage()
         }
         check(routine.days.none { it.exercises.isEmpty() }) {
-            "Generated routine contains a day with no exercises."
+            generatedRoutineMissingExercisesMessage()
         }
         localStore.update { state ->
             val routineId = (state.routines.maxOfOrNull { it.id } ?: 0L) + 1L
@@ -1419,7 +1419,7 @@ class TrainIqRepository @Inject constructor(
         if (activeRoutine == null) {
             insights += "Kies of maak een actieve routine zodat je volgende training gepland kan worden."
         } else {
-            insights += "Actieve routine: ${activeRoutine.name} met ${activeRoutine.days.size} trainingsdagen."
+            insights += "Actieve routine: ${activeRoutine.name} met ${trainingDayCountText(activeRoutine.days.size)}."
         }
         if (snapshot.sessions.isEmpty()) {
             insights += "Er is nog geen trainingshistorie. Rond een workout af om volume en herstel te volgen."
@@ -2656,6 +2656,18 @@ private fun hasPlateaued(sessions: List<ExerciseSessionSnapshot>): Boolean {
     val max = e1rms.maxOrNull() ?: return false
     return min > 0.0 && ((max - min) / min) < 0.01
 }
+
+internal fun missingProfileForAiRoutineMessage(): String =
+    "Vul eerst je profiel in voordat je een AI-routine maakt."
+
+internal fun generatedRoutineMissingDaysMessage(): String =
+    "AI gaf geen trainingsdagen terug. Probeer een specifiekere trainingsfocus."
+
+internal fun generatedRoutineMissingExercisesMessage(): String =
+    "AI gaf een dag zonder oefeningen terug. Probeer andere apparatuur of focus."
+
+internal fun trainingDayCountText(count: Int): String =
+    "$count ${if (count == 1) "trainingsdag" else "trainingsdagen"}"
 
 private fun progressionLoadStep(exerciseName: String, muscleGroup: String, equipment: String): Double {
     val compoundPattern = listOf("squat", "bench", "deadlift", "press", "row", "pull-up", "hip thrust")

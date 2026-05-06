@@ -328,11 +328,16 @@ private val RoutineExerciseHorizontalPadding = 8.dp
 private val RoutineSetHorizontalPadding = 6.dp
 private val ActiveSetActionWidth = 104.dp
 private val ActiveSetLeadingWidth = 76.dp
+private val ActiveSetHeaderMinHeight = 56.dp
 private val TopLevelBottomContentPadding = 132.dp
-private val ActiveWorkoutBottomContentPadding = 72.dp
+private val ActiveWorkoutBottomContentPadding = 156.dp
 private val ExercisePickerHandleDismissThreshold = 96.dp
 private val SetEditorHandleDismissThreshold = 96.dp
 private const val SetEditorSurfaceMaxHeightFraction = 0.92f
+
+internal fun activeWorkoutBottomContentPaddingForFeedback() = ActiveWorkoutBottomContentPadding
+
+internal fun activeSetHeaderMinHeightForLabels() = ActiveSetHeaderMinHeight
 
 private data class RoutineGenerationRequest(
     val daysPerWeek: Int,
@@ -724,7 +729,7 @@ class WorkoutViewModel @Inject constructor(
 
     fun createRoutine(name: String, description: String) {
         if (name.isBlank()) {
-            _message.value = "Routine name is required."
+            _message.value = "Routinenaam is verplicht."
             return
         }
         val exists = overview.value?.routines?.any {
@@ -1603,7 +1608,7 @@ private fun ActiveRoutineCard(activeRoutine: WorkoutRoutine?, onStartWorkout: (L
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(
-                            "Start ${startableDay.name}",
+                            activeRoutineStartLabel(startableDay.name),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -1915,7 +1920,12 @@ private fun RoutineCard(
                     }
                 }
                 Text(
-                    "${routineFocusLabel(routine)} focus · ${routineExerciseCount(routine)} oefeningen · ${routineSetCount(routine)} sets · ±${routineEstimatedMinutes(routine)} min",
+                    routineMetadataText(
+                        focus = routineFocusLabel(routine),
+                        exerciseCount = routineExerciseCount(routine),
+                        setCount = routineSetCount(routine),
+                        estimatedMinutes = routineEstimatedMinutes(routine),
+                    ),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.trainIqColors.mutedText,
                     maxLines = 2,
@@ -1985,7 +1995,11 @@ private fun RoutineCard(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            "${routineFocusLabel(routine)} focus · ${routineExerciseCount(routine)} oefeningen · ±${routineEstimatedMinutes(routine)} min",
+                            routineDetailMetadataText(
+                                focus = routineFocusLabel(routine),
+                                exerciseCount = routineExerciseCount(routine),
+                                estimatedMinutes = routineEstimatedMinutes(routine),
+                            ),
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.trainIqColors.mutedText,
                             maxLines = 1,
@@ -2054,7 +2068,7 @@ private fun RoutineCard(
             }
             if (routine.days.isEmpty()) {
                 Text(
-                    "Nog geen sessies. Voeg een oefening toe en TrainIQ maakt Session 1 automatisch.",
+                    "Nog geen sessies. Voeg een oefening toe en TrainIQ maakt automatisch Sessie 1.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -2278,7 +2292,11 @@ private fun WorkoutDayEditor(
         elevated = true,
         contentPadding = PaddingValues(horizontal = RoutineSessionHorizontalPadding, vertical = MaterialTheme.spacing.medium),
     ) {
-        val sessionMeta = "${dayFocusLabel(day)} - ${day.exercises.size} ${if (day.exercises.size == 1) "oefening" else "oefeningen"} - ±${dayEstimatedMinutes(day)} min"
+        val sessionMeta = routineSessionMetadataText(
+            focus = dayFocusLabel(day),
+            exerciseCount = day.exercises.size,
+            estimatedMinutes = dayEstimatedMinutes(day),
+        )
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -4225,7 +4243,13 @@ private fun WorkoutProcessingScreen(
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    CircularProgressIndicator()
+                    if (workoutProcessingUsesShimmerLoading()) {
+                        repeat(3) {
+                            ShimmerCardPlaceholder(lineCount = 1, modifier = Modifier.fillMaxWidth())
+                        }
+                    } else {
+                        CircularProgressIndicator()
+                    }
                     Text("Training verwerken...", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
                     Text(
                         when (uiState) {
@@ -4252,6 +4276,8 @@ private fun WorkoutProcessingScreen(
         }
     }
 }
+
+internal fun workoutProcessingUsesShimmerLoading(): Boolean = true
 
 @Composable
 fun WorkoutCompletionRoute(
@@ -4686,7 +4712,7 @@ fun ActiveWorkoutScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     ScreenHeader(
                         title = if (uiState.debrief == null) "Actieve training" else "Training opgeslagen",
-                        subtitle = "${uiState.workout?.name ?: "Workout"} - ${formatTimer(uiState.elapsedSeconds.toInt())}",
+                        subtitle = "${displayWorkoutDayName(uiState.workout?.name ?: "Workout")} - ${formatTimer(uiState.elapsedSeconds.toInt())}",
                     )
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
@@ -4836,7 +4862,7 @@ fun ActiveWorkoutScreen(
         AlertDialog(
             onDismissRequest = { showDiscardConfirm = false },
             title = { Text("Actieve training weggooien?") },
-            text = { Text("Geloggde sets en ingevulde waarden voor deze actieve sessie worden verwijderd.") },
+            text = { Text(discardActiveWorkoutBodyText()) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -4868,7 +4894,7 @@ fun ActiveWorkoutScreen(
     pendingActiveReplacement?.let { (plan, exercise) ->
         AlertDialog(
             onDismissRequest = { pendingActiveReplacement = null },
-            title = { Text("Exercise vervangen?") },
+            title = { Text("Oefening vervangen?") },
             text = {
                 Text(
                     "Gelogde sets voor ${plan.exercise.name} blijven bewaard als uitgevoerde sets. Nieuwe sets gebruik je daarna voor ${exercise.name}.",
@@ -4952,7 +4978,7 @@ private fun ActiveWorkoutBottomBar(uiState: ActiveWorkoutUiState, restTimerSecon
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    "${uiState.completedSets} sets gelogd",
+                    activeLoggedSetCountText(uiState.completedSets),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -5358,8 +5384,12 @@ private fun SetTypeSelector(
             }
         }
     } else {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = modifier.fillMaxWidth()) {
-            items(SetType.entries, key = { it.name }) { type ->
+        FlowRow(
+            modifier = modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            SetType.entries.forEach { type ->
                 FilterChip(
                     selected = type == selectedType,
                     onClick = { onSelectedTypeChange(type) },
@@ -5526,7 +5556,9 @@ private fun SetRow(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .defaultMinSize(minHeight = ActiveSetHeaderMinHeight),
             horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -5537,25 +5569,17 @@ private fun SetRow(
                     Icon(Icons.Rounded.Edit, contentDescription = "Set wordt gecorrigeerd", modifier = Modifier.size(18.dp))
                 }
             }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    "Set $index",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                (loggedSet?.setType ?: plannedSet?.setType)?.let { type ->
-                    Text(
-                        type.label(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.clickable(enabled = loggedSet != null, onClick = onCycleType),
-                    )
-                }
-            }
+            Text(
+                text = activeSetTitleText(index, loggedSet?.setType ?: plannedSet?.setType),
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(enabled = loggedSet != null, onClick = onCycleType),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             if (loggedSet != null) {
                 Surface(
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.54f),
@@ -5828,6 +5852,60 @@ private fun routineEstimatedMinutes(routine: WorkoutRoutine): Int =
 
 private fun routineFocusLabel(routine: WorkoutRoutine): String =
     routine.days.flatMap { it.exercises }.focusLabel()
+
+internal fun activeRoutineStartLabel(dayName: String): String = "Training starten"
+
+internal fun displayWorkoutDayName(dayName: String): String {
+    val trimmed = dayName.trim()
+    val sessionNumber = trimmed.removePrefix("Session ").takeIf { it != trimmed && it.all(Char::isDigit) }
+    return sessionNumber?.let { "Sessie $it" } ?: dayName
+}
+
+internal fun routineMetadataText(
+    focus: String,
+    exerciseCount: Int,
+    setCount: Int,
+    estimatedMinutes: Int,
+): String = "Focus: ${focus.toDutchMuscleGroupLabel()} - $exerciseCount ${exerciseText(exerciseCount)} - $setCount sets - ca. $estimatedMinutes min"
+
+internal fun routineDetailMetadataText(
+    focus: String,
+    exerciseCount: Int,
+    estimatedMinutes: Int,
+): String = "Focus: ${focus.toDutchMuscleGroupLabel()} - $exerciseCount ${exerciseText(exerciseCount)} - ca. $estimatedMinutes min"
+
+internal fun routineSessionMetadataText(
+    focus: String,
+    exerciseCount: Int,
+    estimatedMinutes: Int,
+): String = "Focus: ${focus.toDutchMuscleGroupLabel()} - $exerciseCount ${exerciseText(exerciseCount)} - ca. $estimatedMinutes min"
+
+private fun exerciseText(count: Int): String =
+    if (count == 1) "oefening" else "oefeningen"
+
+private fun String.toDutchMuscleGroupLabel(): String {
+    val normalized = trim()
+    return when (normalized.lowercase(Locale.US)) {
+        "shoulders", "shoulder" -> "Schouders"
+        "chest", "pecs" -> "Borst"
+        "back", "lats" -> "Rug"
+        "legs", "quads", "hamstrings" -> "Benen"
+        "arms", "biceps", "triceps" -> "Armen"
+        "glutes" -> "Billen"
+        "core", "abs" -> "Core"
+        "full body", "whole body" -> "Hele lichaam"
+        else -> normalized.ifBlank { "Hele lichaam" }
+    }
+}
+
+internal fun discardActiveWorkoutBodyText(): String =
+    "Gelogde sets en ingevulde waarden voor deze actieve sessie worden verwijderd."
+
+internal fun activeLoggedSetCountText(count: Int): String =
+    "$count ${if (count == 1) "set" else "sets"} gelogd"
+
+internal fun activeSetTitleText(index: Int, setType: SetType?): String =
+    setType?.let { "Set $index - ${it.label()}" } ?: "Set $index"
 
 internal fun WorkoutRoutine.firstStartableDay(): WorkoutDay? =
     days.firstOrNull { it.exercises.isNotEmpty() }

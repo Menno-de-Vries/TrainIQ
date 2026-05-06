@@ -11,6 +11,11 @@ import org.junit.Test
 
 class CameraScannerStateTest {
     @Test
+    fun cameraPermissionRequest_isUserInitiatedRatherThanAutomaticOnEntry() {
+        assertEquals(false, shouldAutoRequestCameraPermissionOnEntry())
+    }
+
+    @Test
     fun classifyMealScanResult_withItems_returnsCompletedState() {
         val result = MealAnalysisResult(
             items = listOf(

@@ -15,6 +15,74 @@ import org.junit.Test
 
 class WorkoutInputValidationTest {
     @Test
+    fun `workout processing uses shimmer loading instead of spinner`() {
+        assertEquals(true, workoutProcessingUsesShimmerLoading())
+    }
+
+    @Test
+    fun `active workout keeps bottom space for snackbar feedback above action bar`() {
+        assertTrue(activeWorkoutBottomContentPaddingForFeedback() >= 144.dp)
+    }
+
+    @Test
+    fun `active set header keeps enough height for set label and type`() {
+        assertTrue(activeSetHeaderMinHeightForLabels() >= 52.dp)
+    }
+
+    @Test
+    fun `active logged set count text uses Dutch singular and plural`() {
+        assertEquals("1 set gelogd", activeLoggedSetCountText(1))
+        assertEquals("2 sets gelogd", activeLoggedSetCountText(2))
+    }
+
+    @Test
+    fun `active set title combines number and type in one readable label`() {
+        assertEquals("Set 1 - Normaal", activeSetTitleText(1, SetType.NORMAL))
+        assertEquals("Set 2", activeSetTitleText(2, null))
+    }
+
+    @Test
+    fun `routine metadata localizes focus and uses ascii separators to avoid mojibake`() {
+        val text = routineMetadataText(focus = "Shoulders", exerciseCount = 1, setCount = 3, estimatedMinutes = 10)
+
+        assertEquals("Focus: Schouders - 1 oefening - 3 sets - ca. 10 min", text)
+        assertEquals(false, text.contains("Â"))
+    }
+
+    @Test
+    fun `active routine start label stays Dutch without echoing raw day name`() {
+        assertEquals("Training starten", activeRoutineStartLabel("Session 1"))
+    }
+
+    @Test
+    fun `active workout header localizes generated session names`() {
+        assertEquals("Sessie 1", displayWorkoutDayName("Session 1"))
+        assertEquals("Push", displayWorkoutDayName("Push"))
+    }
+
+    @Test
+    fun `routine session metadata localizes common English muscle groups`() {
+        val text = routineSessionMetadataText(focus = "Chest", exerciseCount = 1, estimatedMinutes = 15)
+
+        assertEquals("Focus: Borst - 1 oefening - ca. 15 min", text)
+        assertEquals(false, text.contains("±"))
+    }
+
+    @Test
+    fun `plate bar accessibility text is Dutch`() {
+        assertEquals("Geen schijven geladen", plateBarContentDescription(emptyList()))
+        assertEquals("Schijven per kant: 20 kg, 2.50 kg", plateBarContentDescription(listOf(20f, 2.5f)))
+    }
+
+    @Test
+    fun `discard active workout copy is spelled correctly`() {
+        assertEquals(
+            "Gelogde sets en ingevulde waarden voor deze actieve sessie worden verwijderd.",
+            discardActiveWorkoutBodyText(),
+        )
+    }
+
+    @Test
     fun `routine set metric cells keep fixed scan columns with placeholders`() {
         val set = RoutineSet(
             id = 1,
