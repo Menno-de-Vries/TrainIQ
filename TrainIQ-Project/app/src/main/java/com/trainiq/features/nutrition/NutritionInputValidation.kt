@@ -115,8 +115,8 @@ internal fun validateRecipeInput(
     name = requiredNameError(name),
     cookedGrams = optionalPositiveGramError(cookedGrams),
     ingredients = when {
-        ingredients.isEmpty() -> "Voeg minimaal een ingredient toe."
-        ingredients.any { it.second <= 0.0 || !it.second.isFinite() } -> "Vul voor elk ingredient een positief aantal gram in."
+        ingredients.isEmpty() -> "Voeg minimaal een ingrediënt toe."
+        ingredients.any { it.second <= 0.0 || !it.second.isFinite() } -> "Vul voor elk ingrediënt een positief aantal gram in."
         else -> null
     },
 )

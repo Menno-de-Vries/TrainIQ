@@ -5,6 +5,7 @@ import com.google.gson.JsonParser
 import com.trainiq.ai.prompts.GeminiPrompts
 import com.trainiq.data.model.GeminiRequest
 import com.trainiq.data.remote.GeminiApi
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 import retrofit2.HttpException
@@ -234,7 +235,7 @@ internal fun fallbackGeneratedRoutine(
         GeneratedExercise("Roemeense deadlift", "Hamstrings", displayEquipment, 3, "8-10", 90, "Duw je heupen naar achteren en houd de stang dicht bij je lichaam."),
         GeneratedExercise("Lat pulldown", "Rug", equipment.toDutchEquipment().ifBlank { "Kabel" }, 3, "8-12", 75, "Trek met je ellebogen en pauzeer kort onderin."),
         GeneratedExercise("Schouderdrukken", "Schouders", displayEquipment, 3, repRange, restSeconds, "Span bilspieren aan en houd je ribben laag."),
-        GeneratedExercise("Split squat", "Benen", equipment.toDutchEquipment().ifBlank { "Dumbbell" }, 3, "8-12", 75, "Blijf rechtop en belast vooral het voorste been."),
+        GeneratedExercise("Split squat", "Benen", equipment.toDutchEquipment().ifBlank { "Dumbbells" }, 3, "8-12", 75, "Blijf rechtop en belast vooral het voorste been."),
         GeneratedExercise("Kabelroeien", "Rug", equipment.toDutchEquipment().ifBlank { "Kabel" }, 3, "10-12", 75, "Houd schouders laag en eindig met spanning in je bovenrug."),
         GeneratedExercise("Plank", "Core", "Lichaamsgewicht", 3, "30-45s", 45, "Span je buik aan en houd een rechte lijn van hak tot hoofd."),
     )
@@ -295,10 +296,14 @@ private fun String.toDutchGoalSummary(): String {
     return if (stillEnglish) "je doel" else value
 }
 
-private fun String.toDutchEquipment(): String = trim()
-    .replace("Barbell", "Halterstang", ignoreCase = true)
-    .replace("Dumbbells", "Dumbbells", ignoreCase = true)
-    .replace("Dumbbell", "Dumbbell", ignoreCase = true)
-    .replace("Bodyweight", "Lichaamsgewicht", ignoreCase = true)
-    .replace("Cable", "Kabel", ignoreCase = true)
-    .replace("Mixed", "Gemengd", ignoreCase = true)
+private fun String.toDutchEquipment(): String {
+    val normalized = trim()
+    return when (normalized.lowercase(Locale.ROOT)) {
+        "barbell" -> "Halterstang"
+        "dumbbell", "dumbbells" -> "Dumbbells"
+        "bodyweight", "body weight" -> "Lichaamsgewicht"
+        "cable" -> "Kabel"
+        "mixed" -> "Gemengd"
+        else -> normalized
+    }
+}

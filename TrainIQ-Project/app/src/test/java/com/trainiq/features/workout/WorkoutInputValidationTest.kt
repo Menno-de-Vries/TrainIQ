@@ -55,6 +55,61 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun `active routine without exercises explains the editor action`() {
+        assertEquals(
+            "Open deze routine hieronder en voeg eerst een trainingsdag met oefening toe voordat je start.",
+            activeRoutineNeedsExerciseText(),
+        )
+    }
+
+    @Test
+    fun `blank workout day fallback stays Dutch`() {
+        assertEquals("Sessie", defaultWorkoutDayName())
+    }
+
+    @Test
+    fun `routine empty description copy is consistent`() {
+        assertEquals("Nog geen beschrijving.", routineEmptyDescriptionText())
+    }
+
+    @Test
+    fun `active exercise menu uses Dutch action labels`() {
+        assertEquals("Oefening vervangen", activeExerciseReplaceLabel())
+        assertEquals("Oefening verwijderen", activeExerciseDeleteLabel())
+    }
+
+    @Test
+    fun `rest timer finished message is fully Dutch`() {
+        assertEquals("Rusttijd klaar - volgende set klaar", restTimerFinishedMessage())
+    }
+
+    @Test
+    fun `completion bullets strip raw markdown markers`() {
+        assertEquals("Volume bleef stabiel.", cleanCompletionBulletText("- Volume bleef stabiel."))
+        assertEquals("Herstel bewaken.", cleanCompletionBulletText("• Herstel bewaken."))
+    }
+
+    @Test
+    fun `planned performance target uses safe separator text`() {
+        assertEquals("80 kg - RPE 8", plannedPerformanceTargetText(80.0, 8.0))
+        assertEquals(false, plannedPerformanceTargetText(80.0, 8.0).contains("Â"))
+    }
+
+    @Test
+    fun `exercise summary metadata avoids mojibake separators`() {
+        val text = exerciseSummaryMetaText(
+            setCount = 3,
+            repRange = "8-10",
+            restSeconds = 90,
+            rpe = "RPE 8",
+            supersetGroupId = 12,
+        )
+
+        assertEquals("3 sets - 8-10 reps - 90s rust - RPE 8 - Superset 12", text)
+        assertEquals(false, text.contains("Â"))
+    }
+
+    @Test
     fun `active workout header localizes generated session names`() {
         assertEquals("Sessie 1", displayWorkoutDayName("Session 1"))
         assertEquals("Push", displayWorkoutDayName("Push"))

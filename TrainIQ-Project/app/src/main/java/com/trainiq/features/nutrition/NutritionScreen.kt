@@ -74,6 +74,7 @@ import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.domain.model.FoodItem
 import com.trainiq.domain.model.FoodSourceType
+import com.trainiq.domain.model.EnergyBalanceSnapshot
 import com.trainiq.domain.model.LoggedMeal
 import com.trainiq.domain.model.MealAnalysisResult
 import com.trainiq.domain.model.MealScanItem
@@ -94,6 +95,8 @@ import com.trainiq.domain.usecase.SaveFoodItemUseCase
 import com.trainiq.domain.usecase.SaveMealUseCase
 import com.trainiq.domain.usecase.SaveRecipeUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlin.math.abs
+import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -1247,13 +1250,13 @@ private fun ConfirmNutritionDeleteDialog(
 @Composable
 private fun SummaryCard(overview: NutritionOverview?) {
     val calories = overview?.todaysCalories ?: 0.0
-    val progress = (calories / 2800.0).toFloat().coerceIn(0f, 1f)
+    val progress = nutritionEnergyProgressFraction(calories, overview?.energyBalance)
     AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Vandaag", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                 Text(
-                    "${formatNumber(calories)} kcal • ${formatNumber(overview?.todaysProtein ?: 0.0)}g eiwit • ${formatNumber(overview?.todaysCarbs ?: 0.0)}g koolhydraten • ${formatNumber(overview?.todaysFat ?: 0.0)}g vet",
+                    "${formatNumber(calories)} kcal - ${nutritionMacroSummary(overview?.todaysProtein ?: 0.0, overview?.todaysCarbs ?: 0.0, overview?.todaysFat ?: 0.0)}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.trainIqColors.mutedText,
                 )
@@ -1271,7 +1274,8 @@ private fun SummaryCard(overview: NutritionOverview?) {
             AppChip(label = "Recepten ${overview?.recipes?.size ?: 0}", accent = MaterialTheme.trainIqColors.amber)
         }
             overview?.energyBalance?.let {
-            Text("Netto calorieën ${it.balance} kcal • TEF ${it.tefCalories} • NEAT ${it.neatCalories} • training ${it.workoutCalories}", color = MaterialTheme.trainIqColors.mutedText)
+            Text(nutritionEnergyBalanceSummary(it), color = MaterialTheme.trainIqColors.mutedText)
+            Text(nutritionEnergyBreakdownText(it), color = MaterialTheme.trainIqColors.mutedText)
             }
             overview?.todaysMealsByType?.forEach { (mealType, meals) ->
                 if (meals.isNotEmpty()) {
@@ -1294,7 +1298,7 @@ private fun DailyMealsDashboard(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("Vandaag", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                 Text(
-                    "${formatNumber(overview?.todaysProtein ?: 0.0)}g eiwit · ${formatNumber(overview?.todaysCarbs ?: 0.0)}g koolhydraten · ${formatNumber(overview?.todaysFat ?: 0.0)}g vet",
+                    nutritionMacroSummary(overview?.todaysProtein ?: 0.0, overview?.todaysCarbs ?: 0.0, overview?.todaysFat ?: 0.0),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.trainIqColors.mutedText,
                 )
@@ -1330,14 +1334,20 @@ private fun MealSectionCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
+        colors = CardDefaults.cardColors(
+            containerColor = if (meals.isEmpty()) {
+                MaterialTheme.colorScheme.surfaceContainerLow
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHighest
+            },
+        ),
     ) {
-        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(mealType.dutchLabel, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "${formatNumber(total.calories)} kcal · ${formatNumber(total.protein)}g eiwit · ${formatNumber(total.carbs)}g koolhydraten · ${formatNumber(total.fat)}g vet",
+                        "${formatNumber(total.calories)} kcal - ${nutritionMacroSummary(total.protein, total.carbs, total.fat)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.trainIqColors.mutedText,
                         maxLines = 1,
@@ -1347,7 +1357,7 @@ private fun MealSectionCard(
                 TextButton(onClick = onAdd) { Text("Toevoegen") }
             }
             if (meals.isEmpty()) {
-                Text("Nog niets toegevoegd", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.trainIqColors.mutedText)
+                Text(mealSectionEmptyText(mealType), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.trainIqColors.mutedText)
             } else {
                 meals.forEach { meal ->
                     MealEntryRow(meal = meal, onEditMeal = onEditMeal, onDeleteMeal = onDeleteMeal)
@@ -1379,7 +1389,7 @@ private fun MealEntryRow(
                 Text("${formatNumber(meal.totalNutrition.calories)} kcal", color = MaterialTheme.colorScheme.primary)
             }
             Text(
-                "E${formatNumber(meal.totalNutrition.protein)} · K${formatNumber(meal.totalNutrition.carbs)} · V${formatNumber(meal.totalNutrition.fat)}",
+                nutritionMacroSummary(meal.totalNutrition.protein, meal.totalNutrition.carbs, meal.totalNutrition.fat),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1402,7 +1412,7 @@ private fun MealEntryRow(
             ) {
                 Text(meal.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
-                    "${formatNumber(meal.totalNutrition.calories)} kcal · E${formatNumber(meal.totalNutrition.protein)} K${formatNumber(meal.totalNutrition.carbs)} V${formatNumber(meal.totalNutrition.fat)}",
+                    "${formatNumber(meal.totalNutrition.calories)} kcal - ${nutritionMacroSummary(meal.totalNutrition.protein, meal.totalNutrition.carbs, meal.totalNutrition.fat)}",
                     color = MaterialTheme.trainIqColors.mutedText,
                 )
                 Button(
@@ -1697,7 +1707,7 @@ private fun SavedFoodsCard(
                         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(food.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(
-                                "${formatNumber(food.caloriesPer100g)} kcal/100g · ${formatNumber(food.proteinPer100g)}g eiwit · ${formatNumber(food.carbsPer100g)}g koolhydraten · ${formatNumber(food.fatPer100g)}g vet",
+                                "${formatNumber(food.caloriesPer100g)} kcal/100g - ${nutritionMacroSummary(food.proteinPer100g, food.carbsPer100g, food.fatPer100g)}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.trainIqColors.mutedText,
                             )
@@ -1861,7 +1871,7 @@ private fun RecipeTotalsCard(title: String = "Recepttotalen", totalNutrition: Nu
             Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             Text("${formatNumber(totalNutrition.calories)} kcal · ${formatNumber(totalGrams)}g totaal")
             Text(
-                "${formatNumber(totalNutrition.protein)}g eiwit · ${formatNumber(totalNutrition.carbs)}g koolhydraten · ${formatNumber(totalNutrition.fat)}g vet",
+                nutritionMacroSummary(totalNutrition.protein, totalNutrition.carbs, totalNutrition.fat),
                 color = MaterialTheme.trainIqColors.mutedText,
             )
         }
@@ -1914,7 +1924,7 @@ private fun SavedRecipesCard(
                         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(recipe.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(
-                                "${formatNumber(recipe.totalNutrition.calories)} kcal · ${formatNumber(recipe.totalNutrition.protein)}g eiwit · ${formatNumber(recipe.totalNutrition.carbs)}g koolhydraten · ${formatNumber(recipe.totalNutrition.fat)}g vet",
+                                "${formatNumber(recipe.totalNutrition.calories)} kcal - ${nutritionMacroSummary(recipe.totalNutrition.protein, recipe.totalNutrition.carbs, recipe.totalNutrition.fat)}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.trainIqColors.mutedText,
                             )
@@ -2080,7 +2090,7 @@ private fun AiMealAnalysisCard(
                 Text("Scanner openen")
             }
             if (isAnalyzing) {
-                Text("Verwerken...", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Text(aiMealAnalyzingLabel(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                 repeat(3) {
                     ShimmerCardPlaceholder(lineCount = 2)
                 }
@@ -2151,7 +2161,7 @@ private fun MealHistoryCard(
                         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(meal.name, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(meal.mealType.dutchLabel, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                            Text("${formatNumber(meal.totalNutrition.calories)} kcal • E${formatNumber(meal.totalNutrition.protein)} K${formatNumber(meal.totalNutrition.carbs)} V${formatNumber(meal.totalNutrition.fat)}")
+                            Text("${formatNumber(meal.totalNutrition.calories)} kcal - ${nutritionMacroSummary(meal.totalNutrition.protein, meal.totalNutrition.carbs, meal.totalNutrition.fat)}")
                             meal.items.forEach { item ->
                                 val liveName = when (item.itemType.name) {
                                     "FOOD" -> foods.firstOrNull { it.id == item.referenceId }?.name
@@ -2222,9 +2232,35 @@ private data class AiBatchItem(
     val grams: Double,
 )
 
-private fun formatNumber(value: Double): String = if (value % 1.0 == 0.0) value.toInt().toString() else String.format("%.1f", value)
+private fun formatNumber(value: Double): String =
+    if (value % 1.0 == 0.0) value.toInt().toString() else String.format(Locale.US, "%.1f", value)
 
 private fun formatNullableNumber(value: Double?): String = value?.let(::formatNumber).orEmpty()
+
+internal fun nutritionMacroSummary(protein: Double, carbs: Double, fat: Double): String =
+    "Eiwit ${formatNumber(protein)} g - Kh ${formatNumber(carbs)} g - Vet ${formatNumber(fat)} g"
+
+internal fun mealSectionEmptyText(mealType: MealType): String =
+    "Nog niets gelogd voor ${mealType.dutchLabel.lowercase()}. Tik op Toevoegen om iets te loggen."
+
+internal fun aiMealAnalyzingLabel(): String = "Maaltijd analyseren..."
+
+internal fun nutritionEnergyProgressFraction(calories: Double, energyBalance: EnergyBalanceSnapshot?): Float {
+    val target = energyBalance?.caloriesOut?.takeIf { it > 0 } ?: return 0f
+    return (calories / target.toDouble()).toFloat().coerceIn(0f, 1f)
+}
+
+internal fun nutritionEnergyBalanceSummary(energyBalance: EnergyBalanceSnapshot): String {
+    val label = when {
+        energyBalance.balance < 0 -> "tekort"
+        energyBalance.balance > 0 -> "overschot"
+        else -> "in balans"
+    }
+    return "Netto calorieën ${abs(energyBalance.balance)} kcal $label"
+}
+
+internal fun nutritionEnergyBreakdownText(energyBalance: EnergyBalanceSnapshot): String =
+    "TEF ${energyBalance.tefCalories} kcal - NEAT ${energyBalance.neatCalories} kcal - Training ${energyBalance.workoutCalories} kcal"
 
 private fun per100Value(total: String, grams: Double): String {
     return formatNumber(per100Number(total, grams))

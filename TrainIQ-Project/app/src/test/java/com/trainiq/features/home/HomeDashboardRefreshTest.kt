@@ -52,20 +52,33 @@ class HomeDashboardRefreshTest {
     @Test
     fun buildHomeRecoverySubtitle_whenHeartRateMissing_omitsHeartRateSegment() {
         val result = buildHomeRecoverySubtitle(
+            stepsToday = 4000,
             averageHeartRateBpm = null,
             todaysWorkoutCalories = 320,
         )
 
-        assertTrue(result == "Stappen - Training 320 kcal")
+        assertTrue(result == "4000 stappen - Training 320 kcal")
     }
 
     @Test
     fun buildHomeRecoverySubtitle_whenHeartRateAvailable_includesHeartRateSegment() {
         val result = buildHomeRecoverySubtitle(
+            stepsToday = 2800,
             averageHeartRateBpm = 64,
             todaysWorkoutCalories = 180,
         )
 
-        assertTrue(result == "Stappen - Gem. hartslag 64 - Training 180 kcal")
+        assertTrue(result == "2800 stappen - Gem. hartslag 64 - Training 180 kcal")
+    }
+
+    @Test
+    fun buildHomeRecoverySubtitle_whenStepsUnavailable_namesOfflineState() {
+        val result = buildHomeRecoverySubtitle(
+            stepsToday = null,
+            averageHeartRateBpm = null,
+            todaysWorkoutCalories = 180,
+        )
+
+        assertTrue(result == "Stappen offline - Training 180 kcal")
     }
 }

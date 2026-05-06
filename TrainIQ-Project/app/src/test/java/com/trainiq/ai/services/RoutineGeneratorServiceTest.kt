@@ -245,6 +245,21 @@ class RoutineGeneratorServiceTest {
     }
 
     @Test
+    fun fallbackGeneratedRoutine_normalizesSingularDumbbellEquipment() {
+        val routine = fallbackGeneratedRoutine(
+            goal = "kracht",
+            targetFocus = "onderlichaam",
+            daysPerWeek = 2,
+            equipment = "Dumbbell",
+            experienceLevel = "beginner",
+            sessionDurationMinutes = 45,
+            includeDeload = false,
+        )
+
+        assertEquals("Dumbbells", routine.days.first().exercises.first().equipment)
+    }
+
+    @Test
     fun fallbackGeneratedRoutine_doesNotExposeEnglishProfileFocusInTitleOrDescription() {
         val routine = fallbackGeneratedRoutine(
             goal = "90 kg worden",

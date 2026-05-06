@@ -70,9 +70,9 @@ class MealAnalysisService internal constructor(
             .atZone(ZoneId.systemDefault())
             .format(captureTimeFormatter)
         val scanContext = buildString {
-            append("User took this photo at $captureTime. ")
-            append("Suggested meal type: ${suggestedMealType.label}. ")
-            append(userContext.ifBlank { "Identify the food, estimate portion sizes, and return exact macros." })
+            append("De gebruiker nam deze foto om $captureTime. ")
+            append("Voorgesteld maaltijdtype: ${suggestedMealType.promptLabel()}. ")
+            append(userContext.ifBlank { "Herken de voeding, schat porties en geef exacte macro's terug." })
         }
         val response = runCatching {
             api.generateContent(
@@ -162,6 +162,13 @@ class MealAnalysisService internal constructor(
     )
 }
 
+private fun MealType.promptLabel(): String = when (this) {
+    MealType.BREAKFAST -> "Ochtend"
+    MealType.LUNCH -> "Middag"
+    MealType.DINNER -> "Avond"
+    MealType.SNACK -> "Snack"
+}
+
 private const val MaxMealScanGrams = 100_000.0
 private const val MaxMealScanCalories = 100_000.0
 private const val MaxMealScanMacro = 100_000.0
@@ -199,7 +206,7 @@ class WorkoutDebriefService internal constructor(
         comparisonSummary: String = if (progression == null) {
             "Nog geen eerdere vergelijkbare training gevonden."
         } else {
-            "Vergelijking beschikbaar: ${String.format(Locale.US, "%.1f", progression)}%."
+            "Vergelijking beschikbaar: ${formatAiPercentNl(progression)}%."
         },
         distribution: String,
         avgRpe: Float,
@@ -392,7 +399,7 @@ class GoalAdvisorService internal constructor(
             summary = "Lokale berekening: onderhoud ${baseline.maintenanceCalories} kcal en doel ${baseline.targetCalories} kcal op basis van je profiel.",
             calorieAdvice = buildCalorieAdvice(baseline),
             macroAdvice = "Macro's sluiten aan op ${baseline.targetCalories} kcal: ${baseline.proteinTarget} g eiwit, ${baseline.carbsTarget} g koolhydraten en ${baseline.fatTarget} g vet.",
-            activityExplanation = "Activiteitsfactor ${String.format(Locale.US, "%.3f", baseline.activityMultiplier)} betekent dat onderhoud is berekend als BMR x activiteit: ${baseline.bmr} x ${String.format(Locale.US, "%.3f", baseline.activityMultiplier)} = ${baseline.maintenanceCalories} kcal.",
+            activityExplanation = "Activiteitsfactor ${formatActivityMultiplierNl(baseline.activityMultiplier)} betekent dat onderhoud is berekend als BMR x activiteit: ${baseline.bmr} x ${formatActivityMultiplierNl(baseline.activityMultiplier)} = ${baseline.maintenanceCalories} kcal.",
             attentionPoints = buildGoalAttentionPoints(bodyFat = bodyFat, activityLevel = activityLevel),
             advice = buildGoalAdviceText(baseline, goal),
             dataQuality = "Lokale schatting op basis van profielgegevens. Werkelijke behoefte kan afwijken door stappen, training, slaap en gewichtstrend.",
@@ -420,7 +427,7 @@ class GoalAdvisorService internal constructor(
 
     private fun buildGoalAttentionPoints(bodyFat: Double, activityLevel: String): List<String> = buildList {
         if (bodyFat !in 5.0..60.0) add("Vetpercentage ontbreekt of lijkt onzeker; eiwit is daarom conservatief geschat.")
-        add("Activiteitsniveau '$activityLevel' blijft een keuze en is geen gemeten TDEE.")
+        add("Activiteitsniveau '${activityLevel.toDutchGoalActivityLabel()}' blijft een keuze en is geen gemeten TDEE.")
     }
 }
 
@@ -532,7 +539,7 @@ internal fun parseWorkoutDebriefResponse(
 internal fun fallbackWorkoutDebriefResult(totalVolume: Double, progression: Double?) = WorkoutDebrief(
     summary = "Lokale samenvatting: volume ${totalVolume.toInt()} kg.",
     progressionFeedback = progression?.let {
-        "Volume veranderde met ${String.format(Locale.US, "%.1f", it)}% ten opzichte van de vorige sessie."
+        "Volume veranderde met ${formatAiPercentNl(it)}% ten opzichte van de vorige sessie."
     } ?: "Nog geen eerdere vergelijkbare training gevonden.",
     recommendation = "Houd dezelfde opzet aan en verhoog pas als uitvoering en herstel goed blijven.",
     nextSessionFocus = "Huidige gewichten vasthouden",
@@ -544,3 +551,18 @@ internal fun fallbackWorkoutDebriefResult(totalVolume: Double, progression: Doub
     recoveryAdvice = "Gebruik slaap, stappen en spierpijn om te bepalen of je verhoogt of vasthoudt.",
     source = WorkoutDebriefSource.LOCAL_FALLBACK,
 )
+
+internal fun formatAiPercentNl(value: Double): String =
+    String.format(Locale.forLanguageTag("nl-NL"), "%.1f", value)
+
+internal fun formatActivityMultiplierNl(value: Double): String =
+    String.format(Locale.forLanguageTag("nl-NL"), "%.3f", value)
+
+internal fun String.toDutchGoalActivityLabel(): String = when (trim().lowercase(Locale.ROOT)) {
+    "sedentary" -> "zittend"
+    "lightly active", "light active" -> "licht actief"
+    "moderately active", "moderate active" -> "matig actief"
+    "very active" -> "zeer actief"
+    "extra active", "athlete" -> "extreem actief"
+    else -> trim().ifBlank { "onbekend" }
+}

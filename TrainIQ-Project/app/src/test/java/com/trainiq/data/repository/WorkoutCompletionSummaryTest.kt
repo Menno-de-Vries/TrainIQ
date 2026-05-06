@@ -7,6 +7,7 @@ import com.trainiq.core.database.WorkoutExerciseEntity
 import com.trainiq.core.database.WorkoutRoutineEntity
 import com.trainiq.core.database.WorkoutSessionEntity
 import com.trainiq.core.database.WorkoutSetEntity
+import com.trainiq.domain.model.LoggedSet
 import com.trainiq.domain.model.WorkoutDebrief
 import com.trainiq.domain.model.WorkoutDebriefSource
 import org.junit.Assert.assertEquals
@@ -69,5 +70,36 @@ class WorkoutCompletionSummaryTest {
         assertTrue(summary.sourceLabel.contains("trainingsdata"))
         assertEquals(listOf("Bench Press", "Cable Row"), summary.exercises.map { it.name })
         assertEquals("80 kg x 8", summary.strongestSetLabel)
+    }
+
+    @Test
+    fun completedWorkoutSetLoggedAt_preservesOriginalLogTimeWhenAvailable() {
+        val set = LoggedSet(
+            exerciseId = 3L,
+            weight = 80.0,
+            reps = 8,
+            rpe = 8.0,
+            loggedAt = 1_500L,
+        )
+
+        assertEquals(1_500L, completedWorkoutSetLoggedAt(set = set, fallback = 9_000L))
+    }
+
+    @Test
+    fun completedWorkoutSetLoggedAt_usesFinishFallbackForLegacySetsWithoutLogTime() {
+        val set = LoggedSet(
+            exerciseId = 3L,
+            weight = 80.0,
+            reps = 8,
+            rpe = 8.0,
+        )
+
+        assertEquals(9_000L, completedWorkoutSetLoggedAt(set = set, fallback = 9_000L))
+    }
+
+    @Test
+    fun workoutDebriefTopSetText_usesDutchReadableSetFormatting() {
+        assertEquals("Bench Press 82.5 kg x 6", workoutDebriefTopSetText("Bench Press", "82.5", 6))
+        assertEquals("Geen topsets gelogd", workoutDebriefEmptyTopSetsText())
     }
 }

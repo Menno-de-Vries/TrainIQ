@@ -323,7 +323,18 @@ private fun WeekReportCard(report: WeeklyReportResult?, fallbackSummary: String)
 private fun BulletAdviceSurface(title: String, items: List<String>) {
     AdviceSurface {
         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        items.forEach { point -> Text("- $point", style = MaterialTheme.typography.bodyMedium) }
+        items.forEach { point -> BulletText(point) }
+    }
+}
+
+@Composable
+private fun BulletText(point: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+    ) {
+        Text("•", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+        Text(cleanAdviceBulletText(point), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
     }
 }
 
@@ -499,7 +510,7 @@ fun CoachScreen(
                                 }
                                 Text("Trainingsinzichten", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                 (state.overview.trainingInsights.ifEmpty { listOf("Nog geen inzichten. Sla een doel op en voltooi een workout.") }).forEach {
-                                    Text("• $it", style = MaterialTheme.typography.bodyMedium)
+                                    BulletText(it)
                                 }
                                 Text("Voedingscoach", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                 Surface(
@@ -665,7 +676,7 @@ fun CoachScreen(
                                             }
                                         },
                                     ) {
-                                        Text("Profiel opslaan")
+                                        Text("Profiel en doelen opslaan")
                                     }
                                 }
                         }
@@ -721,7 +732,7 @@ private fun GoalAdviceCard(advice: GoalAdvice, activityLevel: String) {
                 MetricPill("BMR", "${advice.bmr} kcal")
                 MetricPill("Onderhoud", "${advice.maintenanceCalories} kcal")
                 MetricPill("Doel", "${advice.calorieTarget} kcal")
-                MetricPill(if (difference < 0) "Tekort" else if (difference > 0) "Surplus" else "Balans", "${kotlin.math.abs(difference)} kcal")
+                MetricPill(goalAdviceEnergyDifferenceLabel(difference), "${kotlin.math.abs(difference)} kcal")
             }
             compactSentences(advice.calorieAdvice.ifBlank { "Doelcalorieën zijn afgeleid van onderhoud en doel." }, maxSentences = 2).forEach {
                 Text(it, style = MaterialTheme.typography.bodyMedium)
@@ -758,9 +769,7 @@ private fun GoalAdviceCard(advice: GoalAdvice, activityLevel: String) {
         if (advice.attentionPoints.isNotEmpty()) {
             AdviceSurface {
                 Text("Aandachtspunten", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                advice.attentionPoints.forEach { point ->
-                    Text("- $point", style = MaterialTheme.typography.bodyMedium)
-                }
+                advice.attentionPoints.forEach { point -> BulletText(point) }
             }
         }
     }
@@ -809,6 +818,15 @@ private fun String.toDutchActivityLevelLabel(): String = when (trim().lowercase(
     "athlete" -> "Atleet"
     else -> this
 }
+
+internal fun goalAdviceEnergyDifferenceLabel(difference: Int): String = when {
+    difference < 0 -> "Tekort"
+    difference > 0 -> "Overschot"
+    else -> "Balans"
+}
+
+internal fun cleanAdviceBulletText(point: String): String =
+    point.trim().trimStart('-', '•', '*').trim()
 
 private fun compactSentences(text: String, maxSentences: Int): List<String> {
     val cleaned = text.trim()

@@ -20,6 +20,8 @@ import com.trainiq.domain.model.WorkoutSyncStatus
 import com.trainiq.domain.model.estimateStrengthTrainingCalories
 import com.trainiq.domain.model.suggestMealType
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -53,10 +55,11 @@ class TrainIqLocalStore @Inject constructor(
             val updated = transform(_state.value)
             val tempFile = storageFile.resolveSibling("${storageFile.name}.tmp")
             tempFile.writeText(gson.toJson(updated))
-            if (storageFile.exists()) {
-                storageFile.delete()
-            }
-            tempFile.renameTo(storageFile)
+            Files.move(
+                tempFile.toPath(),
+                storageFile.toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+            )
             _state.value = updated
         }
     }

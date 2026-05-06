@@ -5,6 +5,7 @@ import com.trainiq.domain.model.MealAnalysisSource
 import com.trainiq.domain.model.MealScanItem
 import com.trainiq.domain.model.MealType
 import com.trainiq.domain.model.NutritionFacts
+import android.content.pm.PackageManager
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -13,6 +14,24 @@ class CameraScannerStateTest {
     @Test
     fun cameraPermissionRequest_isUserInitiatedRatherThanAutomaticOnEntry() {
         assertEquals(false, shouldAutoRequestCameraPermissionOnEntry())
+    }
+
+    @Test
+    fun scannerActionLabels_matchTheActualAction() {
+        assertEquals("Sluiten", scannerErrorPrimaryActionLabel(ScannerSheetErrorAction.Dismiss))
+        assertEquals("Opnieuw scannen", scannerErrorPrimaryActionLabel(ScannerSheetErrorAction.ScanAgain))
+    }
+
+    @Test
+    fun cameraPermissionState_usesExistingGrantedPermission() {
+        assertEquals(true, isCameraPermissionGranted(PackageManager.PERMISSION_GRANTED))
+        assertEquals(false, isCameraPermissionGranted(PackageManager.PERMISSION_DENIED))
+    }
+
+    @Test
+    fun completedScanCopy_usesDutchProductLabels() {
+        assertEquals("1 product gevonden. Suggestie: Ochtend.", scannerCompletedMessage(1, MealType.BREAKFAST))
+        assertEquals("2 producten gevonden.", scannerCompletedMessage(2, null))
     }
 
     @Test

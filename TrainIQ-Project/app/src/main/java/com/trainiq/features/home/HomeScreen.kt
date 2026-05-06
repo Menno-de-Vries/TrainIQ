@@ -337,6 +337,7 @@ fun HomeScreen(
                                     else -> "Offline"
                                 },
                                 subtitle = buildHomeRecoverySubtitle(
+                                    stepsToday = healthConnectStatus.stepsToday,
                                     averageHeartRateBpm = healthConnectStatus.averageHeartRateBpm,
                                     todaysWorkoutCalories = dashboard.todaysWorkoutCalories,
                                 ),
@@ -392,10 +393,11 @@ fun HomeScreen(
 }
 
 internal fun buildHomeRecoverySubtitle(
+    stepsToday: Int?,
     averageHeartRateBpm: Int?,
     todaysWorkoutCalories: Int,
 ): String = buildString {
-    append("Stappen")
+    append(stepsToday?.let { "$it stappen" } ?: "Stappen offline")
     averageHeartRateBpm?.let { append(" - Gem. hartslag $it") }
     append(" - Training $todaysWorkoutCalories kcal")
 }
@@ -406,6 +408,7 @@ private fun DiscoveryCard(onOpenCoach: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .clip(MaterialTheme.shapes.large)
                 .background(
                     Brush.linearGradient(
                         colors = listOf(
@@ -524,7 +527,8 @@ private fun CoachInsightCard(
                             MaterialTheme.colorScheme.secondary.copy(alpha = 0.03f),
                         ),
                     ),
-                ),
+                )
+                .padding(MaterialTheme.spacing.medium),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
             Text("AI-inzicht", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)

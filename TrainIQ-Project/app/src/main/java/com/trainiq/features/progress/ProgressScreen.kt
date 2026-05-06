@@ -43,6 +43,7 @@ import com.trainiq.core.theme.trainIqColors
 import com.trainiq.core.util.ChartComposable
 import com.trainiq.core.util.MetricCard
 import com.trainiq.core.util.toReadableDate
+import com.trainiq.domain.model.BodyMeasurement
 import com.trainiq.domain.model.ProgressOverview
 import com.trainiq.domain.usecase.AddMeasurementUseCase
 import com.trainiq.domain.usecase.DeleteMeasurementUseCase
@@ -333,7 +334,7 @@ fun ProgressScreen(
             }
             if (hasTrainingProgress) {
                 item {
-                    MetricCard("Geschatte 1RM", "${overview.estimatedOneRepMax.toInt()} kg", "Beste geschatte maximale kracht uit je gelogde sets", Modifier.fillMaxWidth())
+                    MetricCard("Geschatte 1RM", estimatedOneRepMaxText(overview.estimatedOneRepMax), "Beste geschatte maximale kracht uit je gelogde sets", Modifier.fillMaxWidth())
                 }
                 item {
                     MetricCard("Vermoeidheidsindex", String.format(Locale.getDefault(), "%.2f", overview.fatigueIndex), "Waarschuwing bij snelle volume + RPE stijging", Modifier.fillMaxWidth())
@@ -343,8 +344,9 @@ fun ProgressScreen(
                 AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.purple) {
                     Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                         Text("Meetgeschiedenis", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
-                        overview.measurements.sortedByDescending { it.date }.forEachIndexed { index, measurement ->
-                            val previous = overview.measurements.sortedByDescending { it.date }.getOrNull(index + 1)
+                        val measurements = sortedMeasurementsForHistory(overview.measurements)
+                        measurements.forEachIndexed { index, measurement ->
+                            val previous = measurements.getOrNull(index + 1)
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
@@ -359,7 +361,7 @@ fun ProgressScreen(
                                         )
                                     }
                                 }
-                                TextButton(onClick = { onDeleteMeasurement(measurement.id) }) { Text("Meting verwijderen") }
+                                TextButton(onClick = { onDeleteMeasurement(measurement.id) }) { Text(deleteMeasurementActionLabel()) }
                             }
                         }
                     }
@@ -403,6 +405,13 @@ private fun measurementDeltaText(
     val muscle = current.muscleMass - previous.muscleMass
     return "Sinds vorige: gewicht ${signedOneDecimal(weight)} kg, vet ${signedOneDecimal(bodyFat)} pp, spier ${signedOneDecimal(muscle)} kg"
 }
+
+internal fun estimatedOneRepMaxText(value: Double): String = "${String.format(Locale.US, "%.1f", value)} kg"
+
+internal fun sortedMeasurementsForHistory(measurements: List<BodyMeasurement>): List<BodyMeasurement> =
+    measurements.sortedByDescending { it.date }
+
+internal fun deleteMeasurementActionLabel(): String = "Verwijderen"
 
 private fun signedOneDecimal(value: Double): String =
     String.format(Locale.getDefault(), "%+.1f", value)

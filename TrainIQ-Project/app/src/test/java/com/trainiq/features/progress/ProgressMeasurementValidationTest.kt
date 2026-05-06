@@ -1,5 +1,6 @@
 package com.trainiq.features.progress
 
+import com.trainiq.domain.model.BodyMeasurement
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -55,6 +56,24 @@ class ProgressMeasurementValidationTest {
         assertValidationError(weight = "abc", expectedMessage = "Gewicht moet tussen 30 en 300 kg zijn.")
         assertValidationError(bodyFat = "abc", expectedMessage = "Vetpercentage moet tussen 0 en 100% zijn.")
         assertValidationError(muscleMass = "abc", expectedMessage = "Spiermassa moet tussen 1 en 200 kg zijn.")
+    }
+
+    @Test
+    fun estimatedOneRepMaxText_keepsUsefulDecimalPrecision() {
+        assertEquals("102.6 kg", estimatedOneRepMaxText(102.6))
+    }
+
+    @Test
+    fun measurementHistoryRows_areSortedOnceNewestFirst() {
+        val older = BodyMeasurement(id = 1L, date = 100L, weight = 80.0, bodyFat = 15.0, muscleMass = 40.0)
+        val newer = BodyMeasurement(id = 2L, date = 200L, weight = 81.0, bodyFat = 14.8, muscleMass = 40.5)
+
+        assertEquals(listOf(newer, older), sortedMeasurementsForHistory(listOf(older, newer)))
+    }
+
+    @Test
+    fun deleteMeasurementActionLabel_isCompactForNarrowRows() {
+        assertEquals("Verwijderen", deleteMeasurementActionLabel())
     }
 
     private fun assertValidationError(

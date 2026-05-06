@@ -24,6 +24,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.abs
 
 private val dateFormatter = DateTimeFormatter.ofPattern("dd MMM")
 
@@ -32,6 +33,18 @@ fun Long.toReadableDate(): String =
 
 fun todayEpochMillis(): Long =
     LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+internal fun energyBalanceValueText(balance: Int): String {
+    val status = when {
+        balance < 0 -> "tekort"
+        balance > 0 -> "overschot"
+        else -> "in balans"
+    }
+    return "${abs(balance)} kcal $status"
+}
+
+internal fun energyBalanceMetaText(caloriesIn: Int, caloriesOut: Int, calorieTarget: Int): String =
+    "In $caloriesIn kcal - Uit $caloriesOut kcal - Doel $calorieTarget kcal"
 
 @Composable
 fun MetricCard(title: String, value: String, subtitle: String, modifier: Modifier = Modifier) {
@@ -76,13 +89,13 @@ fun EnergyBalanceCard(
                 )
             }
             energyBalance?.let {
-                Text("${it.balance}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                Text(energyBalanceValueText(it.balance), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
             }
         }
         AppLinearProgress(progress = progress)
         energyBalance?.let {
             Text(
-                "In ${it.caloriesIn} - Uit ${it.caloriesOut} - Doel $calorieTarget",
+                energyBalanceMetaText(it.caloriesIn, it.caloriesOut, calorieTarget),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.trainIqColors.mutedText,
             )

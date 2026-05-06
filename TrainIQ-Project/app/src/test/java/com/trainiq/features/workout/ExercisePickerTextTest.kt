@@ -11,7 +11,10 @@ class ExercisePickerTextTest {
         assertEquals("Oefeningen zoeken", exercisePickerSearchLabel())
         assertEquals("Aangepaste oefening toevoegen", exercisePickerAddCustomLabel(showCustomForm = false))
         assertEquals("Aangepaste oefening verbergen", exercisePickerAddCustomLabel(showCustomForm = true))
-        assertEquals("Geen passende oefeningen gevonden.", exercisePickerEmptyText())
+        assertEquals(
+            "Geen passende oefeningen gevonden. Voeg eventueel een aangepaste oefening toe.",
+            exercisePickerEmptyText(),
+        )
     }
 
     @Test
@@ -21,6 +24,7 @@ class ExercisePickerTextTest {
         assertEquals("Spiergroep", customExerciseMuscleLabel())
         assertEquals("Materiaal", customExerciseEquipmentLabel())
         assertEquals("Aangepaste oefening gebruiken", customExerciseSubmitLabel())
+        assertEquals(true, customExerciseFieldsStackVertically())
     }
 
     @Test
@@ -28,5 +32,8 @@ class ExercisePickerTextTest {
         assertEquals("Schouders - Dumbbells", exercisePickerMetadataText("Shoulders", "Dumbbells"))
         assertEquals("Borst - Halterstang", exercisePickerMetadataText("Chest", "Barbell"))
         assertEquals("Hele lichaam - Lichaamsgewicht", exercisePickerMetadataText("Full body", "Bodyweight"))
+        assertEquals("Hamstrings - Dumbbells", exercisePickerMetadataText("Hamstrings", "Dumbbell"))
+        assertEquals("Bilspieren - Kettlebells", exercisePickerMetadataText("Glutes", "Kettlebells"))
+        assertEquals("Core - EZ-stang", exercisePickerMetadataText("Core", "EZ-Bar"))
     }
 }

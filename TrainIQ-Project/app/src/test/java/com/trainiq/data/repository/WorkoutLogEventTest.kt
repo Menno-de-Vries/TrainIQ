@@ -134,6 +134,33 @@ class WorkoutLogEventTest {
     }
 
     @Test
+    fun deleteActiveWorkoutSetById_removesPendingAddEventForDeletedSet() {
+        val removed = ActiveWorkoutSetStorage(id = 2L, exerciseId = 3L, sourceWorkoutExerciseId = 4L, weight = 80.0)
+        val state = TrainIqStorageState(
+            activeWorkoutSession = ActiveWorkoutSessionStorage(
+                sessionId = 12L,
+                dayId = 7L,
+                loggedSets = listOf(removed),
+            ),
+            workoutLogEvents = listOf(
+                com.trainiq.data.local.WorkoutLogEventStorage(
+                    id = 1L,
+                    sessionId = 12L,
+                    dayId = 7L,
+                    type = WorkoutLogEventType.ADD_SET,
+                    syncStatus = WorkoutSyncStatus.PENDING,
+                    set = removed,
+                ),
+            ),
+        )
+
+        val updated = state.deleteActiveWorkoutSetById(setId = 2L, now = 2_000L)
+
+        assertEquals(emptyList<ActiveWorkoutSetStorage>(), updated.activeWorkoutSession?.loggedSets)
+        assertEquals(emptyList<com.trainiq.data.local.WorkoutLogEventStorage>(), updated.workoutLogEvents)
+    }
+
+    @Test
     fun updateActiveWorkoutSetTypeById_updatesOnlyMatchingSetWhenEarlierSetsWereDeleted() {
         val state = TrainIqStorageState(
             activeWorkoutSession = ActiveWorkoutSessionStorage(
@@ -149,6 +176,31 @@ class WorkoutLogEventTest {
         val updated = state.updateActiveWorkoutSetTypeById(setId = 8L, setType = SetType.DROP_SET, now = 2_000L)
 
         assertEquals(listOf(SetType.NORMAL, SetType.DROP_SET), updated.activeWorkoutSession?.loggedSets?.map { it.setType })
+    }
+
+    @Test
+    fun updateActiveWorkoutSetTypeById_updatesPendingEventSetType() {
+        val original = ActiveWorkoutSetStorage(id = 8L, exerciseId = 3L, sourceWorkoutExerciseId = 4L, setType = SetType.NORMAL)
+        val state = TrainIqStorageState(
+            activeWorkoutSession = ActiveWorkoutSessionStorage(
+                sessionId = 12L,
+                dayId = 7L,
+                loggedSets = listOf(original),
+            ),
+            workoutLogEvents = listOf(
+                com.trainiq.data.local.WorkoutLogEventStorage(
+                    id = 1L,
+                    sessionId = 12L,
+                    dayId = 7L,
+                    type = WorkoutLogEventType.ADD_SET,
+                    set = original,
+                ),
+            ),
+        )
+
+        val updated = state.updateActiveWorkoutSetTypeById(setId = 8L, setType = SetType.FAILURE, now = 2_000L)
+
+        assertEquals(SetType.FAILURE, updated.workoutLogEvents.single().set?.setType)
     }
 
     @Test

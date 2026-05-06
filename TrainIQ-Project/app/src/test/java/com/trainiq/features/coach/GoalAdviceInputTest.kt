@@ -162,4 +162,17 @@ class GoalAdviceInputTest {
         assertNull(nanHeight)
         assertNull(infiniteWeight)
     }
+
+    @Test
+    fun goalAdviceEnergyDifferenceLabel_usesDutchBalanceLabels() {
+        assertEquals("Tekort", goalAdviceEnergyDifferenceLabel(-250))
+        assertEquals("Overschot", goalAdviceEnergyDifferenceLabel(250))
+        assertEquals("Balans", goalAdviceEnergyDifferenceLabel(0))
+    }
+
+    @Test
+    fun cleanAdviceBulletText_removesRawMarkdownMarkers() {
+        assertEquals("Houd eiwit hoog.", cleanAdviceBulletText("- Houd eiwit hoog."))
+        assertEquals("Plan je volgende sessie.", cleanAdviceBulletText("* Plan je volgende sessie."))
+    }
 }

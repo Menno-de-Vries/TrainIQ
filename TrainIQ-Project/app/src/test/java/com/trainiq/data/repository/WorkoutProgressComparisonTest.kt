@@ -48,6 +48,7 @@ class WorkoutProgressComparisonTest {
 
         assertEquals(10.0, result?.progressionPercent ?: 0.0, 0.01)
         assertEquals(500.0, result?.previousVolume ?: 0.0, 0.0)
+        assertEquals("Vergelijking met vorige vergelijkbare training: 500 kg naar 550 kg (10,0%).", result?.summary)
     }
 
     @Test
@@ -75,6 +76,11 @@ class WorkoutProgressComparisonTest {
         )
 
         assertNull(result)
+    }
+
+    @Test
+    fun defaultWorkoutSessionName_usesDutchLabel() {
+        assertEquals("Sessie 3", defaultWorkoutSessionName(existingSessionCount = 2))
     }
 
     private fun completedSession(id: Long, dayId: Long, routineId: Long, startedAt: Long) = WorkoutSessionEntity(

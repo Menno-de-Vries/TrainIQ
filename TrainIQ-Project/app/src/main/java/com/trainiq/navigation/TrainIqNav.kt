@@ -411,7 +411,7 @@ private fun TrainIqNavHost(
                 dayId = entry.toRoute<WorkoutProcessing>().dayId,
                 onComplete = { sessionId ->
                     navController.navigate(WorkoutCompletion(sessionId)) {
-                        popUpTo(Train::class) {
+                        popUpTo<Train> {
                             inclusive = false
                             saveState = false
                         }

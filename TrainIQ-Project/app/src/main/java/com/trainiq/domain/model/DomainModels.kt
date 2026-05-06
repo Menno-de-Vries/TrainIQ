@@ -148,6 +148,7 @@ data class LoggedSet(
     val restSeconds: Int = 0,
     val orderIndex: Int = 0,
     val completed: Boolean = true,
+    val loggedAt: Long = 0L,
     val performedExerciseId: Long = 0L,
     val sourceWorkoutExerciseId: Long? = null,
 )
@@ -187,6 +188,7 @@ data class ActiveWorkoutSetEntry(
         restSeconds = restSeconds,
         orderIndex = orderIndex,
         completed = completed,
+        loggedAt = loggedAt,
     )
 }
 

@@ -2,6 +2,8 @@ package com.trainiq.features.nutrition
 
 import com.trainiq.domain.repository.MealEntryRequest
 import com.trainiq.domain.repository.MealEntryType
+import com.trainiq.domain.model.EnergyBalanceSnapshot
+import com.trainiq.domain.model.MealType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -41,7 +43,7 @@ class NutritionInputValidationTest {
         )
 
         assertEquals("Naam is verplicht.", errors.name)
-        assertEquals("Voeg minimaal een ingredient toe.", errors.ingredients)
+        assertEquals("Voeg minimaal een ingrediënt toe.", errors.ingredients)
         assertEquals("Vul een positief aantal gram in.", errors.cookedGrams)
     }
 
@@ -136,5 +138,59 @@ class NutritionInputValidationTest {
         aiStarted as NutritionSubmitStartResult.Started
         assertEquals(setOf(NutritionSubmitKey.Food, NutritionSubmitKey.AiItems), aiStarted.pendingKeys)
         assertEquals(NutritionSubmitStartResult.AlreadyPending, tryStartNutritionSubmit(aiStarted.pendingKeys, NutritionSubmitKey.AiItems))
+    }
+
+    @Test
+    fun nutritionMacroSummary_expandsMacroLabelsForScanability() {
+        assertEquals("Eiwit 32 g - Kh 55 g - Vet 18 g", nutritionMacroSummary(32.0, 55.0, 18.0))
+    }
+
+    @Test
+    fun aiMealAnalyzingLabel_namesTheActualOperation() {
+        assertEquals("Maaltijd analyseren...", aiMealAnalyzingLabel())
+    }
+
+    @Test
+    fun nutritionEnergyProgress_usesEnergyOutWhenAvailableInsteadOfHardcodedTarget() {
+        val balance = EnergyBalanceSnapshot(
+            caloriesIn = 1_400,
+            caloriesOut = 2_000,
+            balance = -600,
+            bmr = 1_600,
+            tefCalories = 140,
+            neatCalories = 160,
+            workoutCalories = 100,
+        )
+
+        assertEquals(0.7f, nutritionEnergyProgressFraction(calories = 1_400.0, energyBalance = balance), 0.0f)
+    }
+
+    @Test
+    fun nutritionEnergyProgress_withoutEnergyBalanceDoesNotInventFallbackTarget() {
+        assertEquals(0f, nutritionEnergyProgressFraction(calories = 1_400.0, energyBalance = null), 0.0f)
+    }
+
+    @Test
+    fun mealSectionEmptyText_namesMealAndAction() {
+        assertEquals(
+            "Nog niets gelogd voor ochtend. Tik op Toevoegen om iets te loggen.",
+            mealSectionEmptyText(MealType.BREAKFAST),
+        )
+    }
+
+    @Test
+    fun nutritionEnergyBalanceCopy_namesDeficitAndBreakdownUnits() {
+        val balance = EnergyBalanceSnapshot(
+            caloriesIn = 1_400,
+            caloriesOut = 2_000,
+            balance = -600,
+            bmr = 1_600,
+            tefCalories = 140,
+            neatCalories = 160,
+            workoutCalories = 100,
+        )
+
+        assertEquals("Netto calorieën 600 kcal tekort", nutritionEnergyBalanceSummary(balance))
+        assertEquals("TEF 140 kcal - NEAT 160 kcal - Training 100 kcal", nutritionEnergyBreakdownText(balance))
     }
 }

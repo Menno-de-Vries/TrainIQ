@@ -16,6 +16,7 @@ import com.trainiq.core.database.WorkoutExerciseEntity
 import com.trainiq.core.database.WorkoutRoutineEntity
 import com.trainiq.core.database.WorkoutSessionEntity
 import com.trainiq.core.database.WorkoutSetEntity
+import com.trainiq.core.util.energyBalanceValueText
 import com.trainiq.core.util.toReadableDate
 import com.trainiq.core.util.todayEpochMillis
 import com.trainiq.data.datasource.HealthConnectDataSource
@@ -598,7 +599,7 @@ class TrainIqRepository @Inject constructor(
                 restSeconds = set.restSeconds,
                 orderIndex = set.orderIndex.takeIf { it > 0 } ?: index,
                 completed = set.completed,
-                loggedAt = set.performedExerciseId.takeIf { it > 0L }?.let { now + index } ?: now + index,
+                loggedAt = completedWorkoutSetLoggedAt(set = set, fallback = now + index),
                 completedAt = now + index,
             )
         }
@@ -638,10 +639,10 @@ class TrainIqRepository @Inject constructor(
             .sortedByDescending { it.weight * it.reps }
             .take(3)
             .joinToString { set ->
-                val exerciseName = exerciseNameById[set.exerciseId] ?: "Exercise ${set.exerciseId}"
-                "${exerciseName} ${formatWeight(set.weight)}kgx${set.reps}"
+                val exerciseName = exerciseNameById[set.exerciseId] ?: "Oefening ${set.exerciseId}"
+                workoutDebriefTopSetText(exerciseName = exerciseName, weightLabel = formatWeight(set.weight), reps = set.reps)
             }
-            .ifBlank { "No top sets logged" }
+            .ifBlank { workoutDebriefEmptyTopSetsText() }
         val sevenDaysAgo = System.currentTimeMillis() - (7 * 86_400_000L)
         val weeklyFrequency = (beforeSnapshot.sessions + newSession)
             .filter { it.date >= sevenDaysAgo }
@@ -1410,7 +1411,7 @@ class TrainIqRepository @Inject constructor(
         }
         val volume = progress.currentWeekVolume().toInt()
         val adherence = calculateAdherence(snapshot)
-        return "Deze week: $volume kg trainingsvolume, beste geschatte 1RM ${progress.estimatedOneRepMax.toInt()} kg en $adherence% consistentie."
+        return "Deze week: $volume kg trainingsvolume, beste geschatte 1RM ${formatSummaryWeight(progress.estimatedOneRepMax)} kg en $adherence% consistentie."
     }
 
     private fun buildTrainingInsights(snapshot: RepositorySnapshot, progress: ProgressOverview): List<String> {
@@ -1424,7 +1425,7 @@ class TrainIqRepository @Inject constructor(
         if (snapshot.sessions.isEmpty()) {
             insights += "Er is nog geen trainingshistorie. Rond een workout af om volume en herstel te volgen."
         } else {
-            insights += "Je beste geschatte 1RM staat op ${progress.estimatedOneRepMax.toInt()} kg."
+            insights += "Je beste geschatte 1RM staat op ${formatSummaryWeight(progress.estimatedOneRepMax)} kg."
             insights += "De huidige fatigue index is ${"%.2f".format(progress.fatigueIndex)}."
         }
         return insights
@@ -1442,9 +1443,9 @@ class TrainIqRepository @Inject constructor(
         return if (energyBalance == null) {
             "Je zit vandaag nog $remainingCalories kcal onder je doel. Richt je vooral op eiwitten en volwaardige koolhydraten."
         } else if (remainingCalories > 0) {
-            "Je intake ligt nog ${remainingCalories.coerceAtLeast(0)} kcal onder je target. TEF is ${energyBalance.tefCalories} kcal en je energiebalans staat op ${energyBalance.balance} kcal."
+            "Je intake ligt nog ${remainingCalories.coerceAtLeast(0)} kcal onder je target. TEF is ${energyBalance.tefCalories} kcal en je energiebalans staat op ${energyBalanceValueText(energyBalance.balance)}."
         } else {
-            "Je caloriedoel is vandaag gehaald. Houd je eiwitten hoog; je actuele energiebalans staat op ${energyBalance.balance} kcal."
+            "Je caloriedoel is vandaag gehaald. Houd je eiwitten hoog; je actuele energiebalans staat op ${energyBalanceValueText(energyBalance.balance)}."
         }
     }
 
@@ -1559,7 +1560,7 @@ class TrainIqRepository @Inject constructor(
             mostReps = mostReps,
             bestEstimatedOneRepMax = bestE1rm,
             bestSetLabel = bestSet?.let { "${formatWeight(it.weightKg)} kg x ${it.reps}" } ?: "-",
-            latestPerformanceLabel = latest?.sets?.joinToString { "${formatWeight(it.weightKg)}x${it.reps}" } ?: "-",
+            latestPerformanceLabel = latest?.sets?.joinToString { "${formatWeight(it.weightKg)} kg x ${it.reps}" } ?: "-",
             averageRpe = allSets.map { it.rpe }.filter { it > 0.0 }.average().takeIf { !it.isNaN() },
             totalVolume = historySessions.sumOf { it.totalVolume },
             progressSincePreviousPercent = progressPercent,
@@ -1893,6 +1894,14 @@ internal fun TrainIqStorageState.workoutLoggingSummary(dayId: Long, now: Long): 
 internal fun TrainIqStorageState.finalizeWorkoutLogEventsForCompletedSession(sessionId: Long): TrainIqStorageState =
     copy(workoutLogEvents = workoutLogEvents.filterNot { it.sessionId == sessionId })
 
+internal fun completedWorkoutSetLoggedAt(set: LoggedSet, fallback: Long): Long =
+    set.loggedAt.takeIf { it > 0L } ?: fallback
+
+internal fun workoutDebriefTopSetText(exerciseName: String, weightLabel: String, reps: Int): String =
+    "$exerciseName $weightLabel kg x $reps"
+
+internal fun workoutDebriefEmptyTopSetsText(): String = "Geen topsets gelogd"
+
 internal fun buildWorkoutCompletionSummary(
     session: WorkoutSessionEntity,
     routines: List<WorkoutRoutineEntity>,
@@ -2084,7 +2093,7 @@ internal fun buildWorkoutProgressComparison(
         currentVolume = currentVolume,
         progressionPercent = progression,
         matchedExerciseCount = previous.matchedExerciseCount,
-        summary = "Vergelijking met vorige vergelijkbare training: ${formatSummaryWeight(previous.volume)} kg naar ${formatSummaryWeight(currentVolume)} kg (${String.format(Locale.US, "%.1f", progression)}%).",
+        summary = "Vergelijking met vorige vergelijkbare training: ${formatSummaryWeight(previous.volume)} kg naar ${formatSummaryWeight(currentVolume)} kg (${formatProgressionPercent(progression)}%).",
     )
 }
 
@@ -2096,14 +2105,30 @@ private data class PreviousWorkoutCandidate(
 )
 
 internal fun TrainIqStorageState.deleteActiveWorkoutSetById(setId: Long, now: Long): TrainIqStorageState =
-    copy(activeWorkoutSession = activeWorkoutSession?.deleteSetById(setId = setId, now = now))
+    copy(
+        activeWorkoutSession = activeWorkoutSession?.deleteSetById(setId = setId, now = now),
+        workoutLogEvents = workoutLogEvents.filterNot { event ->
+            event.type == WorkoutLogEventType.ADD_SET &&
+                event.syncStatus == WorkoutSyncStatus.PENDING &&
+                event.set?.id == setId
+        },
+    )
 
 internal fun TrainIqStorageState.updateActiveWorkoutSetTypeById(
     setId: Long,
     setType: SetType,
     now: Long,
 ): TrainIqStorageState =
-    copy(activeWorkoutSession = activeWorkoutSession?.updateSetTypeById(setId = setId, setType = setType, now = now))
+    copy(
+        activeWorkoutSession = activeWorkoutSession?.updateSetTypeById(setId = setId, setType = setType, now = now),
+        workoutLogEvents = workoutLogEvents.map { event ->
+            if (event.set?.id == setId) {
+                event.copy(set = event.set.copy(setType = setType))
+            } else {
+                event
+            }
+        },
+    )
 
 internal fun TrainIqStorageState.updateActiveWorkoutSetById(
     setId: Long,
@@ -2143,7 +2168,10 @@ private fun ActiveWorkoutSessionStorage.updateSetById(
         loggedSets = loggedSets.map { existing -> if (existing.id == setId) set.copy(id = setId) else existing },
     )
 
-internal fun defaultWorkoutSessionName(existingSessionCount: Int): String = "Session ${existingSessionCount + 1}"
+internal fun defaultWorkoutSessionName(existingSessionCount: Int): String = "Sessie ${existingSessionCount + 1}"
+
+internal fun formatProgressionPercent(value: Double): String =
+    String.format(Locale.forLanguageTag("nl-NL"), "%.1f", value)
 
 internal fun TrainIqStorageState.ensurePerformedExercisesForActiveSession(
     active: ActiveWorkoutSessionStorage,

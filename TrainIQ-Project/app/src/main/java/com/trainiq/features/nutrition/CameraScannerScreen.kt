@@ -3,6 +3,7 @@ package com.trainiq.features.nutrition
 import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -301,7 +302,13 @@ private fun CameraScannerScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val haptics = LocalHapticFeedback.current
-    var hasPermission by remember { mutableStateOf(false) }
+    var hasPermission by remember {
+        mutableStateOf(
+            isCameraPermissionGranted(
+                ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA),
+            ),
+        )
+    }
     var permissionDenied by remember { mutableStateOf(false) }
     var cameraError by remember { mutableStateOf<String?>(null) }
     var isCapturing by remember { mutableStateOf(false) }
@@ -514,18 +521,21 @@ private fun CameraScannerScreen(
                     title = "AI-scan niet ingesteld",
                     message = uiState.message,
                     onRetry = onDismissError,
+                    retryLabel = scannerErrorPrimaryActionLabel(ScannerSheetErrorAction.Dismiss),
                     onBack = onBack,
                 )
                 is CameraScannerUiState.LocalFallback -> ErrorSheetContent(
                     title = "Lokale fallback",
                     message = uiState.message,
                     onRetry = onScanAgain,
+                    retryLabel = scannerErrorPrimaryActionLabel(ScannerSheetErrorAction.ScanAgain),
                     onBack = onBack,
                 )
                 is CameraScannerUiState.Error -> ErrorSheetContent(
                     title = "Scan mislukt",
                     message = uiState.message,
                     onRetry = onDismissError,
+                    retryLabel = scannerErrorPrimaryActionLabel(ScannerSheetErrorAction.Dismiss),
                     onBack = onBack,
                 )
                 else -> {}
@@ -560,6 +570,13 @@ private fun EmptySheetContent(
 }
 
 internal fun shouldAutoRequestCameraPermissionOnEntry(): Boolean = false
+
+internal enum class ScannerSheetErrorAction { Dismiss, ScanAgain }
+
+internal fun scannerErrorPrimaryActionLabel(action: ScannerSheetErrorAction): String = when (action) {
+    ScannerSheetErrorAction.Dismiss -> "Sluiten"
+    ScannerSheetErrorAction.ScanAgain -> "Opnieuw scannen"
+}
 
 @Composable
 private fun PermissionGate(
@@ -635,8 +652,7 @@ private fun CompletedSheetContent(
         Text("Scan voltooid", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text(
             buildString {
-                append("$itemCount ${if (itemCount == 1) "item gevonden" else "items gevonden"}.")
-                suggestedMealType?.let { append(" Suggestie: ${it.dutchLabel}.") }
+                append(scannerCompletedMessage(itemCount, suggestedMealType))
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -645,11 +661,20 @@ private fun CompletedSheetContent(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
-            Button(onClick = onReviewItems, modifier = Modifier.fillMaxWidth()) { Text("Items controleren") }
+            Button(onClick = onReviewItems, modifier = Modifier.fillMaxWidth()) { Text("Producten controleren") }
             OutlinedButton(onClick = onScanAgain, modifier = Modifier.fillMaxWidth()) { Text("Opnieuw scannen") }
         }
     }
 }
+
+internal fun isCameraPermissionGranted(permissionResult: Int): Boolean =
+    permissionResult == PackageManager.PERMISSION_GRANTED
+
+internal fun scannerCompletedMessage(itemCount: Int, suggestedMealType: MealType?): String =
+    buildString {
+        append("$itemCount ${if (itemCount == 1) "product gevonden" else "producten gevonden"}.")
+        suggestedMealType?.let { append(" Suggestie: ${it.dutchLabel}.") }
+    }
 
 private val MealType.dutchLabel: String
     get() = when (this) {
@@ -664,6 +689,7 @@ private fun ErrorSheetContent(
     title: String,
     message: String,
     onRetry: () -> Unit,
+    retryLabel: String,
     onBack: () -> Unit,
 ) {
     Column(
@@ -679,7 +705,7 @@ private fun ErrorSheetContent(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
-            Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("Opnieuw proberen") }
+            Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text(retryLabel) }
             OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Terug") }
         }
     }

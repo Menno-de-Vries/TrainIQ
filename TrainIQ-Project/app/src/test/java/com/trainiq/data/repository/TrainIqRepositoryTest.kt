@@ -192,7 +192,7 @@ class TrainIqRepositoryTest {
         )
 
         assertEquals(1, updated.days.size)
-        assertEquals("Session 1", updated.days.first().name)
+        assertEquals("Sessie 1", updated.days.first().name)
         assertEquals(1, updated.workoutExercises.size)
         assertEquals(updated.days.first().id, updated.workoutExercises.first().dayId)
         assertEquals("Bench Press", updated.exercises.first().name)
@@ -358,6 +358,7 @@ class TrainIqRepositoryTest {
         assertEquals(7L, domain.dayId)
         assertEquals(1, domain.loggedSets.size)
         assertEquals(SetType.FAILURE, domain.loggedSets.first().setType)
+        assertEquals(150L, domain.loggedSets.first().loggedAt)
         assertEquals(9L, domain.loggedSets.first().performedExerciseId)
         assertEquals(4L, domain.loggedSets.first().sourceWorkoutExerciseId)
         assertEquals("100", domain.drafts.getValue(3L).weight)

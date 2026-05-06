@@ -1,4 +1,4 @@
-@file:OptIn(
+﻿@file:OptIn(
     androidx.compose.foundation.ExperimentalFoundationApi::class,
     androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
 )
@@ -851,7 +851,7 @@ class WorkoutViewModel @Inject constructor(
 
     fun addDay(routineId: Long, name: String) {
         viewModelScope.launch {
-            addWorkoutDayUseCase(routineId, name.trim().ifBlank { "Session" })
+            addWorkoutDayUseCase(routineId, name.trim().ifBlank { defaultWorkoutDayName() })
             _message.value = "Sessie toegevoegd."
         }
     }
@@ -1168,11 +1168,11 @@ class WorkoutViewModel @Inject constructor(
         if (endsAt != null && previousRemaining > 0 && remaining == 0 && !restTimerFinishHandled) {
             restTimerFinishHandled = true
             restTimerClearRequested = true
-            _message.value = "Rusttijd klaar - volgende set ready"
+            _message.value = restTimerFinishedMessage()
             _events.tryEmit(
                 WorkoutUiEvent.RestTimerFinished(
                     id = ++eventId,
-                    message = "Rusttijd klaar - volgende set ready",
+                    message = restTimerFinishedMessage(),
                 ),
             )
             viewModelScope.launch {
@@ -1593,7 +1593,7 @@ private fun ActiveRoutineCard(activeRoutine: WorkoutRoutine?, onStartWorkout: (L
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    activeRoutine.description.ifBlank { "Nog geen beschrijving." },
+                    activeRoutine.description.ifBlank { routineEmptyDescriptionText() },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.trainIqColors.mutedText,
                     maxLines = 3,
@@ -1601,7 +1601,7 @@ private fun ActiveRoutineCard(activeRoutine: WorkoutRoutine?, onStartWorkout: (L
                 )
                 val startableDay = activeRoutine.firstStartableDay()
                 if (startableDay == null) {
-                    Text("Voeg in Sessies eerst een oefening toe voordat je deze routine start.")
+                    Text(activeRoutineNeedsExerciseText())
                 } else {
                     Button(
                         onClick = { onStartWorkout(startableDay.id) },
@@ -1908,7 +1908,7 @@ private fun RoutineCard(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            routine.description.ifBlank { "Geen beschrijving." },
+                            routine.description.ifBlank { routineEmptyDescriptionText() },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.trainIqColors.mutedText,
                             maxLines = 2,
@@ -2006,7 +2006,7 @@ private fun RoutineCard(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            routine.description.ifBlank { "Geen beschrijving." },
+                            routine.description.ifBlank { routineEmptyDescriptionText() },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.trainIqColors.mutedText,
                             maxLines = 2,
@@ -2049,7 +2049,7 @@ private fun RoutineCard(
             )
             if (detailTab == "info" && !isEditing) {
                 Text("Routine-info", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(routine.description.ifBlank { "Geen beschrijving." }, style = MaterialTheme.typography.bodyMedium)
+                Text(routine.description.ifBlank { routineEmptyDescriptionText() }, style = MaterialTheme.typography.bodyMedium)
                 TextButton(
                     onClick = {
                         detailTab = "info"
@@ -3881,7 +3881,7 @@ private fun ExerciseStatsHeader(history: ExerciseHistory) {
                 val subtitle = listOfNotNull(
                     history.exercise?.muscleGroup?.takeIf { it.isNotBlank() },
                     history.exercise?.equipment?.takeIf { it.isNotBlank() },
-                ).joinToString(" • ")
+                ).joinToString(" â€¢ ")
                 if (subtitle.isNotBlank()) {
                     Text(
                         subtitle,
@@ -4059,7 +4059,7 @@ private fun ExerciseSessionLogCard(session: ExerciseHistorySession) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(formatHistoryDate(session.startedAt), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "${formatTimer(session.durationSeconds.toInt())} • ${session.sets.count { it.completed }} sets",
+                        "${formatTimer(session.durationSeconds.toInt())} â€¢ ${session.sets.count { it.completed }} sets",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -4517,7 +4517,7 @@ private fun AiBulletSection(title: String, items: List<String>) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
                 Text("•", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
                 Text(
-                    item,
+                    cleanCompletionBulletText(item),
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.trainIqColors.mutedText,
@@ -5230,7 +5230,7 @@ private fun ActiveExerciseCard(
                             },
                         )
                         DropdownMenuItem(
-                            text = { Text("Exercise vervangen") },
+                            text = { Text(activeExerciseReplaceLabel()) },
                             leadingIcon = { Icon(Icons.Rounded.SwapHoriz, contentDescription = null) },
                             onClick = {
                                 menuExpanded = false
@@ -5238,7 +5238,7 @@ private fun ActiveExerciseCard(
                             },
                         )
                         DropdownMenuItem(
-                            text = { Text("Exercise verwijderen") },
+                            text = { Text(activeExerciseDeleteLabel()) },
                             leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null) },
                             onClick = {
                                 menuExpanded = false
@@ -5314,7 +5314,7 @@ private fun ActiveExerciseCard(
                         modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 44.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                     ) {
-                        Icon(Icons.Rounded.ContentCopy, contentDescription = "Vorige set kopiëren")
+                        Icon(Icons.Rounded.ContentCopy, contentDescription = "Vorige set kopiÃ«ren")
                     }
                     TextButton(
                         onClick = onLogSameAgain,
@@ -5687,13 +5687,7 @@ private fun CompactPreviousPerformance(suggestion: ProgressionSuggestion) {
 
 @Composable
 private fun PlannedPerformanceFallback(plan: WorkoutExercisePlan) {
-    val target = buildString {
-        if (plan.targetWeightKg > 0.0) append("${formatWeight(plan.targetWeightKg)} kg")
-        if (plan.targetRpe > 0.0) {
-            if (isNotEmpty()) append(" • ")
-            append("RPE ${formatWeight(plan.targetRpe)}")
-        }
-    }
+    val target = plannedPerformanceTargetText(plan.targetWeightKg, plan.targetRpe)
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -5854,6 +5848,42 @@ private fun routineFocusLabel(routine: WorkoutRoutine): String =
     routine.days.flatMap { it.exercises }.focusLabel()
 
 internal fun activeRoutineStartLabel(dayName: String): String = "Training starten"
+
+internal fun activeRoutineNeedsExerciseText(): String =
+    "Open deze routine hieronder en voeg eerst een trainingsdag met oefening toe voordat je start."
+
+internal fun defaultWorkoutDayName(): String = "Sessie"
+
+internal fun routineEmptyDescriptionText(): String = "Nog geen beschrijving."
+
+internal fun activeExerciseReplaceLabel(): String = "Oefening vervangen"
+
+internal fun activeExerciseDeleteLabel(): String = "Oefening verwijderen"
+
+internal fun restTimerFinishedMessage(): String = "Rusttijd klaar - volgende set klaar"
+
+internal fun cleanCompletionBulletText(item: String): String =
+    item.trim().trimStart('-', '•', '*').trim()
+
+internal fun plannedPerformanceTargetText(targetWeightKg: Double, targetRpe: Double): String =
+    buildList {
+        if (targetWeightKg > 0.0) add("${formatWeight(targetWeightKg)} kg")
+        if (targetRpe > 0.0) add("RPE ${formatWeight(targetRpe)}")
+    }.joinToString(" - ")
+
+internal fun exerciseSummaryMetaText(
+    setCount: Int,
+    repRange: String,
+    restSeconds: Int,
+    rpe: String,
+    supersetGroupId: Long?,
+): String = buildList {
+    add("$setCount sets")
+    add("$repRange reps")
+    add("${restSeconds}s rust")
+    add(rpe)
+    supersetGroupId?.let { add("Superset $it") }
+}.joinToString(" - ")
 
 internal fun displayWorkoutDayName(dayName: String): String {
     val trimmed = dayName.trim()
@@ -6255,8 +6285,13 @@ private fun ActiveWorkoutSetDraft.toUiDraft() = SetInputDraft(
 
 private fun exerciseSummaryMeta(plan: WorkoutExercisePlan): String {
     val rpe = plan.targetRpe.takeIf { it > 0.0 }?.let { "RPE ${formatWeight(it)}" } ?: "RPE -"
-    val superset = plan.supersetGroupId?.let { " · Superset $it" }.orEmpty()
-    return "${plan.plannedSetCount()} sets · ${plan.repRange} reps · ${plan.restSeconds}s rust · $rpe$superset"
+    return exerciseSummaryMetaText(
+        setCount = plan.plannedSetCount(),
+        repRange = plan.repRange,
+        restSeconds = plan.restSeconds,
+        rpe = rpe,
+        supersetGroupId = plan.supersetGroupId,
+    )
 }
 
 private fun WorkoutExercisePlan.plannedSetCount(): Int = sets.size.takeIf { it > 0 } ?: targetSets
@@ -6317,3 +6352,5 @@ private fun SetType.next(): SetType = when (this) {
     SetType.FAILURE -> SetType.BACK_OFF
     SetType.BACK_OFF -> SetType.NORMAL
 }
+
+

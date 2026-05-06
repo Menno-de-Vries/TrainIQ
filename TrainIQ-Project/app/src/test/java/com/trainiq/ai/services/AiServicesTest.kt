@@ -74,6 +74,11 @@ class AiServicesTest {
         assertEquals(1, result.items.size)
         assertEquals("Kwark", result.items.single().name)
         assertEquals("Duidelijke foto.", result.notes)
+        val prompt = api.lastRequest?.contents?.single()?.parts?.first()?.text.orEmpty()
+        assertTrue(prompt.contains("De gebruiker nam deze foto om"))
+        assertTrue(prompt.contains("Voorgesteld maaltijdtype: Snack."))
+        assertFalse(prompt.contains("User took this photo"))
+        assertFalse(prompt.contains("Suggested meal type"))
     }
 
     @Test
@@ -253,7 +258,7 @@ class AiServicesTest {
         )
 
         assertEquals("Lokale samenvatting: volume 9250 kg.", result.summary)
-        assertEquals("Volume veranderde met -3.2% ten opzichte van de vorige sessie.", result.progressionFeedback)
+        assertEquals("Volume veranderde met -3,2% ten opzichte van de vorige sessie.", result.progressionFeedback)
         assertEquals("Houd dezelfde opzet aan en verhoog pas als uitvoering en herstel goed blijven.", result.recommendation)
         assertEquals("Huidige gewichten vasthouden", result.nextSessionFocus)
         assertEquals(75, result.recoveryScore)
@@ -400,6 +405,13 @@ class AiServicesTest {
         assertTrue(result.activityExplanation.contains("Activiteitsfactor"))
         assertTrue(result.dataQuality.contains("schatting"))
         assertTrue(result.attentionPoints.isNotEmpty())
+    }
+
+    @Test
+    fun localAiFallbackFormatting_usesDutchDecimalAndActivityLabel() {
+        assertEquals("2,5", formatAiPercentNl(2.5))
+        assertEquals("1,375", formatActivityMultiplierNl(1.375))
+        assertEquals("matig actief", "Moderately active".toDutchGoalActivityLabel())
     }
 
     @Test

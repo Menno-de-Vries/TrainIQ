@@ -184,15 +184,15 @@ private fun CustomExerciseForm(
                 label = { Text(customExerciseNameLabel()) },
                 singleLine = true,
             )
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 TapOnlyOutlinedTextField(
                     value = muscleGroup,
                     onValueChange = { muscleGroup = it },
                     modifier = Modifier
-                        .weight(1f)
+                        .fillMaxWidth()
                         .bringIntoViewOnFocus(),
                     label = { Text(customExerciseMuscleLabel()) },
                     singleLine = true,
@@ -201,7 +201,7 @@ private fun CustomExerciseForm(
                     value = equipment,
                     onValueChange = { equipment = it },
                     modifier = Modifier
-                        .weight(1f)
+                        .fillMaxWidth()
                         .bringIntoViewOnFocus(),
                     label = { Text(customExerciseEquipmentLabel()) },
                     singleLine = true,
@@ -235,7 +235,10 @@ internal fun exercisePickerSearchLabel(): String = "Oefeningen zoeken"
 internal fun exercisePickerAddCustomLabel(showCustomForm: Boolean): String =
     if (showCustomForm) "Aangepaste oefening verbergen" else "Aangepaste oefening toevoegen"
 
-internal fun exercisePickerEmptyText(): String = "Geen passende oefeningen gevonden."
+internal fun exercisePickerEmptyText(): String =
+    "Geen passende oefeningen gevonden. Voeg eventueel een aangepaste oefening toe."
+
+internal fun customExerciseFieldsStackVertically(): Boolean = true
 
 internal fun exercisePickerMetadataText(muscleGroup: String, equipment: String): String =
     "${muscleGroup.toExercisePickerDutchMuscle()} - ${equipment.toExercisePickerDutchEquipment()}"
@@ -246,8 +249,15 @@ private fun String.toExercisePickerDutchMuscle(): String {
         "shoulders", "shoulder" -> "Schouders"
         "chest", "pecs" -> "Borst"
         "back", "lats" -> "Rug"
-        "legs", "quads", "hamstrings" -> "Benen"
-        "arms", "biceps", "triceps" -> "Armen"
+        "legs" -> "Benen"
+        "quads", "quadriceps" -> "Quadriceps"
+        "hamstrings" -> "Hamstrings"
+        "glutes" -> "Bilspieren"
+        "calves" -> "Kuiten"
+        "core", "abs", "abdominals" -> "Core"
+        "arms" -> "Armen"
+        "biceps" -> "Biceps"
+        "triceps" -> "Triceps"
         "full body", "whole body" -> "Hele lichaam"
         else -> normalized.ifBlank { "Algemeen" }
     }
@@ -260,6 +270,9 @@ private fun String.toExercisePickerDutchEquipment(): String {
         "bodyweight", "body weight" -> "Lichaamsgewicht"
         "cable" -> "Kabel"
         "machine" -> "Machine"
+        "dumbbell", "dumbbells" -> "Dumbbells"
+        "kettlebell", "kettlebells" -> "Kettlebells"
+        "ez bar", "ez-bar" -> "EZ-stang"
         else -> normalized.ifBlank { "Materiaal onbekend" }
     }
 }
