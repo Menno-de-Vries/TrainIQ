@@ -69,6 +69,8 @@ import com.trainiq.domain.model.buildEnergyBalance
 import com.trainiq.domain.usecase.GetHealthConnectStatusUseCase
 import com.trainiq.domain.usecase.ObserveHomeDashboardUseCase
 import com.trainiq.domain.usecase.RefreshDashboardDataUseCase
+import com.trainiq.navigation.TrainIqWindowWidthClass
+import com.trainiq.navigation.adaptiveDashboardGridColumns
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -191,6 +193,7 @@ fun HomeRoute(
     onOpenCoach: () -> Unit,
     onOpenTrain: () -> Unit,
     onOpenSettings: () -> Unit,
+    windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -209,6 +212,7 @@ fun HomeRoute(
         onOpenSettings = onOpenSettings,
         onRequestHealthPermission = requestHealthPermission,
         onRefreshHealth = viewModel::refreshHealthConnectStatus,
+        windowWidthClass = windowWidthClass,
     )
 }
 
@@ -221,14 +225,16 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onRequestHealthPermission: () -> Unit,
     onRefreshHealth: () -> Unit,
+    windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
 ) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
+    val gridColumns = adaptiveDashboardGridColumns(windowWidthClass)
 
     when (uiState) {
             HomeUiState.Loading -> {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
+                    columns = GridCells.Fixed(gridColumns),
                     modifier = Modifier
                         .fillMaxSize()
                         .clearFocusOnScrollOrDrag()
@@ -243,7 +249,7 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                     horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                 ) {
-                    item(span = { GridItemSpan(2) }) {
+                    item(span = { GridItemSpan(gridColumns) }) {
                         ScreenHeader(title = "TrainIQ", subtitle = "Vandaag in een slimme cockpit", actionIcon = Icons.Default.Settings, actionContentDescription = "Instellingen openen", onActionClick = onOpenSettings)
                     }
                     items(4) { ShimmerCardPlaceholder(lineCount = 4, modifier = Modifier.height(170.dp)) }
@@ -269,7 +275,7 @@ fun HomeScreen(
                 val dashboard = uiState.dashboard
                 val healthConnectStatus = uiState.healthConnectStatus
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
+                    columns = GridCells.Fixed(gridColumns),
                     modifier = Modifier
                         .fillMaxSize()
                         .clearFocusOnScrollOrDrag()
@@ -284,14 +290,14 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                     horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                 ) {
-                    item(span = { GridItemSpan(2) }) {
+                    item(span = { GridItemSpan(gridColumns) }) {
                         ScreenHeader(title = "TrainIQ", subtitle = "Vandaag in een slimme cockpit", actionIcon = Icons.Default.Settings, actionContentDescription = "Instellingen openen", onActionClick = onOpenSettings)
                     }
                     if (dashboard.profile == null) {
-                        item(span = { GridItemSpan(2) }) {
+                        item(span = { GridItemSpan(gridColumns) }) {
                             DiscoveryCard(onOpenCoach = onOpenCoach)
                         }
-                        item(span = { GridItemSpan(2) }) {
+                        item(span = { GridItemSpan(gridColumns) }) {
                             SetupChecklistCard(
                                 hasRoutine = dashboard.nextWorkout != null,
                                 hasLoggedFood = dashboard.calorieProgress > 0,
@@ -302,14 +308,14 @@ fun HomeScreen(
                             )
                         }
                     } else {
-                        item(span = { GridItemSpan(2) }) {
+                        item(span = { GridItemSpan(gridColumns) }) {
                             EnergyBalanceCard(
                                 energyBalance = dashboard.energyBalance,
                                 calorieTarget = dashboard.calorieTarget,
                                 modifier = Modifier,
                             )
                         }
-                        item(span = { GridItemSpan(2) }) {
+                        item(span = { GridItemSpan(gridColumns) }) {
                             MacroBreakdownCard(
                             protein = dashboard.proteinProgress,
                             proteinTarget = dashboard.proteinTarget,
@@ -344,7 +350,7 @@ fun HomeScreen(
                                 modifier = Modifier.height(170.dp),
                             )
                         }
-                        item(span = { GridItemSpan(2) }) {
+                        item(span = { GridItemSpan(gridColumns) }) {
                             PermissionManagerCard(
                                 status = healthConnectStatus,
                                 onRequestPermission = {
@@ -370,7 +376,7 @@ fun HomeScreen(
                                 },
                             )
                         }
-                        item(span = { GridItemSpan(2) }) {
+                        item(span = { GridItemSpan(gridColumns) }) {
                             NextWorkoutCard(
                                 dashboard = dashboard,
                                 onOpenTrain = onOpenTrain,
@@ -380,7 +386,7 @@ fun HomeScreen(
                                 },
                             )
                         }
-                        item(span = { GridItemSpan(2) }) {
+                        item(span = { GridItemSpan(gridColumns) }) {
                             CoachInsightCard(
                                 insight = dashboard.aiInsight,
                                 onOpenCoach = onOpenCoach,

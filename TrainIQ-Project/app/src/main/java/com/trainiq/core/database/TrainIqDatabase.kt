@@ -5,6 +5,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [
+        RoomMirrorImportRunEntity::class,
         UserProfileEntity::class,
         WorkoutRoutineEntity::class,
         WorkoutDayEntity::class,
@@ -15,10 +16,20 @@ import androidx.room.RoomDatabase
         PerformedExerciseEntity::class,
         WorkoutSetEntity::class,
         MealEntity::class,
+        FoodItemEntity::class,
+        RecipeEntity::class,
+        RecipeIngredientEntity::class,
+        MealItemEntity::class,
+        ActiveWorkoutSessionEntity::class,
+        ActiveWorkoutDraftEntity::class,
+        ActiveWorkoutCollapsedExerciseEntity::class,
+        ActiveWorkoutSetEntity::class,
+        WorkoutLogEventEntity::class,
+        WorkoutLogEventSetEntity::class,
         BodyMeasurementEntity::class,
     ],
-    version = 9,
-    exportSchema = false,
+    version = 11,
+    exportSchema = true,
 )
 abstract class TrainIqDatabase : RoomDatabase() {
     abstract fun dao(): TrainIqDao

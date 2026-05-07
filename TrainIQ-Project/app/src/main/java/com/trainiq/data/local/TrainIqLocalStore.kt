@@ -19,6 +19,8 @@ import com.trainiq.domain.model.WorkoutLogEventType
 import com.trainiq.domain.model.WorkoutSyncStatus
 import com.trainiq.domain.model.estimateStrengthTrainingCalories
 import com.trainiq.domain.model.suggestMealType
+import com.trainiq.data.migration.RoomImportDryRun
+import com.trainiq.data.migration.RoomImportDryRunStatus
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -37,17 +39,28 @@ import kotlinx.coroutines.sync.withLock
 @Singleton
 class TrainIqLocalStore @Inject constructor(
     @ApplicationContext context: Context,
+    private val roomImportDryRun: RoomImportDryRun,
 ) {
     private val gson = Gson()
     private val mutex = Mutex()
     private val storageFile = context.filesDir.resolve("trainiq-state.json")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val _roomImportDryRunStatus = MutableStateFlow<RoomImportDryRunStatus>(RoomImportDryRunStatus.NotAttempted)
     private val _state = MutableStateFlow(TrainIqStorageState())
     private val loadJob = scope.launch {
-        _state.value = loadState()
+        val loaded = loadState()
+        _state.value = loaded.state
+        launch {
+            _roomImportDryRunStatus.value = roomImportDryRun.attempt(
+                sourceJson = loaded.sourceJson,
+                loadedState = loaded.state,
+                loadFailure = loaded.loadFailure,
+            )
+        }
     }
 
     val state: StateFlow<TrainIqStorageState> = _state.asStateFlow()
+    val roomImportDryRunStatus: StateFlow<RoomImportDryRunStatus> = _roomImportDryRunStatus.asStateFlow()
 
     suspend fun update(transform: (TrainIqStorageState) -> TrainIqStorageState) {
         loadJob.join()
@@ -78,13 +91,28 @@ class TrainIqLocalStore @Inject constructor(
         update { it.copy(profile = null) }
     }
 
-    private fun loadState(): TrainIqStorageState {
-        if (!storageFile.exists()) return TrainIqStorageState()
+    private fun loadState(): LoadedJsonState {
+        if (!storageFile.exists()) return LoadedJsonState(state = TrainIqStorageState())
+        val raw = runCatching { storageFile.readText() }.getOrElse { throwable ->
+            return LoadedJsonState(
+                state = TrainIqStorageState(),
+                loadFailure = throwable,
+            )
+        }
         return runCatching {
-            val raw = storageFile.readText()
             val parsed = gson.fromJson(raw, TrainIqStorageState::class.java) ?: TrainIqStorageState()
-            migrateRoutineSets(migrateProfileAndWorkoutDefaults(migrateLegacyMeals(parsed, raw)))
-        }.getOrElse { TrainIqStorageState() }
+            val migrated = migrateRoutineSets(migrateProfileAndWorkoutDefaults(migrateLegacyMeals(parsed, raw)))
+            LoadedJsonState(
+                state = migrated,
+                sourceJson = gson.toJson(migrated),
+            )
+        }.getOrElse { throwable ->
+            LoadedJsonState(
+                state = TrainIqStorageState(),
+                sourceJson = raw,
+                loadFailure = throwable,
+            )
+        }
     }
 
     private fun migrateLegacyMeals(state: TrainIqStorageState, raw: String): TrainIqStorageState {
@@ -165,6 +193,12 @@ class TrainIqLocalStore @Inject constructor(
         return state.copy(routineSets = state.routineSets + migratedSets)
     }
 }
+
+private data class LoadedJsonState(
+    val state: TrainIqStorageState,
+    val sourceJson: String? = null,
+    val loadFailure: Throwable? = null,
+)
 
 data class TrainIqStorageState(
     val profile: UserProfileEntity? = null,

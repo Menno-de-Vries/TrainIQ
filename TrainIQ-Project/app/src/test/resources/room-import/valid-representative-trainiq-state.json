@@ -1,0 +1,181 @@
+{
+  "profile": {
+    "id": 1,
+    "name": "Fixture Athlete",
+    "age": 34,
+    "sex": "MALE",
+    "height": 181.0,
+    "weight": 82.5,
+    "bodyFat": 15.0,
+    "activityLevel": "ACTIVE",
+    "goal": "Strength",
+    "calorieTarget": 2800,
+    "proteinTarget": 180,
+    "carbsTarget": 320,
+    "fatTarget": 90,
+    "trainingFocus": "Hypertrophy"
+  },
+  "routines": [
+    { "id": 10, "name": "Upper Lower", "description": "Four days", "active": true }
+  ],
+  "days": [
+    { "id": 11, "routineId": 10, "name": "Upper", "orderIndex": 0 }
+  ],
+  "exercises": [
+    { "id": 20, "name": "Bench Press", "muscleGroup": "Chest", "equipment": "Barbell" }
+  ],
+  "workoutExercises": [
+    {
+      "id": 30,
+      "dayId": 11,
+      "exerciseId": 20,
+      "targetSets": 3,
+      "repRange": "6-8",
+      "restSeconds": 180,
+      "targetWeightKg": 100.0,
+      "targetRpe": 8.0,
+      "setType": "NORMAL",
+      "orderIndex": 0
+    }
+  ],
+  "routineSets": [
+    {
+      "id": 31,
+      "workoutExerciseId": 30,
+      "orderIndex": 0,
+      "setType": "NORMAL",
+      "targetReps": 8,
+      "targetWeightKg": 100.0,
+      "restSeconds": 180,
+      "targetRpe": 8.0
+    }
+  ],
+  "sessions": [
+    {
+      "id": 40,
+      "date": 1714550400000,
+      "duration": 3600,
+      "caloriesBurned": 410,
+      "routineId": 10,
+      "workoutDayId": 11,
+      "startedAt": 1714550400000,
+      "endedAt": 1714554000000,
+      "status": "COMPLETED",
+      "completed": true
+    }
+  ],
+  "performedExercises": [
+    { "id": 41, "sessionId": 40, "exerciseId": 20, "sourceWorkoutExerciseId": 30, "orderIndex": 0 }
+  ],
+  "workoutSets": [
+    {
+      "id": 42,
+      "sessionId": 40,
+      "exerciseId": 20,
+      "performedExerciseId": 41,
+      "weight": 100.0,
+      "reps": 8,
+      "rpe": 8.0,
+      "repsInReserve": 2,
+      "setType": "NORMAL",
+      "restSeconds": 180,
+      "orderIndex": 0,
+      "completed": true,
+      "loggedAt": 1714551000000
+    }
+  ],
+  "meals": [
+    { "id": 50, "timestamp": 1714557600000, "mealType": "LUNCH", "name": "Lunch", "notes": "fixture" }
+  ],
+  "mealItems": [
+    {
+      "id": 51,
+      "mealId": 50,
+      "itemType": "FOOD",
+      "referenceId": 60,
+      "name": "Rice bowl",
+      "gramsUsed": 350.0,
+      "calories": 640.0,
+      "protein": 42.0,
+      "carbs": 82.0,
+      "fat": 18.0
+    }
+  ],
+  "measurements": [
+    { "id": 70, "date": 1714464000000, "weight": 82.5, "bodyFat": 15.0, "muscleMass": 64.0 }
+  ],
+  "foods": [
+    {
+      "id": 60,
+      "name": "Rice bowl",
+      "caloriesPer100g": 183.0,
+      "proteinPer100g": 12.0,
+      "carbsPer100g": 23.4,
+      "fatPer100g": 5.1,
+      "sourceType": "MANUAL",
+      "createdAt": 1714557000000,
+      "updatedAt": 1714557000000
+    }
+  ],
+  "recipes": [
+    { "id": 80, "name": "Fixture recipe", "createdAt": 1714557000000, "updatedAt": 1714557000000 }
+  ],
+  "recipeIngredients": [
+    { "id": 81, "recipeId": 80, "foodItemId": 60, "gramsUsed": 100.0 }
+  ],
+  "activeWorkoutSession": {
+    "sessionId": 90,
+    "dayId": 11,
+    "routineId": 10,
+    "startedAt": 1714560000000,
+    "updatedAt": 1714560300000,
+    "loggedSets": [
+      {
+        "id": 1,
+        "exerciseId": 20,
+        "performedExerciseId": 41,
+        "sourceWorkoutExerciseId": 30,
+        "weight": 95.0,
+        "reps": 8,
+        "rpe": 7.5,
+        "repsInReserve": 2,
+        "setType": "NORMAL",
+        "restSeconds": 180,
+        "orderIndex": 0,
+        "completed": true,
+        "loggedAt": 1714560200000
+      }
+    ],
+    "drafts": {
+      "20": { "weight": "95", "reps": "8", "rpe": "7.5", "setType": "NORMAL" }
+    },
+    "collapsedExerciseIds": [20],
+    "restTimerEndsAt": 1714560380000,
+    "restTimerTotalSeconds": 180
+  },
+  "workoutLogEvents": [
+    {
+      "id": 91,
+      "dayId": 11,
+      "sessionId": 90,
+      "type": "ADD_SET",
+      "syncStatus": "PENDING",
+      "createdAt": 1714560300000,
+      "set": {
+        "id": 1,
+        "exerciseId": 20,
+        "performedExerciseId": 41,
+        "sourceWorkoutExerciseId": 30,
+        "weight": 95.0,
+        "reps": 8,
+        "rpe": 7.5,
+        "repsInReserve": 2,
+        "setType": "NORMAL",
+        "restSeconds": 180,
+        "orderIndex": 0,
+        "completed": true,
+        "loggedAt": 1714560200000
+      }
+    }
+  ]
+}

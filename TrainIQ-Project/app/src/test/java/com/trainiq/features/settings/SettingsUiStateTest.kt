@@ -46,4 +46,9 @@ class SettingsUiStateTest {
         assertEquals("********", maskedSettingsApiKey("short"))
         assertEquals("abcd****wxyz", maskedSettingsApiKey("abcd1234wxyz"))
     }
+
+    @Test
+    fun geminiApiKeyInput_isAlwaysMaskedWhileTyping() {
+        assertEquals(true, shouldMaskGeminiApiKeyInput())
+    }
 }

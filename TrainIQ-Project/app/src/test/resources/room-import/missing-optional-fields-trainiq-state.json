@@ -1,0 +1,22 @@
+{
+  "profile": {
+    "id": 2,
+    "name": "Defaults Athlete",
+    "height": 175.0,
+    "weight": 75.0,
+    "bodyFat": 18.0,
+    "activityLevel": "MODERATE",
+    "goal": "Maintain",
+    "calorieTarget": 2400,
+    "proteinTarget": 150,
+    "carbsTarget": 260,
+    "fatTarget": 75,
+    "trainingFocus": "General"
+  },
+  "meals": [
+    { "id": 201, "timestamp": 1714557600000 }
+  ],
+  "mealItems": [
+    { "id": 202, "mealId": 201, "calories": 200.0, "protein": 20.0, "carbs": 10.0, "fat": 8.0 }
+  ]
+}

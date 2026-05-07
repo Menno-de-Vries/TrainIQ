@@ -579,6 +579,32 @@ enum class HealthConnectState {
     ERROR,
 }
 
+enum class HealthMetricType {
+    STEPS,
+    HEART_RATE,
+    SLEEP,
+    ACTIVE_CALORIES,
+    WEIGHT,
+    WORKOUTS,
+}
+
+enum class HealthMetricSyncState {
+    UNAVAILABLE,
+    DENIED,
+    PARTIALLY_GRANTED,
+    STALE,
+    FAILED,
+    SYNCING,
+    SYNCED,
+}
+
+data class HealthMetricStatus(
+    val metric: HealthMetricType,
+    val state: HealthMetricSyncState,
+    val message: String? = null,
+    val lastSyncedAt: Long? = null,
+)
+
 data class HealthConnectMetrics(
     val stepsToday: Int,
     val averageHeartRateBpm: Int? = null,
@@ -596,6 +622,7 @@ data class HealthConnectStatus(
     val metrics: HealthConnectMetrics? = null,
     val message: String,
     val lastSyncedAt: Long? = null,
+    val metricStatuses: List<HealthMetricStatus> = emptyList(),
 ) {
     val stepsToday: Int?
         get() = metrics?.stepsToday

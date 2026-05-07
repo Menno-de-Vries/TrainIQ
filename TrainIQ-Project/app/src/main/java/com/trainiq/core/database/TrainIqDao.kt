@@ -10,6 +10,128 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface TrainIqDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMirrorImportRun(run: RoomMirrorImportRunEntity)
+
+    @Query("SELECT * FROM room_mirror_import_runs ORDER BY finished_at DESC LIMIT 1")
+    suspend fun latestMirrorImportRun(): RoomMirrorImportRunEntity?
+
+    @Query(
+        """
+        SELECT
+            (SELECT COUNT(*) FROM user_profile) +
+            (SELECT COUNT(*) FROM workout_routines) +
+            (SELECT COUNT(*) FROM workout_days) +
+            (SELECT COUNT(*) FROM exercises) +
+            (SELECT COUNT(*) FROM workout_exercises) +
+            (SELECT COUNT(*) FROM routine_sets) +
+            (SELECT COUNT(*) FROM workout_sessions) +
+            (SELECT COUNT(*) FROM performed_exercises) +
+            (SELECT COUNT(*) FROM workout_sets) +
+            (SELECT COUNT(*) FROM meals) +
+            (SELECT COUNT(*) FROM food_items) +
+            (SELECT COUNT(*) FROM recipes) +
+            (SELECT COUNT(*) FROM recipe_ingredients) +
+            (SELECT COUNT(*) FROM meal_items) +
+            (SELECT COUNT(*) FROM active_workout_sessions) +
+            (SELECT COUNT(*) FROM active_workout_drafts) +
+            (SELECT COUNT(*) FROM active_workout_collapsed_exercises) +
+            (SELECT COUNT(*) FROM active_workout_sets) +
+            (SELECT COUNT(*) FROM workout_log_events) +
+            (SELECT COUNT(*) FROM workout_log_event_sets) +
+            (SELECT COUNT(*) FROM body_measurements)
+        """
+    )
+    suspend fun mirrorRowCount(): Int
+
+    @Query("DELETE FROM user_profile")
+    suspend fun clearMirrorUserProfile()
+
+    @Query("DELETE FROM workout_routines")
+    suspend fun clearMirrorRoutines()
+
+    @Query("DELETE FROM workout_days")
+    suspend fun clearMirrorWorkoutDays()
+
+    @Query("DELETE FROM exercises")
+    suspend fun clearMirrorExercises()
+
+    @Query("DELETE FROM workout_exercises")
+    suspend fun clearMirrorWorkoutExercises()
+
+    @Query("DELETE FROM routine_sets")
+    suspend fun clearMirrorRoutineSets()
+
+    @Query("DELETE FROM workout_sessions")
+    suspend fun clearMirrorWorkoutSessions()
+
+    @Query("DELETE FROM performed_exercises")
+    suspend fun clearMirrorPerformedExercises()
+
+    @Query("DELETE FROM workout_sets")
+    suspend fun clearMirrorWorkoutSets()
+
+    @Query("DELETE FROM meals")
+    suspend fun clearMirrorMeals()
+
+    @Query("DELETE FROM food_items")
+    suspend fun clearMirrorFoodItems()
+
+    @Query("DELETE FROM recipes")
+    suspend fun clearMirrorRecipes()
+
+    @Query("DELETE FROM recipe_ingredients")
+    suspend fun clearMirrorRecipeIngredients()
+
+    @Query("DELETE FROM meal_items")
+    suspend fun clearMirrorMealItems()
+
+    @Query("DELETE FROM active_workout_sessions")
+    suspend fun clearMirrorActiveWorkoutSessions()
+
+    @Query("DELETE FROM active_workout_drafts")
+    suspend fun clearMirrorActiveWorkoutDrafts()
+
+    @Query("DELETE FROM active_workout_collapsed_exercises")
+    suspend fun clearMirrorActiveWorkoutCollapsedExercises()
+
+    @Query("DELETE FROM active_workout_sets")
+    suspend fun clearMirrorActiveWorkoutSets()
+
+    @Query("DELETE FROM workout_log_events")
+    suspend fun clearMirrorWorkoutLogEvents()
+
+    @Query("DELETE FROM workout_log_event_sets")
+    suspend fun clearMirrorWorkoutLogEventSets()
+
+    @Query("DELETE FROM body_measurements")
+    suspend fun clearMirrorMeasurements()
+
+    @Transaction
+    suspend fun clearMirrorTables() {
+        clearMirrorWorkoutLogEventSets()
+        clearMirrorWorkoutLogEvents()
+        clearMirrorActiveWorkoutSets()
+        clearMirrorActiveWorkoutCollapsedExercises()
+        clearMirrorActiveWorkoutDrafts()
+        clearMirrorActiveWorkoutSessions()
+        clearMirrorMealItems()
+        clearMirrorRecipeIngredients()
+        clearMirrorRecipes()
+        clearMirrorFoodItems()
+        clearMirrorMeasurements()
+        clearMirrorMeals()
+        clearMirrorWorkoutSets()
+        clearMirrorPerformedExercises()
+        clearMirrorWorkoutSessions()
+        clearMirrorRoutineSets()
+        clearMirrorWorkoutExercises()
+        clearMirrorExercises()
+        clearMirrorWorkoutDays()
+        clearMirrorRoutines()
+        clearMirrorUserProfile()
+    }
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertUserProfile(profile: UserProfileEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -32,6 +154,48 @@ interface TrainIqDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMeasurements(measurements: List<BodyMeasurementEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun importWorkoutSessions(sessions: List<WorkoutSessionEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun importWorkoutSets(sets: List<WorkoutSetEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun importMeals(meals: List<MealEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun importMeasurements(measurements: List<BodyMeasurementEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFoodItems(foodItems: List<FoodItemEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRecipes(recipes: List<RecipeEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRecipeIngredients(ingredients: List<RecipeIngredientEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMealItems(items: List<MealItemEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertActiveWorkoutSessions(sessions: List<ActiveWorkoutSessionEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertActiveWorkoutDrafts(drafts: List<ActiveWorkoutDraftEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertActiveWorkoutCollapsedExercises(collapsedExercises: List<ActiveWorkoutCollapsedExerciseEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertActiveWorkoutSets(sets: List<ActiveWorkoutSetEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertWorkoutLogEvents(events: List<WorkoutLogEventEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertWorkoutLogEventSets(sets: List<WorkoutLogEventSetEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRoutine(routine: WorkoutRoutineEntity)
@@ -62,6 +226,33 @@ interface TrainIqDao {
 
     @Query("SELECT COUNT(*) FROM exercises")
     suspend fun exerciseCount(): Int
+
+    @Query("SELECT COUNT(*) FROM user_profile")
+    suspend fun userProfileCount(): Int
+
+    @Query("SELECT COUNT(*) FROM food_items")
+    suspend fun foodCount(): Int
+
+    @Query("SELECT COUNT(*) FROM recipes")
+    suspend fun recipeCount(): Int
+
+    @Query("SELECT COUNT(*) FROM recipe_ingredients")
+    suspend fun recipeIngredientCount(): Int
+
+    @Query("SELECT COUNT(*) FROM meal_items")
+    suspend fun mealItemCount(): Int
+
+    @Query("SELECT COUNT(*) FROM active_workout_sessions")
+    suspend fun activeWorkoutSessionCount(): Int
+
+    @Query("SELECT COUNT(*) FROM active_workout_sets")
+    suspend fun activeWorkoutSetCount(): Int
+
+    @Query("SELECT COUNT(*) FROM workout_log_events")
+    suspend fun workoutLogEventCount(): Int
+
+    @Query("SELECT COUNT(*) FROM workout_log_event_sets WHERE snapshot_role = 'CURRENT'")
+    suspend fun workoutLogEventCurrentSetCount(): Int
 
     @Query("SELECT * FROM user_profile LIMIT 1")
     fun observeUserProfile(): Flow<UserProfileEntity?>

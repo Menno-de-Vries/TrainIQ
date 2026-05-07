@@ -1,7 +1,9 @@
 package com.trainiq.navigation
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.animateDpAsState
@@ -33,6 +36,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -111,6 +116,12 @@ data class ExerciseHistory(val exerciseId: Long)
 @Serializable
 data class CameraScanner(val contextHint: String = "", val scannerMode: ScannerMode = ScannerMode.AI_MEAL)
 
+enum class TrainIqWindowWidthClass {
+    Compact,
+    Medium,
+    Expanded,
+}
+
 private data class TopLevelDestination(
     val route: Any,
     val routeClass: KClass<*>,
@@ -120,7 +131,10 @@ private data class TopLevelDestination(
 )
 
 @Composable
-fun TrainIqApp(diagnosticsTracker: DiagnosticsTracker) {
+fun TrainIqApp(
+    diagnosticsTracker: DiagnosticsTracker,
+    windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
+) {
     val navController = rememberNavController()
     val haptics = LocalHapticFeedback.current
     val items = listOf(
@@ -138,6 +152,7 @@ fun TrainIqApp(diagnosticsTracker: DiagnosticsTracker) {
     }.takeIf { it >= 0 }
     val density = LocalDensity.current
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
+    val useNavigationRail = shouldUseNavigationRail(windowWidthClass)
     var navVisible by remember { mutableStateOf(true) }
     var trainDetailMode by remember { mutableStateOf(false) }
     val navOffset by animateDpAsState(
@@ -158,10 +173,53 @@ fun TrainIqApp(diagnosticsTracker: DiagnosticsTracker) {
     }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        Row(modifier = Modifier.fillMaxSize()) {
+            if (useNavigationRail && currentTopLevelIndex != null && !imeVisible && !trainDetailMode) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(92.dp)
+                        .navigationBarsPadding()
+                        .padding(vertical = 10.dp),
+                    color = MaterialTheme.colorScheme.background,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp,
+                ) {
+                    NavigationRail(
+                        containerColor = MaterialTheme.colorScheme.background,
+                    ) {
+                        items.forEach { screen ->
+                            val selected = currentDestination?.hierarchy?.any { it.hasRoute(screen.routeClass) } == true
+                            NavigationRailItem(
+                                selected = selected,
+                                onClick = {
+                                    diagnosticsTracker.tap("Nav:${screen.label}")
+                                    haptics.performHapticFeedback(
+                                        if (screen.routeClass == Coach::class) HapticFeedbackType.LongPress else HapticFeedbackType.TextHandleMove,
+                                    )
+                                    if (selected) return@NavigationRailItem
+                                    navController.navigateTopLevel(screen)
+                                },
+                                icon = {
+                                    Icon(
+                                        imageVector = screen.icon,
+                                        contentDescription = screen.label,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                },
+                                label = { Text(screen.bottomLabel, maxLines = 1) },
+                                alwaysShowLabel = false,
+                            )
+                        }
+                    }
+                }
+            }
         AppScaffold(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxSize(),
             bottomBar = {
-                if (currentTopLevelIndex != null && !imeVisible && !trainDetailMode) {
+                if (!useNavigationRail && currentTopLevelIndex != null && !imeVisible && !trainDetailMode) {
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -227,6 +285,7 @@ fun TrainIqApp(diagnosticsTracker: DiagnosticsTracker) {
             TrainIqNavHost(
                 navController = navController,
                 topLevelDestinations = items,
+                windowWidthClass = windowWidthClass,
                 onTrainDetailModeChanged = { trainDetailMode = it },
                 modifier = Modifier
                     .padding(padding)
@@ -246,6 +305,7 @@ fun TrainIqApp(diagnosticsTracker: DiagnosticsTracker) {
                         },
                     ),
             )
+        }
         }
     }
 }
@@ -276,6 +336,21 @@ private fun NavHostController.navigateToActiveWorkout(dayId: Long) {
 
 internal fun shouldClearTrainDetailMode(isTrainDestination: Boolean, isTopLevelDestination: Boolean): Boolean =
     !isTrainDestination && isTopLevelDestination
+
+internal fun shouldUseNavigationRail(widthClass: TrainIqWindowWidthClass): Boolean =
+    widthClass != TrainIqWindowWidthClass.Compact
+
+fun adaptiveDashboardGridColumns(widthClass: TrainIqWindowWidthClass): Int = when (widthClass) {
+    TrainIqWindowWidthClass.Compact -> 2
+    TrainIqWindowWidthClass.Medium -> 3
+    TrainIqWindowWidthClass.Expanded -> 4
+}
+
+fun adaptiveContentMaxWidthDp(widthClass: TrainIqWindowWidthClass): Int = when (widthClass) {
+    TrainIqWindowWidthClass.Compact -> Int.MAX_VALUE
+    TrainIqWindowWidthClass.Medium -> 840
+    TrainIqWindowWidthClass.Expanded -> 1120
+}
 
 internal fun bottomNavigationLabel(label: String): String = when (label) {
     "Voortgang" -> "Trend"
@@ -335,6 +410,7 @@ private fun Modifier.topLevelTabSwipeNavigation(
 private fun TrainIqNavHost(
     navController: NavHostController,
     topLevelDestinations: List<TopLevelDestination>,
+    windowWidthClass: TrainIqWindowWidthClass,
     onTrainDetailModeChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -349,6 +425,7 @@ private fun TrainIqNavHost(
                 onOpenCoach = { navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Coach::class }) },
                 onOpenTrain = { navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Train::class }) },
                 onOpenSettings = { navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Settings::class }) },
+                windowWidthClass = windowWidthClass,
             )
         }
         composable<Train> {

@@ -31,6 +31,9 @@ import com.trainiq.data.mapper.toDomainMetrics
 import com.trainiq.domain.model.HealthConnectMetrics
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
+import com.trainiq.domain.model.HealthMetricStatus
+import com.trainiq.domain.model.HealthMetricSyncState
+import com.trainiq.domain.model.HealthMetricType
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.Instant
 import java.time.LocalDate
@@ -64,6 +67,15 @@ class HealthConnectDataSource @Inject constructor(
         ExerciseSessionRecord::class,
     )
 
+    private val requiredPermissionsByMetric = mapOf(
+        HealthMetricType.STEPS to HealthPermission.getReadPermission(StepsRecord::class),
+        HealthMetricType.HEART_RATE to HealthPermission.getReadPermission(HeartRateRecord::class),
+        HealthMetricType.SLEEP to HealthPermission.getReadPermission(SleepSessionRecord::class),
+        HealthMetricType.ACTIVE_CALORIES to HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class),
+        HealthMetricType.WEIGHT to HealthPermission.getReadPermission(WeightRecord::class),
+        HealthMetricType.WORKOUTS to HealthPermission.getReadPermission(ExerciseSessionRecord::class),
+    )
+
     fun permissions(): Set<String> = readPermissions
 
     fun providerInstallIntent(): Intent =
@@ -80,6 +92,7 @@ class HealthConnectDataSource @Inject constructor(
                 HealthConnectStatus(
                     state = HealthConnectState.UNSUPPORTED,
                     message = "Health Connect wordt niet ondersteund op dit apparaat.",
+                    metricStatuses = unavailableMetricStatuses("Health Connect wordt niet ondersteund op dit apparaat."),
                 )
             }
 
@@ -88,6 +101,7 @@ class HealthConnectDataSource @Inject constructor(
                 HealthConnectStatus(
                     state = HealthConnectState.PROVIDER_MISSING,
                     message = "Installeer of update Health Connect voordat TrainIQ stappen, hartslag, slaap, calorieën, gewicht en workouts kan lezen.",
+                    metricStatuses = unavailableMetricStatuses("Health Connect-provider ontbreekt of moet worden bijgewerkt."),
                 )
             }
 
@@ -95,6 +109,7 @@ class HealthConnectDataSource @Inject constructor(
             else -> HealthConnectStatus(
                 state = HealthConnectState.ERROR,
                 message = "Health Connect-status kan nu niet worden bepaald.",
+                metricStatuses = failedMetricStatuses("Health Connect-status kan nu niet worden bepaald."),
             )
         }
     }
@@ -104,10 +119,22 @@ class HealthConnectDataSource @Inject constructor(
             val client = HealthConnectClient.getOrCreate(context)
             val grantedPermissions = client.permissionController.getGrantedPermissions()
             if (!grantedPermissions.containsAll(readPermissions)) {
-                preferencesRepository.clearHealthConnectSyncPreferences()
+                val storedState = preferencesRepository.getHealthConnectSyncPreferences()
+                val lastSyncedAt = storedState.lastSyncedAt.takeIf { it > 0L }
                 HealthConnectStatus(
                     state = HealthConnectState.PERMISSION_REQUIRED,
-                    message = "Geen toegang tot Health Connect. Verbind opnieuw om stappen, hartslag, slaap, calorieën, gewicht en workouts te lezen.",
+                    metrics = readMetricsFromStoredState(storedState),
+                    message = if (grantedPermissions.isEmpty()) {
+                        "Geen toegang tot Health Connect. Verbind opnieuw om stappen, hartslag, slaap, calorieën, gewicht en workouts te lezen."
+                    } else {
+                        "Health Connect-toegang is gedeeltelijk. Sta ontbrekende metrics toe om alle inzichten te synchroniseren."
+                    },
+                    lastSyncedAt = lastSyncedAt,
+                    metricStatuses = buildHealthMetricPermissionStatuses(
+                        grantedPermissions = grantedPermissions,
+                        requiredPermissionsByMetric = requiredPermissionsByMetric,
+                        lastSyncedAt = lastSyncedAt,
+                    ),
                 )
             } else {
                 val syncPayload = syncTrackedMetrics(client)
@@ -122,6 +149,7 @@ class HealthConnectDataSource @Inject constructor(
             HealthConnectStatus(
                 state = HealthConnectState.ERROR,
                 message = throwable.message ?: "Health Connect kan nu niet worden gelezen.",
+                metricStatuses = failedMetricStatuses("Health Connect kan nu niet worden gelezen."),
             )
         }
     }
@@ -154,45 +182,83 @@ class HealthConnectDataSource @Inject constructor(
 
     private suspend fun performFullSync(client: HealthConnectClient): SyncPayload {
         val now = Instant.now()
-        val cacheState = HealthConnectCacheState(
-            aggregatedStepsToday = aggregateStepsToday(client),
-            heartRateRecords = client.readRecords(
+        val metricFailures = mutableMapOf<HealthMetricType, String>()
+        val stepsToday = readMetricOrDefault(HealthMetricType.STEPS, metricFailures, 0L) {
+            aggregateStepsToday(client)
+        }
+        val heartRateRecords = readMetricOrDefault(HealthMetricType.HEART_RATE, metricFailures, emptyList()) {
+            client.readRecords(
                 ReadRecordsRequest(
                     recordType = HeartRateRecord::class,
                     timeRangeFilter = TimeRangeFilter.between(startOfToday(), now),
                 ),
-            ).records.map(HeartRateRecord::toCachedHeartRateRecord),
-            sleepSessionRecords = client.readRecords(
+            ).records.map(HeartRateRecord::toCachedHeartRateRecord)
+        }
+        val sleepSessionRecords = readMetricOrDefault(HealthMetricType.SLEEP, metricFailures, emptyList()) {
+            client.readRecords(
                 ReadRecordsRequest(
                     recordType = SleepSessionRecord::class,
                     timeRangeFilter = TimeRangeFilter.between(startOfSleepWindow(), now),
                 ),
-            ).records.map(SleepSessionRecord::toCachedSleepSessionRecord),
-            caloriesBurnedRecords = client.readRecords(
+            ).records.map(SleepSessionRecord::toCachedSleepSessionRecord)
+        }
+        val caloriesBurnedRecords = readMetricOrDefault(HealthMetricType.ACTIVE_CALORIES, metricFailures, emptyList()) {
+            client.readRecords(
                 ReadRecordsRequest(
                     recordType = TotalCaloriesBurnedRecord::class,
                     timeRangeFilter = TimeRangeFilter.between(startOfToday(), now),
                 ),
-            ).records.map(TotalCaloriesBurnedRecord::toCachedCaloriesBurnedRecord),
-            weightRecords = client.readRecords(
+            ).records.map(TotalCaloriesBurnedRecord::toCachedCaloriesBurnedRecord)
+        }
+        val weightRecords = readMetricOrDefault(HealthMetricType.WEIGHT, metricFailures, emptyList()) {
+            client.readRecords(
                 ReadRecordsRequest(
                     recordType = WeightRecord::class,
                     timeRangeFilter = TimeRangeFilter.between(startOfSleepWindow(), now),
                 ),
-            ).records.map(WeightRecord::toCachedWeightRecord),
-            exerciseSessionRecords = client.readRecords(
+            ).records.map(WeightRecord::toCachedWeightRecord)
+        }
+        val exerciseSessionRecords = readMetricOrDefault(HealthMetricType.WORKOUTS, metricFailures, emptyList()) {
+            client.readRecords(
                 ReadRecordsRequest(
                     recordType = ExerciseSessionRecord::class,
                     timeRangeFilter = TimeRangeFilter.between(startOfToday(), now),
                 ),
-            ).records.map(ExerciseSessionRecord::toCachedExerciseSessionRecord),
+            ).records.map(ExerciseSessionRecord::toCachedExerciseSessionRecord)
+        }
+        val cacheState = HealthConnectCacheState(
+            aggregatedStepsToday = stepsToday,
+            heartRateRecords = heartRateRecords,
+            sleepSessionRecords = sleepSessionRecords,
+            caloriesBurnedRecords = caloriesBurnedRecords,
+            weightRecords = weightRecords,
+            exerciseSessionRecords = exerciseSessionRecords,
         ).prune(now)
+        val nextChangesToken = runCatching {
+            client.getChangesToken(ChangesTokenRequest(recordTypes = trackedRecordTypes))
+        }.getOrDefault("")
+        val lastSyncedAt = System.currentTimeMillis()
 
         return SyncPayload(
             cacheState = cacheState,
-            nextChangesToken = client.getChangesToken(ChangesTokenRequest(recordTypes = trackedRecordTypes)),
-            lastSyncedAt = System.currentTimeMillis(),
+            nextChangesToken = nextChangesToken,
+            lastSyncedAt = lastSyncedAt,
+            metricStatuses = buildHealthMetricSyncStatuses(
+                metrics = requiredPermissionsByMetric.keys,
+                failedMetrics = metricFailures,
+                lastSyncedAt = lastSyncedAt,
+            ),
         )
+    }
+
+    private suspend fun <T> readMetricOrDefault(
+        metric: HealthMetricType,
+        failures: MutableMap<HealthMetricType, String>,
+        default: T,
+        block: suspend () -> T,
+    ): T = runCatching { block() }.getOrElse { throwable ->
+        failures[metric] = throwable.message ?: "Deze Health Connect-metric kan nu niet worden gelezen."
+        default
     }
 
     private suspend fun performIncrementalSync(
@@ -330,7 +396,17 @@ class HealthConnectDataSource @Inject constructor(
             metrics = metrics,
             message = buildMessage(metrics, state),
             lastSyncedAt = lastSyncedAt,
+            metricStatuses = metricStatuses,
         )
+    }
+
+    private fun readMetricsFromStoredState(storedState: HealthConnectSyncPreferences): HealthConnectMetrics? {
+        if (storedState.cacheStateJson.isBlank()) return null
+        return runCatching {
+            val cacheState = gson.fromJson(storedState.cacheStateJson, HealthConnectCacheState::class.java)
+                ?: return@runCatching null
+            cacheState.prune(Instant.now()).toDomainMetrics()
+        }.getOrNull()
     }
 
     private fun buildMessage(metrics: HealthConnectMetrics, state: HealthConnectState): String {
@@ -370,7 +446,11 @@ class HealthConnectDataSource @Inject constructor(
         return runCatching {
             val client = HealthConnectClient.getOrCreate(context)
             val granted = client.permissionController.getGrantedPermissions()
-            if (!granted.containsAll(readPermissions)) {
+            if (!hasHealthConnectPermission(
+                    grantedPermissions = granted,
+                    requiredPermission = HealthPermission.getReadPermission(StepsRecord::class),
+                )
+            ) {
                 preferencesRepository.clearHealthConnectSyncPreferences()
                 return@runCatching 0
             }
@@ -468,4 +548,64 @@ private data class SyncPayload(
     val cacheState: HealthConnectCacheState,
     val nextChangesToken: String,
     val lastSyncedAt: Long,
+    val metricStatuses: List<HealthMetricStatus> = buildHealthMetricSyncStatuses(
+        metrics = HealthMetricType.entries,
+        failedMetrics = emptyMap(),
+        lastSyncedAt = lastSyncedAt,
+    ),
 )
+
+internal fun hasHealthConnectPermission(
+    grantedPermissions: Set<String>,
+    requiredPermission: String,
+): Boolean = requiredPermission in grantedPermissions
+
+internal fun buildHealthMetricPermissionStatuses(
+    grantedPermissions: Set<String>,
+    requiredPermissionsByMetric: Map<HealthMetricType, String>,
+    lastSyncedAt: Long?,
+): List<HealthMetricStatus> = requiredPermissionsByMetric.map { (metric, requiredPermission) ->
+    val granted = requiredPermission in grantedPermissions
+    HealthMetricStatus(
+        metric = metric,
+        state = when {
+            !granted -> HealthMetricSyncState.DENIED
+            lastSyncedAt != null -> HealthMetricSyncState.STALE
+            else -> HealthMetricSyncState.SYNCING
+        },
+        message = if (granted) null else "Toestemming ontbreekt voor deze Health Connect-metric.",
+        lastSyncedAt = lastSyncedAt.takeIf { granted },
+    )
+}
+
+internal fun buildHealthMetricSyncStatuses(
+    metrics: Iterable<HealthMetricType>,
+    failedMetrics: Map<HealthMetricType, String>,
+    lastSyncedAt: Long,
+): List<HealthMetricStatus> = metrics.map { metric ->
+    val failureMessage = failedMetrics[metric]
+    HealthMetricStatus(
+        metric = metric,
+        state = if (failureMessage == null) HealthMetricSyncState.SYNCED else HealthMetricSyncState.FAILED,
+        message = failureMessage,
+        lastSyncedAt = lastSyncedAt.takeIf { failureMessage == null },
+    )
+}
+
+private fun unavailableMetricStatuses(message: String): List<HealthMetricStatus> =
+    HealthMetricType.entries.map { metric ->
+        HealthMetricStatus(
+            metric = metric,
+            state = HealthMetricSyncState.UNAVAILABLE,
+            message = message,
+        )
+    }
+
+private fun failedMetricStatuses(message: String): List<HealthMetricStatus> =
+    HealthMetricType.entries.map { metric ->
+        HealthMetricStatus(
+            metric = metric,
+            state = HealthMetricSyncState.FAILED,
+            message = message,
+        )
+    }

@@ -1,9 +1,12 @@
 package com.trainiq.core.theme
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -12,10 +15,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.annotation.RequiresApi
 
 private val LightColors = lightColorScheme(
     primary = Color(0xFF45DCAF),
@@ -177,6 +182,7 @@ val MaterialTheme.trainIqColors: TrainIqColors
 @Composable
 fun TrainIqTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
+    dynamicColor: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val darkTheme = when (themeMode) {
@@ -184,7 +190,13 @@ fun TrainIqTheme(
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
+    val context = LocalContext.current
+    val useDynamicColor = dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val colorScheme = when {
+        useDynamicColor && darkTheme ->
+            dynamicTrainIqColorScheme(darkTheme = true, context = context)
+        useDynamicColor ->
+            dynamicTrainIqColorScheme(darkTheme = false, context = context)
         darkTheme -> DarkColors
         else -> LightColors
     }
@@ -218,3 +230,11 @@ fun TrainIqTheme(
         )
     }
 }
+
+internal fun shouldUseDynamicColor(dynamicColor: Boolean, sdkInt: Int): Boolean =
+    dynamicColor && sdkInt >= Build.VERSION_CODES.S
+
+@RequiresApi(Build.VERSION_CODES.S)
+@Composable
+private fun dynamicTrainIqColorScheme(darkTheme: Boolean, context: android.content.Context) =
+    if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)

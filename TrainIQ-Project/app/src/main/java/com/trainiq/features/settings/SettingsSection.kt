@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.trainiq.core.theme.spacing
 import androidx.health.connect.client.HealthConnectClient
@@ -46,6 +47,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.trainiq.BuildConfig
+import com.trainiq.ai.services.AiUsageGate
 import com.trainiq.ai.services.GoalAdvisorService
 import com.trainiq.core.datastore.AiPreferences
 import com.trainiq.core.datastore.WorkoutFeedbackPreferences
@@ -111,6 +113,7 @@ class SettingsViewModel @Inject constructor(
     observeUserProfileUseCase: ObserveUserProfileUseCase,
     private val saveUserProfileUseCase: SaveUserProfileUseCase,
     private val getHealthConnectStatusUseCase: GetHealthConnectStatusUseCase,
+    private val aiUsageGate: AiUsageGate,
     private val goalAdvisorService: GoalAdvisorService,
     private val localStore: TrainIqLocalStore,
     private val performanceSessionStore: PerformanceSessionStore,
@@ -180,13 +183,19 @@ class SettingsViewModel @Inject constructor(
                 _message.value = "Voer eerst een Gemini API-sleutel in."
                 return@launch
             }
+            val encrypted = aiUsageGate.saveApiKey(apiKey)
             preferencesRepository.saveGeminiApiKey(apiKey)
-            _message.value = "Gemini API-sleutel opgeslagen."
+            _message.value = if (encrypted) {
+                "Gemini API-sleutel versleuteld opgeslagen."
+            } else {
+                "Gemini API-sleutel opgeslagen met veilige fallback."
+            }
         }
     }
 
     fun clearGeminiKey() {
         viewModelScope.launch {
+            aiUsageGate.clearEncryptedApiKey()
             preferencesRepository.clearGeminiApiKey()
             preferencesRepository.setAiEnabled(false)
             _message.value = "Gemini API-sleutel verwijderd en AI uitgeschakeld."
@@ -521,7 +530,15 @@ fun SettingsScreen(
                     Switch(checked = aiPreferences.enabled, onCheckedChange = onToggleAi)
                 }
                 Text("Huidige sleutel: $maskedApiKey")
-                OutlinedTextField(value = apiKey, onValueChange = { apiKey = it }, label = { Text("Gemini API-sleutel") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                OutlinedTextField(
+                    value = apiKey,
+                    onValueChange = { apiKey = it },
+                    label = { Text("Gemini API-sleutel") },
+                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                    visualTransformation = if (shouldMaskGeminiApiKeyInput()) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    singleLine = true,
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                     Button(onClick = {
                         onSaveApiKey(apiKey)
@@ -819,6 +836,8 @@ internal fun maskedSettingsApiKey(key: String): String {
     if (key.isBlank()) return "Niet ingesteld"
     return if (key.length <= 8) "********" else "${key.take(4)}****${key.takeLast(4)}"
 }
+
+internal fun shouldMaskGeminiApiKeyInput(): Boolean = true
 
 private fun BiologicalSex.displayLabel(): String = when (this) {
     BiologicalSex.MALE -> "Man"

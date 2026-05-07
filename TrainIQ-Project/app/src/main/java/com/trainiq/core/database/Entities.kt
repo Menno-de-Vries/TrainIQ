@@ -5,6 +5,29 @@ import androidx.room.ColumnInfo
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
+@Entity(
+    tableName = "room_mirror_import_runs",
+    indices = [
+        Index(value = ["status", "finished_at"]),
+        Index(value = ["source_fingerprint"]),
+    ],
+)
+data class RoomMirrorImportRunEntity(
+    @PrimaryKey @ColumnInfo(name = "generation_id") val generationId: String,
+    @ColumnInfo(name = "source_fingerprint") val sourceFingerprint: String,
+    @ColumnInfo(name = "started_at") val startedAt: Long,
+    @ColumnInfo(name = "finished_at") val finishedAt: Long,
+    val status: String,
+    @ColumnInfo(name = "schema_version") val schemaVersion: Int,
+    @ColumnInfo(name = "expected_row_count") val expectedRowCount: Int,
+    @ColumnInfo(name = "imported_row_count") val importedRowCount: Int,
+    @ColumnInfo(name = "stale_row_count") val staleRowCount: Int,
+    @ColumnInfo(name = "mismatch_count") val mismatchCount: Int,
+    @ColumnInfo(name = "json_authoritative") val jsonAuthoritative: Boolean = true,
+    @ColumnInfo(name = "room_authoritative") val roomAuthoritative: Boolean = false,
+    @ColumnInfo(name = "error_type") val errorType: String? = null,
+)
+
 @Entity(tableName = "user_profile")
 data class UserProfileEntity(
     @PrimaryKey val id: Long,
@@ -162,6 +185,173 @@ data class MealEntity(
     val protein: Int,
     val carbs: Int,
     val fat: Int,
+)
+
+@Entity(tableName = "food_items")
+data class FoodItemEntity(
+    @PrimaryKey val id: Long,
+    val name: String,
+    val barcode: String? = null,
+    @ColumnInfo(name = "calories_per_100g") val caloriesPer100g: Double,
+    @ColumnInfo(name = "protein_per_100g") val proteinPer100g: Double,
+    @ColumnInfo(name = "carbs_per_100g") val carbsPer100g: Double,
+    @ColumnInfo(name = "fat_per_100g") val fatPer100g: Double,
+    @ColumnInfo(name = "source_type") val sourceType: String,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long,
+)
+
+@Entity(tableName = "recipes")
+data class RecipeEntity(
+    @PrimaryKey val id: Long,
+    val name: String,
+    val notes: String? = null,
+    @ColumnInfo(name = "total_cooked_grams") val totalCookedGrams: Double? = null,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long,
+)
+
+@Entity(
+    tableName = "recipe_ingredients",
+    indices = [
+        Index(value = ["recipe_id", "order_index"]),
+        Index(value = ["food_item_id"]),
+    ],
+)
+data class RecipeIngredientEntity(
+    @PrimaryKey val id: Long,
+    @ColumnInfo(name = "recipe_id") val recipeId: Long,
+    @ColumnInfo(name = "food_item_id") val foodItemId: Long,
+    @ColumnInfo(name = "grams_used") val gramsUsed: Double,
+    @ColumnInfo(name = "order_index") val orderIndex: Int = 0,
+)
+
+@Entity(
+    tableName = "meal_items",
+    indices = [
+        Index(value = ["meal_id", "order_index"]),
+        Index(value = ["reference_id"]),
+    ],
+)
+data class MealItemEntity(
+    @PrimaryKey val id: Long,
+    @ColumnInfo(name = "meal_id") val mealId: Long,
+    @ColumnInfo(name = "item_type") val itemType: String,
+    @ColumnInfo(name = "reference_id") val referenceId: Long,
+    val name: String,
+    @ColumnInfo(name = "grams_used") val gramsUsed: Double,
+    val calories: Double,
+    val protein: Double,
+    val carbs: Double,
+    val fat: Double,
+    val notes: String? = null,
+    @ColumnInfo(name = "order_index") val orderIndex: Int = 0,
+)
+
+@Entity(tableName = "active_workout_sessions")
+data class ActiveWorkoutSessionEntity(
+    @PrimaryKey val sessionId: Long,
+    val dayId: Long,
+    val routineId: Long? = null,
+    val startedAt: Long,
+    val updatedAt: Long,
+    val restTimerEndsAt: Long? = null,
+    val restTimerTotalSeconds: Int = 0,
+)
+
+@Entity(
+    tableName = "active_workout_drafts",
+    primaryKeys = ["session_id", "exercise_id"],
+    indices = [Index(value = ["session_id"])],
+)
+data class ActiveWorkoutDraftEntity(
+    @ColumnInfo(name = "session_id") val sessionId: Long,
+    @ColumnInfo(name = "exercise_id") val exerciseId: Long,
+    val weight: String,
+    val reps: String,
+    val rpe: String,
+    @ColumnInfo(name = "set_type") val setType: String,
+)
+
+@Entity(
+    tableName = "active_workout_collapsed_exercises",
+    primaryKeys = ["session_id", "exercise_id"],
+    indices = [Index(value = ["session_id"])],
+)
+data class ActiveWorkoutCollapsedExerciseEntity(
+    @ColumnInfo(name = "session_id") val sessionId: Long,
+    @ColumnInfo(name = "exercise_id") val exerciseId: Long,
+)
+
+@Entity(
+    tableName = "active_workout_sets",
+    primaryKeys = ["session_id", "id"],
+    indices = [
+        Index(value = ["session_id", "order_index"]),
+        Index(value = ["exercise_id"]),
+    ],
+)
+data class ActiveWorkoutSetEntity(
+    @ColumnInfo(name = "session_id") val sessionId: Long,
+    val id: Long,
+    @ColumnInfo(name = "exercise_id") val exerciseId: Long,
+    @ColumnInfo(name = "performed_exercise_id") val performedExerciseId: Long,
+    @ColumnInfo(name = "source_workout_exercise_id") val sourceWorkoutExerciseId: Long? = null,
+    val weight: Double,
+    val reps: Int,
+    val rpe: Double,
+    @ColumnInfo(name = "reps_in_reserve") val repsInReserve: Int? = null,
+    @ColumnInfo(name = "set_type") val setType: String,
+    @ColumnInfo(name = "rest_seconds") val restSeconds: Int,
+    @ColumnInfo(name = "order_index") val orderIndex: Int,
+    val completed: Boolean,
+    @ColumnInfo(name = "logged_at") val loggedAt: Long,
+)
+
+@Entity(
+    tableName = "workout_log_events",
+    indices = [
+        Index(value = ["day_id", "created_at"]),
+        Index(value = ["session_id", "created_at"]),
+        Index(value = ["sync_status"]),
+    ],
+)
+data class WorkoutLogEventEntity(
+    @PrimaryKey val id: Long,
+    @ColumnInfo(name = "day_id") val dayId: Long,
+    @ColumnInfo(name = "session_id") val sessionId: Long,
+    val type: String,
+    @ColumnInfo(name = "sync_status") val syncStatus: String,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "undo_expires_at") val undoExpiresAt: Long? = null,
+    @ColumnInfo(name = "target_event_id") val targetEventId: Long? = null,
+)
+
+@Entity(
+    tableName = "workout_log_event_sets",
+    primaryKeys = ["event_id", "snapshot_role", "snapshot_index"],
+    indices = [
+        Index(value = ["event_id"]),
+        Index(value = ["exercise_id"]),
+    ],
+)
+data class WorkoutLogEventSetEntity(
+    @ColumnInfo(name = "event_id") val eventId: Long,
+    @ColumnInfo(name = "snapshot_role") val snapshotRole: String,
+    @ColumnInfo(name = "snapshot_index") val snapshotIndex: Int,
+    val id: Long,
+    @ColumnInfo(name = "exercise_id") val exerciseId: Long,
+    @ColumnInfo(name = "performed_exercise_id") val performedExerciseId: Long,
+    @ColumnInfo(name = "source_workout_exercise_id") val sourceWorkoutExerciseId: Long? = null,
+    val weight: Double,
+    val reps: Int,
+    val rpe: Double,
+    @ColumnInfo(name = "reps_in_reserve") val repsInReserve: Int? = null,
+    @ColumnInfo(name = "set_type") val setType: String,
+    @ColumnInfo(name = "rest_seconds") val restSeconds: Int,
+    @ColumnInfo(name = "order_index") val orderIndex: Int,
+    val completed: Boolean,
+    @ColumnInfo(name = "logged_at") val loggedAt: Long,
 )
 
 @Entity(tableName = "body_measurements")

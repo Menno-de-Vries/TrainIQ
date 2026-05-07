@@ -1,0 +1,161 @@
+{
+  "profile": {
+    "id": 1,
+    "name": "Live Shape Athlete",
+    "age": 37,
+    "sex": "FEMALE",
+    "height": 169.0,
+    "weight": 67.5,
+    "bodyFat": 21.0,
+    "activityLevel": "MODERATE",
+    "goal": "RECOMPOSITION",
+    "calorieTarget": 2350,
+    "proteinTarget": 145,
+    "carbsTarget": 250,
+    "fatTarget": 70,
+    "trainingFocus": "Strength and recovery"
+  },
+  "routines": [
+    { "id": 100, "name": "Current Strength Block", "description": "Synthetic live-shape fixture", "active": true }
+  ],
+  "days": [
+    { "id": 101, "routineId": 100, "name": "Lower Strength", "orderIndex": 0 },
+    { "id": 102, "routineId": 100, "name": "Upper Volume", "orderIndex": 1 }
+  ],
+  "exercises": [
+    { "id": 201, "name": "Back Squat", "muscleGroup": "Legs", "equipment": "Barbell" },
+    { "id": 202, "name": "Pull Up", "muscleGroup": "Back", "equipment": "Bodyweight" }
+  ],
+  "workoutExercises": [
+    {
+      "id": 301,
+      "dayId": 101,
+      "exerciseId": 201,
+      "targetSets": 4,
+      "repRange": "4-6",
+      "restSeconds": 210,
+      "targetWeightKg": 105.0,
+      "targetRpe": 8.5,
+      "setType": "NORMAL",
+      "supersetGroupId": null,
+      "orderIndex": 0
+    },
+    {
+      "id": 302,
+      "dayId": 102,
+      "exerciseId": 202,
+      "targetSets": 3,
+      "repRange": "6-10",
+      "restSeconds": 150,
+      "targetWeightKg": 0.0,
+      "targetRpe": 8.0,
+      "setType": "NORMAL",
+      "orderIndex": 0
+    }
+  ],
+  "routineSets": [
+    { "id": 401, "workoutExerciseId": 301, "orderIndex": 0, "setType": "NORMAL", "targetReps": 5, "targetWeightKg": 105.0, "restSeconds": 210, "targetRpe": 8.5, "targetRir": 2 },
+    { "id": 402, "workoutExerciseId": 302, "orderIndex": 0, "setType": "NORMAL", "targetReps": 8, "targetWeightKg": 0.0, "restSeconds": 150, "targetRpe": 8.0, "targetRir": null }
+  ],
+  "sessions": [
+    {
+      "id": 501,
+      "date": 1714640400000,
+      "duration": 3900000,
+      "caloriesBurned": 460,
+      "routineId": 100,
+      "workoutDayId": 101,
+      "startedAt": 1714640400000,
+      "endedAt": 1714644300000,
+      "status": "COMPLETED",
+      "completed": true,
+      "debriefSummary": "Strong lower session",
+      "debriefProgressionFeedback": "Hold load",
+      "debriefRecommendation": "Prioritize sleep",
+      "debriefNextSessionFocus": "Upper pulling",
+      "debriefRecoveryScore": 78,
+      "debriefIntensitySignal": "MAINTAIN",
+      "debriefWins": "Depth and bracing",
+      "debriefRisks": "Low sleep",
+      "debriefNextLoadTarget": "105 kg",
+      "debriefRecoveryAdvice": "Earlier bedtime",
+      "debriefSource": "LOCAL_FALLBACK"
+    }
+  ],
+  "performedExercises": [
+    { "id": 601, "sessionId": 501, "exerciseId": 201, "sourceWorkoutExerciseId": 301, "orderIndex": 0 }
+  ],
+  "workoutSets": [
+    {
+      "id": 701,
+      "sessionId": 501,
+      "exerciseId": 201,
+      "performedExerciseId": 601,
+      "weight": 105.0,
+      "reps": 5,
+      "rpe": 8.5,
+      "repsInReserve": 1,
+      "setType": "NORMAL",
+      "restSeconds": 210,
+      "orderIndex": 0,
+      "completed": true,
+      "loggedAt": 1714640800000,
+      "completedAt": 1714640810000
+    }
+  ],
+  "foods": [
+    { "id": 801, "name": "Oats", "barcode": null, "caloriesPer100g": 389.0, "proteinPer100g": 16.9, "carbsPer100g": 66.3, "fatPer100g": 6.9, "sourceType": "MANUAL", "createdAt": 1714630000000, "updatedAt": 1714630000000 },
+    { "id": 802, "name": "Whey", "barcode": "000000000000", "caloriesPer100g": 400.0, "proteinPer100g": 80.0, "carbsPer100g": 8.0, "fatPer100g": 6.0, "sourceType": "BARCODE", "createdAt": 1714630000000, "updatedAt": 1714630000000 }
+  ],
+  "recipes": [
+    { "id": 901, "name": "Protein oats", "notes": "Synthetic fixture", "totalCookedGrams": 420.0, "createdAt": 1714630000000, "updatedAt": 1714630000000 }
+  ],
+  "recipeIngredients": [
+    { "id": 1001, "recipeId": 901, "foodItemId": 801, "gramsUsed": 80.0 },
+    { "id": 1002, "recipeId": 901, "foodItemId": 802, "gramsUsed": 30.0 }
+  ],
+  "meals": [
+    { "id": 1101, "timestamp": 1714633200000, "mealType": "BREAKFAST", "name": "Pre-training breakfast", "notes": "Synthetic fixture" }
+  ],
+  "mealItems": [
+    { "id": 1201, "mealId": 1101, "itemType": "RECIPE", "referenceId": 901, "name": "Protein oats", "gramsUsed": 420.0, "calories": 431.2, "protein": 37.5, "carbs": 55.4, "fat": 7.3, "notes": "full serving" }
+  ],
+  "measurements": [
+    { "id": 1301, "date": 1714629600000, "weight": 67.5, "bodyFat": 21.0, "muscleMass": 48.0 }
+  ],
+  "activeWorkoutSession": {
+    "sessionId": 1401,
+    "dayId": 102,
+    "routineId": 100,
+    "startedAt": 1714726800000,
+    "updatedAt": 1714727100000,
+    "loggedSets": [
+      { "id": 1, "exerciseId": 202, "performedExerciseId": 0, "sourceWorkoutExerciseId": 302, "weight": 0.0, "reps": 7, "rpe": 8.0, "repsInReserve": 2, "setType": "NORMAL", "restSeconds": 150, "orderIndex": 0, "completed": true, "loggedAt": 1714727000000 }
+    ],
+    "drafts": {
+      "202": { "weight": "0", "reps": "8", "rpe": "8", "setType": "NORMAL" }
+    },
+    "collapsedExerciseIds": [202],
+    "restTimerEndsAt": 1714727250000,
+    "restTimerTotalSeconds": 150
+  },
+  "workoutLogEvents": [
+    {
+      "id": 1501,
+      "dayId": 102,
+      "sessionId": 1401,
+      "type": "ADD_SET",
+      "syncStatus": "PENDING",
+      "createdAt": 1714727000000,
+      "undoExpiresAt": 1714727300000,
+      "targetEventId": null,
+      "set": { "id": 1, "exerciseId": 202, "performedExerciseId": 0, "sourceWorkoutExerciseId": 302, "weight": 0.0, "reps": 7, "rpe": 8.0, "repsInReserve": 2, "setType": "NORMAL", "restSeconds": 150, "orderIndex": 0, "completed": true, "loggedAt": 1714727000000 },
+      "previousLoggedSets": [
+        { "id": 0, "exerciseId": 202, "performedExerciseId": 0, "sourceWorkoutExerciseId": 302, "weight": 0.0, "reps": 6, "rpe": 7.5, "repsInReserve": 3, "setType": "NORMAL", "restSeconds": 150, "orderIndex": 0, "completed": true, "loggedAt": 1714726800000 }
+      ]
+    }
+  ],
+  "futureUnknownFieldIgnoredByImport": {
+    "nonSecret": true
+  }
+}
