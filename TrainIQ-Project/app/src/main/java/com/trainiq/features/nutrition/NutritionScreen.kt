@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -47,10 +49,14 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -441,11 +447,13 @@ fun NutritionScreen(
     val isDeletePending = NutritionSubmitKey.Delete in pendingSubmits
     val isAiBatchPending = NutritionSubmitKey.AiItems in pendingSubmits
     val haptics = LocalHapticFeedback.current
-    val nutritionListState = rememberLazyListState()
+    val tabs = listOf("Vandaag", "Recepten", "Producten", "Historie")
+    val nutritionListStates = List(tabs.size) { rememberLazyListState() }
     val coroutineScope = rememberCoroutineScope()
     val recipeActionSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val addToMealSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var selectedTab by remember { mutableStateOf(0) }
+    var selectedTab by rememberSaveable { mutableStateOf(0) }
+    val nutritionListState = nutritionListStates[selectedTab.coerceIn(tabs.indices)]
     var aiScanForRecipe by remember { mutableStateOf(false) }
     var showAddToMealActions by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<PendingNutritionDelete?>(null) }
@@ -601,10 +609,6 @@ fun NutritionScreen(
         }
     }
 
-    LaunchedEffect(selectedTab) {
-        nutritionListState.scrollToItem(0)
-    }
-
     LaunchedEffect(scanResult) {
         editableAiItems.clear()
         scanResult?.items?.forEach { editableAiItems += EditableAiItem.from(it) }
@@ -620,8 +624,6 @@ fun NutritionScreen(
         }
     }
 
-    val tabs = listOf("Vandaag", "Recepten", "Producten", "Historie")
-
     Box(modifier = Modifier.fillMaxSize()) {
         AnimatedContent(
             targetState = uiState,
@@ -632,6 +634,11 @@ fun NutritionScreen(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
+                        .nutritionTabSwipeNavigation(
+                            selectedTab = selectedTab,
+                            tabCount = tabs.size,
+                            onTabSelected = { selectedTab = it },
+                        )
                         .clearFocusOnScrollOrDrag()
                         .navigationBarsPadding()
                         .imePadding(),
@@ -686,6 +693,11 @@ fun NutritionScreen(
                     state = nutritionListState,
                     modifier = Modifier
                         .fillMaxSize()
+                        .nutritionTabSwipeNavigation(
+                            selectedTab = selectedTab,
+                            tabCount = tabs.size,
+                            onTabSelected = { selectedTab = it },
+                        )
                         .clearFocusOnScrollOrDrag()
                         .navigationBarsPadding()
                         .imePadding(),
@@ -2313,6 +2325,38 @@ private fun String.toDutchConfidenceLabel(): String = when (trim().lowercase()) 
     "medium" -> "gemiddeld"
     "high" -> "hoog"
     else -> this
+}
+
+private fun Modifier.nutritionTabSwipeNavigation(
+    selectedTab: Int,
+    tabCount: Int,
+    onTabSelected: (Int) -> Unit,
+): Modifier = pointerInput(selectedTab, tabCount, onTabSelected) {
+    val threshold = 96.dp.toPx()
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Final)
+        var totalX = 0f
+        var totalY = 0f
+        var childConsumedGesture = false
+        do {
+            val event = awaitPointerEvent(pass = PointerEventPass.Final)
+            if (event.changes.any { it.isConsumed }) {
+                childConsumedGesture = true
+            }
+            event.changes.forEach { change ->
+                val delta = change.positionChange()
+                totalX += delta.x
+                totalY += delta.y
+            }
+        } while (event.changes.any { it.pressed })
+
+        if (!childConsumedGesture && abs(totalX) > threshold && abs(totalX) > abs(totalY) * 1.6f) {
+            val nextTab = if (totalX < 0f) selectedTab + 1 else selectedTab - 1
+            if (nextTab in 0 until tabCount) {
+                onTabSelected(nextTab)
+            }
+        }
+    }
 }
 
 private val MealType.dutchLabel: String

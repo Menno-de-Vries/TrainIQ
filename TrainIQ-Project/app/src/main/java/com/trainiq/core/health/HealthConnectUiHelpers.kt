@@ -16,6 +16,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 
+internal data class HealthConnectPermissionCopy(
+    val permission: String,
+    val label: String,
+)
+
 internal val HealthConnectReadPermissions = setOf(
     HealthPermission.getReadPermission(StepsRecord::class),
     HealthPermission.getReadPermission(HeartRateRecord::class),
@@ -25,13 +30,35 @@ internal val HealthConnectReadPermissions = setOf(
     HealthPermission.getReadPermission(ExerciseSessionRecord::class),
 )
 
+internal val HealthConnectPermissionCopyBySignal = listOf(
+    HealthConnectPermissionCopy(HealthPermission.getReadPermission(StepsRecord::class), "Stappen"),
+    HealthConnectPermissionCopy(HealthPermission.getReadPermission(HeartRateRecord::class), "Hartslag"),
+    HealthConnectPermissionCopy(HealthPermission.getReadPermission(SleepSessionRecord::class), "Slaap"),
+    HealthConnectPermissionCopy(HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class), "Actieve calorieen"),
+    HealthConnectPermissionCopy(HealthPermission.getReadPermission(WeightRecord::class), "Gewicht"),
+    HealthConnectPermissionCopy(HealthPermission.getReadPermission(ExerciseSessionRecord::class), "Workouts"),
+)
+
+internal fun healthConnectPermissionResultMessage(grantedPermissions: Set<String>): String? {
+    val grantedLabels = HealthConnectPermissionCopyBySignal
+        .filter { it.permission in grantedPermissions }
+        .map { it.label }
+    if (grantedLabels.size == HealthConnectPermissionCopyBySignal.size) return null
+    val deniedLabels = HealthConnectPermissionCopyBySignal
+        .filterNot { it.permission in grantedPermissions }
+        .map { it.label }
+    return if (grantedLabels.isEmpty()) {
+        "Geen Health Connect-signalen gekoppeld. Je kunt TrainIQ blijven gebruiken en later per signaal toegang geven."
+    } else {
+        "${grantedLabels.joinToString()} zijn gekoppeld. Nog niet gekoppeld: ${deniedLabels.joinToString()}. TrainIQ gebruikt de beschikbare signalen en markeert ontbrekende data apart."
+    }
+}
+
 @Composable
 fun rememberHealthConnectPermissionRequester(onPermissionsResult: () -> Unit): () -> Unit {
     val context = LocalContext.current
-    val currentOnPermissionsResult = rememberUpdatedState(onPermissionsResult)
     return {
         context.startActivity(Intent(context, HealthConnectPermissionsRationaleActivity::class.java))
-        currentOnPermissionsResult.value()
     }
 }
 

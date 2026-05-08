@@ -41,10 +41,11 @@ class HealthConnectPermissionsRationaleActivity : ComponentActivity() {
                 val permissionLauncher = rememberLauncherForActivityResult(
                     contract = PermissionController.createRequestPermissionResultContract(),
                 ) { grantedPermissions ->
-                    if (grantedPermissions.containsAll(HealthConnectReadPermissions)) {
+                    val message = healthConnectPermissionResultMessage(grantedPermissions)
+                    if (message == null) {
                         openTrainIq()
                     } else {
-                        statusMessage = "TrainIQ heeft alle zes Health Connect-signalen samen nodig om belasting, herstel, energiebalans en voortgang eerlijk te combineren."
+                        statusMessage = message
                     }
                 }
 

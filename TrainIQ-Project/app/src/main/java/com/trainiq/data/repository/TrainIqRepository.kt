@@ -5,6 +5,7 @@ import com.trainiq.ai.services.MealAnalysisService
 import com.trainiq.ai.services.RoutineGeneratorService
 import com.trainiq.ai.services.WeeklyReportService
 import com.trainiq.ai.services.WorkoutDebriefService
+import com.trainiq.ai.services.fallbackWorkoutDebriefResult
 import com.trainiq.analytics.AnalyticsEngine
 import com.trainiq.core.database.BodyMeasurementEntity
 import com.trainiq.core.database.ExerciseEntity
@@ -520,23 +521,37 @@ class TrainIqDataCoordinator @Inject constructor(
             .map { normalizeToDay(it.date) }
             .distinct()
             .count()
-        val debrief = workoutDebriefService.generateWorkoutDebrief(
-            totalVolume = currentVolume,
-            progression = progression,
-            comparisonSummary = comparison?.summary ?: "Nog geen eerdere vergelijkbare training gevonden.",
-            distribution = distribution,
-            avgRpe = avgRpe,
-            topExercises = topExercises,
-            weeklyFrequency = weeklyFrequency,
-        )
+        val localDebrief = fallbackWorkoutDebriefResult(currentVolume, progression)
         runtimeStore.update { state ->
             state.copy(
                 sessions = state.sessions.map { session ->
-                    if (session.id == sessionId) session.withDebrief(debrief) else session
+                    if (session.id == sessionId) session.withDebrief(localDebrief) else session
                 },
             )
         }
-        return WorkoutCompletionResult(sessionId = sessionId, debrief = debrief)
+        scope.launch {
+            val refreshedDebrief = workoutDebriefService.generateWorkoutDebrief(
+                totalVolume = currentVolume,
+                progression = progression,
+                comparisonSummary = comparison?.summary ?: "Nog geen eerdere vergelijkbare training gevonden.",
+                distribution = distribution,
+                avgRpe = avgRpe,
+                topExercises = topExercises,
+                weeklyFrequency = weeklyFrequency,
+            )
+            runtimeStore.update { state ->
+                state.copy(
+                    sessions = state.sessions.map { session ->
+                        if (session.id == sessionId && session.completed && session.status == "COMPLETED") {
+                            session.withDebrief(refreshedDebrief)
+                        } else {
+                            session
+                        }
+                    },
+                )
+            }
+        }
+        return WorkoutCompletionResult(sessionId = sessionId, debrief = localDebrief)
     }
 
     suspend fun createRoutine(name: String, description: String) {

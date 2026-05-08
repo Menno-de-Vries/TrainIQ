@@ -21,6 +21,7 @@ import com.trainiq.core.database.TrainIqMigrations
 import com.trainiq.core.database.WorkoutDayEntity
 import com.trainiq.core.database.WorkoutExerciseEntity
 import com.trainiq.core.database.WorkoutRoutineEntity
+import com.trainiq.core.database.WorkoutSessionEntity
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Before
@@ -66,6 +67,19 @@ class ActiveWorkoutRestoreInstrumentedTest {
         )
         dao.insertRoutineSets(
             listOf(RoutineSetEntity(id = 10L, workoutExerciseId = 4L, orderIndex = 0, setType = "NORMAL", targetReps = 5)),
+        )
+        dao.insertWorkoutSession(
+            WorkoutSessionEntity(
+                id = 12L,
+                date = now - 60_000L,
+                duration = 60,
+                routineId = 1L,
+                workoutDayId = 7L,
+                startedAt = now - 60_000L,
+                endedAt = 0L,
+                status = "DRAFT",
+                completed = false,
+            ),
         )
         dao.insertPerformedExercises(
             listOf(PerformedExerciseEntity(id = 21L, sessionId = 12L, exerciseId = 3L, sourceWorkoutExerciseId = 4L, orderIndex = 0)),

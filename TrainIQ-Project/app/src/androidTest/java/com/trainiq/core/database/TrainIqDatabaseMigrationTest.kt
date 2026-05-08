@@ -60,6 +60,56 @@ class TrainIqDatabaseMigrationTest {
     }
 
     @Test
+    fun migration11To12AddsForeignKeysAndPreservesRelationalData() {
+        helper.createDatabase(TEST_DB, 11).apply {
+            seedVersion11RelationalData()
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            TEST_DB,
+            12,
+            true,
+            TrainIqMigrations.Migration11To12,
+        )
+
+        migrated.assertVersion11RelationalDataSurvived()
+        migrated.assertForeignKey("workout_days", "workout_routines")
+        migrated.assertForeignKey("workout_exercises", "workout_days")
+        migrated.assertForeignKey("workout_exercises", "exercises")
+        migrated.assertForeignKey("routine_sets", "workout_exercises")
+        migrated.assertForeignKey("performed_exercises", "workout_sessions")
+        migrated.assertForeignKey("workout_sets", "workout_sessions")
+        migrated.assertForeignKey("recipe_ingredients", "recipes")
+        migrated.assertForeignKey("meal_items", "meals")
+        migrated.assertForeignKey("active_workout_sets", "active_workout_sessions")
+        migrated.assertForeignKey("workout_log_event_sets", "workout_log_events")
+        migrated.assertRejectsForeignKeyViolation()
+        migrated.close()
+    }
+
+    @Test
+    fun migration11To12RemovesDirtyLegacyOrphansBeforeEnforcingForeignKeys() {
+        helper.createDatabase(TEST_DB, 11).apply {
+            seedVersion11RelationalData()
+            seedVersion11OrphanRows()
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            TEST_DB,
+            12,
+            true,
+            TrainIqMigrations.Migration11To12,
+        )
+
+        migrated.assertVersion11RelationalDataSurvived()
+        migrated.assertNoForeignKeyViolations()
+        migrated.assertVersion11OrphansRemoved()
+        migrated.close()
+    }
+
+    @Test
     fun olderMigrationChainFromVersions2Through8PreservesLegacyDataAndReachesCurrentSchema() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
 
@@ -310,6 +360,113 @@ class TrainIqDatabaseMigrationTest {
         )
     }
 
+    private fun SupportSQLiteDatabase.seedVersion11RelationalData() {
+        seedVersion9Data()
+        assertVersion10TablesAreUsable()
+        assertVersion11MetadataTableIsUsable()
+    }
+
+    private fun SupportSQLiteDatabase.seedVersion11OrphanRows() {
+        execSQL("INSERT INTO workout_days (id, routineId, name, orderIndex) VALUES (920, 404, 'Orphan day', 0)")
+        execSQL(
+            """
+            INSERT INTO workout_exercises (
+                id, dayId, exerciseId, targetSets, repRange, restSeconds,
+                target_weight_kg, target_rpe, set_type, superset_group_id, order_index
+            ) VALUES (940, 404, 30, 3, '8-10', 90, 0.0, 0.0, 'WORKING', NULL, 0)
+            """.trimIndent(),
+        )
+        execSQL(
+            """
+            INSERT INTO routine_sets (
+                id, workoutExerciseId, order_index, set_type, target_reps,
+                target_weight_kg, rest_seconds, target_rpe, target_rir
+            ) VALUES (950, 404, 0, 'NORMAL', 8, 0.0, 90, 0.0, NULL)
+            """.trimIndent(),
+        )
+        execSQL(
+            """
+            INSERT INTO performed_exercises (
+                id, session_id, exercise_id, source_workout_exercise_id, order_index
+            ) VALUES (970, 404, 30, NULL, 0)
+            """.trimIndent(),
+        )
+        execSQL(
+            """
+            INSERT INTO workout_sets (
+                id, sessionId, exerciseId, weight, reps, rpe, repsInReserve,
+                performed_exercise_id, set_type, rest_seconds, order_index,
+                completed, logged_at, completed_at
+            ) VALUES (980, 404, 30, 100.0, 8, 8.0, 2, 0, 'WORKING', 180, 0, 1, 1714557700000, 1714557710000)
+            """.trimIndent(),
+        )
+        execSQL(
+            """
+            INSERT INTO meal_items (
+                id, meal_id, item_type, reference_id, name, grams_used,
+                calories, protein, carbs, fat, notes, order_index
+            ) VALUES (990, 404, 'FOOD', 200, 'Orphan meal item', 100.0, 100.0, 10.0, 10.0, 1.0, NULL, 0)
+            """.trimIndent(),
+        )
+    }
+
+    private fun SupportSQLiteDatabase.assertVersion11RelationalDataSurvived() {
+        query("SELECT COUNT(*) FROM workout_days WHERE id = 20 AND routineId = 10").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(1, cursor.getInt(0))
+        }
+        query("SELECT COUNT(*) FROM workout_exercises WHERE id = 40 AND dayId = 20 AND exerciseId = 30").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(1, cursor.getInt(0))
+        }
+        query("SELECT COUNT(*) FROM workout_log_event_sets WHERE event_id = 400").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(1, cursor.getInt(0))
+        }
+    }
+
+    private fun SupportSQLiteDatabase.assertForeignKey(tableName: String, parentTableName: String) {
+        query("PRAGMA foreign_key_list(`$tableName`)").use { cursor ->
+            val parentIndex = cursor.getColumnIndex("table")
+            val parents = generateSequence { if (cursor.moveToNext()) cursor.getString(parentIndex) else null }
+                .toSet()
+            assertTrue("$tableName should reference $parentTableName", parentTableName in parents)
+        }
+    }
+
+    private fun SupportSQLiteDatabase.assertRejectsForeignKeyViolation() {
+        execSQL("PRAGMA foreign_keys=ON")
+        var rejected = false
+        try {
+            execSQL("INSERT INTO workout_days (id, routineId, name, orderIndex) VALUES (999, 404, 'Broken', 0)")
+        } catch (_: android.database.SQLException) {
+            rejected = true
+        }
+        assertTrue("Foreign key violations should be rejected after v12 migration", rejected)
+    }
+
+    private fun SupportSQLiteDatabase.assertNoForeignKeyViolations() {
+        query("PRAGMA foreign_key_check").use { cursor ->
+            assertEquals("No foreign-key violations should remain after v12 migration", 0, cursor.count)
+        }
+    }
+
+    private fun SupportSQLiteDatabase.assertVersion11OrphansRemoved() {
+        listOf(
+            "SELECT COUNT(*) FROM workout_days WHERE id = 920",
+            "SELECT COUNT(*) FROM workout_exercises WHERE id = 940",
+            "SELECT COUNT(*) FROM routine_sets WHERE id = 950",
+            "SELECT COUNT(*) FROM performed_exercises WHERE id = 970",
+            "SELECT COUNT(*) FROM workout_sets WHERE id = 980",
+            "SELECT COUNT(*) FROM meal_items WHERE id = 990",
+        ).forEach { sql ->
+            query(sql).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("Dirty legacy orphan should be removed: $sql", 0, cursor.getInt(0))
+            }
+        }
+    }
+
     private fun SupportSQLiteDatabase.assertVersion10MirrorDataSurvived() {
         query("SELECT COUNT(*) FROM food_items WHERE id = 200 AND name = 'Greek yogurt'").use { cursor ->
             assertTrue(cursor.moveToFirst())
@@ -330,7 +487,7 @@ class TrainIqDatabaseMigrationTest {
                 json_authoritative, room_authoritative, error_type
             ) VALUES (
                 'dryrun-test-generation', 'fingerprint', 1714557600000, 1714557601000,
-                'SUCCESS', 11, 3, 3, 0, 0, 1, 0, NULL
+                'SUCCESS', 12, 3, 3, 0, 0, 1, 0, NULL
             )
             """.trimIndent(),
         )
@@ -595,7 +752,7 @@ class TrainIqDatabaseMigrationTest {
                 json_authoritative, room_authoritative, error_type
             ) VALUES (
                 'legacy-chain-$startVersion', 'fingerprint-$startVersion', 1714557600000, 1714557601000,
-                'SUCCESS', 11, 1, 1, 0, 0, 1, 0, NULL
+                'SUCCESS', 12, 1, 1, 0, 0, 1, 0, NULL
             )
             """.trimIndent(),
         )

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -18,9 +19,12 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -83,6 +87,7 @@ fun CreateRoutineDialog(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GeneratedRoutinePreviewDialog(
     routine: GeneratedRoutine,
@@ -92,19 +97,29 @@ fun GeneratedRoutinePreviewDialog(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    AlertDialog(
-        modifier = modifier.imePadding(),
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        modifier = modifier,
         onDismissRequest = onDismiss,
-        title = {
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(routine.routineName)
-                AssistChip(
-                    onClick = {},
-                    label = { Text(routine.source.label()) },
+                Text(
+                    text = routine.routineName,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold,
                 )
+                AssistChip(onClick = {}, label = { Text(routine.source.label()) })
             }
-        },
-        text = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -195,23 +210,24 @@ fun GeneratedRoutinePreviewDialog(
                     }
                 }
             }
-        },
-        confirmButton = {
-            Button(onClick = onSave, enabled = !isSaving) {
-                Text(if (isSaving) "Opslaan..." else "Opslaan")
-            }
-        },
-        dismissButton = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
-                    Text("Opnieuw proberen")
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onSave, enabled = !isSaving, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (isSaving) "Opslaan..." else "Opslaan")
                 }
-                TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-                    Text("Annuleren")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TextButton(onClick = onRetry, modifier = Modifier.weight(1f)) {
+                        Text("Opnieuw proberen")
+                    }
+                    TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                        Text("Annuleren")
+                    }
                 }
             }
-        },
-    )
+        }
+    }
 }
 
 private fun GeneratedRoutineSource.label(): String = when (this) {

@@ -315,7 +315,7 @@ private fun WeekReportCard(report: WeeklyReportResult?, fallbackSummary: String)
                 Text("Volgende stap", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(it.nextWeekFocus, style = MaterialTheme.typography.bodyMedium)
             }
-            if (it.thinkingProcess.isNotEmpty()) BulletAdviceSurface("Onderbouwing", it.thinkingProcess.take(3))
+            if (it.rationaleBullets.isNotEmpty()) BulletAdviceSurface("Onderbouwing", it.rationaleBullets.take(3))
         }
     }
 }

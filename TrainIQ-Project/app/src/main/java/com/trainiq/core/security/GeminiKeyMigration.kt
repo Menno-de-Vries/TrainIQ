@@ -13,13 +13,17 @@ interface GeminiEncryptedKeyStore {
 class GeminiKeyMigration @Inject constructor(
     private val encryptedKeyStore: GeminiEncryptedKeyStore,
 ) {
-    suspend fun currentKey(legacyKey: String): String? {
+    suspend fun currentKey(
+        legacyKey: String,
+        onLegacyMigrated: suspend () -> Unit = {},
+    ): String? {
         encryptedKeyStore.readKey()?.takeIf { it.isNotBlank() }?.let { return it }
         val normalizedLegacy = legacyKey.trim().takeIf { it.isNotBlank() } ?: return null
         if (saveKey(normalizedLegacy)) {
-            return encryptedKeyStore.readKey()?.takeIf { it.isNotBlank() } ?: normalizedLegacy
+            onLegacyMigrated()
+            return encryptedKeyStore.readKey()?.takeIf { it.isNotBlank() }
         }
-        return normalizedLegacy
+        return null
     }
 
     suspend fun saveKey(apiKey: String): Boolean {

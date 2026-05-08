@@ -90,36 +90,39 @@ class RoutineGeneratorService @Inject constructor(
                 Log.d(RoutineGeneratorLogTag, "Routine AI fallback: Gemini API-key ontbreekt.")
                 return fallback
             }
-            val response = api.generateContent(
-                model = GEMINI_FLASH_MODEL,
-                apiKey = apiKey,
-                request = GeminiRequest(
-                    contents = listOf(
-                        GeminiRequest.Content(
-                            parts = listOf(
-                                GeminiRequest.Part(
-                                    text = GeminiPrompts.routineGenerator(
-                                        goal = promptGoal,
-                                        targetFocus = promptFocus,
-                                        daysPerWeek = daysPerWeek,
-                                        equipment = promptEquipment,
-                                        experienceLevel = experienceLevel,
-                                        sessionDurationMinutes = sessionDurationMinutes,
-                                        includeDeload = includeDeload,
+            val response = callGeminiWithBoundedRetry {
+                api.generateContent(
+                    model = GEMINI_FLASH_MODEL,
+                    apiKey = apiKey,
+                    request = GeminiRequest(
+                        contents = listOf(
+                            GeminiRequest.Content(
+                                parts = listOf(
+                                    GeminiRequest.Part(
+                                        text = GeminiPrompts.routineGenerator(
+                                            goal = promptGoal,
+                                            targetFocus = promptFocus,
+                                            daysPerWeek = daysPerWeek,
+                                            equipment = promptEquipment,
+                                            experienceLevel = experienceLevel,
+                                            sessionDurationMinutes = sessionDurationMinutes,
+                                            includeDeload = includeDeload,
+                                        ),
                                     ),
                                 ),
                             ),
                         ),
-                    ),
-                    generationConfig = GeminiRequest.GenerationConfig(
-                        responseMimeType = "application/json",
-                        thinkingConfig = GeminiRequest.ThinkingConfig(
-                            includeThoughts = false,
-                            thinkingBudget = 1000,
+                        generationConfig = GeminiRequest.GenerationConfig(
+                            responseMimeType = "application/json",
+                            responseJsonSchema = GeminiJsonSchemas.routineGenerator,
+                            thinkingConfig = GeminiRequest.ThinkingConfig(
+                                includeThoughts = false,
+                                thinkingBudget = 1000,
+                            ),
                         ),
                     ),
-                ),
-            )
+                )
+            }
             val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
             parseGeneratedRoutine(text, fallback).also { routine ->
                 if (routine.source == GeneratedRoutineSource.LOCAL_FALLBACK) {

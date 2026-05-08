@@ -142,7 +142,7 @@ object GeminiPrompts {
           "wins": ["string"],
           "risks": ["string"],
           "nextWeekFocus": "string",
-          "thinkingProcess": ["korte Nederlandse redeneerstap"]
+          "rationaleBullets": ["korte Nederlandse onderbouwing zonder interne redeneerstappen"]
         }
     """.trimIndent()
 

@@ -151,9 +151,18 @@ fun TrainIqApp(
     val currentTopLevelIndex = items.indexOfFirst { screen ->
         currentDestination?.hierarchy?.any { it.hasRoute(screen.routeClass) } == true
     }.takeIf { it >= 0 }
+    val isNutritionDestination = currentDestination?.hierarchy?.any { it.hasRoute(Nutrition::class) } == true
     val density = LocalDensity.current
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
     val useNavigationRail = shouldUseNavigationRail(windowWidthClass)
+    val navigationItems = if (useNavigationRail) {
+        items
+    } else {
+        bottomNavigationDestinations(items = items, windowWidthClass = windowWidthClass)
+    }
+    val currentNavigationIndex = navigationItems.indexOfFirst { screen ->
+        currentDestination?.hierarchy?.any { it.hasRoute(screen.routeClass) } == true
+    }.takeIf { it >= 0 }
     var navVisible by remember { mutableStateOf(true) }
     var trainDetailMode by remember { mutableStateOf(false) }
     val navOffset by animateDpAsState(
@@ -238,7 +247,7 @@ fun TrainIqApp(
                             tonalElevation = 0.dp,
                             containerColor = androidx.compose.ui.graphics.Color.Transparent,
                         ) {
-                            items.forEach { screen ->
+                            navigationItems.forEach { screen ->
                                 val selected = currentDestination?.hierarchy?.any { it.hasRoute(screen.routeClass) } == true
                                 NavigationBarItem(
                                     selected = selected,
@@ -291,16 +300,16 @@ fun TrainIqApp(
                 modifier = Modifier
                     .padding(padding)
                     .topLevelTabSwipeNavigation(
-                        enabled = currentTopLevelIndex != null && !imeVisible,
+                        enabled = currentNavigationIndex != null && !imeVisible && !isNutritionDestination,
                         onSwipeLeft = {
-                            val currentIndex = currentTopLevelIndex ?: return@topLevelTabSwipeNavigation
-                            val next = items.getOrNull(currentIndex + 1) ?: return@topLevelTabSwipeNavigation
+                            val currentIndex = currentNavigationIndex ?: return@topLevelTabSwipeNavigation
+                            val next = navigationItems.getOrNull(currentIndex + 1) ?: return@topLevelTabSwipeNavigation
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             navController.navigateTopLevel(next)
                         },
                         onSwipeRight = {
-                            val currentIndex = currentTopLevelIndex ?: return@topLevelTabSwipeNavigation
-                            val previous = items.getOrNull(currentIndex - 1) ?: return@topLevelTabSwipeNavigation
+                            val currentIndex = currentNavigationIndex ?: return@topLevelTabSwipeNavigation
+                            val previous = navigationItems.getOrNull(currentIndex - 1) ?: return@topLevelTabSwipeNavigation
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             navController.navigateTopLevel(previous)
                         },
@@ -340,6 +349,32 @@ internal fun shouldClearTrainDetailMode(isTrainDestination: Boolean, isTopLevelD
 
 internal fun shouldUseNavigationRail(widthClass: TrainIqWindowWidthClass): Boolean =
     widthClass != TrainIqWindowWidthClass.Compact
+
+private fun bottomNavigationDestinations(
+    items: List<TopLevelDestination>,
+    windowWidthClass: TrainIqWindowWidthClass,
+): List<TopLevelDestination> =
+    if (windowWidthClass == TrainIqWindowWidthClass.Compact) {
+        items.filterNot { it.routeClass == Progress::class }
+    } else {
+        items
+    }
+
+internal fun compactBottomNavigationRouteClasses(): List<KClass<*>> =
+    bottomNavigationDestinations(
+        items = listOf(
+            TopLevelDestination(Home, Home::class, "Start", icon = Icons.Default.Home),
+            TopLevelDestination(Train, Train::class, "Training", icon = Icons.AutoMirrored.Filled.DirectionsRun),
+            TopLevelDestination(Nutrition, Nutrition::class, "Voeding", icon = Icons.Default.Restaurant),
+            TopLevelDestination(Progress, Progress::class, "Voortgang", icon = Icons.Default.AutoGraph),
+            TopLevelDestination(Coach, Coach::class, "Coach", icon = Icons.Default.SmartToy),
+            TopLevelDestination(Settings, Settings::class, "Instellingen", icon = Icons.Default.Settings),
+        ),
+        windowWidthClass = TrainIqWindowWidthClass.Compact,
+    ).map { it.routeClass }
+
+internal fun compactSwipeNavigationRouteClasses(): List<KClass<*>> =
+    compactBottomNavigationRouteClasses()
 
 fun adaptiveDashboardGridColumns(widthClass: TrainIqWindowWidthClass): Int = when (widthClass) {
     TrainIqWindowWidthClass.Compact -> 2
@@ -451,7 +486,12 @@ private fun TrainIqNavHost(
         }
         composable<Progress> { ProgressRoute(windowWidthClass = windowWidthClass) }
         composable<Coach> { CoachRoute(windowWidthClass = windowWidthClass) }
-        composable<Settings> { SettingsRoute(windowWidthClass = windowWidthClass) }
+        composable<Settings> {
+            SettingsRoute(
+                windowWidthClass = windowWidthClass,
+                onOpenProgress = { navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Progress::class }) },
+            )
+        }
         composable<CameraScanner> { entry ->
             val route = entry.toRoute<CameraScanner>()
             CameraScannerRoute(

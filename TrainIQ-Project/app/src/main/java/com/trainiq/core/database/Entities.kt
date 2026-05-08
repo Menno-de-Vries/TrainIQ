@@ -2,6 +2,7 @@ package com.trainiq.core.database
 
 import androidx.room.Entity
 import androidx.room.ColumnInfo
+import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
@@ -54,7 +55,18 @@ data class WorkoutRoutineEntity(
     val active: Boolean,
 )
 
-@Entity(tableName = "workout_days")
+@Entity(
+    tableName = "workout_days",
+    foreignKeys = [
+        ForeignKey(
+            entity = WorkoutRoutineEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["routineId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index(value = ["routineId"])],
+)
 data class WorkoutDayEntity(
     @PrimaryKey val id: Long,
     val routineId: Long,
@@ -70,7 +82,27 @@ data class ExerciseEntity(
     val equipment: String,
 )
 
-@Entity(tableName = "workout_exercises")
+@Entity(
+    tableName = "workout_exercises",
+    foreignKeys = [
+        ForeignKey(
+            entity = WorkoutDayEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["dayId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+        ForeignKey(
+            entity = ExerciseEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["exerciseId"],
+            onDelete = ForeignKey.RESTRICT,
+        ),
+    ],
+    indices = [
+        Index(value = ["dayId"]),
+        Index(value = ["exerciseId"]),
+    ],
+)
 data class WorkoutExerciseEntity(
     @PrimaryKey val id: Long,
     val dayId: Long,
@@ -87,6 +119,14 @@ data class WorkoutExerciseEntity(
 
 @Entity(
     tableName = "routine_sets",
+    foreignKeys = [
+        ForeignKey(
+            entity = WorkoutExerciseEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["workoutExerciseId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
     indices = [Index(value = ["workoutExerciseId", "order_index"])],
 )
 data class RoutineSetEntity(
@@ -103,6 +143,20 @@ data class RoutineSetEntity(
 
 @Entity(
     tableName = "workout_sessions",
+    foreignKeys = [
+        ForeignKey(
+            entity = WorkoutRoutineEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["routine_id"],
+            onDelete = ForeignKey.SET_NULL,
+        ),
+        ForeignKey(
+            entity = WorkoutDayEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["workout_day_id"],
+            onDelete = ForeignKey.SET_NULL,
+        ),
+    ],
     indices = [
         Index(value = ["routine_id"]),
         Index(value = ["workout_day_id"]),
@@ -135,6 +189,26 @@ data class WorkoutSessionEntity(
 
 @Entity(
     tableName = "performed_exercises",
+    foreignKeys = [
+        ForeignKey(
+            entity = WorkoutSessionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["session_id"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+        ForeignKey(
+            entity = ExerciseEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["exercise_id"],
+            onDelete = ForeignKey.RESTRICT,
+        ),
+        ForeignKey(
+            entity = WorkoutExerciseEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["source_workout_exercise_id"],
+            onDelete = ForeignKey.SET_NULL,
+        ),
+    ],
     indices = [
         Index(value = ["session_id", "order_index"]),
         Index(value = ["exercise_id"]),
@@ -151,6 +225,20 @@ data class PerformedExerciseEntity(
 
 @Entity(
     tableName = "workout_sets",
+    foreignKeys = [
+        ForeignKey(
+            entity = WorkoutSessionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["sessionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+        ForeignKey(
+            entity = ExerciseEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["exerciseId"],
+            onDelete = ForeignKey.RESTRICT,
+        ),
+    ],
     indices = [
         Index(value = ["sessionId", "order_index"]),
         Index(value = ["exerciseId"]),
@@ -213,6 +301,20 @@ data class RecipeEntity(
 
 @Entity(
     tableName = "recipe_ingredients",
+    foreignKeys = [
+        ForeignKey(
+            entity = RecipeEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["recipe_id"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+        ForeignKey(
+            entity = FoodItemEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["food_item_id"],
+            onDelete = ForeignKey.RESTRICT,
+        ),
+    ],
     indices = [
         Index(value = ["recipe_id", "order_index"]),
         Index(value = ["food_item_id"]),
@@ -228,6 +330,14 @@ data class RecipeIngredientEntity(
 
 @Entity(
     tableName = "meal_items",
+    foreignKeys = [
+        ForeignKey(
+            entity = MealEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["meal_id"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
     indices = [
         Index(value = ["meal_id", "order_index"]),
         Index(value = ["reference_id"]),
@@ -248,7 +358,27 @@ data class MealItemEntity(
     @ColumnInfo(name = "order_index") val orderIndex: Int = 0,
 )
 
-@Entity(tableName = "active_workout_sessions")
+@Entity(
+    tableName = "active_workout_sessions",
+    foreignKeys = [
+        ForeignKey(
+            entity = WorkoutDayEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["dayId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+        ForeignKey(
+            entity = WorkoutRoutineEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["routineId"],
+            onDelete = ForeignKey.SET_NULL,
+        ),
+    ],
+    indices = [
+        Index(value = ["dayId"]),
+        Index(value = ["routineId"]),
+    ],
+)
 data class ActiveWorkoutSessionEntity(
     @PrimaryKey val sessionId: Long,
     val dayId: Long,
@@ -261,8 +391,25 @@ data class ActiveWorkoutSessionEntity(
 
 @Entity(
     tableName = "active_workout_drafts",
+    foreignKeys = [
+        ForeignKey(
+            entity = ActiveWorkoutSessionEntity::class,
+            parentColumns = ["sessionId"],
+            childColumns = ["session_id"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+        ForeignKey(
+            entity = ExerciseEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["exercise_id"],
+            onDelete = ForeignKey.RESTRICT,
+        ),
+    ],
     primaryKeys = ["session_id", "exercise_id"],
-    indices = [Index(value = ["session_id"])],
+    indices = [
+        Index(value = ["session_id"]),
+        Index(value = ["exercise_id"]),
+    ],
 )
 data class ActiveWorkoutDraftEntity(
     @ColumnInfo(name = "session_id") val sessionId: Long,
@@ -275,8 +422,25 @@ data class ActiveWorkoutDraftEntity(
 
 @Entity(
     tableName = "active_workout_collapsed_exercises",
+    foreignKeys = [
+        ForeignKey(
+            entity = ActiveWorkoutSessionEntity::class,
+            parentColumns = ["sessionId"],
+            childColumns = ["session_id"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+        ForeignKey(
+            entity = ExerciseEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["exercise_id"],
+            onDelete = ForeignKey.RESTRICT,
+        ),
+    ],
     primaryKeys = ["session_id", "exercise_id"],
-    indices = [Index(value = ["session_id"])],
+    indices = [
+        Index(value = ["session_id"]),
+        Index(value = ["exercise_id"]),
+    ],
 )
 data class ActiveWorkoutCollapsedExerciseEntity(
     @ColumnInfo(name = "session_id") val sessionId: Long,
@@ -285,6 +449,20 @@ data class ActiveWorkoutCollapsedExerciseEntity(
 
 @Entity(
     tableName = "active_workout_sets",
+    foreignKeys = [
+        ForeignKey(
+            entity = ActiveWorkoutSessionEntity::class,
+            parentColumns = ["sessionId"],
+            childColumns = ["session_id"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+        ForeignKey(
+            entity = ExerciseEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["exercise_id"],
+            onDelete = ForeignKey.RESTRICT,
+        ),
+    ],
     primaryKeys = ["session_id", "id"],
     indices = [
         Index(value = ["session_id", "order_index"]),
@@ -310,6 +488,14 @@ data class ActiveWorkoutSetEntity(
 
 @Entity(
     tableName = "workout_log_events",
+    foreignKeys = [
+        ForeignKey(
+            entity = WorkoutDayEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["day_id"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
     indices = [
         Index(value = ["day_id", "created_at"]),
         Index(value = ["session_id", "created_at"]),
@@ -329,6 +515,20 @@ data class WorkoutLogEventEntity(
 
 @Entity(
     tableName = "workout_log_event_sets",
+    foreignKeys = [
+        ForeignKey(
+            entity = WorkoutLogEventEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["event_id"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+        ForeignKey(
+            entity = ExerciseEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["exercise_id"],
+            onDelete = ForeignKey.RESTRICT,
+        ),
+    ],
     primaryKeys = ["event_id", "snapshot_role", "snapshot_index"],
     indices = [
         Index(value = ["event_id"]),

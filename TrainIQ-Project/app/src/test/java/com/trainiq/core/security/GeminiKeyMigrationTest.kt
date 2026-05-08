@@ -13,11 +13,16 @@ class GeminiKeyMigrationTest {
         val store = FakeGeminiEncryptedKeyStore()
         val migration = GeminiKeyMigration(store)
 
-        val key = migration.currentKey(legacyKey = "legacy-key")
+        var clearedLegacy = false
+        val key = migration.currentKey(
+            legacyKey = "legacy-key",
+            onLegacyMigrated = { clearedLegacy = true },
+        )
 
         assertEquals("legacy-key", key)
         assertEquals("legacy-key", store.readKey())
         assertEquals(1, store.writeCount)
+        assertTrue(clearedLegacy)
     }
 
     @Test
@@ -32,13 +37,13 @@ class GeminiKeyMigrationTest {
     }
 
     @Test
-    fun migrationFailureDoesNotDeleteOldKey() = runTest {
+    fun migrationFailureDoesNotUseOldPlaintextKey() = runTest {
         val store = FakeGeminiEncryptedKeyStore(writeSucceeds = false)
         val migration = GeminiKeyMigration(store)
 
         val key = migration.currentKey(legacyKey = "legacy-key")
 
-        assertEquals("legacy-key", key)
+        assertNull(key)
         assertFalse(store.clearCalled)
     }
 

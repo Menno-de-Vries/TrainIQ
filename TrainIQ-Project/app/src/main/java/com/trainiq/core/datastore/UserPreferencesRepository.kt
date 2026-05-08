@@ -30,6 +30,7 @@ data class HealthConnectSyncPreferences(
     val changesToken: String,
     val cacheStateJson: String,
     val lastSyncedAt: Long,
+    val changesTokensJson: String = "",
 )
 
 @Singleton
@@ -40,9 +41,11 @@ class UserPreferencesRepository @Inject constructor(
     private val themeModeKey = stringPreferencesKey("theme_mode")
     private val aiEnabledKey = booleanPreferencesKey("ai_enabled")
     private val geminiApiKey = stringPreferencesKey("gemini_api_key")
+    private val telemetryOptInKey = booleanPreferencesKey("telemetry_opt_in")
     private val restTimerSoundEnabledKey = booleanPreferencesKey("rest_timer_sound_enabled")
     private val workoutHapticsEnabledKey = booleanPreferencesKey("workout_haptics_enabled")
     private val healthChangesTokenKey = stringPreferencesKey("health_connect_changes_token")
+    private val healthMetricChangesTokensKey = stringPreferencesKey("health_connect_metric_changes_tokens")
     private val healthCacheStateKey = stringPreferencesKey("health_connect_cache_state")
     private val healthLastSyncedAtKey = stringPreferencesKey("health_connect_last_synced_at")
 
@@ -55,6 +58,9 @@ class UserPreferencesRepository @Inject constructor(
             enabled = preferences[aiEnabledKey] ?: false,
             apiKey = preferences[geminiApiKey].orEmpty(),
         )
+    }
+    val telemetryOptIn: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[telemetryOptInKey] ?: false
     }
     val workoutFeedbackPreferences: Flow<WorkoutFeedbackPreferences> = context.dataStore.data.map { preferences ->
         WorkoutFeedbackPreferences(
@@ -79,6 +85,10 @@ class UserPreferencesRepository @Inject constructor(
         context.dataStore.edit { preferences -> preferences.remove(geminiApiKey) }
     }
 
+    suspend fun setTelemetryOptIn(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[telemetryOptInKey] = enabled }
+    }
+
     suspend fun setRestTimerSoundEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences -> preferences[restTimerSoundEnabledKey] = enabled }
     }
@@ -93,20 +103,32 @@ class UserPreferencesRepository @Inject constructor(
             changesToken = preferences[healthChangesTokenKey].orEmpty(),
             cacheStateJson = preferences[healthCacheStateKey].orEmpty(),
             lastSyncedAt = preferences[healthLastSyncedAtKey]?.toLongOrNull() ?: 0L,
+            changesTokensJson = preferences[healthMetricChangesTokensKey].orEmpty(),
         )
     }
 
-    suspend fun saveHealthConnectSyncPreferences(changesToken: String, cacheStateJson: String, lastSyncedAt: Long) {
+    suspend fun saveHealthConnectSyncPreferences(
+        changesToken: String,
+        cacheStateJson: String,
+        lastSyncedAt: Long,
+        changesTokensJson: String = "",
+    ) {
         context.dataStore.edit { preferences ->
             preferences[healthChangesTokenKey] = changesToken
             preferences[healthCacheStateKey] = cacheStateJson
             preferences[healthLastSyncedAtKey] = lastSyncedAt.toString()
+            if (changesTokensJson.isBlank()) {
+                preferences.remove(healthMetricChangesTokensKey)
+            } else {
+                preferences[healthMetricChangesTokensKey] = changesTokensJson
+            }
         }
     }
 
     suspend fun clearHealthConnectSyncPreferences() {
         context.dataStore.edit { preferences ->
             preferences.remove(healthChangesTokenKey)
+            preferences.remove(healthMetricChangesTokensKey)
             preferences.remove(healthCacheStateKey)
             preferences.remove(healthLastSyncedAtKey)
         }

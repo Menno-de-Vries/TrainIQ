@@ -19,3 +19,12 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Gson parses legacy TrainIQ JSON and Room migration markers by reflected
+# field/type metadata. Keep signatures and those model classes stable under R8.
+-keepattributes Signature,*Annotation*
+-keep class com.trainiq.data.local.** { *; }
+-keep class com.trainiq.core.database.** { *; }
+-keep class com.trainiq.data.datasource.HealthConnectCacheState { *; }
+-keep class com.trainiq.data.migration.RoomMigrationChainVerificationMarker { *; }
+-keep class com.trainiq.data.model.** { *; }

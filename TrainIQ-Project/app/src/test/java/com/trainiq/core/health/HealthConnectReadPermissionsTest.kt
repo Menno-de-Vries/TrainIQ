@@ -3,7 +3,9 @@ package com.trainiq.core.health
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
+import androidx.health.connect.client.records.StepsRecord
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -15,6 +17,25 @@ class HealthConnectReadPermissionsTest {
         )
         assertFalse(
             HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class) in HealthConnectReadPermissions,
+        )
+    }
+
+    @Test
+    fun permissionResultMessageCelebratesPartialSuccessAndNamesDeniedSignals() {
+        val message = healthConnectPermissionResultMessage(
+            grantedPermissions = setOf(HealthPermission.getReadPermission(StepsRecord::class)),
+        ).orEmpty()
+
+        assertTrue(message.contains("Stappen zijn gekoppeld"))
+        assertTrue(message.contains("Nog niet gekoppeld"))
+        assertFalse(message.contains("alle zes Health Connect-signalen samen nodig"))
+    }
+
+    @Test
+    fun permissionResultMessageReturnsNullWhenAllSignalsAreGranted() {
+        assertEquals(
+            null,
+            healthConnectPermissionResultMessage(grantedPermissions = HealthConnectReadPermissions),
         )
     }
 }

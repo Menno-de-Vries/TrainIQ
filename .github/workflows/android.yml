@@ -1,6 +1,12 @@
 name: Android
 
 on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+      - "release/**"
   workflow_dispatch:
 
 jobs:
@@ -24,6 +30,15 @@ jobs:
 
       - name: Lint
         run: ./gradlew :app:lintDebug --console=plain
+
+      - name: Compile Android tests
+        run: ./gradlew :app:compileDebugAndroidTestKotlin --console=plain
+
+      - name: Compile macrobenchmark
+        run: ./gradlew :macrobenchmark:compileProfileableJavaWithJavac --console=plain
+
+      - name: Release signing readiness
+        run: ./gradlew :app:checkReleaseSigningReadiness --console=plain
 
   signed-release:
     runs-on: ubuntu-latest

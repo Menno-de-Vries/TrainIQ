@@ -402,7 +402,7 @@ data class WeeklyReportResult(
     val wins: List<String>,
     val risks: List<String>,
     val nextWeekFocus: String,
-    val thinkingProcess: List<String> = emptyList(),
+    val rationaleBullets: List<String> = emptyList(),
     val source: WeeklyReportSource = WeeklyReportSource.GEMINI_2_5_FLASH,
     val rawResponse: String? = null,
 )

@@ -10,12 +10,16 @@ import com.trainiq.domain.model.GoalAdviceSource
 import com.trainiq.domain.model.MealAnalysisSource
 import com.trainiq.domain.model.WeeklyReportSource
 import java.io.File
+import java.io.RandomAccessFile
 import kotlinx.coroutines.test.runTest
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import retrofit2.HttpException
+import retrofit2.Response
 
 class AiServicesTest {
     @Test
@@ -25,6 +29,7 @@ class AiServicesTest {
                 contents = listOf(GeminiRequest.Content(parts = listOf(GeminiRequest.Part(text = "Geef JSON")))),
                 generationConfig = GeminiRequest.GenerationConfig(
                     responseMimeType = "application/json",
+                    responseJsonSchema = GeminiJsonSchemas.workoutDebrief,
                     thinkingConfig = GeminiRequest.ThinkingConfig(
                         includeThoughts = false,
                         thinkingBudget = 1000,
@@ -35,12 +40,61 @@ class AiServicesTest {
 
         assertTrue(json.contains("\"generationConfig\""))
         assertTrue(json.contains("\"responseMimeType\":\"application/json\""))
+        assertTrue(json.contains("\"responseJsonSchema\""))
         assertTrue(json.contains("\"thinkingConfig\""))
         assertTrue(json.contains("\"includeThoughts\":false"))
         assertTrue(json.contains("\"thinkingBudget\":1000"))
         assertFalse(json.contains("generation_config"))
         assertFalse(json.contains("response_mime_type"))
+        assertFalse(json.contains("response_json_schema"))
+        assertFalse(json.contains("responseSchema"))
         assertFalse(json.contains("thinking_config"))
+    }
+
+    @Test
+    fun geminiSchemas_requireOnlyStableCoreFieldsAndLeaveLowConfidenceNotesOptional() {
+        val mealScanRequired = GeminiJsonSchemas.mealScan["required"] as List<*>
+        val mealItemSchema = ((GeminiJsonSchemas.mealScan["properties"] as Map<*, *>)["items"] as Map<*, *>)["items"] as Map<*, *>
+        val mealItemRequired = mealItemSchema["required"] as List<*>
+        val weeklyRequired = GeminiJsonSchemas.weeklyReport["required"] as List<*>
+        val goalProperties = GeminiJsonSchemas.goalAdvice["properties"] as Map<*, *>
+
+        assertEquals(listOf("items", "suggestedMealType"), mealScanRequired)
+        assertFalse("Top-level scan notes are optional", "notes" in mealScanRequired)
+        assertFalse("Per-item confidence is optional", "confidence" in mealItemRequired)
+        assertFalse("Per-item notes are optional", "notes" in mealItemRequired)
+        assertFalse("Weekly rationale is optional explanation, not chain-of-thought", "rationaleBullets" in weeklyRequired)
+        assertFalse("Local baseline owns calorie targets", "targetCalories" in goalProperties)
+        assertFalse("Local baseline owns macro targets", "protein" in goalProperties)
+    }
+
+    @Test
+    fun analyzeMealImage_retriesGeminiRateLimitOnceBeforeUsingApiResult() = runTest {
+        val api = FakeGeminiApi(
+            outcomes = ArrayDeque(
+                listOf(
+                    Result.failure(rateLimitError()),
+                    Result.success(mealScanResponse("""{"items":[],"suggestedMealType":"LUNCH"}""")),
+                ),
+            ),
+        )
+        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+
+        val result = service.analyzeMealImage(tempImagePath(), "", 43_200_000L)
+
+        assertEquals(MealAnalysisSource.API, result.source)
+        assertEquals(2, api.callCount)
+    }
+
+    @Test
+    fun analyzeMealImage_withOversizedImageReturnsFallbackWithoutCallingGemini() = runTest {
+        val api = FakeGeminiApi(response = mealScanResponse("""{"items":[],"suggestedMealType":"LUNCH"}"""))
+        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+
+        val result = service.analyzeMealImage(oversizedImagePath(), "", 43_200_000L)
+
+        assertEquals(MealAnalysisSource.LOCAL_FALLBACK, result.source)
+        assertEquals(0, api.callCount)
     }
 
     @Test
@@ -210,6 +264,7 @@ class AiServicesTest {
         assertEquals("gemini-2.5-flash", api.lastModel)
         assertEquals(GEMINI_FLASH_MODEL, api.lastModel)
         assertEquals("application/json", api.lastRequest?.generationConfig?.responseMimeType)
+        assertEquals(GeminiJsonSchemas.workoutDebrief, api.lastRequest?.generationConfig?.responseJsonSchema)
         assertEquals(1000, api.lastRequest?.generationConfig?.thinkingConfig?.thinkingBudget)
         val prompt = api.lastRequest?.contents?.single()?.parts?.single()?.text.orEmpty()
         assertTrue(prompt.contains("Antwoord altijd in het Nederlands volgens locale nl-NL."))
@@ -342,6 +397,7 @@ class AiServicesTest {
         assertEquals("Houd dit doel eerst stabiel en stuur op gewichtstrend.", result.advice)
         assertEquals("Redelijk: profiel compleet, maar geen gevalideerde TDEE.", result.dataQuality)
         assertEquals(GoalAdviceSource.GEMINI_2_5_FLASH, result.source)
+        assertEquals(GeminiJsonSchemas.goalAdvice, api.lastRequest?.generationConfig?.responseJsonSchema)
         val prompt = api.lastRequest?.contents?.single()?.parts?.single()?.text.orEmpty()
         assertTrue(prompt.contains("Antwoord altijd in het Nederlands volgens locale nl-NL."))
         assertTrue(prompt.contains("\"korteSamenvatting\""))
@@ -444,7 +500,7 @@ class AiServicesTest {
                   "wins": ["Good adherence."],
                   "risks": ["Sleep is low."],
                   "nextWeekFocus": "Add weight only when recovery is good.",
-                  "thinkingProcess": ["Recovery is good enough to progress."]
+                  "rationaleBullets": ["Recovery is good enough to progress."]
                 }
             """.trimIndent(),
             adherence = 72,
@@ -452,6 +508,25 @@ class AiServicesTest {
 
         assertEquals(WeeklyReportSource.LOCAL_FALLBACK, result.source)
         assertTrue(result.summary.contains("Lokale samenvatting"))
+    }
+
+    @Test
+    fun parseWeeklyReportResponse_usesRationaleBulletsWithoutThinkingProcess() {
+        val result = parseWeeklyReportResponse(
+            text = """
+                {
+                  "summary": "Trainingsweek was stabiel en herstel blijft leidend.",
+                  "wins": ["Je hield drie sessies consistent vast."],
+                  "risks": ["Slaapdata is nog beperkt."],
+                  "nextWeekFocus": "Houd volume gelijk en verhoog pas na betere slaap.",
+                  "rationaleBullets": ["Hersteldata is beperkt, dus progressie blijft conservatief."]
+                }
+            """.trimIndent(),
+            adherence = 82,
+        )
+
+        assertEquals(WeeklyReportSource.GEMINI_2_5_FLASH, result.source)
+        assertEquals(listOf("Hersteldata is beperkt, dus progressie blijft conservatief."), result.rationaleBullets)
     }
 
     @Test
@@ -465,8 +540,11 @@ class AiServicesTest {
     private class FakeGeminiApi(
         private val response: GeminiResponse = GeminiResponse(),
         private val error: Throwable? = null,
+        private val outcomes: ArrayDeque<Result<GeminiResponse>> = ArrayDeque(),
     ) : GeminiApi {
         var called = false
+            private set
+        var callCount = 0
             private set
         var lastRequest: GeminiRequest? = null
             private set
@@ -478,6 +556,8 @@ class AiServicesTest {
             apiKey: String,
             request: GeminiRequest,
         ): GeminiResponse {
+            callCount += 1
+            outcomes.removeFirstOrNull()?.let { return it.getOrThrow() }
             error?.let { throw it }
             called = true
             lastModel = model
@@ -500,4 +580,13 @@ class AiServicesTest {
             writeBytes(byteArrayOf(1, 2, 3))
             deleteOnExit()
         }.absolutePath
+
+    private fun oversizedImagePath(): String =
+        File.createTempFile("meal-scan-oversized", ".jpg").apply {
+            RandomAccessFile(this, "rw").use { it.setLength(8L * 1024L * 1024L) }
+            deleteOnExit()
+        }.absolutePath
+
+    private fun rateLimitError(): HttpException =
+        HttpException(Response.error<Unit>(429, "rate limit".toResponseBody()))
 }

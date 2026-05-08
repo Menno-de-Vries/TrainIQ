@@ -1,387 +1,629 @@
-# TrainIQ — Engineering Foundation \& Standards
+# TrainIQ Target State Blueprint
 
-Dit document is de leidende standaard voor technische keuzes binnen TrainIQ. Elke implementatie moet schaalbaar, onderhoudbaar, performant en AI-native blijven.
+This document is the product-quality target state for TrainIQ. It replaces the earlier high-level foundation notes with a QA- and research-backed standard for implementation, validation, and release readiness.
 
-\---
-
-## 🚀 Projectvisie
-
-**TrainIQ** zet passieve gezondheidsdata om in actieve coaching.
+Target app:
 
 ```text
-Health Connect → Gemini 2.5 Flash → Material 3 UI → Persoonlijke actie
+Health Connect -> Domain Intelligence -> Gemini 2.5 Flash -> Material 3 UI -> Personal action
 ```
 
-**Doel:** een bijna onzichtbare gebruikerservaring waarbij data automatisch wordt verzameld en inzichten proactief worden aangeboden.
-
-\---
-
-## 🗺️ Eindresultaat Visie
-
-TrainIQ moet uiteindelijk functioneren als een AI-native health coach in plaats van een traditionele fitness-app.
-
-De app moet:
-
-* Gezondheidsdata automatisch verzamelen via Health Connect
-* Trends herkennen in herstel, slaap, voeding en training
-* Proactief coachadvies geven
-* Een rustige, snelle en moderne UX bieden
-* Volledig offline-safe en schaalbaar blijven
-* Structured AI outputs gebruiken in plaats van parsing-hacks
-* Eén consistente architecture flow volgen
-
-TrainIQ wordt opgebouwd rond:
-
-```text
-Data → Domain → AI Reasoning → UI → Persoonlijke Actie
-```
-
-\---
-
-## 🛠️ Architectuur
-
-TrainIQ gebruikt:
-
-```text
-MVVM + Clean Architecture + Unidirectional Data Flow
-```
-
-Structuur:
-
-```text
-Data → Domain → UI
-```
-
-### Verplichte architectuurregels
-
-* Business logic staat uitsluitend in `UseCases`
-* UI leest alleen state uit ViewModels
-* Elke screen gebruikt één `uiState: StateFlow<T>`
-* UI-state gebruikt sealed interfaces:
-
-  * Loading
-  * Success
-  * Error
-* Dependency Injection gebeurt met Hilt
-* Repositories zijn `@Singleton`
-* ViewModel-afhankelijke objecten gebruiken `@ViewModelScoped`
-* Geen string-based navigation routes
-* Alleen type-safe navigation via `kotlinx.serialization`
-* Geen business logic in composables
-* Geen database mapping in UI-layer
-
-Voorbeeld:
-
-```kotlin
-sealed interface UiState {
-    data object Loading : UiState
-    data class Success(...) : UiState
-    data class Error(val message: String) : UiState
-}
-```
-
-\---
-
-## 🗄️ Database \& Data Standards
-
-### Room wordt de primaire source of truth
-
-De huidige JSON/local-store architectuur moet uiteindelijk volledig migreren naar Room.
-
-Doelarchitectuur:
-
-```text
-Room Database
-    ↓
-Repositories
-    ↓
-UseCases
-    ↓
-ViewModels
-    ↓
-Compose UI
-```
-
-### DataStore mag alleen gebruikt worden voor:
-
-* User preferences
-* Theme settings
-* AI instellingen
-* Sync metadata
-* Health Connect changes tokens
-
-### Room Standards
-
-Verplicht:
-
-* AutoMigration waar mogelijk
-* Handmatige SQL migraties wanneer nodig
-* Geen breaking schema changes zonder migratie
-* Repository abstraheert database volledig
-
-Bij nieuwe velden altijd controleren:
-
-* `Entities.kt`
-* `DomainModels.kt`
-* `Mappers.kt`
-* `UseCases.kt`
-
-\---
-
-## ❤️ Health Connect Standards
-
-Health Connect is de centrale databron van TrainIQ.
-
-### Verplicht
-
-* Altijd `HealthConnectClient.getSdkStatus()` controleren
-* `PROVIDER\_MISSING` correct afhandelen
-* Eerst rationale/permission uitleg tonen
-* Daarna pas de system permission prompt
-* `ChangesToken` gebruiken voor incrementele sync
-* Alleen gewijzigde data ophalen
-* Syncs background-safe maken
-
-### Metrics
-
-TrainIQ ondersteunt minimaal:
-
-* Steps
-* Heart Rate
-* Sleep
-* Active Calories
-* Weight
-* Workout Sessions
-
-### Toekomstige uitbreidingen
-
-* Recovery score
-* HRV
-* Stress trends
-* Readiness analysis
-* Adaptive workout intensity
-
-\---
-
-## 🤖 Gemini 2.5 Flash Standards
-
-Gemini vormt de reasoning engine van TrainIQ.
-
-### Fast Mode
-
-Voor:
-
-* Barcode scanning
-* Meal scanning
-* Food classification
-* Simpele inzichten
-
-```text
-Thinking disabled
-```
-
-### Deep Mode
-
-Voor:
-
-* Coachadvies
-* Herstelanalyse
-* Weekrapporten
-* Trainingsaanbevelingen
-* Voedingsanalyse
-
-```text
-Thinking Budget: 500–1000 tokens
-```
-
-### AI-regels
-
-Verplicht:
-
-* Gemini 2.5 Flash als standaardmodel
-* Structured JSON outputs
-* `response\_mime\_type = "application/json"`
-* Geen regex parsing van AI output
-* AI persona blijft consistent:
-
-  * Senior Strength Coach
-  * Data-driven
-  * Motiverend maar eerlijk
-
-### Toekomstige AI Features
-
-* Meal image recognition
-* Supplement label scanning
-* Form analysis
-* Recovery predictions
-* Personalized programming
-* Local Gemini Nano assist waar mogelijk
-
-\---
-
-## 🎨 UI/UX Standards
-
-TrainIQ moet modern, rustig en premium aanvoelen.
-
-### Verplicht
-
-* Overal `MaterialTheme.colorScheme`
-* Overal `MaterialTheme.typography`
-* Dynamic Color op Android 12+
-* Geen legacy Material 2 componenten
-* Shimmer loading states
-* `AnimatedContent` voor subtiele animaties
-* Haptic feedback bij belangrijke acties
-* Adaptive layouts via `WindowSizeClass`
-
-### UX Doelen
-
-* Zo min mogelijk handmatige input
-* AI helpt actief mee
-* Geen overload aan informatie
-* Home fungeert als cockpit
-* Belangrijkste acties binnen 1-2 taps bereikbaar
-
-### Shared Transition Flows
-
-```text
-Home → Active Workout
-Workout List → Workout Detail
-Meal Scan → Result
-Progress → Deep Analysis
-```
-
-\---
-
-## ⚡ Performance Standards
-
-TrainIQ moet extreem vloeiend aanvoelen.
-
-### Verplicht
-
-* Baseline Profiles gebruiken
-* Startup optimalisatie
-* Geen zware work op Main Thread
-* Vermijd onnodige recompositions
-* Lazy loading waar mogelijk
-* Stable Compose state gebruiken
-* Coroutines correct scopen
-
-### Doelstellingen
-
-* Lage startup latency
-* Geen zichtbare UI freezes
-* Smooth scrolling
-* Geen dubbele network calls
-* Efficiënte Health Connect syncs
-
-\---
-
-## 🧪 Testing Standards
-
-### Verplicht testen voor:
-
-* `Mappers.kt`
-* `UseCases.kt`
-* Repository logic
-* Health sync logic
-* AI parsing logic
-* Navigation routes
-
-### Aanbevolen libraries
-
-* JUnit
-* MockK
-* Turbine
-* Compose UI Testing
-
-### Definition of Done
-
-Nieuwe features zijn pas klaar wanneer:
-
-* Compile check slaagt
-* Geen architectuurregels worden gebroken
-* Tests aanwezig zijn
-* UI state correct werkt
-* Error handling aanwezig is
-
-\---
-
-## 🚦 Gemini CLI / Codex Workflow
-
-### 1\. Research
-
-Controleer eerst:
-
-```text
-Entities.kt
-DomainModels.kt
-Repositories
-UseCases
-Navigation routes
-```
-
-Voeg niets dubbel toe.
-
-### 2\. Act
-
-* Kleine precieze wijzigingen
-* Geen massale refactors zonder noodzaak
-* Respecteer naming conventions
-* Respecteer bestaande architecture flow
-* Gebruik structured AI configs
-
-### 3\. Validate
-
-Minimaal:
-
-```text
-Compile check
-```
-
-Waar relevant:
-
-* Unit tests
-* Mapper tests
-* UseCase tests
-* UI state checks
-
-\---
-
-## 🧠 Einddoel van TrainIQ
-
-TrainIQ moet uiteindelijk voelen als:
-
-```text
-Een persoonlijke AI health coach
-in plaats van een traditionele fitness tracker
-```
-
-De gebruiker hoeft zo min mogelijk handmatig te doen.
-
-TrainIQ:
-
-* Begrijpt trends
-* Detecteert patronen
-* Geeft hersteladvies
-* Analyseert voeding
-* Optimaliseert trainingen
-* Houdt rekening met slaap en stress
-* Werkt snel en rustig
-* Voelt modern en intelligent aan
-
-\---
-
-## ✅ Hoofdregel
+Core rule:
 
 ```text
 Long-term code health > short-term speed
 ```
 
-TrainIQ moet groeien als:
+## 1. Product Vision
 
-* stabiele app
-* schaalbaar platform
-* moderne Android app
-* AI-native health ecosystem
+TrainIQ must become an AI-native health coach, not a traditional manual fitness tracker.
 
+The target experience:
+
+- Passive health data is collected safely through Health Connect.
+- Training, nutrition, sleep, recovery, and body trends are combined into useful coaching.
+- AI features are explicit, bounded, structured, and explainable without exposing model chain-of-thought.
+- The app remains fast, calm, and resilient on small phones, large phones, tablets, and foldables.
+- Manual logging stays reliable when Health Connect, network, camera, or Gemini are unavailable.
+
+Primary user outcome:
+
+```text
+The user always knows what to do next: train, recover, eat, adjust, or inspect.
+```
+
+## 2. Current QA Baseline
+
+Evidence gathered during the May 8, 2026 optimization retest, after the second implementation pass:
+
+- `:app:assembleDebug` completed successfully.
+- Worker verification passed `:app:testDebugUnitTest`, `:app:compileDebugAndroidTestKotlin`, `:app:lintDebug`, `:macrobenchmark:assembleProfileable`, `:macrobenchmark:compileDebugJavaWithJavac`, and `:app:checkReleaseSigningReadiness`.
+- App installed and launched on `emulator-5554`, but first draw was slow: `am start -W` reported `WaitTime: 18568`, the first UI dump still saw launcher/splash state, and a delayed dump showed Home.
+- Independent Android QA also reproduced launch timeout behavior: `am start -W` returned `Status: timeout`, `WaitTime: 21671`, and `gfxinfo` reported 93-94% janky frames during top-level navigation/runtime flow.
+- Runtime artifacts were captured under:
+  - `D:\GitHub\TrainIQ\qa-cycle-runtime\optimization-review`
+  - `D:\GitHub\TrainIQ\qa-cycle-runtime\worker-a-current-2026-05-08`
+  - `D:\GitHub\TrainIQ\qa-cycle-runtime\optimization-rerun-2026-05-08`
+- Crash buffer was empty during the current emulator pass.
+- Current compact bottom navigation fits `Start`, `Training`, `Voeding`, `Coach`, and `Meer` at `360x640 @ 320dpi` with font scale `1.3`, but first-viewport content is sparse and key setup content falls below the fold.
+- Prior critical implementation gaps are materially improved or closed: Gemini auth moved to `x-goog-api-key`, Android Keystore key storage exists, Health Connect pagination/per-metric tokens/partial sync/background gating exist, Room v12 foreign keys now clean dirty legacy orphans and assert `PRAGMA foreign_key_check`, workout finish has retry recovery, Progress has a Settings entry point, edge-to-edge is enabled, macrobenchmark target lookup fails on missing labels, and local absolute Gradle temp paths were removed.
+
+Important filename note: the requested target file name contained `Blprint`, but the repository contains this file as `TrainIQ_Target_State_Blueprint.md`. This existing file is the canonical target-state document.
+
+## 3. Prioritized Findings
+
+### Current Optimization Risks
+
+1. **Room runtime mutations can leave stale rows behind.**
+   - Severity: High.
+   - Evidence: `RoomTrainIqRuntimeStore.update()` serializes the updated full state and calls `sink.importTransaction(planner.plan(...))`; `RoomJsonImportSink` only clears mirror tables when `mirrorRun != null`, then upserts incoming rows.
+   - Risk: deletes and removals from routines, meals, recipes, measurements, active workouts, or workout history can leave stale Room rows that reappear after restart or corrupt derived state.
+   - Target: normal app mutations must use targeted DAO operations or full-replacement semantics that delete stale rows transactionally; upsert-only full-state mirroring is not acceptable for user data.
+
+2. **Startup and first draw remain too slow on the emulator.**
+   - Severity: High until measured in profileable/release.
+   - Evidence: current retest captured `WaitTime: 18568`, delayed Home rendering, and logcat `Skipped 129 frames`; Worker A reproduced `Status: timeout`, `WaitTime: 21671`, and WindowManager input-dispatch timeout evidence.
+   - Risk: startup and first navigation may still feel heavy after the functional fixes.
+   - Target: profileable/release macrobenchmark must identify and bound first-draw work; startup must not perform broad Room mirror/import, Health Connect, or heavy Compose initialization on the critical path.
+
+3. **Hot-path mutations are O(app-data-size).**
+   - Severity: High.
+   - Evidence: active workout set logging and repository mutations route through `runtimeStore.update`, `gson.toJson(updated)`, import planning, and broad table upserts.
+   - Risk: set logging, draft edits, meal saves, recipe edits, and routine changes can slow down as local data grows and can contribute to startup/jank through mirror churn.
+   - Target: active workout logging and meal saves must use bounded, targeted database writes with benchmark evidence; no full JSON serialization/import on critical user actions.
+
+4. **Health Connect permission UX still implies all metrics are mandatory.**
+   - Severity: Medium.
+   - Evidence: `HealthConnectPermissionsRationaleActivity` treats anything less than all six permissions as failure copy, while the data layer now supports partial sync.
+   - Risk: the app can technically handle partial permissions but the user is told all six signals are required, undermining trust and consent clarity.
+   - Target: rationale copy and permission-result messaging must explain each permission independently and celebrate partial success while clearly marking denied metrics.
+
+5. **Active workout and scanner still need large-font critical-path proof.**
+   - Severity: Medium.
+   - Evidence: active workout controls still use dense horizontal rows for status metrics, sticky finish controls, and set edit fields; scanner permission/result states have limited large-font/inset evidence.
+   - Risk: 360px devices, font scale `1.3+`, landscape, cutouts, and IME can hide critical controls or make logging error-prone.
+   - Target: active workout, scanner permission/result states, Settings AI/Health, nutrition AI item editing, and routine generation must pass 360x640/360x800 at font scale `1.3+`.
+
+6. **Top-level navigation jank is release-blocking until explained.**
+   - Severity: High.
+   - Evidence: Worker A captured `gfxinfo` with 89/95 janky frames during nav flow and 203/215 janky frames in final runtime stats.
+   - Risk: even if individual screens are functionally correct, the app can feel broken under real navigation and display changes.
+   - Target: top-level tab traversal must meet agreed `gfxinfo`/Macrobenchmark/Perfetto thresholds on a release-like build and on at least one lower-end physical device.
+
+7. **Workout completion still waits for debrief generation.**
+   - Severity: Medium.
+   - Evidence: session save occurs before debrief, but `finishWorkout` awaits Gemini/local debrief before returning to completion navigation.
+   - Risk: slow network or API timeout can hold the processing screen even though the workout is already saved.
+   - Target: saving and completion navigation must return immediately with a local summary; Gemini debrief should refresh asynchronously with retry/status.
+
+8. **Production AI boundary remains undecided.**
+   - Severity: Medium.
+   - Evidence: direct-client BYOK is implemented, while release docs still keep the production AI gateway/BYOK decision open.
+   - Risk: billing, abuse/quota, privacy, and third-party sharing ownership can remain unresolved at release time.
+   - Target: release readiness must choose and document one mode: BYOK accepted, backend gateway implemented, OAuth-mediated access, or AI scoped out.
+
+9. **Release and CI gates are still too manual.**
+   - Severity: Low/Medium.
+   - Evidence: GitHub workflow is manual-only, migration marker generation is not wired into release build gates, release minification is disabled, and Baseline Profile generation still lacks a `BaselineProfileRule` producer workflow.
+   - Risk: regressions can land without PR validation, releases can omit fresh migration proof, performance claims remain weak, and release artifacts ship larger and less hardened than necessary.
+   - Target: CI must run on PR/protected-branch push; releases must require migration-marker evidence or an owner-approved exception; baseline profiles must be generated, not only required by benchmarks; release shrinking must be enabled or explicitly waived.
+
+## 4. Architecture Target State
+
+TrainIQ uses:
+
+```text
+MVVM + Clean Architecture + Unidirectional Data Flow
+```
+
+Required flow:
+
+```text
+Room / Health Connect / Remote APIs
+    -> Repositories
+    -> UseCases
+    -> ViewModels
+    -> Compose UI
+```
+
+Rules:
+
+- Business logic lives in UseCases or domain services, not composables.
+- Each screen exposes one `uiState: StateFlow<T>`.
+- UI state uses sealed interfaces with explicit `Loading`, `Success`, and `Error` states.
+- Repositories are `@Singleton`.
+- ViewModel-owned helpers use `@ViewModelScoped` when scoped injection is needed.
+- Navigation uses Navigation 2.8+ type-safe `@Serializable` routes only.
+- No string-based route contracts.
+- No database mapping in UI code.
+- `TrainIqDataCoordinator` must continue being decomposed into bounded services or repositories for workout logging, nutrition persistence, progress measurements, Health Connect aggregation, and AI orchestration.
+
+## 5. Data and Room Target State
+
+Room is the primary source of truth for app-owned data.
+
+DataStore may only hold:
+
+- User preferences
+- Theme mode
+- AI enabled flag
+- Non-sensitive feature preferences
+- Small sync metadata while it is being migrated to Room
+
+Room requirements:
+
+- Use `AutoMigration` where safe.
+- Use explicit SQL migrations for non-trivial changes.
+- Export schemas for every version.
+- Add Room foreign keys for routines/days/exercises, sessions/sets, recipes/ingredients, meals/items, active workout children, and measurement ownership.
+- Runtime mutations must be authoritative in both directions: inserts, updates, and deletes must be represented in Room in the same transaction.
+- Do not use upsert-only full-state mirror imports for normal user mutations. Either use targeted DAO mutations or explicit full-replacement semantics that clear stale rows safely.
+- Active workout finish, discard, back/retry, meal delete, recipe delete, routine delete, and measurement delete must prove rows cannot resurrect after process restart.
+- Validate migration chains with instrumentation tests before release.
+- Migration tests must include dirty legacy data: orphaned children, missing parents, duplicate external IDs, null legacy fields, and stale Health Connect cache metadata.
+- Any migration that introduces foreign keys must either repair/quarantine legacy orphans or fail closed with a clear recovery path.
+- Run `PRAGMA foreign_key_check` after FK-introducing migrations and assert an empty result in tests.
+- Index foreign-key child columns unless there is a measured reason not to, because cascades and parent deletes otherwise risk full table scans.
+- Before adding fields, update `Entities.kt`, `DomainModels.kt`, `Mappers.kt`, repositories, use cases, and tests in the same change.
+
+Health Connect cache target:
+
+- Short term: DataStore cache is acceptable for current small cache payloads.
+- Target: move Health Connect cache and per-metric sync metadata to Room if payloads grow, debugging becomes difficult, or migration/cleanup semantics become important.
+
+## 6. Health Connect Target State
+
+Health Connect is the central external health-data source.
+
+Required metrics:
+
+- Steps
+- Heart rate
+- Sleep
+- Active calories
+- Weight
+- Workout sessions
+
+Required behavior:
+
+- Always check `HealthConnectClient.getSdkStatus()`.
+- Hide or degrade Health Connect integration when unsupported.
+- Handle `SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED` with a clear install/update action.
+- Show a rationale screen before requesting permissions.
+- Rationale copy must not imply that all Health Connect permissions are mandatory if the product supports partial permissions.
+- Permission-result UI must distinguish full success, partial success, and denied metrics without shaming or blocking the user.
+- Refresh Health Connect status after the actual permission result or lifecycle return, not immediately before the user grants permissions.
+- Support partial permissions: granted metrics must sync and display current data even when another metric is denied.
+- Maintain per-metric status: `SYNCED`, `STALE`, `DENIED`, `FAILED`, `UNAVAILABLE`.
+- Use per-record-type `ChangesToken` where needed so one revoked metric does not poison all sync.
+- Page all `readRecords` calls using `pageToken`.
+- Use aggregate APIs for cumulative metrics such as steps to reduce double counting.
+- Handle `changesTokenExpired` by clearing the affected token and performing a safe full sync for that metric.
+- Sync at least once within Health Connect's 30-day changes-token validity window, or expect a controlled token-expiry fallback.
+- If one metric token cannot be acquired or expires, do not force repeated full syncs for unrelated healthy metrics.
+- Missing steps permission must not clear caches or tokens for heart rate, sleep, active calories, weight, or workouts.
+- Keep background sync safe: no startup-blocking full sync, no unbounded background reads, and no retry loops for permanent permission/provider states.
+- Background reads require `READ_HEALTH_DATA_IN_BACKGROUND`, Health Connect feature availability, and explicit user-granted background access; otherwise sync only on foreground/on-resume.
+- Release readiness must include Play Console Health Apps declaration, Data Safety form alignment, privacy policy parity, and justification for every requested Health Connect data type.
+
+Research anchors:
+
+- Health Connect read/pagination/aggregation: https://developer.android.com/health-and-fitness/guides/health-connect/develop/read-data
+- Health Connect sync and changes tokens: https://developer.android.com/health-and-fitness/health-connect/sync-data
+- Health Connect permissions UX: https://developer.android.com/health-and-fitness/guides/health-connect/design/permissions
+- Health Connect availability: https://developer.android.com/health-and-fitness/health-connect/availability
+
+## 7. Gemini and AI Target State
+
+Default model:
+
+```text
+gemini-2.5-flash
+```
+
+Fast Mode:
+
+- Meal scan
+- Barcode classification if implemented
+- Simple classification
+
+Target:
+
+```text
+thinkingBudget = 0
+responseMimeType = "application/json"
+```
+
+Deep Mode:
+
+- Goal advice
+- Workout debrief
+- Weekly report
+- Recovery analysis
+- Routine generation
+
+Target:
+
+```text
+thinkingBudget = 500-1000
+responseMimeType = "application/json"
+```
+
+AI requirements:
+
+- Use structured JSON outputs.
+- Add `responseJsonSchema` for every production Gemini feature.
+- JSON schemas must distinguish required, optional, and nullable fields; do not require low-confidence notes or optional summaries just to satisfy schema shape.
+- Schema contract tests must cover valid output, omitted optional fields, nullable fields, invalid enum values, extra fields, and malformed JSON.
+- Parse JSON with structured parsers only; never use regex to extract JSON from free text.
+- Do not ask for or display model chain-of-thought. Product-facing explanation fields must be named `rationaleSummary`, `coachReasoningSummary`, or similar.
+- Keep the persona consistent: Senior Strength Coach, data-driven, direct, calm, and honest.
+- Every AI feature must define timeout, retry, cancellation, fallback, and user messaging.
+- Centralize Gemini 429/rate-limit handling with exponential backoff, per-feature throttles, and clear local fallback.
+- Meal image upload must resize/compress and enforce max dimensions and max bytes before base64 encoding.
+- Gemini API auth must use a header/interceptor boundary; API keys must not appear in URLs.
+- API key storage must use Android Keystore as the source of truth. Legacy plaintext DataStore keys must be cleared after verified migration.
+- BYOK client-side Gemini calls are acceptable for local/dev MVP only; production should prefer a server-side Gemini boundary or OAuth-backed access controls.
+- AI calls must be user-initiated unless a future explicit opt-in is added for proactive reports.
+- Production must pin explicit stable model IDs; do not use `latest` aliases.
+
+Research anchors:
+
+- Gemini 2.5 thinking budgets: https://ai.google.dev/gemini-api/docs/thinking
+- Gemini structured outputs and JSON schema: https://ai.google.dev/gemini-api/docs/structured-output
+- Gemini model capabilities: https://ai.google.dev/gemini-api/docs/models
+- Gemini rate limits: https://ai.google.dev/gemini-api/docs/rate-limits
+
+## 8. UI, UX, and Design Target State
+
+TrainIQ must feel modern, calm, and precise.
+
+Required:
+
+- Material 3 components and `MaterialTheme.colorScheme`.
+- `MaterialTheme.typography` for all text.
+- Dynamic Color on Android 12+.
+- Any fixed TrainIQ brand colors must be mapped to, or explicitly justified against, `MaterialTheme.colorScheme`; app chrome must not silently bypass Dynamic Color.
+- Shimmer/skeleton loading for high-value surfaces.
+- Subtle transitions through `AnimatedContent` or equivalent.
+- Haptic feedback for important actions only.
+- Adaptive layouts for compact, medium, expanded, foldable, and tablet states.
+- No text clipping, overlapping controls, or unreachable actions.
+- Touch targets must be at least 48dp unless a Material component provides equivalent expanded touch bounds.
+- Screen copy must be Dutch, consistent, and action-oriented.
+- Empty, loading, error, offline, denied-permission, and partial-data states are first-class UI states.
+- Top-level screens must apply the medium/expanded content max-width policy, not merely calculate it, so tablets and foldables avoid stretched reading lines and cards.
+
+Compact navigation target:
+
+- Six fully labeled bottom tabs are not acceptable on 360px-class phones.
+- Compact phones must use a destination policy that preserves readability and tap accuracy.
+- If compact phones show five tabs, every hidden destination must have a discoverable alternative path and a regression test.
+- Progress must remain reachable on compact phones through `Meer`, Home insights, or an equally obvious entry point.
+- Bottom navigation must not overlap content, IME, gesture navigation, or 3-button navigation.
+
+Dialog and sheet target:
+
+- Primary actions remain visible on 360x640, 360x800, large font scale, and landscape where supported.
+- Long content scrolls inside the sheet/dialog while action buttons remain reachable.
+- Generated routine previews, nutrition add sheets, permission rationale, and finish-workout confirmation are mandatory compact-screen QA flows.
+- AI routine generation should be an adaptive full-screen route or modal sheet with sticky actions, not a dense alert dialog.
+- Primary screen titles, dialog titles, workout exercise labels, and active set labels must wrap deliberately at large font scale instead of hiding essential context behind ellipsis.
+
+Edge-to-edge and immersive target:
+
+- Call `enableEdgeToEdge()` and handle system bars/insets intentionally.
+- Normal screens draw backgrounds edge-to-edge while preserving safe content insets.
+- Camera, scanner, active workout, and other immersive flows may hide or minimize system bars only when it improves the user task and Android back/home gestures remain reliable.
+- Avoid placing tap or drag targets under gesture insets.
+- Android 15+ target-SDK edge-to-edge behavior must be visually regression-tested on gesture navigation and 3-button navigation.
+- Edge-to-edge checks must include landscape cutouts, IME, caption/freeform windows, and bottom padding on every scrollable screen.
+
+Accessibility target:
+
+- Automated Compose accessibility checks must run for dense custom UI where possible.
+- Manual TalkBack and Switch Access passes are required for active workout, scanner permission/result states, Health Connect rationale, AI routine generation, and Settings destructive actions.
+- Custom toggles, icon buttons, and compact workout controls must expose meaningful content descriptions, roles, states, and at least 48dp touch targets.
+- Charts, metric cards, toggle rows, and custom Canvas visualizations need semantic summaries or merged labels so assistive tech does not expose unlabeled shapes and disjoint controls.
+
+Research anchors:
+
+- Android edge-to-edge design: https://developer.android.com/design/ui/mobile/guides/layout-and-content/edge-to-edge
+- Compose edge-to-edge setup: https://developer.android.com/develop/ui/compose/system/setup-e2e
+- Window insets: https://developer.android.com/develop/ui/compose/layouts/insets
+- Compose accessibility: https://developer.android.com/develop/ui/compose/accessibility
+- Core app quality: https://developer.android.com/docs/quality-guidelines/core-app-quality
+
+## 9. Feature Target State
+
+### Home
+
+- Home is the cockpit.
+- It must show the next best action, not just passive metrics.
+- It must degrade gracefully when profile, Health Connect, nutrition, or workouts are missing.
+- Startup must not block on Health Connect full sync or AI calls.
+
+### Training
+
+- Routine creation, routine generation, active workout, history, and completion must be resilient.
+- Active workout must preserve state across rotation, app switch, lock/unlock, and process recreation where feasible.
+- Active workout logging must use bounded, targeted persistence; set completion and draft updates must not serialize or re-import the entire app state.
+- Finish flow must be idempotent.
+- Completion AI debrief must not block saving the workout.
+- Completion navigation must not wait for Gemini. A failed or slow debrief must show local summary plus retry/status, not lose or delay the workout.
+
+### Nutrition
+
+- Manual meal logging remains complete without AI.
+- Meal scan must handle no camera, denied camera, revoked camera, oversized photo, offline, Gemini timeout, invalid JSON, and local fallback.
+- Barcode scan target must be explicit:
+  - Either it is a manual code capture flow, or
+  - It includes product lookup, offline behavior, not-found handling, and manual fallback.
+
+### Coach
+
+- Advice must be grounded in available user data and declare data quality.
+- Missing or stale Health Connect metrics must not be treated as known zero values.
+- AI advice must return structured JSON and be validated before display.
+
+### Progress
+
+- Progress screens must show trends, data quality, and enough context to avoid false precision.
+- Weight, body measurements, performance progression, and recovery signals must remain separable in the data model.
+
+### Settings
+
+- Settings is the control center for Health Connect, AI, privacy, telemetry, theme, feedback, profile, and local data.
+- Destructive actions require confirmation.
+- Health Connect permissions are managed transparently with direct links to system settings.
+- Telemetry, if enabled, requires explicit user opt-in.
+
+## 10. Performance Target State
+
+Performance requirements:
+
+- No heavy work on the main thread.
+- No blocking Health Connect sync during initial UI rendering.
+- No broad Room mirror/import or full JSON serialization on startup or critical input paths.
+- No duplicate network calls after recomposition or lifecycle resume.
+- Periodic foreground refresh loops must be visible-lifecycle aware and must not keep doing Health Connect or dashboard work from retained off-screen top-level back stacks.
+- Compose parameters should be stable or immutable where practical.
+- List rows and cards must avoid avoidable recomposition.
+- Startup, first navigation, active workout logging, scanner launch, and settings scroll must be covered by benchmark or profile evidence.
+- Debug emulator jank is only a signal; production severity must be assigned from profileable or release macrobenchmark runs.
+- Profileable cold start, warm start, top-level navigation switches, settings scroll, and active workout logging must have explicit p50/p95 thresholds before release.
+- `adb shell am start -W` must complete without timeout on the QA emulator; any timeout or input-dispatch timeout is release-blocking until explained and accepted.
+- Top-level navigation must stay below the agreed jank threshold in `gfxinfo`, Macrobenchmark, or Perfetto artifacts; 90%+ janky frame runs are not acceptable even in debug without a documented root cause.
+- Hostile display changes must recover cleanly from width/density/font changes, rotation/resizing, back/home/recents, and app switching without black-frame stalls that persist beyond the next draw.
+
+Baseline Profiles:
+
+- Generate Baseline Profiles with Macrobenchmark `BaselineProfileRule` for every release train.
+- Add an actual profile producer/generation workflow using the AndroidX Baseline Profile Gradle plugin or an equivalent documented path.
+- Benchmark checks that require a profile are not enough; the release workflow must also regenerate the profile from critical user journeys.
+- Target profile must cover:
+  - Cold start to Home
+  - Bottom navigation between all top-level tabs
+  - Active workout start and set logging
+  - Nutrition add meal and scanner entry
+  - Settings/profile form
+  - Room-backed dashboard read
+- Macrobenchmark helpers must fail when required UI targets are missing; silent text-tap skips are not acceptable.
+
+Diagnostics:
+
+- JankStats is useful for runtime diagnostics but not a substitute for Macrobenchmark or generated baseline profiles.
+- Performance telemetry must be privacy-safe and opt-in before upload.
+
+Research anchors:
+
+- Baseline Profiles: https://developer.android.com/baseline-profiles
+- Compose stability: https://developer.android.com/develop/ui/compose/performance/stability
+- Strong skipping: https://developer.android.com/develop/ui/compose/performance/stability/strongskipping
+- Compose performance codelab: https://developer.android.com/codelabs/jetpack-compose-performance
+
+## 11. Backend, Security, and Developer Experience
+
+API boundary requirements:
+
+- Gemini API key auth uses headers, not query parameters.
+- API services expose typed result/failure contracts.
+- AI services have feature-specific timeout and retry policy.
+- Remote errors are mapped to user-safe messages and diagnostic-safe internal categories.
+- Before production release, AI mode must be explicitly decided and signed off: BYOK accepted, server gateway implemented, OAuth-mediated access, or AI scoped out.
+
+Secrets:
+
+- No production secret in `BuildConfig`.
+- No committed plaintext API key.
+- No URL-based key transmission.
+- Keystore-only Gemini key storage after migration.
+- Legacy DataStore key is cleared after successful migration.
+
+Telemetry:
+
+- Telemetry upload requires explicit app-level opt-in.
+- Tokens must not be embedded statically in the APK.
+- Logs must redact tokens, API keys, auth headers, health data, and user-entered nutrition/training notes.
+- If telemetry upload is enabled, queued events must flush on a bounded interval and lifecycle boundary, not only when max batch size is reached.
+- Telemetry must remain useful when disabled locally: diagnostics should still be inspectable through local, redacted logs during QA.
+- Production telemetry requires a documented endpoint, auth/token handling, payload sample, retention policy, and Data Safety review before enabling.
+
+Developer experience:
+
+- CI must run on `pull_request` and protected-branch `push`, not only manual dispatch.
+- No committed absolute local-machine paths in Gradle defaults.
+- README must describe:
+  - JDK requirement
+  - Android SDK setup
+  - Debug build
+  - Unit tests
+  - Connected tests
+  - Health Connect emulator setup
+  - Gemini key setup
+  - Release signing readiness
+- Dependency updates should prefer stable AndroidX releases unless an alpha feature is explicitly required.
+- Health Connect should stay on stable `1.1.0` unless an alpha feature is explicitly required.
+- Evaluate Room stable updates before the next modernization pass, then re-run the full migration chain and FK orphan tests.
+- Migration readiness marker generation must be wired into CI/release onboarding and release artifacts must be blocked without fresh marker evidence or an owner-approved exception.
+- Settings copy must match implementation: Keystore/encrypted local storage for Gemini keys, not generic app preferences.
+- Release builds should enable shrinking/obfuscation or carry an owner-approved written exception.
+- Room runtime source-of-truth promotion must be gated by the readiness signal, or the readiness signal must be explicitly reframed as diagnostic-only.
+
+## 12. Test Strategy
+
+Minimum validation for any change:
+
+```text
+./gradlew.bat :app:assembleDebug --console=plain
+```
+
+Required tests by area:
+
+- Mappers: unit tests.
+- UseCases: unit tests.
+- Repository logic: unit tests.
+- Room migrations: instrumentation tests.
+- Health Connect sync policy: unit tests with fake data source and token states.
+- AI JSON parsing: unit tests with valid, invalid, missing-field, English, oversized, and fallback cases.
+- Navigation routes: unit tests for type-safe route behavior.
+- UI state reducers: unit tests for loading/success/error/partial states.
+- Runtime Room mutations: unit/integration tests proving deletes remove rows and cannot resurrect after process restart.
+- Hot-path persistence: benchmark or test guard showing active set logging and meal save do not perform full-state JSON mirror/import work.
+
+Mandatory exploratory QA matrix before release:
+
+- Fresh install
+- Upgrade install
+- No profile
+- Existing profile
+- No Health Connect provider
+- Health Connect installed but no permissions
+- Partial Health Connect permissions
+- Revoked permissions while app is open
+- No health data
+- Large health dataset requiring pagination
+- Offline
+- Slow network
+- Gemini 429/rate limit
+- Gemini invalid JSON
+- Camera denied once
+- Camera denied permanently
+- App switch and return
+- Lock/unlock
+- Back gesture on every screen
+- Rapid taps on primary actions
+- Rotation where supported
+- 360x640 compact phone
+- 360x800 compact phone
+- 1080x2400 large phone
+- Tablet/foldable width class
+- Font scale 1.3 and 1.5
+- Light and dark theme
+- Gesture navigation and 3-button navigation
+- Density override and display-size override
+- Back/home/recents recovery after display resize
+
+Optimization review matrix before release:
+
+- `am start -W` cold launch with no timeout
+- Profileable cold start, warm start, and hot start
+- Top-level navigation jank on compact and large-phone profiles
+- First-run setup where Health Connect CTA is below the fold
+- Health Connect rationale before system prompt
+- Partial Health Connect rationale copy after granting only some metrics
+- Partial permissions with at least one granted and one denied metric
+- Expired changes token recovery for one metric only
+- Missing steps permission while other Health Connect caches remain intact
+- Gemini 429 with backoff and local fallback
+- Workout finish with slow Gemini response
+- Active workout set logging with large local history
+- Delete/discard flows followed by process restart
+- AI routine generation at 360x640 and font scale 1.3+
+- Room migration from dirty v11 data with orphaned child rows
+- Macrobenchmark failure behavior when a required label/test tag is absent
+
+## 13. Definition of Done
+
+A TrainIQ feature is complete only when:
+
+- It follows the architecture flow.
+- It has explicit loading, success, error, empty, offline, and permission states where relevant.
+- It passes compile checks.
+- It has tests for business logic and data mapping.
+- It does not introduce unbounded main-thread, network, Health Connect, or image-processing work.
+- It works on compact phones without clipped controls.
+- It preserves state across app switch and back navigation where user data could be lost.
+- It handles partial Health Connect and disabled AI.
+- It does not log secrets or sensitive health data.
+- It updates this blueprint if a target-state decision changes.
+
+## 14. Source References From This Review
+
+Local evidence:
+
+- `D:\GitHub\TrainIQ\qa-cycle-runtime\full-review\launch-logcat.txt`
+- `D:\GitHub\TrainIQ\qa-cycle-runtime\full-review\home-small.xml`
+- `D:\GitHub\TrainIQ\qa-cycle-runtime\optimization-review\foreground-current.xml`
+- `D:\GitHub\TrainIQ\qa-cycle-runtime\optimization-review\compact-360x640-font115.xml`
+- `D:\GitHub\TrainIQ\qa-cycle-runtime\optimization-rerun-2026-05-08\launch-main.txt`
+- `D:\GitHub\TrainIQ\qa-cycle-runtime\optimization-rerun-2026-05-08\home-delayed.xml`
+- `D:\GitHub\TrainIQ\qa-cycle-runtime\optimization-rerun-2026-05-08\compact-360x640-font130.xml`
+- `D:\GitHub\TrainIQ\qa-cycle-runtime\optimization-rerun-2026-05-08\logcat-after-launch.txt`
+- `C:\Users\menno\AppData\Local\Temp\trainiq-runtime-qa-20260508-230642\launch-start-w.txt`
+- `C:\Users\menno\AppData\Local\Temp\trainiq-runtime-qa-20260508-230642\gfxinfo-nav-flow.txt`
+- `C:\Users\menno\AppData\Local\Temp\trainiq-runtime-qa-20260508-230642\gfxinfo-final.txt`
+- `C:\Users\menno\AppData\Local\Temp\trainiq-runtime-qa-20260508-230642\crash-buffer-final.txt`
+- `D:\GitHub\TrainIQ\qa-cycle-runtime\worker-a-current-2026-05-08\launch-main.txt`
+- `D:\GitHub\TrainIQ\qa-cycle-runtime\worker-a-current-2026-05-08\gfxinfo-framestats.txt`
+- `D:\GitHub\TrainIQ\qa-cycle-runtime\worker-a-current-2026-05-08\crash-buffer.txt`
+- `D:\GitHub\TrainIQ\runtime-gemini-test\active-workout-start.xml`
+- `D:\GitHub\TrainIQ\runtime-gemini-test\routine-ai-after-generate.xml`
+- `D:\GitHub\TrainIQ\TrainIQ-Project\app\src\main\java\com\trainiq\data\datasource\HealthConnectDataSource.kt`
+- `D:\GitHub\TrainIQ\TrainIQ-Project\app\src\main\java\com\trainiq\data\repository\RoomTrainIqRuntimeStore.kt`
+- `D:\GitHub\TrainIQ\TrainIQ-Project\app\src\main\java\com\trainiq\data\migration\JsonRoomImportPlanner.kt`
+- `D:\GitHub\TrainIQ\TrainIQ-Project\app\src\main\java\com\trainiq\ai\services\AiServices.kt`
+- `D:\GitHub\TrainIQ\TrainIQ-Project\app\src\main\java\com\trainiq\ai\services\GeminiJsonSchemas.kt`
+- `D:\GitHub\TrainIQ\TrainIQ-Project\app\src\main\java\com\trainiq\ai\services\AiSupport.kt`
+- `D:\GitHub\TrainIQ\TrainIQ-Project\app\src\main\java\com\trainiq\data\remote\GeminiApi.kt`
+- `D:\GitHub\TrainIQ\TrainIQ-Project\app\src\main\java\com\trainiq\features\workout\WorkoutScreen.kt`
+- `D:\GitHub\TrainIQ\TrainIQ-Project\app\src\main\java\com\trainiq\features\settings\SettingsSection.kt`
+- `D:\GitHub\TrainIQ\TrainIQ-Project\app\src\main\java\com\trainiq\core\health\HealthConnectPermissionsRationaleActivity.kt`
+- `D:\GitHub\TrainIQ\TrainIQ-Project\app\src\main\java\com\trainiq\navigation\TrainIqNav.kt`
+- `D:\GitHub\TrainIQ\TrainIQ-Project\app\src\main\java\com\trainiq\core\database\TrainIqMigrations.kt`
+- `D:\GitHub\TrainIQ\TrainIQ-Project\app\src\main\baseline-prof.txt`
+- `D:\GitHub\TrainIQ\TrainIQ-Project\macrobenchmark\src\main\java\com\trainiq\macrobenchmark\TrainIqStartupBenchmark.java`
+- `D:\GitHub\TrainIQ\TrainIQ-Project\gradle\libs.versions.toml`
+- `D:\GitHub\TrainIQ\.github\workflows\android.yml`
+- `D:\GitHub\TrainIQ\TrainIQ-Project\docs\release\owner-action-tracker.md`
+- `D:\GitHub\TrainIQ\TrainIQ-Project\docs\architecture\ai-gateway-decision-record.md`
+- `D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\talkback-switch-access-test-script.md`
+
+Official and high-quality research:
+
+- Android core app quality: https://developer.android.com/docs/quality-guidelines/core-app-quality
+- Android edge-to-edge: https://developer.android.com/design/ui/mobile/guides/layout-and-content/edge-to-edge
+- Compose edge-to-edge setup: https://developer.android.com/develop/ui/compose/system/setup-e2e
+- Android 15 behavior changes: https://developer.android.com/about/versions/15/behavior-changes-15
+- Android 16 behavior changes: https://developer.android.com/about/versions/16/behavior-changes-16
+- Adaptive navigation: https://developer.android.com/develop/ui/compose/layouts/adaptive/build-adaptive-navigation
+- Compose accessibility: https://developer.android.com/develop/ui/compose/accessibility
+- Compose accessibility testing: https://developer.android.com/develop/ui/compose/accessibility/testing
+- Compose scalable content: https://developer.android.com/develop/ui/compose/accessibility/scalable-content
+- Compose stability/performance: https://developer.android.com/develop/ui/compose/performance/stability
+- Baseline Profiles: https://developer.android.com/baseline-profiles
+- Create Baseline Profiles: https://developer.android.com/topic/performance/baselineprofiles/create-baselineprofile
+- Configure Baseline Profiles: https://developer.android.com/topic/performance/baselineprofiles/configure-baselineprofiles
+- Health Connect read data: https://developer.android.com/health-and-fitness/guides/health-connect/develop/read-data
+- Health Connect sync: https://developer.android.com/health-and-fitness/health-connect/sync-data
+- Health Connect permissions UX: https://developer.android.com/health-and-fitness/guides/health-connect/design/permissions
+- Health Connect publishing declaration: https://developer.android.com/health-and-fitness/health-connect/declare-access
+- Health Connect releases: https://developer.android.com/jetpack/androidx/releases/health-connect
+- Room releases: https://developer.android.com/jetpack/androidx/releases/room
+- Room foreign keys: https://developer.android.com/reference/androidx/room/ForeignKey
+- Gemini structured output: https://ai.google.dev/gemini-api/docs/structured-output
+- Gemini thinking: https://ai.google.dev/gemini-api/docs/thinking
+- Gemini models: https://ai.google.dev/gemini-api/docs/models
+- Gemini API keys: https://ai.google.dev/gemini-api/docs/api-key
+- Gemini rate limits: https://ai.google.dev/gemini-api/docs/rate-limits
+- Google Cloud API key best practices: https://cloud.google.com/docs/authentication/api-keys-best-practices

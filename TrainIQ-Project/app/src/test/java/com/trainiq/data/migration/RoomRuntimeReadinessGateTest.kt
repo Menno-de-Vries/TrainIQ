@@ -208,7 +208,7 @@ class RoomRuntimeReadinessGateTest {
         startedAt = finishedAt - 100L,
         finishedAt = finishedAt,
         status = status,
-        schemaVersion = 11,
+        schemaVersion = 12,
         expectedRowCount = 1,
         importedRowCount = 1,
         staleRowCount = 0,

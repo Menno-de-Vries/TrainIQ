@@ -14,6 +14,7 @@ class SettingsUiStateTest {
         val state = settingsUiState(
             themeMode = ThemeMode.DARK,
             aiPreferences = AiPreferences(enabled = true, apiKey = "abcd1234wxyz"),
+            telemetryOptIn = true,
             workoutFeedbackPreferences = WorkoutFeedbackPreferences(restTimerSoundEnabled = true),
             profile = null,
             healthStatus = HealthConnectStatus(
@@ -27,6 +28,7 @@ class SettingsUiStateTest {
             SettingsUiState.Success(
                 themeMode = ThemeMode.DARK,
                 aiPreferences = AiPreferences(enabled = true, apiKey = "abcd1234wxyz"),
+                telemetryOptIn = true,
                 workoutFeedbackPreferences = WorkoutFeedbackPreferences(restTimerSoundEnabled = true),
                 profile = null,
                 healthStatus = HealthConnectStatus(

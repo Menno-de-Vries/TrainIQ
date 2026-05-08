@@ -1527,10 +1527,14 @@ class WorkoutProcessingViewModel @Inject constructor(
                     if (completion.sessionId > 0L) {
                         WorkoutProcessingUiState.Complete(completion.sessionId)
                     } else {
+                        started = false
                         WorkoutProcessingUiState.Error("Er zijn geen sets opgeslagen voor deze training.")
                     }
                 },
-                onFailure = { WorkoutProcessingUiState.Error("Training afronden is mislukt. Probeer opnieuw.") },
+                onFailure = {
+                    started = false
+                    WorkoutProcessingUiState.Error("Training afronden is mislukt. Probeer opnieuw.")
+                },
             )
         }
     }
@@ -1725,11 +1729,15 @@ private fun RoutineGeneratorDialog(
                     .imePadding(),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(focusSuggestions, key = { it }) { suggestion ->
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    focusSuggestions.forEach { suggestion ->
                         SuggestionChip(
                             onClick = { focus = suggestion },
-                            label = { Text(suggestion) },
+                            label = { Text(suggestion, maxLines = 1) },
                         )
                     }
                 }
@@ -2664,7 +2672,7 @@ private fun ExerciseActionRow(
         TextButton(
             onClick = onToggleSuperset,
             enabled = canSuperset,
-            modifier = Modifier.defaultMinSize(minHeight = 44.dp),
+            modifier = Modifier.defaultMinSize(minHeight = 48.dp),
         ) {
             Text(
                 if (supersetLinked) "Superset ontkoppelen" else "Superset koppelen",
@@ -2674,7 +2682,7 @@ private fun ExerciseActionRow(
         }
         Button(
             onClick = onAddSet,
-            modifier = Modifier.defaultMinSize(minHeight = 44.dp),
+            modifier = Modifier.defaultMinSize(minHeight = 48.dp),
         ) {
             Icon(Icons.Rounded.Add, contentDescription = null)
             Text("Set toevoegen", maxLines = 1)
@@ -4261,12 +4269,17 @@ fun WorkoutProcessingRoute(
     LaunchedEffect(uiState) {
         (uiState as? WorkoutProcessingUiState.Complete)?.let { onComplete(it.sessionId) }
     }
-    WorkoutProcessingScreen(uiState = uiState, onBackToTraining = onBackToTraining)
+    WorkoutProcessingScreen(
+        uiState = uiState,
+        onRetry = { viewModel.finish(dayId) },
+        onBackToTraining = onBackToTraining,
+    )
 }
 
 @Composable
 private fun WorkoutProcessingScreen(
     uiState: WorkoutProcessingUiState,
+    onRetry: () -> Unit,
     onBackToTraining: () -> Unit,
 ) {
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
@@ -4309,6 +4322,9 @@ private fun WorkoutProcessingScreen(
                         AppChip(label = "Fallback klaar", accent = MaterialTheme.colorScheme.tertiary)
                     }
                     if (uiState is WorkoutProcessingUiState.Error) {
+                        Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
+                            Text("Opnieuw proberen")
+                        }
                         Button(onClick = onBackToTraining, modifier = Modifier.fillMaxWidth()) {
                             Text("Terug naar training")
                         }
@@ -5032,7 +5048,7 @@ private fun ActiveWorkoutBottomBar(uiState: ActiveWorkoutUiState, restTimerSecon
                 enabled = uiState.workout != null,
                 modifier = Modifier
                     .weight(1f)
-                    .defaultMinSize(minHeight = 44.dp),
+                    .defaultMinSize(minHeight = 48.dp),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
             ) {
                 Text("Training afronden")
@@ -5361,7 +5377,7 @@ private fun ActiveExerciseCard(
                     TextButton(
                         onClick = onLogSameAgain,
                         enabled = loggedSets.isNotEmpty() && !isLogPending,
-                        modifier = Modifier.defaultMinSize(minHeight = 44.dp),
+                        modifier = Modifier.defaultMinSize(minHeight = 48.dp),
                     ) {
                         Text("Zelfde opnieuw", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
@@ -5370,7 +5386,7 @@ private fun ActiveExerciseCard(
                         enabled = !isLogPending,
                         modifier = Modifier
                             .weight(1f)
-                            .defaultMinSize(minHeight = 44.dp),
+                            .defaultMinSize(minHeight = 48.dp),
                     ) {
                         Text(
                             activeSetLogButtonLabel(
@@ -5636,10 +5652,10 @@ private fun SetRow(
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    IconButton(onClick = onEdit, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = onEdit, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Rounded.Edit, contentDescription = "Gelogde set corrigeren")
                     }
-                    IconButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Rounded.Delete, contentDescription = "Set verwijderen")
                     }
                 }

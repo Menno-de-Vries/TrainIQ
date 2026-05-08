@@ -18,6 +18,13 @@ class TelemetryExportPipelineTest {
     }
 
     @Test
+    fun buildConfigTelemetryDoesNotEmbedStaticApiToken() {
+        val config = TelemetryConfig.fromBuildConfig()
+
+        assertEquals(null, config.apiToken)
+    }
+
+    @Test
     fun config_requiresEnabledEndpointAndOptInBeforeUpload() {
         val config = TelemetryConfig(
             enabled = true,
@@ -97,6 +104,34 @@ class TelemetryExportPipelineTest {
     }
 
     @Test
+    fun exporterFlushesQueuedEventsWhenIntervalElapsesBeforeBatchIsFull() {
+        val sender = RecordingTelemetrySender()
+        val exporter = HttpTelemetryExporter(
+            config = TelemetryConfig(
+                enabled = true,
+                endpointUrl = "https://telemetry.example.test/events",
+                sampleRate = 1.0,
+                uploadOnWifiOnly = true,
+                maxBatchSize = 20,
+                flushIntervalMillis = 1_000L,
+            ),
+            sender = sender,
+            sampler = FixedTelemetrySampler(allowed = true),
+            networkPolicy = FixedNetworkPolicy(canUpload = true),
+        )
+
+        exporter.setUserOptIn(true)
+        exporter.enqueue(TelemetryPayload.Event(TelemetryEvent("screen.show", mapOf("screen" to "Home"))))
+        exporter.flushIfIntervalElapsed(nowMillis = 999L)
+        assertEquals(0, sender.requests.size)
+
+        exporter.flushIfIntervalElapsed(nowMillis = 1_000L)
+
+        assertEquals(1, sender.requests.size)
+        assertTrue(sender.requests.single().bodyText.contains("screen.show"))
+    }
+
+    @Test
     fun crashReporterAdapterSanitizesContextAndToleratesMissingProvider() {
         val crashReporter = DelegatingCrashReporter(
             config = TelemetryConfig(enabled = true, crashContextEnabled = true),
@@ -125,4 +160,3 @@ private class FixedTelemetrySampler(private val allowed: Boolean) : TelemetrySam
 private class FixedNetworkPolicy(private val canUpload: Boolean) : TelemetryNetworkPolicy {
     override fun canUpload(uploadOnWifiOnly: Boolean): Boolean = canUpload
 }
-

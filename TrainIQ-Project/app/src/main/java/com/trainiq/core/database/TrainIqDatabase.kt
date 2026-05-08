@@ -28,7 +28,7 @@ import androidx.room.RoomDatabase
         WorkoutLogEventSetEntity::class,
         BodyMeasurementEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 abstract class TrainIqDatabase : RoomDatabase() {

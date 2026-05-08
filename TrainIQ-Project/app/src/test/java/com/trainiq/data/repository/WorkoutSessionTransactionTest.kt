@@ -12,8 +12,10 @@ class WorkoutSessionTransactionTest {
         val updateBody = source.substringAfter("suspend fun update(").substringBefore("suspend fun clearAll()")
 
         assertTrue(updateBody.contains("mutex.withLock"))
+        assertTrue(updateBody.contains("val updatedJson = gson.toJson(updated)"))
         assertTrue(updateBody.contains("sink.importTransaction"))
-        assertTrue(updateBody.contains("planner.plan(gson.toJson(updated))"))
+        assertTrue(updateBody.contains("planner.plan(updatedJson)"))
+        assertTrue(updateBody.contains("mirrorRun ="))
     }
 
     @Test

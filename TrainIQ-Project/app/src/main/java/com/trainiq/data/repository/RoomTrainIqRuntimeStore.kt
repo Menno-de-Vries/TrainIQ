@@ -36,12 +36,14 @@ import com.trainiq.data.local.TrainIqStorageState
 import com.trainiq.data.local.WorkoutLogEventStorage
 import com.trainiq.data.migration.JsonRoomImportPlanner
 import com.trainiq.data.migration.RoomJsonImportSink
+import com.trainiq.data.migration.RoomMirrorImportRun
 import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.model.LoggedMealItemType
 import com.trainiq.domain.model.MealType
 import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.WorkoutLogEventType
 import com.trainiq.domain.model.WorkoutSyncStatus
+import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -136,7 +138,18 @@ class RoomTrainIqRuntimeStore @Inject constructor(
     suspend fun update(transform: (TrainIqStorageState) -> TrainIqStorageState) {
         mutex.withLock {
             val updated = transform(state.value)
-            sink.importTransaction(planner.plan(gson.toJson(updated)))
+            val updatedJson = gson.toJson(updated)
+            val startedAt = System.currentTimeMillis()
+            val plan = planner.plan(updatedJson)
+            sink.importTransaction(
+                plan = plan,
+                mirrorRun = RoomMirrorImportRun(
+                    generationId = "runtime-$startedAt",
+                    sourceFingerprint = updatedJson.sha256(),
+                    startedAt = startedAt,
+                    finishedAt = System.currentTimeMillis(),
+                ),
+            )
         }
     }
 
@@ -313,3 +326,8 @@ private fun WorkoutLogEventSetEntity.toActiveStorage() = ActiveWorkoutSetStorage
 
 private inline fun <reified T : Enum<T>> String.toEnum(default: T): T =
     runCatching { enumValueOf<T>(trim().uppercase()) }.getOrDefault(default)
+
+private fun String.sha256(): String =
+    MessageDigest.getInstance("SHA-256")
+        .digest(toByteArray(Charsets.UTF_8))
+        .joinToString(separator = "") { byte -> "%02x".format(byte) }

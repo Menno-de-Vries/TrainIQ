@@ -435,7 +435,7 @@ fun JsonRoomImportPlan.importedRowCount(): Int =
         workoutLogEventSets.size +
         measurements.size
 
-private const val TrainIqDatabaseVersion = 11
+private const val TrainIqDatabaseVersion = 12
 
 sealed interface JsonRoomImportOutcome {
     val roomTrusted: Boolean

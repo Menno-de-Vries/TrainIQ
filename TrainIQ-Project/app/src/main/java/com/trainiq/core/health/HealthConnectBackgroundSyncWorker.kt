@@ -23,8 +23,13 @@ import javax.inject.Singleton
 @Singleton
 class HealthConnectBackgroundSyncScheduler @Inject constructor(
     private val workManager: WorkManager,
+    private val healthConnectDataSource: HealthConnectDataSource,
 ) {
-    fun schedule() {
+    suspend fun scheduleIfBackgroundReadAvailable(): Boolean {
+        if (!healthConnectDataSource.canReadInBackground()) {
+            workManager.cancelUniqueWork(HealthConnectBackgroundSyncWorkName)
+            return false
+        }
         val request = PeriodicWorkRequestBuilder<HealthConnectBackgroundSyncWorker>(
             HealthConnectBackgroundSyncInterval,
         )
@@ -46,6 +51,7 @@ class HealthConnectBackgroundSyncScheduler @Inject constructor(
             ExistingPeriodicWorkPolicy.UPDATE,
             request,
         )
+        return true
     }
 }
 

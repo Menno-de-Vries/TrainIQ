@@ -35,7 +35,7 @@ data class TelemetryConfig(
         fun fromBuildConfig(): TelemetryConfig = TelemetryConfig(
             enabled = BuildConfig.TELEMETRY_ENABLED,
             endpointUrl = BuildConfig.TELEMETRY_ENDPOINT_URL.takeIf { it.isNotBlank() },
-            apiToken = BuildConfig.TELEMETRY_API_TOKEN.takeIf { it.isNotBlank() },
+            apiToken = null,
             sampleRate = BuildConfig.TELEMETRY_SAMPLE_RATE.coerceIn(0.0, 1.0),
             uploadOnWifiOnly = BuildConfig.TELEMETRY_UPLOAD_WIFI_ONLY,
             maxBatchSize = BuildConfig.TELEMETRY_MAX_BATCH_SIZE.coerceAtLeast(1),
@@ -227,6 +227,7 @@ class HttpTelemetryExporter(
 ) : TelemetryExporter {
     private val queue = ArrayDeque<TelemetryPayload>()
     private var userOptIn = false
+    private var lastFlushMillis: Long = 0L
     var nextBackoffMillis: Long = 0L
         private set
 
@@ -235,6 +236,14 @@ class HttpTelemetryExporter(
         if (!sampler.shouldSample(config.sampleRate)) return
         sanitized(payload)?.let { queue.addLast(it) }
         if (queue.size >= config.maxBatchSize) flush()
+    }
+
+    fun flushIfIntervalElapsed(nowMillis: Long) {
+        if (queue.isEmpty()) return
+        if (nowMillis - lastFlushMillis >= config.flushIntervalMillis) {
+            flush()
+            lastFlushMillis = nowMillis
+        }
     }
 
     override fun flush() {
@@ -256,9 +265,11 @@ class HttpTelemetryExporter(
         )
         if (sender.send(request)) {
             nextBackoffMillis = 0L
+            lastFlushMillis = System.currentTimeMillis()
         } else {
             nextBackoffMillis = retryPolicy.next(nextBackoffMillis)
             if (sender.send(request)) {
+                lastFlushMillis = System.currentTimeMillis()
                 return
             }
             batch.asReversed().forEach { queue.addFirst(it) }

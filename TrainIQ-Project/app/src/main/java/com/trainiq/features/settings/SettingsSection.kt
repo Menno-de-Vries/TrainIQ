@@ -95,6 +95,7 @@ sealed interface SettingsUiState {
     data class Success(
         val themeMode: ThemeMode,
         val aiPreferences: AiPreferences,
+        val telemetryOptIn: Boolean,
         val workoutFeedbackPreferences: WorkoutFeedbackPreferences,
         val profile: UserProfile?,
         val healthStatus: HealthConnectStatus,
@@ -107,6 +108,7 @@ sealed interface SettingsUiState {
 private data class SettingsUiInputs(
     val themeMode: ThemeMode,
     val aiPreferences: AiPreferences,
+    val telemetryOptIn: Boolean,
     val workoutFeedbackPreferences: WorkoutFeedbackPreferences,
     val profile: UserProfile?,
     val healthStatus: HealthConnectStatus,
@@ -132,6 +134,8 @@ class SettingsViewModel @Inject constructor(
     ) { legacySettings, _ ->
         aiUsageGate.resolveSettings(legacySettings)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AiPreferences(false, ""))
+    private val telemetryOptIn: StateFlow<Boolean> = preferencesRepository.telemetryOptIn
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
     private val workoutFeedbackPreferences: StateFlow<WorkoutFeedbackPreferences> = preferencesRepository.workoutFeedbackPreferences
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WorkoutFeedbackPreferences())
     private val profile: StateFlow<UserProfile?> = observeUserProfileUseCase()
@@ -147,23 +151,26 @@ class SettingsViewModel @Inject constructor(
 
     private val _message = MutableStateFlow<String?>(null)
     val uiState: StateFlow<SettingsUiState> = combine(
-        combine(themeMode, aiPreferences, workoutFeedbackPreferences, profile, healthStatus) { theme, ai, feedback, userProfile, health ->
+        combine(themeMode, aiPreferences, telemetryOptIn, workoutFeedbackPreferences, profile) { theme, ai, telemetry, feedback, userProfile ->
             SettingsUiInputs(
                 themeMode = theme,
                 aiPreferences = ai,
+                telemetryOptIn = telemetry,
                 workoutFeedbackPreferences = feedback,
                 profile = userProfile,
-                healthStatus = health,
+                healthStatus = healthStatus.value,
             )
         },
+        healthStatus,
         _message,
-    ) { inputs, message ->
+    ) { inputs, health, message ->
         settingsUiState(
             themeMode = inputs.themeMode,
             aiPreferences = inputs.aiPreferences,
+            telemetryOptIn = inputs.telemetryOptIn,
             workoutFeedbackPreferences = inputs.workoutFeedbackPreferences,
             profile = inputs.profile,
-            healthStatus = inputs.healthStatus,
+            healthStatus = health,
             message = message,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState.Loading)
@@ -184,6 +191,17 @@ class SettingsViewModel @Inject constructor(
                 "AI-functies ingeschakeld. Verzoeken starten alleen na jouw expliciete actie."
             } else {
                 "AI-functies uitgeschakeld. TrainIQ blijft handmatig werken."
+            }
+        }
+    }
+
+    fun setTelemetryOptIn(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setTelemetryOptIn(enabled)
+            _message.value = if (enabled) {
+                "Privacyveilige technische telemetrie ingeschakeld."
+            } else {
+                "Telemetrie uitgeschakeld. Er worden geen technische events geupload."
             }
         }
     }
@@ -330,6 +348,7 @@ class SettingsViewModel @Inject constructor(
 @Composable
 fun SettingsRoute(
     windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
+    onOpenProgress: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -345,6 +364,7 @@ fun SettingsRoute(
                 SettingsScreen(
                     themeMode = state.themeMode,
                     aiPreferences = state.aiPreferences,
+                    telemetryOptIn = state.telemetryOptIn,
                     workoutFeedbackPreferences = state.workoutFeedbackPreferences,
                     maskedApiKey = state.maskedApiKey,
                     profile = state.profile,
@@ -352,6 +372,7 @@ fun SettingsRoute(
                     message = state.message,
                     onThemeSelected = viewModel::setThemeMode,
                     onToggleAi = viewModel::setAiEnabled,
+                    onToggleTelemetry = viewModel::setTelemetryOptIn,
                     onToggleRestTimerSound = viewModel::setRestTimerSoundEnabled,
                     onToggleWorkoutHaptics = viewModel::setWorkoutHapticsEnabled,
                     onSaveApiKey = viewModel::saveGeminiKey,
@@ -375,6 +396,7 @@ fun SettingsRoute(
                             viewModel.refreshHealthConnectStatus()
                         }
                     },
+                    onOpenProgress = onOpenProgress,
                 )
             }
         }
@@ -431,6 +453,7 @@ private fun SettingsErrorScreen(message: String) {
 fun SettingsScreen(
     themeMode: ThemeMode,
     aiPreferences: AiPreferences,
+    telemetryOptIn: Boolean,
     workoutFeedbackPreferences: WorkoutFeedbackPreferences,
     maskedApiKey: String,
     profile: UserProfile?,
@@ -438,6 +461,7 @@ fun SettingsScreen(
     message: String?,
     onThemeSelected: (ThemeMode) -> Unit,
     onToggleAi: (Boolean) -> Unit,
+    onToggleTelemetry: (Boolean) -> Unit,
     onToggleRestTimerSound: (Boolean) -> Unit,
     onToggleWorkoutHaptics: (Boolean) -> Unit,
     onSaveApiKey: (String) -> Unit,
@@ -450,6 +474,7 @@ fun SettingsScreen(
     onRefreshHealth: () -> Unit,
     onOpenHealthSettings: () -> Unit,
     onOpenHealthInstall: () -> Unit,
+    onOpenProgress: () -> Unit = {},
 ) {
     var apiKey by rememberSaveable { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf(profile?.name.orEmpty()) }
@@ -497,6 +522,9 @@ fun SettingsScreen(
                 Text("Thema: ${themeMode.displayLabel()}")
                 Text("AI: ${if (aiPreferences.enabled && aiPreferences.apiKey.isNotBlank()) "Klaar voor expliciet gebruik" else "Alleen handmatig"}")
                 Text("Health Connect: ${healthStatusLabel(healthStatus)}")
+                Button(onClick = onOpenProgress, modifier = Modifier.fillMaxWidth()) {
+                    Text("Voortgang openen")
+                }
             }
         }
         if (profileInputError == null) message?.let {
@@ -533,8 +561,28 @@ fun SettingsScreen(
             }
         }
         item {
+            SectionCard(title = "Privacy en telemetrie") {
+                FeedbackToggleRow(
+                    title = "Technische telemetrie delen",
+                    body = "Deel alleen privacyveilige technische events en prestatie-samenvattingen. Gezondheidsdata, notities en sleutels worden nooit geupload.",
+                    checked = telemetryOptIn,
+                    onCheckedChange = onToggleTelemetry,
+                )
+                Text(
+                    if (telemetryOptIn) {
+                        "Telemetrie staat aan, maar upload gebeurt alleen wanneer de build een endpoint en sampling configureert."
+                    } else {
+                        "Telemetrie staat uit. Lokale crash- en prestatiediagnostiek blijft beschikbaar."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        item {
             SectionCard(title = "AI / Gemini") {
                 Text("AI wordt alleen gebruikt nadat jij het inschakelt. TrainIQ doet geen AI-aanvragen op de achtergrond.")
+                Text("Bij een expliciete AI-actie stuurt TrainIQ de benodigde prompt, context en eventueel gekozen foto naar Google Gemini met jouw lokaal opgeslagen API-sleutel.")
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -739,7 +787,7 @@ fun SettingsScreen(
         item {
             SectionCard(title = "Gegevens / opslag") {
                 Text("Lokale data: profiel, routines, workouts, voeding, recepten en metingen.")
-                Text("AI-sleutel: lokaal opgeslagen in appvoorkeuren.")
+                Text("AI-sleutel: lokaal versleuteld opgeslagen via Android Keystore.")
                 Text("Health Connect-cache: sync-token en recente stappen, hartslag, slaap, calorieën en gewicht.")
                 Text("Toegang intrekken doe je in Android Health Connect.")
                 Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
@@ -836,6 +884,7 @@ private fun healthStatusLabel(status: HealthConnectStatus): String = when (statu
 internal fun settingsUiState(
     themeMode: ThemeMode,
     aiPreferences: AiPreferences,
+    telemetryOptIn: Boolean,
     workoutFeedbackPreferences: WorkoutFeedbackPreferences,
     profile: UserProfile?,
     healthStatus: HealthConnectStatus,
@@ -843,6 +892,7 @@ internal fun settingsUiState(
 ): SettingsUiState = SettingsUiState.Success(
     themeMode = themeMode,
     aiPreferences = aiPreferences,
+    telemetryOptIn = telemetryOptIn,
     workoutFeedbackPreferences = workoutFeedbackPreferences,
     profile = profile,
     healthStatus = healthStatus,

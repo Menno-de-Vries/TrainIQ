@@ -1,10 +1,21 @@
 package com.trainiq.ai.services
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 class RoutineGeneratorServiceTest {
+
+    @Test
+    fun routineGeneratorService_usesSharedGeminiRetryBoundary() {
+        val source = java.io.File(
+            "src/main/java/com/trainiq/ai/services/RoutineGeneratorService.kt",
+        ).readText()
+
+        assertTrue(source.contains("callGeminiWithBoundedRetry"))
+        assertTrue(source.contains("responseJsonSchema = GeminiJsonSchemas.routineGenerator"))
+    }
 
     @Test
     fun parseGeneratedRoutine_withFullJson_mapsRoutineMetadataAndCoachingCue() {

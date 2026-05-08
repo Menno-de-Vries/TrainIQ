@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -131,88 +132,88 @@ interface TrainIqDao {
         clearMirrorUserProfile()
     }
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertUserProfile(profile: UserProfileEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertRoutines(routines: List<WorkoutRoutineEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertWorkoutDays(days: List<WorkoutDayEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertExercises(exercises: List<ExerciseEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertWorkoutExercises(exercises: List<WorkoutExerciseEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertRoutineSets(sets: List<RoutineSetEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertMeals(meals: List<MealEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertMeasurements(measurements: List<BodyMeasurementEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun importWorkoutSessions(sessions: List<WorkoutSessionEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun importWorkoutSets(sets: List<WorkoutSetEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun importMeals(meals: List<MealEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun importMeasurements(measurements: List<BodyMeasurementEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertFoodItems(foodItems: List<FoodItemEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertRecipes(recipes: List<RecipeEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertRecipeIngredients(ingredients: List<RecipeIngredientEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertMealItems(items: List<MealItemEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertActiveWorkoutSessions(sessions: List<ActiveWorkoutSessionEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertActiveWorkoutDrafts(drafts: List<ActiveWorkoutDraftEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertActiveWorkoutCollapsedExercises(collapsedExercises: List<ActiveWorkoutCollapsedExerciseEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertActiveWorkoutSets(sets: List<ActiveWorkoutSetEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertWorkoutLogEvents(events: List<WorkoutLogEventEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertWorkoutLogEventSets(sets: List<WorkoutLogEventSetEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertRoutine(routine: WorkoutRoutineEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertWorkoutDay(day: WorkoutDayEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertExercise(exercise: ExerciseEntity): Long
+    @Upsert
+    suspend fun insertExercise(exercise: ExerciseEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertWorkoutExercise(exercise: WorkoutExerciseEntity)
 
     @Insert
     suspend fun insertWorkoutSession(session: WorkoutSessionEntity): Long
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertPerformedExercises(exercises: List<PerformedExerciseEntity>)
 
     @Insert

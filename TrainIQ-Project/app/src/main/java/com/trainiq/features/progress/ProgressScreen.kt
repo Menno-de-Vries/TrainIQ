@@ -21,6 +21,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -37,6 +38,7 @@ import com.trainiq.core.ui.AppCard
 import com.trainiq.core.ui.AppChip
 import com.trainiq.core.ui.EmptyStateCard
 import com.trainiq.core.ui.PrimaryActionButton
+import com.trainiq.core.ui.bringIntoViewOnFocus
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.theme.spacing
 import com.trainiq.core.theme.trainIqColors
@@ -227,12 +229,12 @@ fun ProgressScreen(
     onDeleteMeasurement: (Long) -> Unit,
     onDismissMessage: () -> Unit,
 ) {
-    var weight by remember { mutableStateOf("") }
-    var bodyFat by remember { mutableStateOf("") }
-    var muscleMass by remember { mutableStateOf("") }
-    var weightTouched by remember { mutableStateOf(false) }
-    var bodyFatTouched by remember { mutableStateOf(false) }
-    var muscleMassTouched by remember { mutableStateOf(false) }
+    var weight by rememberSaveable { mutableStateOf("") }
+    var bodyFat by rememberSaveable { mutableStateOf("") }
+    var muscleMass by rememberSaveable { mutableStateOf("") }
+    var weightTouched by rememberSaveable { mutableStateOf(false) }
+    var bodyFatTouched by rememberSaveable { mutableStateOf(false) }
+    var muscleMassTouched by rememberSaveable { mutableStateOf(false) }
 
     val weightError = validateProgressMeasurementField(weight, weightSpec).takeIf { weightTouched }
     val bodyFatError = validateProgressMeasurementField(bodyFat, bodyFatSpec).takeIf { bodyFatTouched }
@@ -423,7 +425,7 @@ private fun MeasurementTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
-        modifier = modifier,
+        modifier = modifier.bringIntoViewOnFocus(),
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         isError = error != null,

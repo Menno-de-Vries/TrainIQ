@@ -19,7 +19,10 @@ class AiUsageGate @Inject constructor(
 
     suspend fun resolveSettings(legacySettings: AiPreferences): AiPreferences =
         legacySettings.copy(
-            apiKey = geminiKeyMigration.currentKey(legacyKey = legacySettings.apiKey).orEmpty(),
+            apiKey = geminiKeyMigration.currentKey(
+                legacyKey = legacySettings.apiKey,
+                onLegacyMigrated = { preferencesRepository.clearGeminiApiKey() },
+            ).orEmpty(),
         )
 
     suspend fun isAiReady(): Boolean {

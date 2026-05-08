@@ -11,6 +11,21 @@ class AdaptiveNavigationPolicyTest {
     }
 
     @Test
+    fun compactBottomNavigationUsesOverflowPolicy() {
+        val visibleRoutes = compactBottomNavigationRouteClasses()
+
+        assertTrue(visibleRoutes.size <= 5)
+        assertTrue(Settings::class in visibleRoutes)
+        assertFalse(Progress::class in visibleRoutes)
+    }
+
+    @Test
+    fun compactSwipeNavigationMatchesVisibleBottomNavigation() {
+        assertTrue(compactSwipeNavigationRouteClasses() == compactBottomNavigationRouteClasses())
+        assertFalse(Progress::class in compactSwipeNavigationRouteClasses())
+    }
+
+    @Test
     fun mediumAndExpandedWidthsUseNavigationRail() {
         assertTrue(shouldUseNavigationRail(TrainIqWindowWidthClass.Medium))
         assertTrue(shouldUseNavigationRail(TrainIqWindowWidthClass.Expanded))

@@ -37,7 +37,6 @@ android {
         )
         buildConfigField("Boolean", "TELEMETRY_ENABLED", "false")
         buildConfigField("String", "TELEMETRY_ENDPOINT_URL", "\"\"")
-        buildConfigField("String", "TELEMETRY_API_TOKEN", "\"\"")
         buildConfigField("Double", "TELEMETRY_SAMPLE_RATE", "0.0")
         buildConfigField("Boolean", "TELEMETRY_UPLOAD_WIFI_ONLY", "true")
         buildConfigField("Integer", "TELEMETRY_MAX_BATCH_SIZE", "20")
@@ -69,7 +68,7 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             signingConfig = signingConfigs.getByName("release").takeIf { it.storeFile != null }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -179,17 +178,17 @@ fun registerRoomMigrationChainVerificationMarkerTask(
     )
 
     doLast {
-        val marker = "trainiq-room-migration-chain-v2-to-v11"
+        val marker = "trainiq-room-migration-chain-v2-to-v12"
         val testTask = "connectedDebugAndroidTest"
-        val currentRoomVersion = 11
+        val currentRoomVersion = 12
         val requiredStartVersion = 2
-        val requiredEndVersion = 11
+        val requiredEndVersion = 12
         val coveredStartVersion = 2
-        val coveredEndVersion = 11
+        val coveredEndVersion = 12
         val verifiedAtMillis = verifiedAtMillisProperty
             .map(String::toLong)
             .getOrElse(System.currentTimeMillis())
-        val migrationCount = 9
+        val migrationCount = 10
         val payloadForHash = listOf(
             marker,
             buildVariant,

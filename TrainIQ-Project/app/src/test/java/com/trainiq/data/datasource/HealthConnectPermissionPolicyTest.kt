@@ -128,4 +128,54 @@ class HealthConnectPermissionPolicyTest {
         assertEquals(4321, payload.cacheState.toDomainMetrics().stepsToday)
         assertTrue(payload.metricStatuses.all { it.state == HealthMetricSyncState.FAILED })
     }
+
+    @Test
+    fun metricChangesTokensRoundTripByMetricName() {
+        val encoded = encodeMetricChangesTokens(
+            mapOf(
+                HealthMetricType.STEPS to "steps-token",
+                HealthMetricType.HEART_RATE to "heart-rate-token",
+                HealthMetricType.SLEEP to "sleep-token",
+            ),
+        )
+
+        assertEquals(
+            mapOf(
+                HealthMetricType.STEPS to "steps-token",
+                HealthMetricType.HEART_RATE to "heart-rate-token",
+                HealthMetricType.SLEEP to "sleep-token",
+            ),
+            decodeMetricChangesTokens(encoded),
+        )
+    }
+
+    @Test
+    fun blankMetricChangesTokensFallBackToLegacyTokenForExistingInstalls() {
+        val storedState = HealthConnectSyncPreferences(
+            changesToken = "legacy-all-metrics-token",
+            changesTokensJson = "",
+            cacheStateJson = "{}",
+            lastSyncedAt = 321L,
+        )
+
+        val tokens = storedState.resolvedMetricChangesTokens(HealthMetricType.entries)
+
+        assertTrue(HealthMetricType.entries.all { tokens[it] == "legacy-all-metrics-token" })
+    }
+
+    @Test
+    fun syncPayloadKeepsPerMetricTokensSeparateFromCompatibilityToken() {
+        val payload = SyncPayload(
+            cacheState = HealthConnectCacheState(aggregatedStepsToday = 777L),
+            nextChangesTokens = mapOf(
+                HealthMetricType.STEPS to "steps-token",
+                HealthMetricType.WORKOUTS to "workouts-token",
+            ),
+            lastSyncedAt = 555L,
+        )
+
+        assertEquals("steps-token", payload.nextChangesTokens[HealthMetricType.STEPS])
+        assertEquals("workouts-token", payload.nextChangesTokens[HealthMetricType.WORKOUTS])
+        assertEquals("steps-token", payload.nextChangesToken)
+    }
 }

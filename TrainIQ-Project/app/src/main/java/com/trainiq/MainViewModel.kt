@@ -16,4 +16,7 @@ class MainViewModel @Inject constructor(
 ) : ViewModel() {
     val themeMode: StateFlow<ThemeMode> = userPreferencesRepository.themeMode
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ThemeMode.SYSTEM)
+
+    val telemetryOptIn: StateFlow<Boolean> = userPreferencesRepository.telemetryOptIn
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 }

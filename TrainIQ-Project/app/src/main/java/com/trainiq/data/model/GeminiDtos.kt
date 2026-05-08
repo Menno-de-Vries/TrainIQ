@@ -25,6 +25,7 @@ data class GeminiRequest(
 
     data class GenerationConfig(
         @SerializedName("responseMimeType") val responseMimeType: String = "application/json",
+        @SerializedName("responseJsonSchema") val responseJsonSchema: Map<String, Any?>? = null,
         @SerializedName("thinkingConfig") val thinkingConfig: ThinkingConfig? = null,
     )
 }
