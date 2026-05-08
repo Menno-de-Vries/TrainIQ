@@ -8,6 +8,7 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.Keep
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageCapture
@@ -75,6 +76,7 @@ import com.trainiq.ai.services.AiUsageGate
 import com.trainiq.core.datastore.AiPreferences
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.theme.spacing
+import com.trainiq.core.ui.ScreenUiState
 import com.trainiq.core.ui.ShimmerCardPlaceholder
 import com.trainiq.domain.model.MealAnalysisResult
 import com.trainiq.domain.model.MealAnalysisSource
@@ -94,6 +96,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+@Keep
 enum class ScannerMode { BARCODE, AI_MEAL }
 
 sealed interface CameraScannerUiState {
@@ -110,6 +113,13 @@ sealed interface CameraScannerUiState {
     data class LocalFallback(val contextHint: String, val message: String) : CameraScannerUiState
     data class Error(val contextHint: String, val message: String) : CameraScannerUiState
 }
+
+data class CameraUiContent(
+    val scannerState: CameraScannerUiState,
+)
+
+internal fun cameraScreenUiState(scannerState: CameraScannerUiState): ScreenUiState<CameraUiContent> =
+    ScreenUiState.Success(CameraUiContent(scannerState))
 
 @HiltViewModel
 class CameraScannerViewModel @Inject constructor(
@@ -133,7 +143,11 @@ class CameraScannerViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AiPreferences(false, ""))
     private val ephemeral = MutableStateFlow(ScannerEphemeralState())
 
-    val uiState: StateFlow<CameraScannerUiState> = combine(aiPreferences, ephemeral) { ai, temp ->
+    val uiState: StateFlow<ScreenUiState<CameraUiContent>> = combine(aiPreferences, ephemeral) { ai, temp ->
+        cameraScreenUiState(cameraScannerUiState(ai, temp))
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScreenUiState.Loading)
+
+    private fun cameraScannerUiState(ai: AiPreferences, temp: ScannerEphemeralState): CameraScannerUiState =
         when (temp.phase) {
             Phase.Preview -> CameraScannerUiState.Preview(
                 contextHint = temp.contextHint,
@@ -166,7 +180,6 @@ class CameraScannerViewModel @Inject constructor(
                 message = temp.message ?: "Scan mislukt. Probeer opnieuw.",
             )
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CameraScannerUiState.Preview("", false))
 
     fun setContextHint(hint: String) {
         ephemeral.update { it.copy(contextHint = hint.trim(), phase = Phase.Preview, message = null) }
@@ -277,13 +290,13 @@ fun CameraScannerRoute(
     }
 
     LaunchedEffect(uiState) {
-        if (uiState is CameraScannerUiState.Completed) {
+        if ((uiState as? ScreenUiState.Success)?.content?.scannerState is CameraScannerUiState.Completed) {
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
         }
     }
 
     CameraScannerScreen(
-        uiState = uiState,
+        uiState = uiState.cameraScannerStateOrPreview(),
         scannerMode = scannerMode,
         onAnalyze = viewModel::analyze,
         onDismissError = { viewModel.resetToPreview(clearScanResult = true) },
@@ -296,6 +309,13 @@ fun CameraScannerRoute(
         onBarcodeScanned = onBarcodeScanned,
     )
 }
+
+private fun ScreenUiState<CameraUiContent>.cameraScannerStateOrPreview(): CameraScannerUiState =
+    when (this) {
+        ScreenUiState.Loading -> CameraScannerUiState.Preview("", isEnabled = false)
+        is ScreenUiState.Error -> CameraScannerUiState.Error("", message)
+        is ScreenUiState.Success -> content.scannerState
+    }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

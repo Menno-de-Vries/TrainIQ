@@ -95,6 +95,7 @@ import com.trainiq.domain.usecase.ObserveNutritionUseCase
 import com.trainiq.domain.usecase.SaveFoodItemUseCase
 import com.trainiq.domain.usecase.SaveMealUseCase
 import com.trainiq.domain.usecase.SaveRecipeUseCase
+import com.trainiq.navigation.TrainIqWindowWidthClass
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlin.math.abs
 import java.util.Locale
@@ -381,6 +382,7 @@ fun NutritionRoute(
     onOpenBarcodeScanner: () -> Unit,
     pendingBarcode: String? = null,
     onBarcodeClear: () -> Unit = {},
+    windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
     viewModel: NutritionViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()

@@ -65,7 +65,7 @@ import com.trainiq.core.util.MetricCard
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
 import com.trainiq.domain.model.HomeDashboard
-import com.trainiq.domain.model.buildEnergyBalance
+import com.trainiq.domain.usecase.BuildHomeDashboardUseCase
 import com.trainiq.domain.usecase.GetHealthConnectStatusUseCase
 import com.trainiq.domain.usecase.ObserveHomeDashboardUseCase
 import com.trainiq.domain.usecase.RefreshDashboardDataUseCase
@@ -94,6 +94,7 @@ sealed interface HomeUiState {
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     observeHomeDashboardUseCase: ObserveHomeDashboardUseCase,
+    private val buildHomeDashboardUseCase: BuildHomeDashboardUseCase,
     private val getHealthConnectStatusUseCase: GetHealthConnectStatusUseCase,
     private val refreshDashboardDataUseCase: RefreshDashboardDataUseCase,
 ) : ViewModel() {
@@ -113,17 +114,7 @@ class HomeViewModel @Inject constructor(
         when {
             home == null -> HomeUiState.Loading
             else -> HomeUiState.Success(
-                home.copy(
-                    steps = health.stepsToday,
-                    energyBalance = home.profile?.let { profile ->
-                        buildEnergyBalance(
-                            profile = profile,
-                            caloriesIn = home.calorieProgress.toDouble(),
-                            steps = health.stepsToday ?: 0,
-                            workoutCalories = home.todaysWorkoutCalories,
-                        )
-                    },
-                ),
+                buildHomeDashboardUseCase.mergeHealthStatus(home, health),
                 health,
             )
         }

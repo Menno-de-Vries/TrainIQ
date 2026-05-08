@@ -1,4 +1,10 @@
+import java.io.File
 import java.security.MessageDigest
+import org.gradle.api.DefaultTask
+import org.gradle.api.provider.MapProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.TaskAction
 
 plugins {
     alias(libs.plugins.android.application)
@@ -40,9 +46,31 @@ android {
         buildConfigField("Boolean", "TELEMETRY_CRASH_CONTEXT_ENABLED", "true")
     }
 
+    signingConfigs {
+        create("release") {
+            val trainIqStoreFile = trainIqSigningValue("TRAINIQ_KEYSTORE_FILE", "trainiq.keystoreFile")
+            val trainIqStorePassword = trainIqSigningValue("TRAINIQ_KEYSTORE_PASSWORD", "trainiq.keystorePassword")
+            val trainIqKeyAlias = trainIqSigningValue("TRAINIQ_KEY_ALIAS", "trainiq.keyAlias")
+            val trainIqKeyPassword = trainIqSigningValue("TRAINIQ_KEY_PASSWORD", "trainiq.keyPassword")
+
+            if (
+                trainIqStoreFile.isPresent &&
+                trainIqStorePassword.isPresent &&
+                trainIqKeyAlias.isPresent &&
+                trainIqKeyPassword.isPresent
+            ) {
+                storeFile = file(trainIqStoreFile.get())
+                storePassword = trainIqStorePassword.get()
+                keyAlias = trainIqKeyAlias.get()
+                keyPassword = trainIqKeyPassword.get()
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release").takeIf { it.storeFile != null }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -80,6 +108,56 @@ android {
         getByName("release").assets.srcDir("$buildDir/generated/roomMigrationVerification/release/assets")
         getByName("profileable").assets.srcDir("$buildDir/generated/roomMigrationVerification/profileable/assets")
     }
+}
+
+fun trainIqSigningValue(envName: String, propertyName: String) =
+    providers.environmentVariable(envName).orElse(providers.gradleProperty(propertyName))
+
+abstract class CheckReleaseSigningReadinessTask : DefaultTask() {
+    @get:Input
+    abstract val signingInputs: MapProperty<String, String>
+
+    @get:Input
+    abstract val projectDirectoryPath: Property<String>
+
+    @TaskAction
+    fun checkSigningInputs() {
+        val inputs = signingInputs.get()
+        val present = inputs.filterValues(String::isNotBlank).keys
+        if (present.isEmpty()) {
+            logger.lifecycle("TrainIQ release signing is not configured; release artifacts will be unsigned.")
+            return
+        }
+        val missing = inputs.filterValues(String::isBlank).keys
+        check(missing.isEmpty()) {
+            "Incomplete TrainIQ release signing configuration. Missing: ${missing.joinToString()}"
+        }
+        val configuredPath = inputs.getValue("TRAINIQ_KEYSTORE_FILE/trainiq.keystoreFile")
+        val configuredFile = File(configuredPath)
+        val storeFile = if (configuredFile.isAbsolute) {
+            configuredFile
+        } else {
+            File(projectDirectoryPath.get(), configuredPath)
+        }
+        check(storeFile.isFile) {
+            "Configured TrainIQ keystore file does not exist: ${storeFile.absolutePath}"
+        }
+        logger.lifecycle("TrainIQ release signing configuration is complete.")
+    }
+}
+
+tasks.register<CheckReleaseSigningReadinessTask>("checkReleaseSigningReadiness") {
+    group = "verification"
+    description = "Verifies TrainIQ release signing configuration is complete when signing is requested."
+    projectDirectoryPath.set(layout.projectDirectory.asFile.absolutePath)
+    signingInputs.putAll(
+        mapOf(
+            "TRAINIQ_KEYSTORE_FILE/trainiq.keystoreFile" to trainIqSigningValue("TRAINIQ_KEYSTORE_FILE", "trainiq.keystoreFile").orNull.orEmpty(),
+            "TRAINIQ_KEYSTORE_PASSWORD/trainiq.keystorePassword" to trainIqSigningValue("TRAINIQ_KEYSTORE_PASSWORD", "trainiq.keystorePassword").orNull.orEmpty(),
+            "TRAINIQ_KEY_ALIAS/trainiq.keyAlias" to trainIqSigningValue("TRAINIQ_KEY_ALIAS", "trainiq.keyAlias").orNull.orEmpty(),
+            "TRAINIQ_KEY_PASSWORD/trainiq.keyPassword" to trainIqSigningValue("TRAINIQ_KEY_PASSWORD", "trainiq.keyPassword").orNull.orEmpty(),
+        ),
+    )
 }
 
 fun registerRoomMigrationChainVerificationMarkerTask(

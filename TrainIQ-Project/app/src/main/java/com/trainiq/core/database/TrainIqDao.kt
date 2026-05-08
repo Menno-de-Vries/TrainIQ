@@ -290,6 +290,36 @@ interface TrainIqDao {
     @Query("SELECT * FROM body_measurements ORDER BY date ASC")
     fun observeMeasurements(): Flow<List<BodyMeasurementEntity>>
 
+    @Query("SELECT * FROM food_items ORDER BY name ASC")
+    fun observeFoodItems(): Flow<List<FoodItemEntity>>
+
+    @Query("SELECT * FROM recipes ORDER BY name ASC")
+    fun observeRecipes(): Flow<List<RecipeEntity>>
+
+    @Query("SELECT * FROM recipe_ingredients ORDER BY recipe_id ASC, order_index ASC")
+    fun observeRecipeIngredients(): Flow<List<RecipeIngredientEntity>>
+
+    @Query("SELECT * FROM meal_items ORDER BY meal_id ASC, order_index ASC")
+    fun observeMealItems(): Flow<List<MealItemEntity>>
+
+    @Query("SELECT * FROM active_workout_sessions ORDER BY updatedAt DESC LIMIT 1")
+    fun observeActiveWorkoutSessions(): Flow<List<ActiveWorkoutSessionEntity>>
+
+    @Query("SELECT * FROM active_workout_drafts ORDER BY session_id ASC, exercise_id ASC")
+    fun observeActiveWorkoutDrafts(): Flow<List<ActiveWorkoutDraftEntity>>
+
+    @Query("SELECT * FROM active_workout_collapsed_exercises ORDER BY session_id ASC, exercise_id ASC")
+    fun observeActiveWorkoutCollapsedExercises(): Flow<List<ActiveWorkoutCollapsedExerciseEntity>>
+
+    @Query("SELECT * FROM active_workout_sets ORDER BY session_id ASC, order_index ASC, id ASC")
+    fun observeActiveWorkoutSets(): Flow<List<ActiveWorkoutSetEntity>>
+
+    @Query("SELECT * FROM workout_log_events ORDER BY created_at ASC")
+    fun observeWorkoutLogEvents(): Flow<List<WorkoutLogEventEntity>>
+
+    @Query("SELECT * FROM workout_log_event_sets ORDER BY event_id ASC, snapshot_role ASC, snapshot_index ASC")
+    fun observeWorkoutLogEventSets(): Flow<List<WorkoutLogEventSetEntity>>
+
     @Query("SELECT * FROM workout_days WHERE id = :dayId LIMIT 1")
     suspend fun getWorkoutDay(dayId: Long): WorkoutDayEntity?
 

@@ -48,6 +48,7 @@ import com.trainiq.domain.model.ProgressOverview
 import com.trainiq.domain.usecase.AddMeasurementUseCase
 import com.trainiq.domain.usecase.DeleteMeasurementUseCase
 import com.trainiq.domain.usecase.ObserveProgressUseCase
+import com.trainiq.navigation.TrainIqWindowWidthClass
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -206,7 +207,10 @@ class ProgressViewModel @Inject constructor(
 }
 
 @Composable
-fun ProgressRoute(viewModel: ProgressViewModel = hiltViewModel()) {
+fun ProgressRoute(
+    windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
+    viewModel: ProgressViewModel = hiltViewModel(),
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     ProgressScreen(
         uiState = uiState,

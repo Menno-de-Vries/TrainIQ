@@ -434,6 +434,7 @@ private fun TrainIqNavHost(
                 onStartWorkout = { dayId -> navController.navigateToActiveWorkout(dayId) },
                 onOpenExerciseHistory = { exerciseId -> navController.navigate(ExerciseHistory(exerciseId)) },
                 onDetailModeChanged = onTrainDetailModeChanged,
+                windowWidthClass = windowWidthClass,
             )
         }
         composable<Nutrition> { entry ->
@@ -445,11 +446,12 @@ private fun TrainIqNavHost(
                 onOpenBarcodeScanner = { navController.navigate(CameraScanner(scannerMode = ScannerMode.BARCODE)) },
                 pendingBarcode = pendingBarcode.takeIf { it.isNotEmpty() },
                 onBarcodeClear = { entry.clearBarcodeScanResult() },
+                windowWidthClass = windowWidthClass,
             )
         }
-        composable<Progress> { ProgressRoute() }
-        composable<Coach> { CoachRoute() }
-        composable<Settings> { SettingsRoute() }
+        composable<Progress> { ProgressRoute(windowWidthClass = windowWidthClass) }
+        composable<Coach> { CoachRoute(windowWidthClass = windowWidthClass) }
+        composable<Settings> { SettingsRoute(windowWidthClass = windowWidthClass) }
         composable<CameraScanner> { entry ->
             val route = entry.toRoute<CameraScanner>()
             CameraScannerRoute(

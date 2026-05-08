@@ -16,7 +16,11 @@ import com.trainiq.data.migration.AssetRoomMigrationChainVerificationMarkerSourc
 import com.trainiq.data.migration.RoomMigrationChainVerificationMarkerSource
 import com.trainiq.data.migration.RoomRuntimeReadinessGate
 import com.trainiq.data.remote.GeminiApi
-import com.trainiq.data.repository.TrainIqRepository
+import com.trainiq.data.repository.RoomCoachRepository
+import com.trainiq.data.repository.RoomHomeRepository
+import com.trainiq.data.repository.RoomNutritionRepository
+import com.trainiq.data.repository.RoomProgressRepository
+import com.trainiq.data.repository.RoomWorkoutRepository
 import com.trainiq.domain.repository.CoachRepository
 import com.trainiq.domain.repository.HomeRepository
 import com.trainiq.domain.repository.NutritionRepository
@@ -103,9 +107,9 @@ object AppModule {
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class RepositoryModule {
-    @Binds abstract fun bindHomeRepository(repository: TrainIqRepository): HomeRepository
-    @Binds abstract fun bindWorkoutRepository(repository: TrainIqRepository): WorkoutRepository
-    @Binds abstract fun bindNutritionRepository(repository: TrainIqRepository): NutritionRepository
-    @Binds abstract fun bindProgressRepository(repository: TrainIqRepository): ProgressRepository
-    @Binds abstract fun bindCoachRepository(repository: TrainIqRepository): CoachRepository
+    @Binds abstract fun bindHomeRepository(repository: RoomHomeRepository): HomeRepository
+    @Binds abstract fun bindWorkoutRepository(repository: RoomWorkoutRepository): WorkoutRepository
+    @Binds abstract fun bindNutritionRepository(repository: RoomNutritionRepository): NutritionRepository
+    @Binds abstract fun bindProgressRepository(repository: RoomProgressRepository): ProgressRepository
+    @Binds abstract fun bindCoachRepository(repository: RoomCoachRepository): CoachRepository
 }
