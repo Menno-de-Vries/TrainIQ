@@ -62,9 +62,7 @@ import com.trainiq.core.ui.ShimmerCardPlaceholder
 import com.trainiq.core.ui.bringIntoViewOnFocus
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.datastore.UserPreferencesRepository
-import com.trainiq.core.diagnostics.PerformanceSessionStore
 import com.trainiq.core.theme.ThemeMode
-import com.trainiq.data.local.TrainIqLocalStore
 import com.trainiq.features.profile.DefaultProfileActivityLevel
 import com.trainiq.features.profile.ProfileActivityLevels
 import com.trainiq.features.profile.ProfileInputField
@@ -75,9 +73,12 @@ import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
 import com.trainiq.domain.model.UserProfile
+import com.trainiq.domain.usecase.ClearAppDataUseCase
 import com.trainiq.domain.usecase.GetHealthConnectStatusUseCase
 import com.trainiq.domain.usecase.ObserveUserProfileUseCase
+import com.trainiq.domain.usecase.ResetProfileUseCase
 import com.trainiq.domain.usecase.SaveUserProfileUseCase
+import com.trainiq.navigation.TrainIqWindowWidthClass
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -119,8 +120,8 @@ class SettingsViewModel @Inject constructor(
     private val getHealthConnectStatusUseCase: GetHealthConnectStatusUseCase,
     private val aiUsageGate: AiUsageGate,
     private val goalAdvisorService: GoalAdvisorService,
-    private val localStore: TrainIqLocalStore,
-    private val performanceSessionStore: PerformanceSessionStore,
+    private val resetProfileUseCase: ResetProfileUseCase,
+    private val clearAppDataUseCase: ClearAppDataUseCase,
 ) : ViewModel() {
     private val themeMode: StateFlow<ThemeMode> = preferencesRepository.themeMode
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ThemeMode.SYSTEM)
@@ -297,7 +298,7 @@ class SettingsViewModel @Inject constructor(
 
     fun resetProfile() {
         viewModelScope.launch {
-            runCatching { localStore.clearProfile() }
+            runCatching { resetProfileUseCase() }
                 .onSuccess { _message.value = "Profiel verwijderd." }
                 .onFailure { _message.value = "Profiel verwijderen mislukt. Probeer opnieuw." }
         }
@@ -306,9 +307,7 @@ class SettingsViewModel @Inject constructor(
     fun clearAllData() {
         viewModelScope.launch {
             runCatching {
-                localStore.clearAll()
-                preferencesRepository.clearLocalPrivateData()
-                performanceSessionStore.clearAll()
+                clearAppDataUseCase()
             }.onSuccess {
                 _healthStatus.value = HealthConnectStatus(
                     state = HealthConnectState.NO_DATA,
@@ -329,7 +328,10 @@ class SettingsViewModel @Inject constructor(
 }
 
 @Composable
-fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
+fun SettingsRoute(
+    windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
+    viewModel: SettingsViewModel = hiltViewModel(),
+) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val requestHealthPermission = rememberHealthConnectPermissionRequester(viewModel::refreshHealthConnectStatus)

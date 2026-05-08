@@ -69,7 +69,7 @@ class TrainIqLocalStore @Inject constructor(
         }
     }
 
-    val state: StateFlow<TrainIqStorageState> = _state.asStateFlow()
+    private val legacyState: StateFlow<TrainIqStorageState> = _state.asStateFlow()
     val roomImportDryRunStatus: StateFlow<RoomImportDryRunStatus> = _roomImportDryRunStatus.asStateFlow()
     val roomRuntimeReadiness: StateFlow<RoomRuntimeReadiness> = _roomRuntimeReadiness.asStateFlow()
 
@@ -127,6 +127,11 @@ class TrainIqLocalStore @Inject constructor(
 
     suspend fun clearProfile() {
         update { it.copy(profile = null) }
+    }
+
+    suspend fun exportLegacyState(): TrainIqStorageState {
+        loadJob.join()
+        return legacyState.value
     }
 
     private fun loadState(): LoadedJsonState {

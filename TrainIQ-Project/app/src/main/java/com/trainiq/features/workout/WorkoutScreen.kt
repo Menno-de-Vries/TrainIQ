@@ -149,6 +149,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.trainiq.core.ui.MessageCard
 import com.trainiq.core.ui.ScreenHeader
+import com.trainiq.core.ui.ScreenUiState
 import com.trainiq.core.ui.ShimmerCardPlaceholder
 import com.trainiq.core.ui.AppCard
 import com.trainiq.core.ui.AppChip
@@ -205,7 +206,6 @@ import com.trainiq.domain.usecase.DiscardActiveWorkoutUseCase
 import com.trainiq.domain.usecase.FinishActiveWorkoutUseCase
 import com.trainiq.domain.usecase.GenerateAiRoutineUseCase
 import com.trainiq.domain.usecase.GetProgressionSuggestionsUseCase
-import com.trainiq.domain.usecase.GetOrStartActiveWorkoutSessionUseCase
 import com.trainiq.domain.usecase.GetWorkoutCompletionSummaryUseCase
 import com.trainiq.domain.usecase.GetWorkoutDayUseCase
 import com.trainiq.domain.usecase.LogActiveWorkoutSetUseCase
@@ -223,6 +223,7 @@ import com.trainiq.domain.usecase.SaveGeneratedRoutineUseCase
 import com.trainiq.domain.usecase.SetActiveRoutineUseCase
 import com.trainiq.domain.usecase.SetActiveWorkoutCollapsedUseCase
 import com.trainiq.domain.usecase.SetSupersetGroupUseCase
+import com.trainiq.domain.usecase.StartWorkoutSessionUseCase
 import com.trainiq.domain.usecase.UpdateActiveWorkoutDraftUseCase
 import com.trainiq.domain.usecase.UpdateActiveWorkoutRestTimerUseCase
 import com.trainiq.domain.usecase.UpdateActiveWorkoutSetUseCase
@@ -231,6 +232,7 @@ import com.trainiq.domain.usecase.UndoWorkoutLogEventUseCase
 import com.trainiq.domain.usecase.UpdateRoutineSetUseCase
 import com.trainiq.domain.usecase.UpdateRoutineUseCase
 import com.trainiq.domain.usecase.UpdateWorkoutExercisePlanUseCase
+import com.trainiq.navigation.TrainIqWindowWidthClass
 import com.trainiq.ai.services.toAiUserMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Instant
@@ -292,6 +294,32 @@ data class ActiveWorkoutUiState(
     val activeFocusTarget: ActiveWorkoutFocusTarget? = null,
     val message: String? = null,
 )
+
+data class WorkoutUiContent(
+    val overview: WorkoutOverview?,
+    val workoutFeedbackPreferences: WorkoutFeedbackPreferences,
+    val activeWorkout: ActiveWorkoutUiState,
+    val message: String?,
+    val pendingGeneratedRoutine: GeneratedRoutine?,
+    val isSavingGeneratedRoutine: Boolean,
+)
+
+internal fun workoutScreenUiState(content: WorkoutUiContent): ScreenUiState<WorkoutUiContent> =
+    ScreenUiState.Success(content)
+
+private fun ScreenUiState<WorkoutUiContent>.workoutContentOrDefault(): WorkoutUiContent =
+    when (this) {
+        ScreenUiState.Loading,
+        is ScreenUiState.Error -> WorkoutUiContent(
+            overview = null,
+            workoutFeedbackPreferences = WorkoutFeedbackPreferences(),
+            activeWorkout = ActiveWorkoutUiState(),
+            message = null,
+            pendingGeneratedRoutine = null,
+            isSavingGeneratedRoutine = false,
+        )
+        is ScreenUiState.Success -> content
+    }
 
 private data class ExercisePlanInput(
     val targetSets: Int,
@@ -356,7 +384,7 @@ class WorkoutViewModel @Inject constructor(
     private val observeWorkoutLoggingSummaryUseCase: ObserveWorkoutLoggingSummaryUseCase,
     private val getWorkoutDayUseCase: GetWorkoutDayUseCase,
     private val getProgressionSuggestionsUseCase: GetProgressionSuggestionsUseCase,
-    private val getOrStartActiveWorkoutSessionUseCase: GetOrStartActiveWorkoutSessionUseCase,
+    private val startWorkoutSessionUseCase: StartWorkoutSessionUseCase,
     private val updateActiveWorkoutDraftUseCase: UpdateActiveWorkoutDraftUseCase,
     private val logActiveWorkoutSetUseCase: LogActiveWorkoutSetUseCase,
     private val updateActiveWorkoutSetUseCase: UpdateActiveWorkoutSetUseCase,
@@ -390,29 +418,29 @@ class WorkoutViewModel @Inject constructor(
     private val moveRoutineSetUseCase: MoveRoutineSetUseCase,
     private val diagnosticsTracker: DiagnosticsTracker,
 ) : ViewModel() {
-    val overview: StateFlow<WorkoutOverview?> = observeWorkoutOverviewUseCase()
+    private val overview: StateFlow<WorkoutOverview?> = observeWorkoutOverviewUseCase()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
-    val workoutFeedbackPreferences: StateFlow<WorkoutFeedbackPreferences> = preferencesRepository.workoutFeedbackPreferences
+    private val workoutFeedbackPreferences: StateFlow<WorkoutFeedbackPreferences> = preferencesRepository.workoutFeedbackPreferences
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WorkoutFeedbackPreferences())
 
     private val _activeWorkout = MutableStateFlow<WorkoutDay?>(null)
-    val activeWorkout: StateFlow<WorkoutDay?> = _activeWorkout.asStateFlow()
+    private val activeWorkout: StateFlow<WorkoutDay?> = _activeWorkout.asStateFlow()
     private val _activeSession = MutableStateFlow<ActiveWorkoutSession?>(null)
 
     private val _progressionSuggestions = MutableStateFlow<List<ProgressionSuggestion>>(emptyList())
-    val progressionSuggestions: StateFlow<List<ProgressionSuggestion>> = _progressionSuggestions.asStateFlow()
+    private val progressionSuggestions: StateFlow<List<ProgressionSuggestion>> = _progressionSuggestions.asStateFlow()
 
     private val _loggedSetsThisSession = MutableStateFlow<Map<Long, List<LoggedSet>>>(emptyMap())
-    val loggedSetsThisSession: StateFlow<Map<Long, List<LoggedSet>>> = _loggedSetsThisSession.asStateFlow()
+    private val loggedSetsThisSession: StateFlow<Map<Long, List<LoggedSet>>> = _loggedSetsThisSession.asStateFlow()
 
     private val _restTimerSeconds = MutableStateFlow(0)
-    val restTimerSeconds: StateFlow<Int> = _restTimerSeconds.asStateFlow()
+    private val restTimerSeconds: StateFlow<Int> = _restTimerSeconds.asStateFlow()
     private val _restTimerTotalSeconds = MutableStateFlow(0)
-    val restTimerTotalSeconds: StateFlow<Int> = _restTimerTotalSeconds.asStateFlow()
+    private val restTimerTotalSeconds: StateFlow<Int> = _restTimerTotalSeconds.asStateFlow()
     private val _elapsedSeconds = MutableStateFlow(0L)
 
     private val _debrief = MutableStateFlow<WorkoutDebrief?>(null)
-    val debrief: StateFlow<WorkoutDebrief?> = _debrief.asStateFlow()
+    private val debrief: StateFlow<WorkoutDebrief?> = _debrief.asStateFlow()
 
     private val _drafts = MutableStateFlow<Map<Long, SetInputDraft>>(emptyMap())
     private val _draftErrors = MutableStateFlow<Map<Long, SetInputFieldErrors>>(emptyMap())
@@ -422,19 +450,19 @@ class WorkoutViewModel @Inject constructor(
     private val _pendingCorrectionSetIds = MutableStateFlow<Map<Long, Long>>(emptyMap())
 
     private val _message = MutableStateFlow<String?>(null)
-    val message: StateFlow<String?> = _message.asStateFlow()
+    private val message: StateFlow<String?> = _message.asStateFlow()
 
     private val _pendingGeneratedRoutine = MutableStateFlow<GeneratedRoutine?>(null)
-    val pendingGeneratedRoutine: StateFlow<GeneratedRoutine?> = _pendingGeneratedRoutine.asStateFlow()
+    private val pendingGeneratedRoutine: StateFlow<GeneratedRoutine?> = _pendingGeneratedRoutine.asStateFlow()
     private val _isSavingGeneratedRoutine = MutableStateFlow(false)
-    val isSavingGeneratedRoutine: StateFlow<Boolean> = _isSavingGeneratedRoutine.asStateFlow()
+    private val isSavingGeneratedRoutine: StateFlow<Boolean> = _isSavingGeneratedRoutine.asStateFlow()
 
     private val _events = MutableSharedFlow<WorkoutUiEvent>(extraBufferCapacity = 1)
     val events: SharedFlow<WorkoutUiEvent> = _events.asSharedFlow()
     private val _workoutCompletions = MutableSharedFlow<Long>(extraBufferCapacity = 1)
     val workoutCompletions: SharedFlow<Long> = _workoutCompletions.asSharedFlow()
 
-    val activeWorkoutUiState: StateFlow<ActiveWorkoutUiState> = combine(
+    private val activeWorkoutUiState: StateFlow<ActiveWorkoutUiState> = combine(
         _activeWorkout,
         _activeSession,
         _progressionSuggestions,
@@ -480,6 +508,30 @@ class WorkoutViewModel @Inject constructor(
         state.copy(message = message)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ActiveWorkoutUiState())
 
+    val uiState: StateFlow<ScreenUiState<WorkoutUiContent>> = combine(
+        combine(
+            overview,
+            workoutFeedbackPreferences,
+            activeWorkoutUiState,
+            message,
+            pendingGeneratedRoutine,
+        ) { currentOverview, feedback, activeState, currentMessage, generatedRoutine ->
+            WorkoutUiContent(
+                overview = currentOverview,
+                workoutFeedbackPreferences = feedback,
+                activeWorkout = activeState,
+                message = currentMessage,
+                pendingGeneratedRoutine = generatedRoutine,
+                isSavingGeneratedRoutine = false,
+            )
+        },
+        isSavingGeneratedRoutine,
+    ) { content, savingGeneratedRoutine ->
+        workoutScreenUiState(
+            content.copy(isSavingGeneratedRoutine = savingGeneratedRoutine),
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScreenUiState.Loading)
+
     private var restTimerJob: Job? = null
     private var loggingSummaryJob: Job? = null
     private var sessionStartTime: Long = 0L
@@ -498,8 +550,13 @@ class WorkoutViewModel @Inject constructor(
         viewModelScope.launch {
             _debrief.value = null
             _message.value = null
-            val workout = getWorkoutDayUseCase(dayId)
-            if (workout == null || workout.exercises.isEmpty()) {
+            val started = runCatching { startWorkoutSessionUseCase(dayId) }
+                .getOrElse {
+                    _message.value = it.message ?: "Rond je actieve training af of verwijder die voordat je een andere training start."
+                    return@launch
+                }
+            val workout = started.workout
+            if (workout.exercises.isEmpty()) {
                 _activeWorkout.value = null
                 _activeSession.value = null
                 _loggedSetsThisSession.value = emptyMap()
@@ -508,30 +565,10 @@ class WorkoutViewModel @Inject constructor(
                 _message.value = "Voeg eerst oefeningen toe aan deze sessie voordat je start."
                 return@launch
             }
-            val suggestions = getProgressionSuggestionsUseCase(dayId)
+            val suggestions = started.progressionSuggestions
             _activeWorkout.value = workout
             _progressionSuggestions.value = suggestions
-            val suggestionDrafts = suggestions
-                .mapNotNull { suggestion ->
-                    val draft = suggestion.toLastSessionDraft() ?: return@mapNotNull null
-                    suggestion.exerciseId to draft.toDomainDraft()
-                }
-                .toMap()
-            val planDrafts = workout.exercises
-                .mapNotNull { plan ->
-                    val draft = plan.nextPlannedDraft(loggedCount = 0).takeIf { it.weight.isNotBlank() || it.reps.isNotBlank() || it.rpe.isNotBlank() } ?: return@mapNotNull null
-                    plan.activeKey to draft.toDomainDraft()
-                }
-                .toMap()
-            val suggestionDraftsByPlan = suggestionDrafts.mapKeys { (exerciseId, _) ->
-                workout.exercises.firstOrNull { it.exercise.id == exerciseId }?.activeKey ?: exerciseId
-            }
-            val initialDrafts = planDrafts + suggestionDraftsByPlan
-            val active = runCatching { getOrStartActiveWorkoutSessionUseCase(dayId, initialDrafts) }
-                .getOrElse {
-                    _message.value = it.message ?: "Rond je actieve training af of verwijder die voordat je een andere training start."
-                    return@launch
-                }
+            val active = started.session
             applyActiveSession(active)
             observeLoggingSummary(dayId)
             sessionStartTime = active.startedAt
@@ -1192,17 +1229,16 @@ fun WorkoutRoute(
     onStartWorkout: (Long) -> Unit,
     onOpenExerciseHistory: (Long) -> Unit,
     onDetailModeChanged: (Boolean) -> Unit = {},
+    windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
     viewModel: WorkoutViewModel = hiltViewModel(),
 ) {
-    val overview by viewModel.overview.collectAsStateWithLifecycle()
-    val message by viewModel.message.collectAsStateWithLifecycle()
-    val pendingGeneratedRoutine by viewModel.pendingGeneratedRoutine.collectAsStateWithLifecycle()
-    val isSavingGeneratedRoutine by viewModel.isSavingGeneratedRoutine.collectAsStateWithLifecycle()
+    val screenState by viewModel.uiState.collectAsStateWithLifecycle()
+    val content = screenState.workoutContentOrDefault()
     WorkoutScreen(
-        overview = overview,
-        message = message,
-        pendingGeneratedRoutine = pendingGeneratedRoutine,
-        isSavingGeneratedRoutine = isSavingGeneratedRoutine,
+        overview = content.overview,
+        message = content.message,
+        pendingGeneratedRoutine = content.pendingGeneratedRoutine,
+        isSavingGeneratedRoutine = content.isSavingGeneratedRoutine,
         onDismissMessage = viewModel::clearMessage,
         onStartWorkout = onStartWorkout,
         onOpenExerciseHistory = onOpenExerciseHistory,
@@ -4130,11 +4166,10 @@ fun ActiveWorkoutRoute(
     onWorkoutProcessing: (Long) -> Unit,
     viewModel: WorkoutViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.activeWorkoutUiState.collectAsStateWithLifecycle()
-    val restTimerSeconds by viewModel.restTimerSeconds.collectAsStateWithLifecycle()
-    val restTimerTotalSeconds by viewModel.restTimerTotalSeconds.collectAsStateWithLifecycle()
-    val overview by viewModel.overview.collectAsStateWithLifecycle()
-    val workoutFeedbackPreferences by viewModel.workoutFeedbackPreferences.collectAsStateWithLifecycle()
+    val screenState by viewModel.uiState.collectAsStateWithLifecycle()
+    val content = screenState.workoutContentOrDefault()
+    val uiState = content.activeWorkout
+    val workoutFeedbackPreferences = content.workoutFeedbackPreferences
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -4189,9 +4224,9 @@ fun ActiveWorkoutRoute(
 
     ActiveWorkoutScreen(
         uiState = uiState,
-        restTimerSeconds = restTimerSeconds,
-        restTimerTotalSeconds = restTimerTotalSeconds,
-        exerciseLibrary = overview?.exercises.orEmpty(),
+        restTimerSeconds = uiState.restTimerSeconds,
+        restTimerTotalSeconds = uiState.restTimerTotalSeconds,
+        exerciseLibrary = content.overview?.exercises.orEmpty(),
         snackbarHostState = snackbarHostState,
         workoutHapticsEnabled = workoutFeedbackPreferences.workoutHapticsEnabled,
         onBack = onBack,

@@ -2,16 +2,21 @@ package com.trainiq.domain.usecase
 
 import com.trainiq.domain.model.LoggedSet
 import com.trainiq.domain.model.ActiveWorkoutSetDraft
+import com.trainiq.domain.model.ActiveWorkoutSession
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.GeneratedRoutine
 import com.trainiq.domain.model.ExerciseHistory
+import com.trainiq.domain.model.HealthConnectStatus
+import com.trainiq.domain.model.HomeDashboard
 import com.trainiq.domain.model.MealType
 import com.trainiq.domain.model.ProgressionSuggestion
 import com.trainiq.domain.model.RoutineSet
 import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WeeklyReportResult
+import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutLoggingSummary
+import com.trainiq.domain.model.buildEnergyBalance
 import com.trainiq.domain.repository.MealEntryRequest
 import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.repository.CoachRepository
@@ -19,10 +24,31 @@ import com.trainiq.domain.repository.HomeRepository
 import com.trainiq.domain.repository.NutritionRepository
 import com.trainiq.domain.repository.ProgressRepository
 import com.trainiq.domain.repository.WorkoutRepository
+import com.trainiq.core.datastore.UserPreferencesRepository
+import com.trainiq.core.diagnostics.PerformanceSessionStore
+import com.trainiq.ai.services.AiUsageGate
+import com.trainiq.data.repository.RoomTrainIqRuntimeStore
 import javax.inject.Inject
 
 class ObserveHomeDashboardUseCase @Inject constructor(private val repository: HomeRepository) {
     operator fun invoke() = repository.observeDashboard()
+}
+
+class BuildHomeDashboardUseCase @Inject constructor() {
+    fun mergeHealthStatus(
+        dashboard: HomeDashboard,
+        healthConnectStatus: HealthConnectStatus,
+    ): HomeDashboard = dashboard.copy(
+        steps = healthConnectStatus.stepsToday,
+        energyBalance = dashboard.profile?.let { profile ->
+            buildEnergyBalance(
+                profile = profile,
+                caloriesIn = dashboard.calorieProgress.toDouble(),
+                steps = healthConnectStatus.stepsToday ?: 0,
+                workoutCalories = dashboard.todaysWorkoutCalories,
+            )
+        },
+    )
 }
 
 class GetHealthConnectStatusUseCase @Inject constructor(private val repository: HomeRepository) {
@@ -64,6 +90,55 @@ class FinishWorkoutUseCase @Inject constructor(private val repository: WorkoutRe
 class GetOrStartActiveWorkoutSessionUseCase @Inject constructor(private val repository: WorkoutRepository) {
     suspend operator fun invoke(dayId: Long, initialDrafts: Map<Long, ActiveWorkoutSetDraft>) =
         repository.getOrStartActiveWorkoutSession(dayId, initialDrafts)
+}
+
+data class StartedWorkoutSession(
+    val workout: WorkoutDay,
+    val progressionSuggestions: List<ProgressionSuggestion>,
+    val session: ActiveWorkoutSession,
+)
+
+class StartWorkoutSessionUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(dayId: Long): StartedWorkoutSession {
+        val workout = repository.getWorkoutDay(dayId)
+            ?: error("Deze training bestaat niet meer.")
+        if (workout.exercises.isEmpty()) {
+            error("Voeg eerst oefeningen toe aan deze sessie voordat je start.")
+        }
+        val suggestions = repository.getProgressionSuggestions(dayId)
+        val suggestionDraftsByExercise = suggestions
+            .mapNotNull { suggestion ->
+                val draft = suggestion.toInitialDraft() ?: return@mapNotNull null
+                suggestion.exerciseId to draft
+            }
+            .toMap()
+        val planDrafts = workout.exercises
+            .mapNotNull { plan ->
+                val draft = ActiveWorkoutSetDraft(
+                    weight = plan.targetWeightKg.takeIf { it > 0.0 }?.let(::formatDraftWeight).orEmpty(),
+                    reps = plan.repRange.substringAfter('-', plan.repRange).trim()
+                        .takeIf { it.any(Char::isDigit) }
+                        .orEmpty(),
+                    rpe = plan.targetRpe.takeIf { it > 0.0 }?.let(::formatDraftRpe).orEmpty(),
+                    setType = plan.setType,
+                ).takeIf { it.weight.isNotBlank() || it.reps.isNotBlank() || it.rpe.isNotBlank() }
+                    ?: return@mapNotNull null
+                plan.id to draft
+            }
+            .toMap()
+        val suggestionDraftsByPlan = suggestionDraftsByExercise.mapKeys { (exerciseId, _) ->
+            workout.exercises.firstOrNull { it.exercise.id == exerciseId }?.id ?: exerciseId
+        }
+        val session = repository.getOrStartActiveWorkoutSession(
+            dayId = dayId,
+            initialDrafts = planDrafts + suggestionDraftsByPlan,
+        )
+        return StartedWorkoutSession(
+            workout = workout,
+            progressionSuggestions = suggestions,
+            session = session,
+        )
+    }
 }
 
 class UpdateActiveWorkoutDraftUseCase @Inject constructor(private val repository: WorkoutRepository) {
@@ -366,3 +441,41 @@ class ObserveUserProfileUseCase @Inject constructor(private val repository: Coac
 class SaveUserProfileUseCase @Inject constructor(private val repository: CoachRepository) {
     suspend operator fun invoke(profile: UserProfile) = repository.saveProfile(profile)
 }
+
+class ResetProfileUseCase @Inject constructor(
+    private val runtimeStore: RoomTrainIqRuntimeStore,
+) {
+    suspend operator fun invoke() = runtimeStore.clearProfile()
+}
+
+class ClearAppDataUseCase @Inject constructor(
+    private val runtimeStore: RoomTrainIqRuntimeStore,
+    private val preferencesRepository: UserPreferencesRepository,
+    private val performanceSessionStore: PerformanceSessionStore,
+    private val aiUsageGate: AiUsageGate,
+) {
+    suspend operator fun invoke() {
+        runtimeStore.clearAll()
+        aiUsageGate.clearEncryptedApiKey()
+        preferencesRepository.clearLocalPrivateData()
+        performanceSessionStore.clearAll()
+    }
+}
+
+private fun ProgressionSuggestion.toInitialDraft(): ActiveWorkoutSetDraft? {
+    val weight = lastLoggedWeightKg?.takeIf { it > 0.0 }?.let(::formatDraftWeight)
+        ?: suggestedWeightKg.takeIf { it > 0.0 }?.let(::formatDraftWeight)
+        ?: ""
+    val reps = lastLoggedReps?.takeIf { it.isNotBlank() }
+        ?: suggestedReps.substringAfter('-', suggestedReps).trim().takeIf { it.any(Char::isDigit) }
+        ?: ""
+    val rpe = lastSessionAvgRpe?.takeIf { it > 0f }?.let { formatDraftRpe(it.toDouble()) }.orEmpty()
+    return ActiveWorkoutSetDraft(weight = weight, reps = reps, rpe = rpe)
+        .takeIf { it.weight.isNotBlank() || it.reps.isNotBlank() || it.rpe.isNotBlank() }
+}
+
+private fun formatDraftWeight(value: Double): String =
+    if (value % 1.0 == 0.0) value.toInt().toString() else "%.1f".format(java.util.Locale.US, value)
+
+private fun formatDraftRpe(value: Double): String =
+    if (value % 1.0 == 0.0) value.toInt().toString() else "%.1f".format(java.util.Locale.US, value)

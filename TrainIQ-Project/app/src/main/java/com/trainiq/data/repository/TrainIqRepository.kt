@@ -28,7 +28,6 @@ import com.trainiq.data.local.LoggedMealItemStorage
 import com.trainiq.data.local.LoggedMealStorage
 import com.trainiq.data.local.RecipeIngredientStorage
 import com.trainiq.data.local.RecipeStorage
-import com.trainiq.data.local.TrainIqLocalStore
 import com.trainiq.data.local.TrainIqStorageState
 import com.trainiq.data.local.WorkoutLogEventStorage
 import com.trainiq.data.mapper.parseSetType
@@ -66,12 +65,10 @@ import com.trainiq.domain.model.NutritionFacts
 import com.trainiq.domain.model.NutritionOverview
 import com.trainiq.domain.model.ProgressOverview
 import com.trainiq.domain.model.ProgressionSuggestion
-import com.trainiq.domain.model.ReadinessLevel
 import com.trainiq.domain.model.Recipe
 import com.trainiq.domain.model.RecipeIngredient
 import com.trainiq.domain.model.RoutineSet
 import com.trainiq.domain.model.SetType
-import com.trainiq.domain.model.StrengthCalculator
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WeeklyReportResult
 import com.trainiq.domain.model.WorkoutDay
@@ -119,8 +116,8 @@ import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @Singleton
-class TrainIqRepository @Inject constructor(
-    private val localStore: TrainIqLocalStore,
+class TrainIqDataCoordinator @Inject constructor(
+    private val runtimeStore: RoomTrainIqRuntimeStore,
     private val healthConnectDataSource: HealthConnectDataSource,
     private val analyticsEngine: AnalyticsEngine,
     private val mealAnalysisService: MealAnalysisService,
@@ -128,13 +125,15 @@ class TrainIqRepository @Inject constructor(
     private val goalAdvisorService: GoalAdvisorService,
     private val weeklyReportService: WeeklyReportService,
     private val routineGeneratorService: RoutineGeneratorService,
-) : HomeRepository, WorkoutRepository, NutritionRepository, ProgressRepository, CoachRepository {
+    private val progressionSuggestionCalculator: WorkoutProgressionSuggestionCalculator,
+    private val exerciseLibrarySeeder: ExerciseLibrarySeeder,
+) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val scannedMealResult = MutableStateFlow<MealAnalysisResult?>(null)
     private val _cachedSteps = MutableStateFlow(0)
 
-    private val snapshotState: StateFlow<RepositorySnapshot> = combine(localStore.state, scannedMealResult) { state, scanned ->
+    private val snapshotState: StateFlow<RepositorySnapshot> = combine(runtimeStore.state, scannedMealResult) { state, scanned ->
         RepositorySnapshot(
             profile = state.profile?.toDomain(),
             routines = state.routines,
@@ -156,11 +155,11 @@ class TrainIqRepository @Inject constructor(
     init {
         scope.launch {
             delay(3_000L)
-            ensureExerciseLibrary()
+            exerciseLibrarySeeder.ensureSeeded()
         }
     }
 
-    override fun observeDashboard(): Flow<HomeDashboard> = combine(snapshotState, _cachedSteps) { snapshot, steps ->
+    fun observeDashboard(): Flow<HomeDashboard> = combine(snapshotState, _cachedSteps) { snapshot, steps ->
         val activeRoutine = buildActiveRoutine(snapshot)
         val nextWorkout = activeRoutine?.days?.minByOrNull { it.orderIndex }
         val todaysMeals = snapshot.meals.filter { it.timestamp >= todayEpochMillis() }
@@ -195,7 +194,7 @@ class TrainIqRepository @Inject constructor(
         )
     }
 
-    override suspend fun getHealthConnectStatus(): HealthConnectStatus {
+    suspend fun getHealthConnectStatus(): HealthConnectStatus {
         val status = healthConnectDataSource.getStatus()
         _cachedSteps.value = when (status.state) {
             com.trainiq.domain.model.HealthConnectState.CONNECTED,
@@ -205,148 +204,51 @@ class TrainIqRepository @Inject constructor(
         return status
     }
 
-    override suspend fun refreshDashboardData() {
+    suspend fun refreshDashboardData() {
         _cachedSteps.value = healthConnectDataSource.getTodayStepsLive()
     }
 
-    override fun observeWorkoutOverview(): Flow<WorkoutOverview> = snapshotState.map(::buildWorkoutOverview)
+    fun observeWorkoutOverview(): Flow<WorkoutOverview> = snapshotState.map(::buildWorkoutOverview)
 
-    override fun observeWorkoutLoggingSummary(dayId: Long): Flow<WorkoutLoggingSummary> =
-        localStore.state.map { state -> state.workoutLoggingSummary(dayId = dayId, now = System.currentTimeMillis()) }
+    fun observeWorkoutLoggingSummary(dayId: Long): Flow<WorkoutLoggingSummary> =
+        runtimeStore.state.map { state -> state.workoutLoggingSummary(dayId = dayId, now = System.currentTimeMillis()) }
 
-    override fun observeExerciseHistory(exerciseId: Long): Flow<ExerciseHistory> =
+    fun observeExerciseHistory(exerciseId: Long): Flow<ExerciseHistory> =
         snapshotState.map { snapshot -> buildExerciseHistory(snapshot, exerciseId) }
 
-    override suspend fun getWorkoutDay(dayId: Long): WorkoutDay? = buildWorkoutDay(snapshotState.value, dayId)
+    suspend fun getWorkoutDay(dayId: Long): WorkoutDay? = buildWorkoutDay(snapshotState.value, dayId)
 
-    override suspend fun getProgressionSuggestions(dayId: Long): List<ProgressionSuggestion> = withContext(Dispatchers.IO) {
+    suspend fun getProgressionSuggestions(dayId: Long): List<ProgressionSuggestion> = withContext(Dispatchers.IO) {
         val snapshot = snapshotState.value
-        val day = buildWorkoutDay(snapshot, dayId) ?: return@withContext emptyList()
-        val sessionsById = snapshot.sessions
-            .filter { it.completed && it.status == "COMPLETED" }
-            .associateBy { it.id }
-        val targetRepsByExerciseId = day.exercises.associate { it.exercise.id to parseTargetRepTarget(it.repRange) }
-        day.exercises.mapNotNull { plan ->
-            val exerciseSessions = snapshot.sets
-                .filter { it.exerciseId == plan.exercise.id }
-                .groupBy { it.sessionId }
-                .mapNotNull { (sessionId, sets) ->
-                    val session = sessionsById[sessionId] ?: return@mapNotNull null
-                    val progressionSets = sets
-                        .filter(::isProgressionSet)
-                        .sortedByDescending { it.weight * it.reps }
-                    if (progressionSets.isEmpty()) return@mapNotNull null
-                    ExerciseSessionSnapshot(session.date, progressionSets)
-                }
-                .sortedByDescending { it.date }
-                .take(3)
-            val lastSession = exerciseSessions.firstOrNull() ?: return@mapNotNull null
-            val lastSessionAvgRpe = lastSession.sets.map { it.rpe }.average().takeIf { !it.isNaN() }?.toFloat()
-            val recentAverageRir = exerciseSessions
-                .mapNotNull { session ->
-                    session.sets
-                        .mapNotNull { it.repsInReserve }
-                        .average()
-                        .takeIf { !it.isNaN() }
-                        ?.toFloat()
-                }
-                .average()
-                .takeIf { !it.isNaN() }
-                ?.toFloat()
-            val completedRecentSessions = exerciseSessions
-                .take(2)
-                .takeIf { it.size == 2 }
-                ?.all { session ->
-                    session.sets.isNotEmpty() && session.sets.all { it.reps >= (targetRepsByExerciseId[plan.exercise.id] ?: 0) }
-                }
-                ?: false
-            val referenceWeight = lastSession.sets.maxOfOrNull { it.weight } ?: 0.0
-            val plateauDetected = hasPlateaued(exerciseSessions)
-            val readiness = resolveReadiness(
-                lastSessionAvgRpe = lastSessionAvgRpe,
-                recentAverageRir = recentAverageRir,
-                completedRecentSessions = completedRecentSessions,
-                plateauDetected = plateauDetected,
-            )
-            val loadStep = progressionLoadStep(plan.exercise.name, plan.exercise.muscleGroup, plan.exercise.equipment)
-            val suggestedWeight = when (readiness) {
-                ReadinessLevel.INCREASE -> referenceWeight + loadStep
-                ReadinessLevel.DELOAD -> referenceWeight * 0.9
-                ReadinessLevel.PLATEAU -> referenceWeight
-                ReadinessLevel.MAINTAIN -> referenceWeight
-            }
-            val lastLoggedSet = lastSession.sets.maxByOrNull { it.weight * it.reps }
-            ProgressionSuggestion(
-                exerciseId = plan.exercise.id,
-                exerciseName = plan.exercise.name,
-                suggestedWeightKg = suggestedWeight.coerceAtLeast(0.0),
-                suggestedReps = plan.repRange,
-                lastSessionAvgRpe = lastSessionAvgRpe,
-                readinessSignal = readiness,
-                lastLoggedWeightKg = lastLoggedSet?.weight,
-                lastLoggedReps = lastLoggedSet?.reps?.toString(),
-            )
-        }
+        progressionSuggestionCalculator.calculate(
+            day = buildWorkoutDay(snapshot, dayId),
+            sessions = snapshot.sessions,
+            sets = snapshot.sets,
+        )
     }
 
-    override suspend fun getNextWorkoutDay(): WorkoutDay? =
+    suspend fun getNextWorkoutDay(): WorkoutDay? =
         buildWorkoutOverview(snapshotState.value).activeRoutine?.days?.minByOrNull { it.orderIndex }
 
-    override suspend fun getOrStartActiveWorkoutSession(
+    suspend fun getOrStartActiveWorkoutSession(
         dayId: Long,
         initialDrafts: Map<Long, ActiveWorkoutSetDraft>,
     ): ActiveWorkoutSession {
-        val now = System.currentTimeMillis()
         var result: ActiveWorkoutSession? = null
-        localStore.update { state ->
-            val existing = state.activeWorkoutSession
-            if (existing != null && existing.dayId != dayId) {
-                error("Rond je actieve training af of verwijder die voordat je een andere training start.")
-            }
-            val active = if (existing != null && existing.dayId == dayId) {
-                existing.copy(updatedAt = now)
-            } else {
-                val day = state.days.firstOrNull { it.id == dayId }
-                val routineId = day?.routineId
-                val sessionId = (state.sessions.maxOfOrNull { it.id } ?: 0L) + 1L
-                ActiveWorkoutSessionStorage(
-                    sessionId = sessionId,
-                    dayId = dayId,
-                    routineId = routineId,
-                    startedAt = now,
-                    updatedAt = now,
-                    drafts = initialDrafts.mapValues { it.value.toStorage() },
-                )
-            }
-            result = active.toDomain()
-            val existingSessionIds = state.sessions.map { it.id }.toSet()
-            val draftSession = WorkoutSessionEntity(
-                id = active.sessionId,
-                date = active.startedAt,
-                duration = ((now - active.startedAt) / 1_000).coerceAtLeast(0),
-                caloriesBurned = 0,
-                routineId = active.routineId,
-                workoutDayId = active.dayId,
-                startedAt = active.startedAt,
-                endedAt = 0L,
-                status = "DRAFT",
-                completed = false,
+        runtimeStore.update { state ->
+            val mutation = ActiveWorkoutSessionMutations.startOrResume(
+                state = state,
+                dayId = dayId,
+                initialDrafts = initialDrafts,
+                now = System.currentTimeMillis(),
             )
-            val performedExercises = state.ensurePerformedExercisesForActiveSession(active)
-            state.copy(
-                sessions = if (active.sessionId in existingSessionIds) {
-                    state.sessions.map { if (it.id == active.sessionId) draftSession else it }
-                } else {
-                    listOf(draftSession) + state.sessions
-                },
-                performedExercises = performedExercises,
-                activeWorkoutSession = active,
-            )
+            result = mutation.active.toDomain()
+            mutation.state
         }
         return requireNotNull(result)
     }
 
-    override suspend fun updateActiveWorkoutDraft(exerciseId: Long, draft: ActiveWorkoutSetDraft): ActiveWorkoutSession? =
+    suspend fun updateActiveWorkoutDraft(exerciseId: Long, draft: ActiveWorkoutSetDraft): ActiveWorkoutSession? =
         mutateActiveWorkout { active, now ->
             active.copy(
                 updatedAt = now,
@@ -354,60 +256,29 @@ class TrainIqRepository @Inject constructor(
             )
         }
 
-    override suspend fun logActiveWorkoutSet(
+    suspend fun logActiveWorkoutSet(
         dayId: Long,
         set: LoggedSet,
         draft: ActiveWorkoutSetDraft,
         restSeconds: Int,
     ): ActiveWorkoutSession {
-        val now = System.currentTimeMillis()
         var result: ActiveWorkoutSession? = null
-        localStore.update { state ->
-            val active = state.activeWorkoutSession?.takeIf { it.dayId == dayId }
-                ?: ActiveWorkoutSessionStorage(dayId = dayId, startedAt = now)
-            val nextSetId = (active.loggedSets.maxOfOrNull { it.id } ?: 0L) + 1L
-            val performedExercise = state.performedExercises.firstOrNull {
-                it.sessionId == active.sessionId &&
-                    it.exerciseId == set.exerciseId &&
-                    (set.sourceWorkoutExerciseId == null || it.sourceWorkoutExerciseId == set.sourceWorkoutExerciseId)
-            }
-            val storedSet = ActiveWorkoutSetStorage(
-                id = nextSetId,
-                exerciseId = set.exerciseId,
-                performedExerciseId = performedExercise?.id ?: set.performedExerciseId,
-                sourceWorkoutExerciseId = performedExercise?.sourceWorkoutExerciseId ?: set.sourceWorkoutExerciseId,
-                weight = set.weight,
-                reps = set.reps,
-                rpe = set.rpe,
-                repsInReserve = set.repsInReserve,
-                setType = set.setType,
-                restSeconds = restSeconds.coerceAtLeast(0),
-                orderIndex = active.loggedSets.count { it.activeKey == storedSetKey(set) },
-                completed = true,
-                loggedAt = now,
+        runtimeStore.update { state ->
+            val mutation = ActiveWorkoutSessionMutations.logSet(
+                state = state,
+                dayId = dayId,
+                set = set,
+                draft = draft,
+                restSeconds = restSeconds,
+                now = System.currentTimeMillis(),
             )
-            val updated = state
-                .copy(
-                    activeWorkoutSession = active.copy(
-                        drafts = active.drafts.toMutableMap().apply { put(storedSetKey(set), draft.toStorage()) },
-                        collapsedExerciseIds = active.collapsedExerciseIds - storedSetKey(set),
-                        restTimerEndsAt = if (restSeconds > 0) now + restSeconds * 1_000L else null,
-                        restTimerTotalSeconds = restSeconds.coerceAtLeast(0),
-                    ),
-                )
-                .appendWorkoutSetEvent(
-                    dayId = dayId,
-                    sessionId = active.sessionId,
-                    set = storedSet,
-                    now = now,
-                )
-            result = updated.activeWorkoutSession?.toDomain()
-            updated
+            result = mutation.active.toDomain()
+            mutation.state
         }
         return requireNotNull(result)
     }
 
-    override suspend fun updateActiveWorkoutSet(
+    suspend fun updateActiveWorkoutSet(
         setId: Long,
         set: LoggedSet,
         draft: ActiveWorkoutSetDraft,
@@ -415,7 +286,7 @@ class TrainIqRepository @Inject constructor(
     ): ActiveWorkoutSession? {
         var result: ActiveWorkoutSession? = null
         val now = System.currentTimeMillis()
-        localStore.update { state ->
+        runtimeStore.update { state ->
             val active = state.activeWorkoutSession ?: return@update state
             val updatedSet = active.loggedSets.firstOrNull { it.id == setId }?.let { existing ->
                 existing.copy(
@@ -450,19 +321,19 @@ class TrainIqRepository @Inject constructor(
         return result
     }
 
-    override suspend fun updateActiveWorkoutSetType(setId: Long, setType: SetType): ActiveWorkoutSession? =
+    suspend fun updateActiveWorkoutSetType(setId: Long, setType: SetType): ActiveWorkoutSession? =
         mutateActiveWorkout { active, now ->
             active.updateSetTypeById(setId = setId, setType = setType, now = now)
         }
 
-    override suspend fun deleteActiveWorkoutSet(setId: Long): ActiveWorkoutSession? =
+    suspend fun deleteActiveWorkoutSet(setId: Long): ActiveWorkoutSession? =
         mutateActiveWorkout { active, now ->
             active.deleteSetById(setId = setId, now = now)
         }
 
-    override suspend fun undoWorkoutLogEvent(eventId: Long): ActiveWorkoutSession? {
+    suspend fun undoWorkoutLogEvent(eventId: Long): ActiveWorkoutSession? {
         var result: ActiveWorkoutSession? = null
-        localStore.update { state ->
+        runtimeStore.update { state ->
             val updated = state.undoWorkoutSetEvent(eventId = eventId, now = System.currentTimeMillis())
             result = updated.activeWorkoutSession?.toDomain()
             updated
@@ -470,7 +341,7 @@ class TrainIqRepository @Inject constructor(
         return result
     }
 
-    override suspend fun setActiveWorkoutCollapsed(exerciseId: Long, collapsed: Boolean): ActiveWorkoutSession? =
+    suspend fun setActiveWorkoutCollapsed(exerciseId: Long, collapsed: Boolean): ActiveWorkoutSession? =
         mutateActiveWorkout { active, now ->
             active.copy(
                 updatedAt = now,
@@ -478,7 +349,7 @@ class TrainIqRepository @Inject constructor(
             )
         }
 
-    override suspend fun updateActiveWorkoutRestTimer(endsAt: Long?, totalSeconds: Int): ActiveWorkoutSession? =
+    suspend fun updateActiveWorkoutRestTimer(endsAt: Long?, totalSeconds: Int): ActiveWorkoutSession? =
         mutateActiveWorkout { active, now ->
             active.copy(
                 updatedAt = now,
@@ -487,8 +358,8 @@ class TrainIqRepository @Inject constructor(
             )
         }
 
-    override suspend fun finishActiveWorkout(dayId: Long): WorkoutCompletionResult {
-        val active = localStore.state.value.activeWorkoutSession?.takeIf { it.dayId == dayId }
+    suspend fun finishActiveWorkout(dayId: Long): WorkoutCompletionResult {
+        val active = runtimeStore.state.value.activeWorkoutSession?.takeIf { it.dayId == dayId }
         val durationSeconds = active?.let {
             ((System.currentTimeMillis() - it.startedAt) / 1_000).coerceAtLeast(1)
         } ?: 1L
@@ -499,14 +370,14 @@ class TrainIqRepository @Inject constructor(
             activeSessionId = active?.sessionId,
             activeStartedAt = active?.startedAt,
         )
-        localStore.update { state ->
+        runtimeStore.update { state ->
             if (state.activeWorkoutSession?.dayId == dayId) state.copy(activeWorkoutSession = null) else state
         }
         return result
     }
 
-    override suspend fun getWorkoutCompletionSummary(sessionId: Long): WorkoutCompletionSummary? = withContext(Dispatchers.IO) {
-        val state = localStore.state.value
+    suspend fun getWorkoutCompletionSummary(sessionId: Long): WorkoutCompletionSummary? = withContext(Dispatchers.IO) {
+        val state = runtimeStore.state.value
         val session = state.sessions.firstOrNull { it.id == sessionId && it.completed && it.status == "COMPLETED" }
             ?: return@withContext null
         buildWorkoutCompletionSummary(
@@ -521,8 +392,8 @@ class TrainIqRepository @Inject constructor(
         )
     }
 
-    override suspend fun discardActiveWorkout(dayId: Long) {
-        localStore.update { state ->
+    suspend fun discardActiveWorkout(dayId: Long) {
+        runtimeStore.update { state ->
             val active = state.activeWorkoutSession?.takeIf { it.dayId == dayId } ?: return@update state
             state.copy(
                 activeWorkoutSession = null,
@@ -533,13 +404,13 @@ class TrainIqRepository @Inject constructor(
         }
     }
 
-    override suspend fun setActiveRoutine(routineId: Long) {
-        localStore.update { state ->
+    suspend fun setActiveRoutine(routineId: Long) {
+        runtimeStore.update { state ->
             state.copy(routines = state.routines.map { it.copy(active = it.id == routineId) })
         }
     }
 
-    override suspend fun finishWorkout(dayId: Long, durationSeconds: Long, loggedSets: List<LoggedSet>): WorkoutDebrief =
+    suspend fun finishWorkout(dayId: Long, durationSeconds: Long, loggedSets: List<LoggedSet>): WorkoutDebrief =
         finishWorkout(dayId = dayId, durationSeconds = durationSeconds, loggedSets = loggedSets, activeSessionId = null, activeStartedAt = null).debrief
 
     private suspend fun finishWorkout(
@@ -565,7 +436,7 @@ class TrainIqRepository @Inject constructor(
         }
 
         val beforeSnapshot = snapshotState.value
-        val current = localStore.state.value
+        val current = runtimeStore.state.value
         val now = System.currentTimeMillis()
         val sessionId = activeSessionId?.takeIf { it > 0L } ?: ((current.sessions.maxOfOrNull { it.id } ?: 0L) + 1L)
         val startedAt = activeStartedAt?.takeIf { it > 0L } ?: (now - durationSeconds * 1_000L).coerceAtLeast(0L)
@@ -603,7 +474,7 @@ class TrainIqRepository @Inject constructor(
                 completedAt = now + index,
             )
         }
-        localStore.update { state ->
+        runtimeStore.update { state ->
             state.copy(
                 sessions = listOf(newSession) + state.sessions.filterNot { it.id == sessionId },
                 performedExercises = performedExercises + state.performedExercises.filterNot { it.sessionId == sessionId },
@@ -658,7 +529,7 @@ class TrainIqRepository @Inject constructor(
             topExercises = topExercises,
             weeklyFrequency = weeklyFrequency,
         )
-        localStore.update { state ->
+        runtimeStore.update { state ->
             state.copy(
                 sessions = state.sessions.map { session ->
                     if (session.id == sessionId) session.withDebrief(debrief) else session
@@ -668,8 +539,8 @@ class TrainIqRepository @Inject constructor(
         return WorkoutCompletionResult(sessionId = sessionId, debrief = debrief)
     }
 
-    override suspend fun createRoutine(name: String, description: String) {
-        localStore.update { state ->
+    suspend fun createRoutine(name: String, description: String) {
+        runtimeStore.update { state ->
             val routineId = (state.routines.maxOfOrNull { it.id } ?: 0L) + 1L
             val routine = WorkoutRoutineEntity(
                 id = routineId,
@@ -681,16 +552,16 @@ class TrainIqRepository @Inject constructor(
         }
     }
 
-    override suspend fun updateRoutine(routineId: Long, name: String, description: String) {
-        localStore.update { state ->
+    suspend fun updateRoutine(routineId: Long, name: String, description: String) {
+        runtimeStore.update { state ->
             state.copy(routines = state.routines.map {
                 if (it.id == routineId) it.copy(name = name, description = description) else it
             })
         }
     }
 
-    override suspend fun deleteRoutine(routineId: Long) {
-        localStore.update { state ->
+    suspend fun deleteRoutine(routineId: Long) {
+        runtimeStore.update { state ->
             val remainingDays = state.days.filterNot { it.routineId == routineId }
             val removedDayIds = state.days.filter { it.routineId == routineId }.map { it.id }.toSet()
             val remainingRoutines = state.routines.filterNot { it.id == routineId }
@@ -711,7 +582,7 @@ class TrainIqRepository @Inject constructor(
         }
     }
 
-    override suspend fun searchExercises(query: String): List<Exercise> = withContext(Dispatchers.IO) {
+    suspend fun searchExercises(query: String): List<Exercise> = withContext(Dispatchers.IO) {
         val normalizedQuery = query.trim()
         snapshotState.value.exercises
             .asSequence()
@@ -726,8 +597,8 @@ class TrainIqRepository @Inject constructor(
             .toList()
     }
 
-    override suspend fun reorderExercises(dayId: Long, orderedIds: List<Long>) {
-        localStore.update { state ->
+    suspend fun reorderExercises(dayId: Long, orderedIds: List<Long>) {
+        runtimeStore.update { state ->
             val requestedOrder = orderedIds.distinct().withIndex().associate { it.value to it.index }
             val dayExercises = state.workoutExercises.filter { it.dayId == dayId }
             val firstAppendedOrder = requestedOrder.size
@@ -749,10 +620,10 @@ class TrainIqRepository @Inject constructor(
         }
     }
 
-    override suspend fun setSupersetGroup(workoutExerciseIds: List<Long>, groupId: Long?) {
+    suspend fun setSupersetGroup(workoutExerciseIds: List<Long>, groupId: Long?) {
         val ids = workoutExerciseIds.toSet()
         if (ids.isEmpty()) return
-        localStore.update { state ->
+        runtimeStore.update { state ->
             state.copy(
                 workoutExercises = state.workoutExercises.map { exercise ->
                     if (exercise.id in ids) {
@@ -765,16 +636,16 @@ class TrainIqRepository @Inject constructor(
         }
     }
 
-    override suspend fun replaceExerciseInPlan(workoutExerciseId: Long, newExerciseId: Long) {
-        localStore.update { state ->
+    suspend fun replaceExerciseInPlan(workoutExerciseId: Long, newExerciseId: Long) {
+        runtimeStore.update { state ->
             state.withExerciseReplacedInPlan(workoutExerciseId, newExerciseId)
         }
     }
 
-    override suspend fun replaceExerciseInActiveWorkout(workoutExerciseId: Long, newExerciseId: Long): ActiveWorkoutSession? {
+    suspend fun replaceExerciseInActiveWorkout(workoutExerciseId: Long, newExerciseId: Long): ActiveWorkoutSession? {
         var result: ActiveWorkoutSession? = null
         val now = System.currentTimeMillis()
-        localStore.update { state ->
+        runtimeStore.update { state ->
             val updated = state.withExerciseReplacedInActiveWorkout(workoutExerciseId, newExerciseId, now)
             result = updated.activeWorkoutSession?.toDomain()
             updated
@@ -782,7 +653,7 @@ class TrainIqRepository @Inject constructor(
         return result
     }
 
-    override suspend fun updateWorkoutExercisePlan(
+    suspend fun updateWorkoutExercisePlan(
         workoutExerciseId: Long,
         targetSets: Int,
         repRange: String,
@@ -791,7 +662,7 @@ class TrainIqRepository @Inject constructor(
         targetRpe: Double,
         setType: SetType,
     ) {
-        localStore.update { state ->
+        runtimeStore.update { state ->
             val updatedExercises = state.workoutExercises.map { exercise ->
                 if (exercise.id == workoutExerciseId) {
                     exercise.copy(
@@ -834,36 +705,36 @@ class TrainIqRepository @Inject constructor(
         }
     }
 
-    override suspend fun addSetToExercise(workoutExerciseId: Long) {
-        localStore.update { state -> state.withRoutineSetAdded(workoutExerciseId) }
+    suspend fun addSetToExercise(workoutExerciseId: Long) {
+        runtimeStore.update { state -> state.withRoutineSetAdded(workoutExerciseId) }
     }
 
-    override suspend fun updateRoutineSet(set: RoutineSet) {
-        localStore.update { state ->
+    suspend fun updateRoutineSet(set: RoutineSet) {
+        runtimeStore.update { state ->
             state.copy(routineSets = state.routineSets.map { existing ->
                 if (existing.id == set.id) set.toEntity() else existing
             }).withWorkoutExerciseTargetsSynced(set.workoutExerciseId)
         }
     }
 
-    override suspend fun updateRoutineSetType(setId: Long, setType: SetType) {
-        localStore.update { state -> state.updateRoutineSet(setId) { it.copy(setType = setType.name) } }
+    suspend fun updateRoutineSetType(setId: Long, setType: SetType) {
+        runtimeStore.update { state -> state.updateRoutineSet(setId) { it.copy(setType = setType.name) } }
     }
 
-    override suspend fun updateRoutineSetReps(setId: Long, targetReps: Int) {
-        localStore.update { state -> state.updateRoutineSet(setId) { it.copy(targetReps = targetReps.coerceAtLeast(0)) } }
+    suspend fun updateRoutineSetReps(setId: Long, targetReps: Int) {
+        runtimeStore.update { state -> state.updateRoutineSet(setId) { it.copy(targetReps = targetReps.coerceAtLeast(0)) } }
     }
 
-    override suspend fun updateRoutineSetWeight(setId: Long, targetWeightKg: Double) {
-        localStore.update { state -> state.updateRoutineSet(setId) { it.copy(targetWeightKg = targetWeightKg.coerceAtLeast(0.0)) } }
+    suspend fun updateRoutineSetWeight(setId: Long, targetWeightKg: Double) {
+        runtimeStore.update { state -> state.updateRoutineSet(setId) { it.copy(targetWeightKg = targetWeightKg.coerceAtLeast(0.0)) } }
     }
 
-    override suspend fun updateRoutineSetRestTime(setId: Long, restSeconds: Int) {
-        localStore.update { state -> state.updateRoutineSet(setId) { it.copy(restSeconds = restSeconds.coerceAtLeast(0)) } }
+    suspend fun updateRoutineSetRestTime(setId: Long, restSeconds: Int) {
+        runtimeStore.update { state -> state.updateRoutineSet(setId) { it.copy(restSeconds = restSeconds.coerceAtLeast(0)) } }
     }
 
-    override suspend fun deleteRoutineSet(setId: Long) {
-        localStore.update { state ->
+    suspend fun deleteRoutineSet(setId: Long) {
+        runtimeStore.update { state ->
             val removed = state.routineSets.firstOrNull { it.id == setId } ?: return@update state
             state.copy(routineSets = state.routineSets.filterNot { it.id == setId })
                 .renumberRoutineSets(removed.workoutExerciseId)
@@ -871,8 +742,8 @@ class TrainIqRepository @Inject constructor(
         }
     }
 
-    override suspend fun moveRoutineSet(workoutExerciseId: Long, orderedSetIds: List<Long>) {
-        localStore.update { state ->
+    suspend fun moveRoutineSet(workoutExerciseId: Long, orderedSetIds: List<Long>) {
+        runtimeStore.update { state ->
             val requestedOrder = orderedSetIds.distinct().withIndex().associate { it.value to it.index }
             val exerciseSets = state.routineSets.filter { it.workoutExerciseId == workoutExerciseId }
             val fallbackOrder = exerciseSets
@@ -893,8 +764,8 @@ class TrainIqRepository @Inject constructor(
         }
     }
 
-    override suspend fun addWorkoutDay(routineId: Long, name: String) {
-        localStore.update { state ->
+    suspend fun addWorkoutDay(routineId: Long, name: String) {
+        runtimeStore.update { state ->
             val dayId = (state.days.maxOfOrNull { it.id } ?: 0L) + 1L
             val nextOrder = state.days.count { it.routineId == routineId }
             val sessionName = name.trim().ifBlank { defaultWorkoutSessionName(nextOrder) }
@@ -902,8 +773,8 @@ class TrainIqRepository @Inject constructor(
         }
     }
 
-    override suspend fun removeWorkoutDay(dayId: Long) {
-        localStore.update { state ->
+    suspend fun removeWorkoutDay(dayId: Long) {
+        runtimeStore.update { state ->
             state.copy(
                 days = state.days.filterNot { it.id == dayId },
                 workoutExercises = state.workoutExercises.filterNot { it.dayId == dayId },
@@ -915,7 +786,7 @@ class TrainIqRepository @Inject constructor(
         }
     }
 
-    override suspend fun addExerciseToDay(
+    suspend fun addExerciseToDay(
         dayId: Long,
         name: String,
         muscleGroup: String,
@@ -926,12 +797,12 @@ class TrainIqRepository @Inject constructor(
         targetWeightKg: Double,
         targetRpe: Double,
     ) {
-        localStore.update { state ->
+        runtimeStore.update { state ->
             state.withExerciseAddedToDay(dayId, name, muscleGroup, equipment, targetSets, repRange, restSeconds, targetWeightKg, targetRpe)
         }
     }
 
-    override suspend fun addExerciseToRoutine(
+    suspend fun addExerciseToRoutine(
         routineId: Long,
         name: String,
         muscleGroup: String,
@@ -942,13 +813,13 @@ class TrainIqRepository @Inject constructor(
         targetWeightKg: Double,
         targetRpe: Double,
     ) {
-        localStore.update { state ->
+        runtimeStore.update { state ->
             state.withExerciseAddedToRoutine(routineId, name, muscleGroup, equipment, targetSets, repRange, restSeconds, targetWeightKg, targetRpe)
         }
     }
 
-    override suspend fun removeExerciseFromDay(workoutExerciseId: Long) {
-        localStore.update { state ->
+    suspend fun removeExerciseFromDay(workoutExerciseId: Long) {
+        runtimeStore.update { state ->
             state.withExerciseRemovedFromDay(
                 workoutExerciseId = workoutExerciseId,
                 now = System.currentTimeMillis(),
@@ -956,13 +827,13 @@ class TrainIqRepository @Inject constructor(
         }
     }
 
-    override suspend fun deleteWorkoutSession(sessionId: Long) {
-        localStore.update { state ->
+    suspend fun deleteWorkoutSession(sessionId: Long) {
+        runtimeStore.update { state ->
             state.withWorkoutSessionDeleted(sessionId)
         }
     }
 
-    override suspend fun generateAiRoutine(
+    suspend fun generateAiRoutine(
         daysPerWeek: Int,
         equipment: String,
         targetFocus: String,
@@ -991,14 +862,14 @@ class TrainIqRepository @Inject constructor(
         generated.toDomainGeneratedRoutine()
     }
 
-    override suspend fun saveGeneratedRoutine(routine: GeneratedRoutine) = withContext(Dispatchers.IO) {
+    suspend fun saveGeneratedRoutine(routine: GeneratedRoutine) = withContext(Dispatchers.IO) {
         check(routine.days.isNotEmpty()) {
             generatedRoutineMissingDaysMessage()
         }
         check(routine.days.none { it.exercises.isEmpty() }) {
             generatedRoutineMissingExercisesMessage()
         }
-        localStore.update { state ->
+        runtimeStore.update { state ->
             val routineId = (state.routines.maxOfOrNull { it.id } ?: 0L) + 1L
             val newRoutine = WorkoutRoutineEntity(
                 id = routineId,
@@ -1079,10 +950,10 @@ class TrainIqRepository @Inject constructor(
         }
     }
 
-    override fun observeNutritionOverview(): Flow<NutritionOverview> =
+    fun observeNutritionOverview(): Flow<NutritionOverview> =
         combine(snapshotState, _cachedSteps) { snapshot, steps -> buildNutritionOverview(snapshot, steps) }
 
-    override suspend fun analyzeMealPhoto(path: String, context: String, capturedAtMillis: Long): MealAnalysisResult {
+    suspend fun analyzeMealPhoto(path: String, context: String, capturedAtMillis: Long): MealAnalysisResult {
         scannedMealResult.value = null
         return try {
             val result = mealAnalysisService.analyzeMealImage(
@@ -1098,11 +969,11 @@ class TrainIqRepository @Inject constructor(
         }
     }
 
-    override fun clearLastScanResult() {
+    fun clearLastScanResult() {
         scannedMealResult.value = null
     }
 
-    override suspend fun saveFoodItem(
+    suspend fun saveFoodItem(
         id: Long?,
         name: String,
         barcode: String?,
@@ -1114,7 +985,7 @@ class TrainIqRepository @Inject constructor(
     ): FoodItem {
         val now = System.currentTimeMillis()
         var saved: FoodItemStorage? = null
-        localStore.update { state ->
+        runtimeStore.update { state ->
             val existing = state.foods.firstOrNull { it.id == id }
             val duplicateBarcode = barcode?.trim()?.takeIf { it.isNotBlank() }?.let { code ->
                 state.foods.firstOrNull { it.barcode == code && it.id != id }
@@ -1138,14 +1009,14 @@ class TrainIqRepository @Inject constructor(
         return mapFood(requireNotNull(saved))
     }
 
-    override suspend fun saveRecipe(
+    suspend fun saveRecipe(
         id: Long?,
         name: String,
         notes: String?,
         totalCookedGrams: Double?,
         ingredients: List<Pair<Long, Double>>,
     ): Recipe {
-        val current = localStore.state.value
+        val current = runtimeStore.state.value
         val recipeId = id ?: ((current.recipes.maxOfOrNull { it.id } ?: 0L) + 1L)
         val now = System.currentTimeMillis()
         val recipe = RecipeStorage(
@@ -1165,17 +1036,17 @@ class TrainIqRepository @Inject constructor(
                 gramsUsed = gramsUsed,
             )
         }
-        localStore.update { state ->
+        runtimeStore.update { state ->
             state.copy(
                 recipes = state.recipes.filterNot { it.id == recipeId } + recipe,
                 recipeIngredients = state.recipeIngredients.filterNot { it.recipeId == recipeId } + ingredientStorage,
             )
         }
-        return buildRecipes(localStore.state.value.foods, localStore.state.value.recipes, localStore.state.value.recipeIngredients)
+        return buildRecipes(runtimeStore.state.value.foods, runtimeStore.state.value.recipes, runtimeStore.state.value.recipeIngredients)
             .first { it.id == recipeId }
     }
 
-    override suspend fun saveMeal(
+    suspend fun saveMeal(
         id: Long?,
         mealType: MealType,
         name: String,
@@ -1183,7 +1054,7 @@ class TrainIqRepository @Inject constructor(
         items: List<MealEntryRequest>,
     ): Long {
         val snapshot = snapshotState.value
-        val current = localStore.state.value
+        val current = runtimeStore.state.value
         val mealId = id ?: ((current.meals.maxOfOrNull { it.id } ?: 0L) + 1L)
         val timestamp = snapshot.meals.firstOrNull { it.id == mealId }?.timestamp ?: System.currentTimeMillis()
         val mealStorage = LoggedMealStorage(
@@ -1202,7 +1073,7 @@ class TrainIqRepository @Inject constructor(
             recipes = snapshot.recipes,
         )
         require(mealItems.isNotEmpty()) { "Deze maaltijd bevat geen beschikbare producten of recepten meer." }
-        localStore.update { state ->
+        runtimeStore.update { state ->
             state.copy(
                 meals = state.meals.filterNot { it.id == mealId } + mealStorage,
                 mealItems = state.mealItems.filterNot { it.mealId == mealId } + mealItems,
@@ -1212,8 +1083,8 @@ class TrainIqRepository @Inject constructor(
         return mealId
     }
 
-    override suspend fun deleteMeal(mealId: Long) {
-        localStore.update { state ->
+    suspend fun deleteMeal(mealId: Long) {
+        runtimeStore.update { state ->
             state.copy(
                 meals = state.meals.filterNot { it.id == mealId },
                 mealItems = state.mealItems.filterNot { it.mealId == mealId },
@@ -1221,8 +1092,8 @@ class TrainIqRepository @Inject constructor(
         }
     }
 
-    override suspend fun deleteFood(foodId: Long) {
-        localStore.update { state ->
+    suspend fun deleteFood(foodId: Long) {
+        runtimeStore.update { state ->
             if (state.recipeIngredients.any { it.foodItemId == foodId }) {
                 throw IllegalStateException("Product wordt nog gebruikt in recepten.")
             }
@@ -1232,8 +1103,8 @@ class TrainIqRepository @Inject constructor(
         }
     }
 
-    override suspend fun deleteRecipe(recipeId: Long) {
-        localStore.update { state ->
+    suspend fun deleteRecipe(recipeId: Long) {
+        runtimeStore.update { state ->
             state.copy(
                 recipes = state.recipes.filterNot { it.id == recipeId },
                 recipeIngredients = state.recipeIngredients.filterNot { it.recipeId == recipeId },
@@ -1241,10 +1112,10 @@ class TrainIqRepository @Inject constructor(
         }
     }
 
-    override fun observeProgressOverview(): Flow<ProgressOverview> = snapshotState.map(::buildProgressOverview)
+    fun observeProgressOverview(): Flow<ProgressOverview> = snapshotState.map(::buildProgressOverview)
 
-    override suspend fun addMeasurement(weight: Double, bodyFat: Double, muscleMass: Double) {
-        localStore.update { state ->
+    suspend fun addMeasurement(weight: Double, bodyFat: Double, muscleMass: Double) {
+        runtimeStore.update { state ->
             val measurementId = (state.measurements.maxOfOrNull { it.id } ?: 0L) + 1L
             state.copy(
                 measurements = state.measurements + BodyMeasurementEntity(
@@ -1258,13 +1129,13 @@ class TrainIqRepository @Inject constructor(
         }
     }
 
-    override suspend fun deleteMeasurement(measurementId: Long) {
-        localStore.update { state ->
+    suspend fun deleteMeasurement(measurementId: Long) {
+        runtimeStore.update { state ->
             state.copy(measurements = state.measurements.filterNot { it.id == measurementId })
         }
     }
 
-    override fun observeCoachOverview(): Flow<CoachOverview> = snapshotState.mapLatest { snapshot ->
+    fun observeCoachOverview(): Flow<CoachOverview> = snapshotState.mapLatest { snapshot ->
         val progress = buildProgressOverview(snapshot)
         val nutrition = buildNutritionOverview(snapshot)
         val profile = snapshot.profile
@@ -1276,7 +1147,7 @@ class TrainIqRepository @Inject constructor(
         )
     }
 
-    override suspend fun generateGoalAdvice(
+    suspend fun generateGoalAdvice(
         height: Double,
         weight: Double,
         bodyFat: Double,
@@ -1294,7 +1165,7 @@ class TrainIqRepository @Inject constructor(
         goal = goal,
     )
 
-    override suspend fun generateWeeklyReport(): WeeklyReportResult {
+    suspend fun generateWeeklyReport(): WeeklyReportResult {
         val snapshot = snapshotState.value
         val progress = buildProgressOverview(snapshot)
         return if (snapshot.sessions.isEmpty() && snapshot.meals.isEmpty()) {
@@ -1314,10 +1185,10 @@ class TrainIqRepository @Inject constructor(
         }
     }
 
-    override fun observeUserProfile(): Flow<UserProfile?> = snapshotState.map { it.profile }
+    fun observeUserProfile(): Flow<UserProfile?> = snapshotState.map { it.profile }
 
-    override suspend fun saveProfile(profile: UserProfile) {
-        localStore.update { state ->
+    suspend fun saveProfile(profile: UserProfile) {
+        runtimeStore.update { state ->
             state.copy(
                 profile = UserProfileEntity(
                     id = profile.id,
@@ -1336,72 +1207,6 @@ class TrainIqRepository @Inject constructor(
                     trainingFocus = profile.trainingFocus,
                 ),
             )
-        }
-    }
-
-    private suspend fun ensureExerciseLibrary() {
-        if (localStore.state.value.exercises.size >= 50) return
-        localStore.update { state ->
-            val existingNames = state.exercises.map { it.name.lowercase() }.toSet()
-            val nextId = (state.exercises.maxOfOrNull { it.id } ?: 0L) + 1L
-            val canonical = listOf(
-                ExerciseEntity(1, "Bench Press", "Chest", "Barbell"),
-                ExerciseEntity(2, "Incline Bench Press", "Chest", "Barbell"),
-                ExerciseEntity(3, "Dumbbell Fly", "Chest", "Dumbbell"),
-                ExerciseEntity(4, "Cable Fly", "Chest", "Cable"),
-                ExerciseEntity(5, "Dips", "Chest", "Bodyweight"),
-                ExerciseEntity(6, "Deadlift", "Back", "Barbell"),
-                ExerciseEntity(7, "Barbell Row", "Back", "Barbell"),
-                ExerciseEntity(8, "Dumbbell Row", "Back", "Dumbbell"),
-                ExerciseEntity(9, "Lat Pulldown", "Back", "Cable"),
-                ExerciseEntity(10, "Cable Row", "Back", "Cable"),
-                ExerciseEntity(11, "Pull-up", "Back", "Bodyweight"),
-                ExerciseEntity(12, "Face Pull", "Back", "Cable"),
-                ExerciseEntity(13, "T-Bar Row", "Back", "Barbell"),
-                ExerciseEntity(14, "Overhead Press", "Shoulders", "Barbell"),
-                ExerciseEntity(15, "Dumbbell Press", "Shoulders", "Dumbbell"),
-                ExerciseEntity(16, "Lateral Raise", "Shoulders", "Dumbbell"),
-                ExerciseEntity(17, "Rear Delt Fly", "Shoulders", "Dumbbell"),
-                ExerciseEntity(18, "Arnold Press", "Shoulders", "Dumbbell"),
-                ExerciseEntity(19, "Squat", "Legs", "Barbell"),
-                ExerciseEntity(20, "Romanian Deadlift", "Hamstrings", "Barbell"),
-                ExerciseEntity(21, "Leg Press", "Legs", "Machine"),
-                ExerciseEntity(22, "Leg Curl", "Hamstrings", "Machine"),
-                ExerciseEntity(23, "Leg Extension", "Legs", "Machine"),
-                ExerciseEntity(24, "Hip Thrust", "Glutes", "Barbell"),
-                ExerciseEntity(25, "Split Squat", "Legs", "Dumbbell"),
-                ExerciseEntity(26, "Walking Lunge", "Legs", "Dumbbell"),
-                ExerciseEntity(27, "Calf Raise", "Calves", "Machine"),
-                ExerciseEntity(28, "Barbell Curl", "Biceps", "Barbell"),
-                ExerciseEntity(29, "Dumbbell Curl", "Biceps", "Dumbbell"),
-                ExerciseEntity(30, "Hammer Curl", "Biceps", "Dumbbell"),
-                ExerciseEntity(31, "Preacher Curl", "Biceps", "Barbell"),
-                ExerciseEntity(32, "Cable Curl", "Biceps", "Cable"),
-                ExerciseEntity(33, "Tricep Pushdown", "Triceps", "Cable"),
-                ExerciseEntity(34, "Skull Crusher", "Triceps", "Barbell"),
-                ExerciseEntity(35, "Close-Grip Bench", "Triceps", "Barbell"),
-                ExerciseEntity(36, "Overhead Tricep Ext", "Triceps", "Dumbbell"),
-                ExerciseEntity(37, "Tricep Kickback", "Triceps", "Dumbbell"),
-                ExerciseEntity(38, "Plank", "Core", "Bodyweight"),
-                ExerciseEntity(39, "Hanging Leg Raise", "Core", "Bodyweight"),
-                ExerciseEntity(40, "Ab Wheel Rollout", "Core", "Bodyweight"),
-                ExerciseEntity(41, "Cable Crunch", "Core", "Cable"),
-                ExerciseEntity(42, "Russian Twist", "Core", "Bodyweight"),
-                ExerciseEntity(43, "Chest Press", "Chest", "Machine"),
-                ExerciseEntity(44, "Seated Row", "Back", "Machine"),
-                ExerciseEntity(45, "Hack Squat", "Legs", "Machine"),
-                ExerciseEntity(46, "Bulgarian Split Squat", "Legs", "Dumbbell"),
-                ExerciseEntity(47, "Seated Calf Raise", "Calves", "Machine"),
-                ExerciseEntity(48, "EZ-Bar Curl", "Biceps", "Barbell"),
-                ExerciseEntity(49, "Rope Overhead Extension", "Triceps", "Cable"),
-                ExerciseEntity(50, "Pallof Press", "Core", "Cable"),
-                ExerciseEntity(51, "Back Extension", "Back", "Machine"),
-                ExerciseEntity(52, "Good Morning", "Hamstrings", "Barbell"),
-            )
-            val additions = canonical
-                .filter { it.name.lowercase() !in existingNames }
-                .mapIndexed { index, exercise -> exercise.copy(id = nextId + index) }
-            if (additions.isEmpty()) state else state.copy(exercises = state.exercises + additions)
         }
     }
 
@@ -1780,7 +1585,7 @@ class TrainIqRepository @Inject constructor(
         transform: (ActiveWorkoutSessionStorage, Long) -> ActiveWorkoutSessionStorage,
     ): ActiveWorkoutSession? {
         var result: ActiveWorkoutSession? = null
-        localStore.update { state ->
+        runtimeStore.update { state ->
             val active = state.activeWorkoutSession ?: return@update state
             val next = transform(active, System.currentTimeMillis())
             result = next.toDomain()
@@ -2260,49 +2065,6 @@ private fun ActiveWorkoutDraftStorage.toDomain() = ActiveWorkoutSetDraft(
     setType = setType,
 )
 
-private fun ActiveWorkoutSetDraft.toStorage() = ActiveWorkoutDraftStorage(
-    weight = weight,
-    reps = reps,
-    rpe = rpe,
-    setType = setType,
-)
-
-private fun List<ActiveWorkoutSetStorage>.replaceExerciseSet(
-    exerciseId: Long,
-    setIndex: Int,
-    transform: (ActiveWorkoutSetStorage) -> ActiveWorkoutSetStorage,
-): List<ActiveWorkoutSetStorage> {
-    var exerciseIndex = -1
-    return map { set ->
-        if (set.activeKey != exerciseId) {
-            set
-        } else {
-            exerciseIndex += 1
-            if (exerciseIndex == setIndex) transform(set) else set
-        }
-    }
-}
-
-private fun List<ActiveWorkoutSetStorage>.filterIndexedForExercise(
-    exerciseId: Long,
-    predicate: (Int) -> Boolean,
-): List<ActiveWorkoutSetStorage> {
-    var exerciseIndex = -1
-    return filter { set ->
-        if (set.activeKey != exerciseId) {
-            true
-        } else {
-            exerciseIndex += 1
-            predicate(exerciseIndex)
-        }
-    }
-}
-
-private val ActiveWorkoutSetStorage.activeKey: Long
-    get() = sourceWorkoutExerciseId ?: exerciseId
-
-private fun storedSetKey(set: LoggedSet): Long = set.sourceWorkoutExerciseId ?: set.exerciseId
-
 internal fun TrainIqStorageState.withWorkoutSessionDeleted(sessionId: Long): TrainIqStorageState =
     copy(
         sessions = sessions.filterNot { it.id == sessionId },
@@ -2592,24 +2354,6 @@ private fun parseRoutineRepTarget(repRange: String): Int =
         ?: repRange.filter(Char::isDigit).toIntOrNull()
         ?: 0
 
-internal fun resolveReadiness(
-    lastSessionAvgRpe: Float?,
-    recentAverageRir: Float?,
-    completedRecentSessions: Boolean,
-    plateauDetected: Boolean = false,
-): ReadinessLevel {
-    val effectiveRir = recentAverageRir
-        ?: StrengthCalculator.estimateRepsInReserve(lastSessionAvgRpe?.toDouble() ?: 0.0)?.toFloat()
-        ?: 0f
-    return when {
-        (lastSessionAvgRpe ?: 0f) > 9f -> ReadinessLevel.DELOAD
-        recentAverageRir != null && recentAverageRir < 1f -> ReadinessLevel.DELOAD
-        plateauDetected && effectiveRir >= 2f -> ReadinessLevel.PLATEAU
-        effectiveRir >= 2f && completedRecentSessions -> ReadinessLevel.INCREASE
-        else -> ReadinessLevel.MAINTAIN
-    }
-}
-
 internal fun buildMealItemSnapshots(
     mealId: Long,
     startItemId: Long,
@@ -2669,22 +2413,6 @@ internal fun buildMealItemSnapshots(
     }
 }
 
-private data class ExerciseSessionSnapshot(
-    val date: Long,
-    val sets: List<WorkoutSetEntity>,
-)
-
-private fun hasPlateaued(sessions: List<ExerciseSessionSnapshot>): Boolean {
-    if (sessions.size < 3) return false
-    val e1rms = sessions.take(3).map { session ->
-        session.sets.maxOfOrNull { StrengthCalculator.estimateOneRepMax(it.weight, it.reps) } ?: 0.0
-    }.filter { it > 0.0 }
-    if (e1rms.size < 3) return false
-    val min = e1rms.minOrNull() ?: return false
-    val max = e1rms.maxOrNull() ?: return false
-    return min > 0.0 && ((max - min) / min) < 0.01
-}
-
 internal fun missingProfileForAiRoutineMessage(): String =
     "Vul eerst je profiel in voordat je een AI-routine maakt."
 
@@ -2696,17 +2424,6 @@ internal fun generatedRoutineMissingExercisesMessage(): String =
 
 internal fun trainingDayCountText(count: Int): String =
     "$count ${if (count == 1) "trainingsdag" else "trainingsdagen"}"
-
-private fun progressionLoadStep(exerciseName: String, muscleGroup: String, equipment: String): Double {
-    val compoundPattern = listOf("squat", "bench", "deadlift", "press", "row", "pull-up", "hip thrust")
-    val normalized = "$exerciseName $muscleGroup $equipment".lowercase()
-    return when {
-        equipment.contains("dumbbell", ignoreCase = true) -> 1.0
-        normalized.contains("raise") || normalized.contains("curl") || normalized.contains("extension") -> 1.0
-        compoundPattern.any { normalized.contains(it) } -> 2.5
-        else -> 1.25
-    }
-}
 
 private fun WorkoutSetEntity.progressionSetType(): SetType = parseSetType(setType)
 

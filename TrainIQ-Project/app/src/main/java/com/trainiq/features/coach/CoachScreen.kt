@@ -66,6 +66,7 @@ import com.trainiq.domain.usecase.GenerateWeeklyReportUseCase
 import com.trainiq.domain.usecase.ObserveCoachUseCase
 import com.trainiq.domain.usecase.ObserveUserProfileUseCase
 import com.trainiq.domain.usecase.SaveUserProfileUseCase
+import com.trainiq.navigation.TrainIqWindowWidthClass
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.Locale
 import javax.inject.Inject
@@ -411,7 +412,10 @@ private fun validateGoalAdviceInput(
 }
 
 @Composable
-fun CoachRoute(viewModel: CoachViewModel = hiltViewModel()) {
+fun CoachRoute(
+    windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
+    viewModel: CoachViewModel = hiltViewModel(),
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     CoachScreen(
         uiState = uiState,
