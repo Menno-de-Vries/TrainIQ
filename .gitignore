@@ -24,3 +24,4 @@ Thumbs.db
 qa-cycle-runtime/training-after-fix.png
 /qa-cycle-runtime
 /.codex/android-smoke
+/.codex/android-qa
