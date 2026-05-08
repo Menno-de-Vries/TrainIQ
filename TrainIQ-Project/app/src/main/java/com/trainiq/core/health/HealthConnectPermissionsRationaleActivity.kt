@@ -44,7 +44,7 @@ class HealthConnectPermissionsRationaleActivity : ComponentActivity() {
                     if (grantedPermissions.containsAll(HealthConnectReadPermissions)) {
                         openTrainIq()
                     } else {
-                        statusMessage = "TrainIQ heeft alle vijf Health Connect-signalen samen nodig om belasting, herstel, energiebalans en voortgang eerlijk te combineren."
+                        statusMessage = "TrainIQ heeft alle zes Health Connect-signalen samen nodig om belasting, herstel, energiebalans en voortgang eerlijk te combineren."
                     }
                 }
 
@@ -74,7 +74,7 @@ class HealthConnectPermissionsRationaleActivity : ComponentActivity() {
                                         style = MaterialTheme.typography.headlineSmall,
                                     )
                                     Text(
-                                        "TrainIQ leest vijf signalen om training, herstel en voeding beter te duiden. Elke toestemming verklaart een ander deel van je belasting en herstel, zodat het dashboard niet doet alsof ontbrekende data bekend is.",
+                                        "TrainIQ leest zes signalen om training, herstel en voeding beter te duiden. Elke toestemming verklaart een ander deel van je belasting en herstel, zodat het dashboard niet doet alsof ontbrekende data bekend is.",
                                         style = MaterialTheme.typography.bodyMedium,
                                     )
                                 }
@@ -167,11 +167,15 @@ private enum class PermissionReason(val title: String, val description: String) 
         description = "Slaap helpt TrainIQ inschatten hoe hersteld je bent en maakt readiness, deload-signalen en sessieadvies concreter.",
     ),
     Calories(
-        title = "Verbrande calorieën",
-        description = "Verbrande calorieën geven context voor energieverbruik en helpen training en voeding realistischer naast elkaar te zetten.",
+        title = "Actieve calorieën",
+        description = "Actieve calorieën geven context voor energieverbruik bovenop rustverbruik en helpen training en voeding realistischer naast elkaar te zetten.",
     ),
     Weight(
         title = "Gewicht",
         description = "Gewichtstrends geven voortgang context. TrainIQ gebruikt ze om prestaties en voeding te verbinden aan echte lichaamsverandering.",
+    ),
+    Workouts(
+        title = "Workouts",
+        description = "Workouts geven duur en trainingscontext, zodat TrainIQ Health Connect-data kan koppelen aan je trainingsbelasting.",
     ),
 }

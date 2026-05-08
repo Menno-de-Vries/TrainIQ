@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -74,7 +76,105 @@ android {
     sourceSets {
         getByName("androidTest").assets.srcDir("src/test/resources")
         getByName("androidTest").assets.srcDir("$projectDir/schemas")
+        getByName("debug").assets.srcDir("$buildDir/generated/roomMigrationVerification/debug/assets")
+        getByName("release").assets.srcDir("$buildDir/generated/roomMigrationVerification/release/assets")
+        getByName("profileable").assets.srcDir("$buildDir/generated/roomMigrationVerification/profileable/assets")
     }
+}
+
+fun registerRoomMigrationChainVerificationMarkerTask(
+    buildVariant: String,
+    taskName: String,
+) = tasks.register(taskName) {
+    group = "verification"
+    description = "Generates a $buildVariant Room migration-chain verification marker after connected migration tests pass."
+    dependsOn("connectedDebugAndroidTest")
+
+    val outputFile = layout.buildDirectory.file(
+        "generated/roomMigrationVerification/$buildVariant/assets/room_migration_chain_verification_marker.json",
+    )
+    val verifiedAtMillisProperty = providers.gradleProperty("roomMigrationVerificationTimestampMillis")
+    outputs.file(outputFile)
+    inputs.property(
+        "roomMigrationVerificationTimestampMillis",
+        verifiedAtMillisProperty.orElse(""),
+    )
+
+    doLast {
+        val marker = "trainiq-room-migration-chain-v2-to-v11"
+        val testTask = "connectedDebugAndroidTest"
+        val currentRoomVersion = 11
+        val requiredStartVersion = 2
+        val requiredEndVersion = 11
+        val coveredStartVersion = 2
+        val coveredEndVersion = 11
+        val verifiedAtMillis = verifiedAtMillisProperty
+            .map(String::toLong)
+            .getOrElse(System.currentTimeMillis())
+        val migrationCount = 9
+        val payloadForHash = listOf(
+            marker,
+            buildVariant,
+            testTask,
+            currentRoomVersion.toString(),
+            requiredStartVersion.toString(),
+            requiredEndVersion.toString(),
+            coveredStartVersion.toString(),
+            coveredEndVersion.toString(),
+            verifiedAtMillis.toString(),
+            migrationCount.toString(),
+        ).joinToString(separator = "|")
+        val hash = MessageDigest.getInstance("SHA-256")
+            .digest(payloadForHash.toByteArray(Charsets.UTF_8))
+            .joinToString(separator = "") { byte -> "%02x".format(byte) }
+        val payloadWithoutHash = """
+            {
+              "marker": "$marker",
+              "buildVariant": "$buildVariant",
+              "testTask": "$testTask",
+              "currentRoomVersion": $currentRoomVersion,
+              "requiredStartVersion": $requiredStartVersion,
+              "requiredEndVersion": $requiredEndVersion,
+              "coveredStartVersion": $coveredStartVersion,
+              "coveredEndVersion": $coveredEndVersion,
+              "verifiedAtMillis": $verifiedAtMillis,
+              "migrationCount": $migrationCount
+            }
+        """.trimIndent()
+        outputFile.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText(
+                payloadWithoutHash
+                    .replace("\n}", ",\n  \"payloadSha256\": \"$hash\"\n}")
+                    .plus("\n"),
+            )
+        }
+    }
+}
+
+val generateDebugRoomMigrationChainVerificationMarker = registerRoomMigrationChainVerificationMarkerTask(
+    buildVariant = "debug",
+    taskName = "generateDebugRoomMigrationChainVerificationMarker",
+)
+
+val generateReleaseRoomMigrationChainVerificationMarker = registerRoomMigrationChainVerificationMarkerTask(
+    buildVariant = "release",
+    taskName = "generateReleaseRoomMigrationChainVerificationMarker",
+)
+
+val generateProfileableRoomMigrationChainVerificationMarker = registerRoomMigrationChainVerificationMarkerTask(
+    buildVariant = "profileable",
+    taskName = "generateProfileableRoomMigrationChainVerificationMarker",
+)
+
+tasks.register("generateCiRoomMigrationChainVerificationMarkers") {
+    group = "verification"
+    description = "Generates all CI Room migration-chain verification markers after connected migration tests pass."
+    dependsOn(
+        generateDebugRoomMigrationChainVerificationMarker,
+        generateReleaseRoomMigrationChainVerificationMarker,
+        generateProfileableRoomMigrationChainVerificationMarker,
+    )
 }
 
 kotlin {
@@ -112,6 +212,7 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+    implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.gson)

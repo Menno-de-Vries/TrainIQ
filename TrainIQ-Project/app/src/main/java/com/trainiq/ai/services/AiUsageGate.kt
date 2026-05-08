@@ -14,10 +14,13 @@ class AiUsageGate @Inject constructor(
 ) {
     suspend fun currentSettings(): AiPreferences {
         val legacySettings = preferencesRepository.aiPreferences.first()
-        return legacySettings.copy(
+        return resolveSettings(legacySettings)
+    }
+
+    suspend fun resolveSettings(legacySettings: AiPreferences): AiPreferences =
+        legacySettings.copy(
             apiKey = geminiKeyMigration.currentKey(legacyKey = legacySettings.apiKey).orEmpty(),
         )
-    }
 
     suspend fun isAiReady(): Boolean {
         val settings = currentSettings()

@@ -101,8 +101,8 @@ class MealAnalysisService internal constructor(
                     ),
                 ),
             )
-        }.getOrElse { error ->
-            throw MealAnalysisUnavailableException(cause = error)
+        }.getOrElse {
+            return fallbackMealScan()
         }
         val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
         return parseMealScan(text, suggestedMealType)

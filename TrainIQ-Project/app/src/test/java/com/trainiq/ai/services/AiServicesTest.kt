@@ -130,15 +130,15 @@ class AiServicesTest {
     }
 
     @Test
-    fun analyzeMealImage_whenApiFails_throwsInsteadOfReturningEmptyFallback() = runTest {
+    fun analyzeMealImage_whenApiFails_returnsExplicitLocalFallback() = runTest {
         val api = FakeGeminiApi(error = IllegalStateException("network down"))
         val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
 
-        val error = runCatching {
-            service.analyzeMealImage(tempImagePath(), "", 43_200_000L)
-        }.exceptionOrNull()
+        val result = service.analyzeMealImage(tempImagePath(), "", 43_200_000L)
 
-        assertTrue(error is MealAnalysisUnavailableException)
+        assertEquals(MealAnalysisSource.LOCAL_FALLBACK, result.source)
+        assertTrue(result.items.isEmpty())
+        assertEquals("AI-maaltijdanalyse is nu niet beschikbaar. Je kunt de maaltijd handmatig toevoegen.", result.notes)
     }
 
     @Test

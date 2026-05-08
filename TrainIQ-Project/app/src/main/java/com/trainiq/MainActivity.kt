@@ -12,6 +12,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.trainiq.core.diagnostics.DiagnosticsTracker
 import com.trainiq.core.diagnostics.PerformanceSessionMonitor
+import com.trainiq.core.health.HealthConnectBackgroundSyncScheduler
 import com.trainiq.core.theme.TrainIqTheme
 import com.trainiq.navigation.TrainIqWindowWidthClass
 import com.trainiq.navigation.TrainIqApp
@@ -22,6 +23,7 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
     @Inject lateinit var performanceSessionMonitor: PerformanceSessionMonitor
     @Inject lateinit var diagnosticsTracker: DiagnosticsTracker
+    @Inject lateinit var healthConnectBackgroundSyncScheduler: HealthConnectBackgroundSyncScheduler
 
     private val viewModel: MainViewModel by viewModels()
 
@@ -41,6 +43,7 @@ class MainActivity : ComponentActivity() {
         }
         window.decorView.post {
             performanceSessionMonitor.start(this)
+            healthConnectBackgroundSyncScheduler.schedule()
         }
     }
 

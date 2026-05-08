@@ -26,11 +26,11 @@ import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutExercisePlan
 import com.trainiq.domain.model.WorkoutRoutine
 import com.trainiq.domain.model.WorkoutSessionSummary
+import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
-import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.records.WeightRecord
 import java.time.Duration
 import kotlin.math.roundToInt
@@ -156,7 +156,7 @@ internal fun ExerciseSessionRecord.toCachedExerciseSessionRecord() = CachedExerc
     title = title,
 )
 
-internal fun TotalCaloriesBurnedRecord.toCachedCaloriesBurnedRecord() = CachedCaloriesBurnedRecord(
+internal fun ActiveCaloriesBurnedRecord.toCachedCaloriesBurnedRecord() = CachedCaloriesBurnedRecord(
     recordId = metadata.id,
     startTimeMillis = startTime.toEpochMilli(),
     endTimeMillis = endTime.toEpochMilli(),

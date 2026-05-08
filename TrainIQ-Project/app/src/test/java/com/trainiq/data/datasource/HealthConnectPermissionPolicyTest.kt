@@ -1,5 +1,7 @@
 package com.trainiq.data.datasource
 
+import com.trainiq.core.datastore.HealthConnectSyncPreferences
+import com.trainiq.data.mapper.toDomainMetrics
 import com.trainiq.domain.model.HealthMetricSyncState
 import com.trainiq.domain.model.HealthMetricType
 import org.junit.Assert.assertFalse
@@ -86,5 +88,44 @@ class HealthConnectPermissionPolicyTest {
 
         assertEquals(789L, statuses.single { it.metric == HealthMetricType.STEPS }.lastSyncedAt)
         assertEquals(null, statuses.single { it.metric == HealthMetricType.WORKOUTS }.lastSyncedAt)
+    }
+
+    @Test
+    fun incrementalFailurePayloadPreservesCachedMetricsAndToken() {
+        val cachedState = HealthConnectCacheState(aggregatedStepsToday = 1234L)
+        val storedState = HealthConnectSyncPreferences(
+            changesToken = "existing-token",
+            cacheStateJson = "{}",
+            lastSyncedAt = 987L,
+        )
+
+        val payload = cachedIncrementalFailurePayload(
+            cachedState = cachedState,
+            storedState = storedState,
+            failureMessage = "Changes API tijdelijk niet beschikbaar.",
+        )
+
+        assertEquals(cachedState, payload.cacheState)
+        assertEquals("existing-token", payload.nextChangesToken)
+        assertEquals(987L, payload.lastSyncedAt)
+        assertEquals(
+            HealthMetricSyncState.FAILED,
+            payload.metricStatuses.single { it.metric == HealthMetricType.STEPS }.state,
+        )
+        assertEquals(1234, payload.cacheState.toDomainMetrics().stepsToday)
+    }
+
+    @Test
+    fun fullSyncWithoutChangesTokenReportsFailedMetricsAndDoesNotPretendSynced() {
+        val payload = fullSyncTokenFailurePayload(
+            cacheState = HealthConnectCacheState(aggregatedStepsToday = 4321L),
+            failureMessage = "ChangesToken kon niet worden opgehaald.",
+            lastSyncedAt = 654L,
+        )
+
+        assertEquals("", payload.nextChangesToken)
+        assertEquals(654L, payload.lastSyncedAt)
+        assertEquals(4321, payload.cacheState.toDomainMetrics().stepsToday)
+        assertTrue(payload.metricStatuses.all { it.state == HealthMetricSyncState.FAILED })
     }
 }

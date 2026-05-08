@@ -71,6 +71,7 @@ import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
+import com.trainiq.ai.services.AiUsageGate
 import com.trainiq.core.datastore.AiPreferences
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.theme.spacing
@@ -88,6 +89,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -112,6 +114,7 @@ sealed interface CameraScannerUiState {
 @HiltViewModel
 class CameraScannerViewModel @Inject constructor(
     preferencesRepository: UserPreferencesRepository,
+    aiUsageGate: AiUsageGate,
     private val analyzeMealUseCase: AnalyzeMealUseCase,
     private val clearLastScanResultUseCase: ClearLastScanResultUseCase,
 ) : ViewModel() {
@@ -126,6 +129,7 @@ class CameraScannerViewModel @Inject constructor(
     private enum class Phase { Preview, Processing, Completed, Empty, NoConfig, LocalFallback, Error }
 
     private val aiPreferences: StateFlow<AiPreferences> = preferencesRepository.aiPreferences
+        .mapResolvedAiPreferences(aiUsageGate)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AiPreferences(false, ""))
     private val ephemeral = MutableStateFlow(ScannerEphemeralState())
 
@@ -230,6 +234,12 @@ class CameraScannerViewModel @Inject constructor(
     fun clearScanResult() {
         clearLastScanResultUseCase()
     }
+}
+
+private fun kotlinx.coroutines.flow.Flow<AiPreferences>.mapResolvedAiPreferences(
+    aiUsageGate: AiUsageGate,
+): kotlinx.coroutines.flow.Flow<AiPreferences> = map { legacySettings ->
+    aiUsageGate.resolveSettings(legacySettings)
 }
 
 internal fun classifyMealScanResultForScanner(

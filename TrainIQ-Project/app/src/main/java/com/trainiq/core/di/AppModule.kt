@@ -2,6 +2,7 @@ package com.trainiq.core.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.work.WorkManager
 import com.trainiq.BuildConfig
 import com.trainiq.core.database.TrainIqDao
 import com.trainiq.core.database.TrainIqDatabase
@@ -11,6 +12,9 @@ import com.trainiq.core.security.GeminiEncryptedKeyStore
 import com.trainiq.data.migration.JsonRoomImportPlanner
 import com.trainiq.data.migration.JsonRoomImportSink
 import com.trainiq.data.migration.RoomJsonImportSink
+import com.trainiq.data.migration.AssetRoomMigrationChainVerificationMarkerSource
+import com.trainiq.data.migration.RoomMigrationChainVerificationMarkerSource
+import com.trainiq.data.migration.RoomRuntimeReadinessGate
 import com.trainiq.data.remote.GeminiApi
 import com.trainiq.data.repository.TrainIqRepository
 import com.trainiq.domain.repository.CoachRepository
@@ -63,6 +67,10 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideWorkManager(@ApplicationContext context: Context): WorkManager = WorkManager.getInstance(context)
+
+    @Provides
+    @Singleton
     fun provideTrainIqDatabase(@ApplicationContext context: Context): TrainIqDatabase =
         Room.databaseBuilder(
             context,
@@ -74,6 +82,16 @@ object AppModule {
 
     @Provides
     fun provideTrainIqDao(database: TrainIqDatabase): TrainIqDao = database.dao()
+
+    @Provides
+    fun provideRoomRuntimeReadinessGate(dao: TrainIqDao): RoomRuntimeReadinessGate =
+        RoomRuntimeReadinessGate(dao)
+
+    @Provides
+    @Singleton
+    fun provideRoomMigrationChainVerificationMarkerSource(
+        source: AssetRoomMigrationChainVerificationMarkerSource,
+    ): RoomMigrationChainVerificationMarkerSource = source
 
     @Provides
     fun provideJsonRoomImportPlanner(): JsonRoomImportPlanner = JsonRoomImportPlanner()

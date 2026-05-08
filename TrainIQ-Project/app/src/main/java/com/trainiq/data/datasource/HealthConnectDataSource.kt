@@ -8,11 +8,11 @@ import androidx.health.connect.client.changes.Change
 import androidx.health.connect.client.changes.DeletionChange
 import androidx.health.connect.client.changes.UpsertionChange
 import androidx.health.connect.client.permission.HealthPermission
+import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
-import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.records.WeightRecord
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.request.ChangesTokenRequest
@@ -53,7 +53,7 @@ class HealthConnectDataSource @Inject constructor(
         HealthPermission.getReadPermission(StepsRecord::class),
         HealthPermission.getReadPermission(HeartRateRecord::class),
         HealthPermission.getReadPermission(SleepSessionRecord::class),
-        HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class),
+        HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class),
         HealthPermission.getReadPermission(WeightRecord::class),
         HealthPermission.getReadPermission(ExerciseSessionRecord::class),
     )
@@ -62,7 +62,7 @@ class HealthConnectDataSource @Inject constructor(
         StepsRecord::class,
         HeartRateRecord::class,
         SleepSessionRecord::class,
-        TotalCaloriesBurnedRecord::class,
+        ActiveCaloriesBurnedRecord::class,
         WeightRecord::class,
         ExerciseSessionRecord::class,
     )
@@ -71,7 +71,7 @@ class HealthConnectDataSource @Inject constructor(
         HealthMetricType.STEPS to HealthPermission.getReadPermission(StepsRecord::class),
         HealthMetricType.HEART_RATE to HealthPermission.getReadPermission(HeartRateRecord::class),
         HealthMetricType.SLEEP to HealthPermission.getReadPermission(SleepSessionRecord::class),
-        HealthMetricType.ACTIVE_CALORIES to HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class),
+        HealthMetricType.ACTIVE_CALORIES to HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class),
         HealthMetricType.WEIGHT to HealthPermission.getReadPermission(WeightRecord::class),
         HealthMetricType.WORKOUTS to HealthPermission.getReadPermission(ExerciseSessionRecord::class),
     )
@@ -168,7 +168,15 @@ class HealthConnectDataSource @Inject constructor(
             return performFullSync(client)
         }
 
-        return performIncrementalSync(client, storedState, cachedState)
+        return runCatching {
+            performIncrementalSync(client, storedState, cachedState)
+        }.getOrElse { throwable ->
+            cachedIncrementalFailurePayload(
+                cachedState = cachedState,
+                storedState = storedState,
+                failureMessage = throwable.message ?: "Health Connect-incrementele sync is mislukt; vorige cache behouden.",
+            )
+        }
     }
 
     private suspend fun aggregateStepsToday(client: HealthConnectClient): Long = runCatching {
@@ -205,10 +213,10 @@ class HealthConnectDataSource @Inject constructor(
         val caloriesBurnedRecords = readMetricOrDefault(HealthMetricType.ACTIVE_CALORIES, metricFailures, emptyList()) {
             client.readRecords(
                 ReadRecordsRequest(
-                    recordType = TotalCaloriesBurnedRecord::class,
+                    recordType = ActiveCaloriesBurnedRecord::class,
                     timeRangeFilter = TimeRangeFilter.between(startOfToday(), now),
                 ),
-            ).records.map(TotalCaloriesBurnedRecord::toCachedCaloriesBurnedRecord)
+            ).records.map(ActiveCaloriesBurnedRecord::toCachedCaloriesBurnedRecord)
         }
         val weightRecords = readMetricOrDefault(HealthMetricType.WEIGHT, metricFailures, emptyList()) {
             client.readRecords(
@@ -236,7 +244,13 @@ class HealthConnectDataSource @Inject constructor(
         ).prune(now)
         val nextChangesToken = runCatching {
             client.getChangesToken(ChangesTokenRequest(recordTypes = trackedRecordTypes))
-        }.getOrDefault("")
+        }.getOrElse { throwable ->
+            return fullSyncTokenFailurePayload(
+                cacheState = cacheState,
+                failureMessage = throwable.message ?: "Health Connect ChangesToken kon niet worden opgehaald.",
+                lastSyncedAt = System.currentTimeMillis(),
+            )
+        }
         val lastSyncedAt = System.currentTimeMillis()
 
         return SyncPayload(
@@ -337,7 +351,7 @@ class HealthConnectDataSource @Inject constructor(
                 ).prune(now)
             }
 
-            is TotalCaloriesBurnedRecord -> {
+            is ActiveCaloriesBurnedRecord -> {
                 val mapped = record.toCachedCaloriesBurnedRecord()
                 copy(
                     caloriesBurnedRecords = caloriesBurnedRecords.filterNot { it.recordId == mapped.recordId } +
@@ -544,13 +558,43 @@ internal data class HealthConnectCacheState(
             exerciseSessionRecords.isEmpty()
 }
 
-private data class SyncPayload(
+internal data class SyncPayload(
     val cacheState: HealthConnectCacheState,
     val nextChangesToken: String,
     val lastSyncedAt: Long,
     val metricStatuses: List<HealthMetricStatus> = buildHealthMetricSyncStatuses(
         metrics = HealthMetricType.entries,
         failedMetrics = emptyMap(),
+        lastSyncedAt = lastSyncedAt,
+    ),
+)
+
+internal fun cachedIncrementalFailurePayload(
+    cachedState: HealthConnectCacheState,
+    storedState: HealthConnectSyncPreferences,
+    failureMessage: String,
+): SyncPayload = SyncPayload(
+    cacheState = cachedState,
+    nextChangesToken = storedState.changesToken,
+    lastSyncedAt = storedState.lastSyncedAt,
+    metricStatuses = buildHealthMetricSyncStatuses(
+        metrics = HealthMetricType.entries,
+        failedMetrics = HealthMetricType.entries.associateWith { failureMessage },
+        lastSyncedAt = storedState.lastSyncedAt,
+    ),
+)
+
+internal fun fullSyncTokenFailurePayload(
+    cacheState: HealthConnectCacheState,
+    failureMessage: String,
+    lastSyncedAt: Long,
+): SyncPayload = SyncPayload(
+    cacheState = cacheState,
+    nextChangesToken = "",
+    lastSyncedAt = lastSyncedAt,
+    metricStatuses = buildHealthMetricSyncStatuses(
+        metrics = HealthMetricType.entries,
+        failedMetrics = HealthMetricType.entries.associateWith { failureMessage },
         lastSyncedAt = lastSyncedAt,
     ),
 )

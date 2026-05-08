@@ -69,6 +69,9 @@ class RoomRuntimeReadinessGate(
             RoomMigrationChainVerification.UNKNOWN -> {
                 return RoomRuntimeReadiness.Blocked(RoomRuntimeReadinessFailure.MIGRATION_CHAIN_UNKNOWN)
             }
+            RoomMigrationChainVerification.NOT_RUN -> {
+                return RoomRuntimeReadiness.Blocked(RoomRuntimeReadinessFailure.MIGRATION_CHAIN_NOT_RUN)
+            }
         }
         when (verification.liveShapeImport) {
             RoomImportValidationVerification.VERIFIED -> Unit
@@ -162,6 +165,7 @@ enum class RoomRuntimeReadinessFailure {
     MIGRATION_CHAIN_STALE,
     MIGRATION_CHAIN_FAILED,
     MIGRATION_CHAIN_UNKNOWN,
+    MIGRATION_CHAIN_NOT_RUN,
     LIVE_SHAPE_IMPORT_UNVERIFIED,
     LIVE_SHAPE_IMPORT_PARTIAL,
     LIVE_SHAPE_IMPORT_MISSING,
@@ -179,6 +183,7 @@ enum class RoomMigrationChainVerification {
     STALE,
     FAILED,
     UNKNOWN,
+    NOT_RUN,
 }
 
 enum class RoomImportValidationVerification {

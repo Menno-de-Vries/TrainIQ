@@ -103,11 +103,13 @@ class RoomRuntimeReadinessGateTest {
         val gate = gateWith(mirrorRun(sourceFingerprint = RoomJsonFingerprint.sha256(json)))
 
         val cases = mapOf(
+            RoomMigrationChainVerification.UNVERIFIED to RoomRuntimeReadinessFailure.MIGRATION_CHAIN_UNVERIFIED,
             RoomMigrationChainVerification.PARTIAL to RoomRuntimeReadinessFailure.MIGRATION_CHAIN_PARTIAL,
             RoomMigrationChainVerification.MISSING to RoomRuntimeReadinessFailure.MIGRATION_CHAIN_MISSING,
             RoomMigrationChainVerification.STALE to RoomRuntimeReadinessFailure.MIGRATION_CHAIN_STALE,
             RoomMigrationChainVerification.FAILED to RoomRuntimeReadinessFailure.MIGRATION_CHAIN_FAILED,
             RoomMigrationChainVerification.UNKNOWN to RoomRuntimeReadinessFailure.MIGRATION_CHAIN_UNKNOWN,
+            RoomMigrationChainVerification.NOT_RUN to RoomRuntimeReadinessFailure.MIGRATION_CHAIN_NOT_RUN,
         )
 
         cases.forEach { (status, expectedReason) ->
@@ -118,6 +120,23 @@ class RoomRuntimeReadinessGateTest {
             )
             assertBlocked(result, expectedReason)
         }
+    }
+
+    @Test
+    fun missingMigrationProviderReportBlocksReadiness() = runTest {
+        val json = "{}"
+        val result = gateWith(
+            mirrorRun(sourceFingerprint = RoomJsonFingerprint.sha256(json)),
+        ).evaluate(
+            currentJson = json,
+            verification = RoomRuntimeReadinessVerification(
+                migrationChain = null.toMigrationChainVerification(),
+                liveShapeImport = RoomImportValidationVerification.VERIFIED,
+            ),
+            nowMillis = Now,
+        )
+
+        assertBlocked(result, RoomRuntimeReadinessFailure.MIGRATION_CHAIN_MISSING)
     }
 
     @Test

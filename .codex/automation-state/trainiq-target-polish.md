@@ -1,6 +1,6 @@
 # TrainIQ Target Polish Automation State
 
-Last updated: 2026-05-07
+Last updated: 2026-05-08
 
 ## Safety Rules
 
@@ -270,3 +270,100 @@ Current schema parity gaps:
 2. Continue Health Connect hardening with per-metric isolation for incremental sync token/change failures and explicit background-safe scheduling policy.
 3. Add deeper screen-level adaptive layouts beyond the Home dashboard, especially Training list/detail and Nutrition editor panes.
 4. Run medium/expanded visual QA with screenshots once emulator display resizing is available.
+
+## 2026-05-08 Implementation Continuation
+
+- Stopped new Gemini API key saves from rewriting the legacy plaintext DataStore `gemini_api_key`; Settings now writes only through `AiUsageGate`/encrypted key storage while legacy DataStore read fallback and non-destructive clear remain.
+- Replaced Health Connect active-calorie support from `TotalCaloriesBurnedRecord` / `READ_TOTAL_CALORIES_BURNED` to `ActiveCaloriesBurnedRecord` / `READ_ACTIVE_CALORIES_BURNED` across manifest, datasource, mapper, and permission helper.
+- Updated Health Connect rationale copy from five to six signals and added explicit workouts rationale; active calorie copy now distinguishes active expenditure from total expenditure.
+- Added incremental Health Connect failure fallback that preserves the existing cache and changes token while marking metric sync statuses failed instead of collapsing the whole Health Connect status to top-level error.
+- Added a conservative WorkManager background sync path with unique periodic work, battery-not-low constraint, and exponential backoff. It refreshes through the existing Health Connect datasource without clearing data or requiring network.
+- Wired production Room preflight into `TrainIqLocalStore.roomRuntimeReadiness`; runtime Room reads remain disabled/fail-closed because migration-chain verification is still not marked `VERIFIED` in production.
+- Improved Settings draft durability with `rememberSaveable` for API key entry, profile form fields, sex/activity selection, goal, and destructive confirmation state.
+- Wrapped the barcode scanner saved-state handoff behind typed helper functions and a single internal key constant.
+
+Validation:
+
+- Passed focused Gemini/settings tests: `.\gradlew.bat :app:testDebugUnitTest --tests com.trainiq.core.security.GeminiKeyMigrationTest --tests com.trainiq.features.settings.SettingsUiStateTest --console=plain`
+- Passed active-calorie/permission tests: `.\gradlew.bat :app:testDebugUnitTest --tests com.trainiq.core.health.HealthConnectReadPermissionsTest --tests com.trainiq.data.datasource.HealthConnectPermissionPolicyTest --console=plain`
+- Passed Health Connect background/failure policy tests: `.\gradlew.bat :app:testDebugUnitTest --tests com.trainiq.core.health.HealthConnectBackgroundSyncPolicyTest --tests com.trainiq.data.datasource.HealthConnectPermissionPolicyTest --console=plain`
+- Passed Room readiness/import tests: `.\gradlew.bat :app:testDebugUnitTest --tests com.trainiq.data.migration.RoomRuntimeReadinessGateTest --tests com.trainiq.data.migration.RoomImportDryRunTest --console=plain`
+- Passed navigation/settings focused tests: `.\gradlew.bat :app:testDebugUnitTest --tests com.trainiq.navigation.AdaptiveNavigationPolicyTest --tests com.trainiq.features.settings.SettingsUiStateTest --console=plain`
+- Passed full unit suite: `.\gradlew.bat :app:testDebugUnitTest --console=plain`
+- Passed compile/package: `.\gradlew.bat :app:assembleDebug --console=plain`
+- Passed lint: `.\gradlew.bat :app:lintDebug --console=plain`
+- Android connected QA was not run because `adb` is not available on PATH in this environment.
+
+Safety:
+
+- No uninstall, app-data clear, emulator reset, destructive Room migration, applicationId/signing change, or Gemini key exposure.
+- Runtime reads were not switched to Room; JSON remains authoritative while Room readiness reports fail-closed production status.
+
+Remaining deferred target-state work:
+
+- Full Room source-of-truth cutover remains deferred until production migration-chain verification can be set from a non-destructive validated signal and a device smoke pass is available.
+- Health Connect still needs deeper fake-client tests around SDK unavailable/outdated states, pagination, revoked permissions, and token expiry; the app now has a background scheduler and safer cached incremental failure handling.
+- Training/Nutrition/Progress/Coach/Settings still need richer screen-specific medium/expanded layouts and screenshot QA; Settings draft state was hardened in this pass.
+- Workout one-`uiState` consolidation and repository/use-case extraction remain larger P2 refactors that should be done one bounded context at a time with tests.
+
+## 2026-05-08 Room Verification Provider Continuation
+
+- Added a production `RoomMigrationChainVerificationProvider` with structured, non-secret metadata: current Room version, required migration range, covered migration range, status, reason, marker id, verification timestamp, and freshness.
+- Added `RoomMigrationChainVerificationMarkerSource` plus the production `NoTrustedRoomMigrationChainVerificationMarkerSource`; production therefore reports `NOT_RUN` by default and remains fail-closed.
+- Extended `RoomMigrationChainVerification` and `RoomRuntimeReadinessFailure` with `NOT_RUN` / `MIGRATION_CHAIN_NOT_RUN`.
+- Wired `TrainIqLocalStore` to feed the provider status into `RoomImportDryRunStatus.toReadinessVerification(...)` before evaluating `RoomRuntimeReadinessGate`.
+- Runtime reads remain JSON-backed and Room remains non-authoritative unless a future trusted marker source proves the migration chain as `VERIFIED` and all other gates pass.
+- Added tests proving the provider defaults to `NOT_RUN`, stale/partial markers do not verify, a valid marker only verifies the migration-chain portion, null provider reports map to `MISSING`, and the readiness gate blocks non-verified statuses including `NOT_RUN`.
+- Resolved the previous adb blocker by using the local SDK adb executable directly: `C:\Users\menno\AppData\Local\Android\Sdk\platform-tools\adb.exe`.
+- Ran safe connected Android QA without uninstalling, clearing data, resetting the emulator, exposing keys, or changing app identity.
+
+Validation:
+
+- Passed provider/gate tests: `.\gradlew.bat :app:testDebugUnitTest --tests com.trainiq.data.migration.RoomMigrationChainVerificationProviderTest --tests com.trainiq.data.migration.RoomRuntimeReadinessGateTest --console=plain`
+- Passed full unit suite: `.\gradlew.bat :app:testDebugUnitTest --console=plain`
+- Passed compile/package: `.\gradlew.bat :app:assembleDebug --console=plain`
+- Passed lint: `.\gradlew.bat :app:lintDebug --console=plain`
+- Passed safe update install: `.\gradlew.bat :app:installDebug --console=plain`
+- Passed launch smoke: `C:\Users\menno\AppData\Local\Android\Sdk\platform-tools\adb.exe shell am start -W -n com.trainiq/.MainActivity`
+- Passed focus/UI smoke: focus is `com.trainiq/com.trainiq.MainActivity`; UI tree shows `TrainIQ`, `Start`, `Training`, `Voeding`, `Trend`, `Coach`, and `Meer`.
+- Passed crash check: `adb logcat -d -b crash` filtered for TrainIQ/AndroidRuntime returned no fatal TrainIQ crash entries.
+- Passed connected Room migration-chain tests: `.\gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.core.database.TrainIqDatabaseMigrationTest" --console=plain`
+- Passed connected Room import tests: `.\gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.data.migration.RoomJsonImportSinkTest" --console=plain`
+
+Current blocker status:
+
+- adb: resolved through full local SDK path; not added to PATH.
+- Room runtime cutover: still intentionally blocked. Production migration-chain provider exists, but its default status is `NOT_RUN` because no trusted verification marker source exists. JSON remains authoritative.
+- Room safety: no destructive migration, no Room runtime read switch, no JSON fallback removal.
+- Remaining target-state work: a future non-destructive trusted marker generation path is required before any Room cutover; broad P2 architecture/workout/adaptive refactors remain separate bounded implementation passes.
+
+## 2026-05-08 End-to-End Fix Continuation
+
+- Fixed Gemini configured-state persistence after encrypted-only saves by resolving Settings, Nutrition, and Camera Scanner AI preferences through `AiUsageGate.resolveSettings(...)`; the UI no longer depends on the legacy plaintext DataStore key to know a key is configured.
+- Made `AndroidKeystoreGeminiKeyStore.writeKey(...)` use synchronous `SharedPreferences.commit()` so a save result reflects durable encrypted preference persistence instead of an async write enqueue.
+- Kept blank/invalid Gemini key behavior fail-safe: invalid saves surface a visible error and do not overwrite the existing encrypted key; encrypted save failure preserves the current key.
+- Replaced the fail-closed placeholder Room marker source with `AssetRoomMigrationChainVerificationMarkerSource`, which reads a generated asset marker and filters it to the current `BuildConfig.BUILD_TYPE`.
+- Added `generateDebugRoomMigrationChainVerificationMarker`; it writes the debug marker only after `connectedDebugAndroidTest` passes. The marker contains only non-secret metadata and a SHA-256 payload hash.
+- Hardened `RoomMigrationChainVerificationProvider` so missing, invalid-hash, wrong-variant, stale, partial, future-dated, or absent markers fail closed. Only a fresh, hashed marker matching the current Room version/range can report `VERIFIED`.
+- Runtime Room reads remain disabled/JSON-authoritative. Even with a verified marker, `RoomRuntimeReadiness.Ready` still reports `roomAuthoritative = false`; no repository read path was switched to Room in this pass.
+- Safe Android QA was run through `C:\Users\menno\AppData\Local\Android\Sdk\platform-tools\adb.exe`; no uninstall, data clear, emulator reset, Gemini key exposure, or destructive migration occurred.
+
+Validation:
+
+- Passed focused Gemini/settings/Room tests: `.\gradlew.bat :app:testDebugUnitTest --tests com.trainiq.core.security.GeminiKeyMigrationTest --tests com.trainiq.features.settings.SettingsUiStateTest --tests com.trainiq.data.migration.RoomMigrationChainVerificationProviderTest --tests com.trainiq.data.migration.RoomRuntimeReadinessGateTest --console=plain`
+- Passed full debug unit suite: `.\gradlew.bat :app:testDebugUnitTest --console=plain`
+- Passed connected Room migration/import/dry-run set: `.\gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.core.database.TrainIqDatabaseMigrationTest,com.trainiq.data.migration.RoomJsonImportSinkTest,com.trainiq.data.migration.RoomImportDryRunInstrumentedTest" --console=plain`
+- Passed marker generation path: `.\gradlew.bat :app:generateDebugRoomMigrationChainVerificationMarker --console=plain`
+- Passed package build with generated marker asset: `.\gradlew.bat :app:assembleDebug --console=plain`
+- Passed lint: `.\gradlew.bat :app:lintDebug --console=plain`
+- Passed safe update install: `.\gradlew.bat :app:installDebug --console=plain`
+- Passed launch/focus smoke: `C:\Users\menno\AppData\Local\Android\Sdk\platform-tools\adb.exe shell am start -W -n com.trainiq/.MainActivity`; focus was `com.trainiq/com.trainiq.MainActivity`.
+- Passed UI smoke: UI tree showed `TrainIQ`, `Start`, `Training`, `Voeding`, `Trend`, `Coach`, and `Meer`.
+- Passed crash/error log check: recent filtered logcat showed no `FATAL EXCEPTION`, `AndroidRuntime`, Room/SQLite app crash, or TrainIQ fatal entry.
+
+Current blocker status:
+
+- adb: resolved through the local SDK path; still not added to PATH.
+- Gemini key save: fixed in code and covered by unit tests; live manual save with a fake key was not performed because it could overwrite a real installed user key.
+- Room marker: trusted debug generation path exists and is enabled for debug builds after connected instrumentation passes. Release/prod remains fail-closed unless an equivalent controlled marker generation path is run for that variant.
+- Room source of truth: runtime Room read switch is still intentionally off; JSON fallback remains intact and authoritative.

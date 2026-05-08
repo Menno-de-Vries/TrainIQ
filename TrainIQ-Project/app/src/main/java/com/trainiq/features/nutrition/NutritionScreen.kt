@@ -60,6 +60,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import com.trainiq.ai.services.AiUsageGate
 import com.trainiq.core.datastore.AiPreferences
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.theme.spacing
@@ -103,6 +104,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -133,6 +135,7 @@ sealed interface NutritionUiState {
 class NutritionViewModel @Inject constructor(
     observeNutritionUseCase: ObserveNutritionUseCase,
     preferencesRepository: UserPreferencesRepository,
+    aiUsageGate: AiUsageGate,
     private val analyzeMealUseCase: AnalyzeMealUseCase,
     private val saveFoodItemUseCase: SaveFoodItemUseCase,
     private val saveRecipeUseCase: SaveRecipeUseCase,
@@ -153,6 +156,7 @@ class NutritionViewModel @Inject constructor(
     private val overview: StateFlow<NutritionOverview?> = observeNutritionUseCase()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     private val aiPreferences: StateFlow<AiPreferences> = preferencesRepository.aiPreferences
+        .combineResolvedAiPreferences(aiUsageGate)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AiPreferences(false, ""))
     private val ephemeral = MutableStateFlow(NutritionEphemeralState())
 
@@ -1213,6 +1217,12 @@ fun NutritionScreen(
             onDismiss = { pendingDelete = null },
         )
     }
+}
+
+private fun kotlinx.coroutines.flow.Flow<AiPreferences>.combineResolvedAiPreferences(
+    aiUsageGate: AiUsageGate,
+): kotlinx.coroutines.flow.Flow<AiPreferences> = map { legacySettings ->
+    aiUsageGate.resolveSettings(legacySettings)
 }
 
 @Composable

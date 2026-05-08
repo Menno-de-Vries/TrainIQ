@@ -21,6 +21,11 @@ import com.trainiq.domain.model.estimateStrengthTrainingCalories
 import com.trainiq.domain.model.suggestMealType
 import com.trainiq.data.migration.RoomImportDryRun
 import com.trainiq.data.migration.RoomImportDryRunStatus
+import com.trainiq.data.migration.RoomMigrationChainVerificationProvider
+import com.trainiq.data.migration.RoomRuntimeReadiness
+import com.trainiq.data.migration.RoomRuntimeReadinessFailure
+import com.trainiq.data.migration.RoomRuntimeReadinessGate
+import com.trainiq.data.migration.toReadinessVerification
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -40,18 +45,23 @@ import kotlinx.coroutines.sync.withLock
 class TrainIqLocalStore @Inject constructor(
     @ApplicationContext context: Context,
     private val roomImportDryRun: RoomImportDryRun,
+    private val roomRuntimeReadinessGate: RoomRuntimeReadinessGate,
+    private val roomMigrationChainVerificationProvider: RoomMigrationChainVerificationProvider,
 ) {
     private val gson = Gson()
     private val mutex = Mutex()
     private val storageFile = context.filesDir.resolve("trainiq-state.json")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _roomImportDryRunStatus = MutableStateFlow<RoomImportDryRunStatus>(RoomImportDryRunStatus.NotAttempted)
+    private val _roomRuntimeReadiness = MutableStateFlow<RoomRuntimeReadiness>(
+        RoomRuntimeReadiness.Blocked(RoomRuntimeReadinessFailure.MISSING_JSON),
+    )
     private val _state = MutableStateFlow(TrainIqStorageState())
     private val loadJob = scope.launch {
         val loaded = loadState()
         _state.value = loaded.state
         launch {
-            _roomImportDryRunStatus.value = roomImportDryRun.attempt(
+            updateRoomPreflightStatus(
                 sourceJson = loaded.sourceJson,
                 loadedState = loaded.state,
                 loadFailure = loaded.loadFailure,
@@ -61,6 +71,26 @@ class TrainIqLocalStore @Inject constructor(
 
     val state: StateFlow<TrainIqStorageState> = _state.asStateFlow()
     val roomImportDryRunStatus: StateFlow<RoomImportDryRunStatus> = _roomImportDryRunStatus.asStateFlow()
+    val roomRuntimeReadiness: StateFlow<RoomRuntimeReadiness> = _roomRuntimeReadiness.asStateFlow()
+
+    private suspend fun updateRoomPreflightStatus(
+        sourceJson: String?,
+        loadedState: TrainIqStorageState,
+        loadFailure: Throwable? = null,
+    ) {
+        val dryRunStatus = roomImportDryRun.attempt(
+            sourceJson = sourceJson,
+            loadedState = loadedState,
+            loadFailure = loadFailure,
+        )
+        _roomImportDryRunStatus.value = dryRunStatus
+        _roomRuntimeReadiness.value = roomRuntimeReadinessGate.evaluate(
+            currentJson = sourceJson,
+            verification = dryRunStatus.toReadinessVerification(
+                migrationChain = roomMigrationChainVerificationProvider.report().status,
+            ),
+        )
+    }
 
     suspend fun update(transform: (TrainIqStorageState) -> TrainIqStorageState) {
         loadJob.join()
@@ -74,6 +104,10 @@ class TrainIqLocalStore @Inject constructor(
                 StandardCopyOption.REPLACE_EXISTING,
             )
             _state.value = updated
+            updateRoomPreflightStatus(
+                sourceJson = gson.toJson(updated),
+                loadedState = updated,
+            )
         }
     }
 
@@ -84,6 +118,10 @@ class TrainIqLocalStore @Inject constructor(
                 storageFile.delete()
             }
             _state.value = TrainIqStorageState()
+            updateRoomPreflightStatus(
+                sourceJson = null,
+                loadedState = TrainIqStorageState(),
+            )
         }
     }
 

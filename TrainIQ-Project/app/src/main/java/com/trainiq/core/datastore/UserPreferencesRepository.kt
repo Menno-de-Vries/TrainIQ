@@ -75,10 +75,6 @@ class UserPreferencesRepository @Inject constructor(
         context.dataStore.edit { preferences -> preferences[aiEnabledKey] = enabled }
     }
 
-    suspend fun saveGeminiApiKey(apiKey: String) {
-        context.dataStore.edit { preferences -> preferences[geminiApiKey] = apiKey.trim() }
-    }
-
     suspend fun clearGeminiApiKey() {
         context.dataStore.edit { preferences -> preferences.remove(geminiApiKey) }
     }

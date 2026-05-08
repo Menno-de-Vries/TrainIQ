@@ -33,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -53,9 +54,11 @@ import com.trainiq.core.datastore.AiPreferences
 import com.trainiq.core.datastore.WorkoutFeedbackPreferences
 import com.trainiq.core.health.HealthConnectRefreshOnResume
 import com.trainiq.core.health.rememberHealthConnectPermissionRequester
+import com.trainiq.core.ui.AnimatedScreenState
 import com.trainiq.core.ui.MessageCard
 import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.SectionCard
+import com.trainiq.core.ui.ShimmerCardPlaceholder
 import com.trainiq.core.ui.bringIntoViewOnFocus
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.datastore.UserPreferencesRepository
@@ -83,6 +86,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 sealed interface SettingsUiState {
@@ -120,8 +124,13 @@ class SettingsViewModel @Inject constructor(
 ) : ViewModel() {
     private val themeMode: StateFlow<ThemeMode> = preferencesRepository.themeMode
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ThemeMode.SYSTEM)
-    private val aiPreferences: StateFlow<AiPreferences> = preferencesRepository.aiPreferences
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AiPreferences(false, ""))
+    private val apiKeyRefreshes = MutableStateFlow(0)
+    private val aiPreferences: StateFlow<AiPreferences> = combine(
+        preferencesRepository.aiPreferences,
+        apiKeyRefreshes,
+    ) { legacySettings, _ ->
+        aiUsageGate.resolveSettings(legacySettings)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AiPreferences(false, ""))
     private val workoutFeedbackPreferences: StateFlow<WorkoutFeedbackPreferences> = preferencesRepository.workoutFeedbackPreferences
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WorkoutFeedbackPreferences())
     private val profile: StateFlow<UserProfile?> = observeUserProfileUseCase()
@@ -169,6 +178,7 @@ class SettingsViewModel @Inject constructor(
     fun setAiEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setAiEnabled(enabled)
+            apiKeyRefreshes.update { it + 1 }
             _message.value = if (enabled) {
                 "AI-functies ingeschakeld. Verzoeken starten alleen na jouw expliciete actie."
             } else {
@@ -184,11 +194,11 @@ class SettingsViewModel @Inject constructor(
                 return@launch
             }
             val encrypted = aiUsageGate.saveApiKey(apiKey)
-            preferencesRepository.saveGeminiApiKey(apiKey)
             _message.value = if (encrypted) {
+                apiKeyRefreshes.update { it + 1 }
                 "Gemini API-sleutel versleuteld opgeslagen."
             } else {
-                "Gemini API-sleutel opgeslagen met veilige fallback."
+                "Gemini API-sleutel opslaan mislukt. Bestaande sleutel blijft behouden."
             }
         }
     }
@@ -198,6 +208,7 @@ class SettingsViewModel @Inject constructor(
             aiUsageGate.clearEncryptedApiKey()
             preferencesRepository.clearGeminiApiKey()
             preferencesRepository.setAiEnabled(false)
+            apiKeyRefreshes.update { it + 1 }
             _message.value = "Gemini API-sleutel verwijderd en AI uitgeschakeld."
         }
     }
@@ -324,44 +335,46 @@ fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
     val requestHealthPermission = rememberHealthConnectPermissionRequester(viewModel::refreshHealthConnectStatus)
     HealthConnectRefreshOnResume(viewModel::refreshHealthConnectStatus, refreshOnFirstResume = false)
 
-    when (val state = uiState) {
-        SettingsUiState.Loading -> SettingsLoadingScreen()
-        is SettingsUiState.Error -> SettingsErrorScreen(state.message)
-        is SettingsUiState.Success -> {
-            SettingsScreen(
-                themeMode = state.themeMode,
-                aiPreferences = state.aiPreferences,
-                workoutFeedbackPreferences = state.workoutFeedbackPreferences,
-                maskedApiKey = state.maskedApiKey,
-                profile = state.profile,
-                healthStatus = state.healthStatus,
-                message = state.message,
-                onThemeSelected = viewModel::setThemeMode,
-                onToggleAi = viewModel::setAiEnabled,
-                onToggleRestTimerSound = viewModel::setRestTimerSoundEnabled,
-                onToggleWorkoutHaptics = viewModel::setWorkoutHapticsEnabled,
-                onSaveApiKey = viewModel::saveGeminiKey,
-                onClearApiKey = viewModel::clearGeminiKey,
-                onSaveProfile = viewModel::saveProfile,
-                onResetProfile = viewModel::resetProfile,
-                onClearAllData = viewModel::clearAllData,
-                onDismissMessage = viewModel::clearMessage,
-                onRequestHealthPermission = requestHealthPermission,
-                onRefreshHealth = viewModel::refreshHealthConnectStatus,
-                onOpenHealthSettings = {
-                    val intent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
-                    if (!context.startActivityIfResolvable(intent)) {
-                        viewModel.refreshHealthConnectStatus()
-                    }
-                },
-                onOpenHealthInstall = {
-                    val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata"))
-                    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata"))
-                    if (!context.startActivityIfResolvable(marketIntent) && !context.startActivityIfResolvable(webIntent)) {
-                        viewModel.refreshHealthConnectStatus()
-                    }
-                },
-            )
+    AnimatedScreenState(targetState = uiState) { animatedState ->
+        when (val state = animatedState as SettingsUiState) {
+            SettingsUiState.Loading -> SettingsLoadingScreen()
+            is SettingsUiState.Error -> SettingsErrorScreen(state.message)
+            is SettingsUiState.Success -> {
+                SettingsScreen(
+                    themeMode = state.themeMode,
+                    aiPreferences = state.aiPreferences,
+                    workoutFeedbackPreferences = state.workoutFeedbackPreferences,
+                    maskedApiKey = state.maskedApiKey,
+                    profile = state.profile,
+                    healthStatus = state.healthStatus,
+                    message = state.message,
+                    onThemeSelected = viewModel::setThemeMode,
+                    onToggleAi = viewModel::setAiEnabled,
+                    onToggleRestTimerSound = viewModel::setRestTimerSoundEnabled,
+                    onToggleWorkoutHaptics = viewModel::setWorkoutHapticsEnabled,
+                    onSaveApiKey = viewModel::saveGeminiKey,
+                    onClearApiKey = viewModel::clearGeminiKey,
+                    onSaveProfile = viewModel::saveProfile,
+                    onResetProfile = viewModel::resetProfile,
+                    onClearAllData = viewModel::clearAllData,
+                    onDismissMessage = viewModel::clearMessage,
+                    onRequestHealthPermission = requestHealthPermission,
+                    onRefreshHealth = viewModel::refreshHealthConnectStatus,
+                    onOpenHealthSettings = {
+                        val intent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
+                        if (!context.startActivityIfResolvable(intent)) {
+                            viewModel.refreshHealthConnectStatus()
+                        }
+                    },
+                    onOpenHealthInstall = {
+                        val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata"))
+                        val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata"))
+                        if (!context.startActivityIfResolvable(marketIntent) && !context.startActivityIfResolvable(webIntent)) {
+                            viewModel.refreshHealthConnectStatus()
+                        }
+                    },
+                )
+            }
         }
     }
 }
@@ -387,7 +400,9 @@ private fun SettingsLoadingScreen() {
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.large),
     ) {
         item { ScreenHeader(title = "Instellingen", subtitle = "Profiel, Health Connect en voorkeuren") }
-        item { SectionCard(title = "Laden") { Text("Instellingen worden geladen.") } }
+        item { ShimmerCardPlaceholder(lineCount = 4) }
+        item { ShimmerCardPlaceholder(lineCount = 3) }
+        item { ShimmerCardPlaceholder(lineCount = 5) }
     }
 }
 
@@ -434,19 +449,19 @@ fun SettingsScreen(
     onOpenHealthSettings: () -> Unit,
     onOpenHealthInstall: () -> Unit,
 ) {
-    var apiKey by remember { mutableStateOf("") }
-    var name by remember { mutableStateOf(profile?.name.orEmpty()) }
-    var age by remember { mutableStateOf(profile?.age?.toString() ?: "30") }
-    var sex by remember { mutableStateOf(profile?.sex ?: BiologicalSex.MALE) }
-    var height by remember { mutableStateOf(profile?.height?.toString().orEmpty()) }
-    var weight by remember { mutableStateOf(profile?.weight?.toString().orEmpty()) }
-    var bodyFat by remember { mutableStateOf(profile?.bodyFat?.toString().orEmpty()) }
-    var activityLevel by remember {
+    var apiKey by rememberSaveable { mutableStateOf("") }
+    var name by rememberSaveable { mutableStateOf(profile?.name.orEmpty()) }
+    var age by rememberSaveable { mutableStateOf(profile?.age?.toString() ?: "30") }
+    var sex by rememberSaveable { mutableStateOf(profile?.sex ?: BiologicalSex.MALE) }
+    var height by rememberSaveable { mutableStateOf(profile?.height?.toString().orEmpty()) }
+    var weight by rememberSaveable { mutableStateOf(profile?.weight?.toString().orEmpty()) }
+    var bodyFat by rememberSaveable { mutableStateOf(profile?.bodyFat?.toString().orEmpty()) }
+    var activityLevel by rememberSaveable {
         mutableStateOf(profile?.activityLevel?.takeIf { it in ProfileActivityLevels } ?: DefaultProfileActivityLevel)
     }
-    var goal by remember { mutableStateOf(profile?.goal.orEmpty()) }
+    var goal by rememberSaveable { mutableStateOf(profile?.goal.orEmpty()) }
     var profileInputError by remember { mutableStateOf<ProfileInputValidationError?>(null) }
-    var pendingDestructiveAction by remember { mutableStateOf<PendingDestructiveSettingsAction?>(null) }
+    var pendingDestructiveAction by rememberSaveable { mutableStateOf<PendingDestructiveSettingsAction?>(null) }
 
     LaunchedEffect(profile) {
         name = profile?.name.orEmpty()

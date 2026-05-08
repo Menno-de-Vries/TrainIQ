@@ -60,6 +60,15 @@ class GeminiKeyMigrationTest {
         assertEquals("new-key", store.readKey())
     }
 
+    @Test
+    fun failedSaveDoesNotOverwriteExistingEncryptedKey() = runTest {
+        val store = FakeGeminiEncryptedKeyStore(initialKey = "existing-key", writeSucceeds = false)
+        val migration = GeminiKeyMigration(store)
+
+        assertFalse(migration.saveKey("new-key"))
+        assertEquals("existing-key", store.readKey())
+    }
+
     private class FakeGeminiEncryptedKeyStore(
         initialKey: String? = null,
         private val writeSucceeds: Boolean = true,

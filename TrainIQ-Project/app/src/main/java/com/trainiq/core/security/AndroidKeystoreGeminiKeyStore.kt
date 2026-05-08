@@ -39,8 +39,7 @@ class AndroidKeystoreGeminiKeyStore @Inject constructor(
             storage.edit()
                 .putString(IvKey, cipher.iv.encodeBase64())
                 .putString(CiphertextKey, ciphertext.encodeBase64())
-                .apply()
-            true
+                .commit()
         }.getOrDefault(false)
     }
 
@@ -48,7 +47,8 @@ class AndroidKeystoreGeminiKeyStore @Inject constructor(
         storage.edit()
             .remove(IvKey)
             .remove(CiphertextKey)
-            .apply()
+            .commit()
+        Unit
     }
 
     private fun getOrCreateSecretKey(): SecretKey {

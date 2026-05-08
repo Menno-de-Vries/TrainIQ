@@ -57,6 +57,7 @@ import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -437,13 +438,13 @@ private fun TrainIqNavHost(
         }
         composable<Nutrition> { entry ->
             val pendingBarcode by entry.savedStateHandle
-                .getStateFlow("scanned_barcode", "")
+                .getStateFlow(BarcodeScanResultKey, "")
                 .collectAsStateWithLifecycle()
             NutritionRoute(
                 onOpenAiScanner = { contextHint -> navController.navigate(CameraScanner(contextHint)) },
                 onOpenBarcodeScanner = { navController.navigate(CameraScanner(scannerMode = ScannerMode.BARCODE)) },
                 pendingBarcode = pendingBarcode.takeIf { it.isNotEmpty() },
-                onBarcodeClear = { entry.savedStateHandle.remove<String>("scanned_barcode") },
+                onBarcodeClear = { entry.clearBarcodeScanResult() },
             )
         }
         composable<Progress> { ProgressRoute() }
@@ -456,7 +457,7 @@ private fun TrainIqNavHost(
                 scannerMode = route.scannerMode,
                 onBack = { navController.popBackStack() },
                 onBarcodeScanned = { barcode ->
-                    navController.previousBackStackEntry?.savedStateHandle?.set("scanned_barcode", barcode)
+                    navController.previousBackStackEntry?.setBarcodeScanResult(barcode)
                     navController.popBackStack()
                 },
             )
@@ -516,4 +517,14 @@ private fun TrainIqNavHost(
             )
         }
     }
+}
+
+internal const val BarcodeScanResultKey = "scanned_barcode"
+
+internal fun NavBackStackEntry.setBarcodeScanResult(barcode: String) {
+    savedStateHandle[BarcodeScanResultKey] = barcode
+}
+
+internal fun NavBackStackEntry.clearBarcodeScanResult() {
+    savedStateHandle.remove<String>(BarcodeScanResultKey)
 }
