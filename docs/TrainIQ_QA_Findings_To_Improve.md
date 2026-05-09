@@ -553,7 +553,7 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
 - finding_id: QA-2026-05-10-020
 - priority: P1
 - area: tests, release
-- status: open
+- status: done
 - owner suggestion: Android/release owner
 - current evidence with file references:
   - `TrainIQ-Project/app/build.gradle.kts:162` through `TrainIQ-Project/app/build.gradle.kts:255` define Room migration-chain marker generation tasks.
@@ -566,6 +566,15 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
 - concrete recommended fix: Wire `generateCiRoomMigrationChainVerificationMarkers` or release-specific marker generation into CI/release jobs, or document the marker as diagnostic-only and update the blueprint/release gates accordingly.
 - regression risk: Medium. CI runtime can increase substantially because marker generation depends on connected tests.
 - minimal verification command/check: CI job or local equivalent runs `./gradlew.bat :app:generateReleaseRoomMigrationChainVerificationMarker --console=plain --no-configuration-cache` before release artifact generation.
+- files changed:
+  - `.github/workflows/android.yml`
+- verification evidence:
+  - 2026-05-10 polish: `.github/workflows/android.yml` now adds a `room-migration-marker` job that runs `:app:generateCiRoomMigrationChainVerificationMarkers` inside an Android emulator runner.
+  - 2026-05-10 polish: `signed-release` now depends on both `validate` and `room-migration-marker`, so signed release artifacts cannot be built by the workflow unless the Room migration marker gate passes.
+  - 2026-05-10 PASS: `./gradlew.bat :app:generateCiRoomMigrationChainVerificationMarkers --dry-run --console=plain --no-configuration-cache`.
+  - 2026-05-10 PASS: `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
+- external sources used: None. Local Gradle task wiring and workflow scope were sufficient.
+- remaining risk: The first GitHub-hosted emulator run can still expose infrastructure issues, but the release workflow is now gated on marker generation instead of treating marker evidence as optional.
 
 ### QA-2026-05-10-021
 

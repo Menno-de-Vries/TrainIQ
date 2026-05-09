@@ -7,7 +7,7 @@ Updated date: 2026-05-10
 - Previous alignment: 93%
 - Current estimated alignment: 94%
 - Delta: +1 percentage point
-- Reason: a small 2026-05-10 polish batch removed shared header and routine set label ellipsis/no-wrap constraints and added regression coverage, while AI routine compact presentation proof, manual accessibility evidence, performance owner gates, and persistence work remain open.
+- Reason: 2026-05-10 polish removed shared header and routine set label ellipsis/no-wrap constraints, added regression coverage, and wired Room migration-marker generation into the signed-release CI gate. AI routine compact presentation proof, manual accessibility evidence, performance owner gates, and persistence work remain open, so the rounded alignment score stays at 94%.
 
 ## Completed Findings
 
@@ -17,6 +17,7 @@ Updated date: 2026-05-10
 - QA-2026-05-09-010 (P2): Health Connect background sync now avoids immediate retry loops for permanent permission/configuration/provider unsupported exceptions while keeping transient failures retryable.
 - QA-2026-05-09-013 (P2): Scanner now handles no camera feature and CameraX bind failure with user-facing manual meal/barcode fallback actions.
 - QA-2026-05-09-007 (P1): AI calls now use named feature timeout budgets, cancellation propagation, local fallback handling, central 429 retry/backoff, feature-scoped 429 throttles, and user-message mapping for timeout/rate-limit/throttle cases.
+- QA-2026-05-10-020 (P1): CI now includes a `room-migration-marker` emulator job that runs `:app:generateCiRoomMigrationChainVerificationMarkers`, and the signed-release job depends on it before building release artifacts.
 
 ## Partially Completed Findings
 
@@ -39,7 +40,6 @@ Updated date: 2026-05-10
   - QA-2026-05-10-016: AI routine dialog compact behavior still needs proof or redesign after shared header and routine set label wrapping fixes.
   - QA-2026-05-10-017: physical-device performance thresholds/evidence remain blocked; debug emulator launch timed out.
   - QA-2026-05-10-018: release/privacy/security owner gates remain open, including background Health Connect and production AI mode.
-  - QA-2026-05-10-020: Room migration-marker tasks exist but are not wired into CI/release artifact gating.
 - P2:
   - QA-2026-05-09-011: compact/font-scale active workout and runtime AI routine QA still partial.
   - QA-2026-05-09-012: broader accessibility automation remains partial.
@@ -56,10 +56,13 @@ Updated date: 2026-05-10
   - Compose accessibility/scalable content: https://developer.android.com/develop/ui/compose/accessibility and https://developer.android.com/develop/ui/compose/accessibility/scalable-content. Supports large-font/reflow and manual assistive-tech findings.
   - Gemini thinking and structured output: https://ai.google.dev/gemini-api/docs/thinking and https://ai.google.dev/gemini-api/docs/structured-output. Supports the existing Gemini 2.5 Flash structured JSON/thinking-budget target.
 - No new webresearch was needed for the 2026-05-10 shared header/routine label wrapping polish; existing finding evidence and the previously recorded Compose scalable-content source were sufficient.
+- No new webresearch was needed for the 2026-05-10 CI migration-marker polish; local Gradle task wiring and workflow scope were sufficient.
 
 ## Regression Checks Run
 
 - 2026-05-10 cycle verify-only PASS: `./gradlew.bat :app:assembleDebug :app:test :app:lintDebug --console=plain --no-configuration-cache`
+- 2026-05-10 migration-marker polish PASS: `./gradlew.bat :app:generateCiRoomMigrationChainVerificationMarkers --dry-run --console=plain --no-configuration-cache`.
+- 2026-05-10 migration-marker polish PASS: `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
 - 2026-05-10 PASS: `./gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:compileDebugAndroidTestKotlin :app:checkReleaseSigningReadiness :macrobenchmark:compileProfileableJavaWithJavac --console=plain --no-configuration-cache`
 - 2026-05-10 baseline PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --console=plain --no-configuration-cache`
 - 2026-05-10 RED: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest.critical headers and set labels allow wrapping at large font scale" --console=plain --no-configuration-cache` failed while the new guard detected the old ellipsis/no-wrap constraints.
@@ -190,7 +193,7 @@ Updated date: 2026-05-10
 - Owner/legal/release signoff is still required for Play/Data Safety, privacy, signing, production AI boundary, and manual assistive-tech certification.
 - Physical-device performance thresholds and benchmark evidence are not available from this implementation pass.
 - The remaining P0 persistence rewrite remains high risk and should continue one hot path at a time with repository/process-restart tests.
-- Room migration-marker generation is not yet a CI/release artifact gate.
+- Room migration-marker generation is now wired into the GitHub signed-release gate; the first hosted emulator run still needs CI evidence.
 - Health Connect provider-missing, partial-permission, revoked-permission, and background-read flows need runtime evidence.
 
 ## Next Safest Actions
@@ -198,5 +201,5 @@ Updated date: 2026-05-10
 1. Continue QA-2026-05-09-001/QA-2026-05-10-014 by moving active workout finish/edit or meal save/delete to targeted Room writes with process-restart correctness tests.
 2. Investigate the 2026-05-10 `am start -W` timeout with profileable/physical-device macrobenchmark evidence, then set owner-approved thresholds.
 3. Run manual TalkBack/Switch Access signoff and compact/font-scale QA for active workout, scanner states, Health Connect rationale, AI routine generation, and Settings destructive actions.
-4. Wire migration-marker generation into CI/release gating or document an explicit owner-approved exception.
-5. Close Play/Data Safety, background Health Connect, production AI boundary, and versioning owner decisions before release upload.
+4. Close Play/Data Safety, background Health Connect, production AI boundary, and versioning owner decisions before release upload.
+5. Watch the first GitHub-hosted `room-migration-marker` emulator run and tune CI infrastructure only if it fails for environment reasons.
