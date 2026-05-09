@@ -81,6 +81,8 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -90,6 +92,7 @@ import com.trainiq.core.theme.radii
 import com.trainiq.core.theme.spacing
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.domain.model.ChartPoint
+import java.util.Locale
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -431,16 +434,12 @@ fun AppScreenHeader(
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.ExtraBold,
                 color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
             subtitle?.let {
                 Text(
                     text = it,
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.trainIqColors.mutedText,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -769,7 +768,11 @@ fun AppLineChart(
     accent: Color = MaterialTheme.colorScheme.primary,
 ) {
     val grid = MaterialTheme.trainIqColors.cardBorder
-    Canvas(modifier = modifier) {
+    Canvas(
+        modifier = modifier.semantics {
+            contentDescription = lineChartContentDescription(points)
+        },
+    ) {
         val maxValue = points.maxOfOrNull { it.value.toFloat() } ?: 1f
         val minValue = points.minOfOrNull { it.value.toFloat() } ?: 0f
         val range = (maxValue - minValue).takeIf { it > 0f } ?: 1f
@@ -793,6 +796,29 @@ fun AppLineChart(
         }
     }
 }
+
+internal fun lineChartContentDescription(
+    points: List<ChartPoint>,
+    chartName: String = "Grafiek",
+    valueSuffix: String = "",
+): String {
+    if (points.isEmpty()) return "$chartName zonder data."
+    val first = points.first()
+    val latest = points.last()
+    val minValue = points.minOf { it.value }
+    val maxValue = points.maxOf { it.value }
+    val trend = when {
+        latest.value > first.value -> "stijgend"
+        latest.value < first.value -> "dalend"
+        else -> "stabiel"
+    }
+    val suffix = valueSuffix.trim().takeIf { it.isNotBlank() }?.let { " $it" }.orEmpty()
+    return "$chartName met ${points.size} datapunten. Laatste: ${latest.label} ${formatChartValue(latest.value)}$suffix. " +
+        "Bereik: ${formatChartValue(minValue)} tot ${formatChartValue(maxValue)}$suffix. Trend: $trend."
+}
+
+private fun formatChartValue(value: Double): String =
+    if (value % 1.0 == 0.0) value.toInt().toString() else String.format(Locale.ROOT, "%.1f", value)
 
 @Composable
 private fun EmptyMiniChart() {

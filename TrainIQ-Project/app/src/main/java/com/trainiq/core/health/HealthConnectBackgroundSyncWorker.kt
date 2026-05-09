@@ -19,6 +19,7 @@ import java.time.Duration
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 
 @Singleton
 class HealthConnectBackgroundSyncScheduler @Inject constructor(
@@ -64,18 +65,22 @@ class HealthConnectBackgroundSyncWorker(
             applicationContext,
             HealthConnectWorkerEntryPoint::class.java,
         )
-        return runCatching {
-            entryPoint.healthConnectDataSource().getStatus()
-        }.fold(
-            onSuccess = { status ->
-                if (shouldRetryHealthConnectBackgroundSync(status.state)) {
-                    Result.retry()
-                } else {
-                    Result.success()
-                }
-            },
-            onFailure = { Result.retry() },
-        )
+        return try {
+            val status = entryPoint.healthConnectDataSource().getStatus()
+            if (shouldRetryHealthConnectBackgroundSync(status.state)) {
+                Result.retry()
+            } else {
+                Result.success()
+            }
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (throwable: Throwable) {
+            if (shouldRetryHealthConnectBackgroundSyncFailure(throwable)) {
+                Result.retry()
+            } else {
+                Result.failure()
+            }
+        }
     }
 }
 
@@ -91,3 +96,12 @@ internal val HealthConnectBackgroundBackoff: Duration = Duration.ofMinutes(30)
 
 internal fun shouldRetryHealthConnectBackgroundSync(state: HealthConnectState): Boolean =
     state == HealthConnectState.ERROR
+
+internal fun shouldRetryHealthConnectBackgroundSyncFailure(throwable: Throwable): Boolean =
+    when (throwable) {
+        is SecurityException,
+        is IllegalArgumentException,
+        is UnsupportedOperationException,
+        -> false
+        else -> true
+    }

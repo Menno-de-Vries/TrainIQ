@@ -403,7 +403,7 @@ fun SettingsRoute(
     }
 }
 
-private enum class PendingDestructiveSettingsAction {
+internal enum class PendingDestructiveSettingsAction {
     CLEAR_API_KEY,
     RESET_PROFILE,
     CLEAR_ALL_DATA,
@@ -816,22 +816,10 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { pendingDestructiveAction = null },
             title = {
-                Text(
-                    when (action) {
-                        PendingDestructiveSettingsAction.CLEAR_API_KEY -> "API-sleutel verwijderen?"
-                        PendingDestructiveSettingsAction.RESET_PROFILE -> "Profiel resetten?"
-                        PendingDestructiveSettingsAction.CLEAR_ALL_DATA -> "Alle lokale appdata wissen?"
-                    },
-                )
+                Text(destructiveSettingsActionTitle(action))
             },
             text = {
-                Text(
-                    when (action) {
-                        PendingDestructiveSettingsAction.CLEAR_API_KEY -> "Je Gemini API-sleutel wordt verwijderd en AI wordt uitgeschakeld. Deze actie kan niet automatisch ongedaan worden gemaakt."
-                        PendingDestructiveSettingsAction.RESET_PROFILE -> "Je profiel en dashboarddoelen worden verwijderd. Trainingen en voeding blijven staan. Deze actie kan niet automatisch ongedaan worden gemaakt."
-                        PendingDestructiveSettingsAction.CLEAR_ALL_DATA -> "TrainIQ wist lokale trainingen, voeding, profiel, AI-sleutel, voorkeuren en Health Connect-cache op dit apparaat. Health Connect-permissies zelf beheer je in Android. Deze actie kan niet automatisch ongedaan worden gemaakt."
-                    },
-                )
+                Text(destructiveSettingsActionBody(action))
             },
             confirmButton = {
                 TextButton(
@@ -851,6 +839,23 @@ fun SettingsScreen(
         )
     }
 }
+
+internal fun destructiveSettingsActionTitle(action: PendingDestructiveSettingsAction): String =
+    when (action) {
+        PendingDestructiveSettingsAction.CLEAR_API_KEY -> "API-sleutel verwijderen?"
+        PendingDestructiveSettingsAction.RESET_PROFILE -> "Profiel resetten?"
+        PendingDestructiveSettingsAction.CLEAR_ALL_DATA -> "Alle lokale appdata wissen?"
+    }
+
+internal fun destructiveSettingsActionBody(action: PendingDestructiveSettingsAction): String =
+    when (action) {
+        PendingDestructiveSettingsAction.CLEAR_API_KEY ->
+            "Je Gemini API-sleutel wordt verwijderd en AI wordt uitgeschakeld. Deze actie kan niet automatisch ongedaan worden gemaakt."
+        PendingDestructiveSettingsAction.RESET_PROFILE ->
+            "Je profiel en dashboarddoelen worden verwijderd. Trainingen en voeding blijven staan. Deze actie kan niet automatisch ongedaan worden gemaakt."
+        PendingDestructiveSettingsAction.CLEAR_ALL_DATA ->
+            "TrainIQ wist lokale trainingen, voeding, profiel, AI-sleutel, voorkeuren en Health Connect-cache op dit apparaat. Health Connect-permissies zelf beheer je in Android. Deze actie kan niet automatisch ongedaan worden gemaakt."
+    }
 
 @Composable
 private fun FeedbackToggleRow(

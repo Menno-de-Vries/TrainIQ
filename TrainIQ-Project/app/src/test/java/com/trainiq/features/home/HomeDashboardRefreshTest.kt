@@ -1,5 +1,6 @@
 package com.trainiq.features.home
 
+import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertFalse
@@ -8,6 +9,19 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 class HomeDashboardRefreshTest {
+    @Test
+    fun homeViewModelDoesNotOwnPeriodicRefreshLoop() {
+        val source = File("src/main/java/com/trainiq/features/home/HomeScreen.kt").readText()
+        val viewModelBody = source.substringAfter("class HomeViewModel @Inject constructor(")
+            .substringBefore("internal class HomeRefreshGate")
+
+        assertFalse(
+            "Home periodic refresh must be lifecycle-scoped from HomeRoute, not retained forever in HomeViewModel.",
+            viewModelBody.contains("while (true)") &&
+                viewModelBody.contains("refreshDashboardDataUseCase()"),
+        )
+    }
+
     @Test
     fun homeRefreshGate_whenRefreshIsInFlight_rejectsDuplicateStart() {
         val gate = HomeRefreshGate()

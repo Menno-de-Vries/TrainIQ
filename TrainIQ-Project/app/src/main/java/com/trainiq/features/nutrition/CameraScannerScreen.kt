@@ -50,6 +50,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -117,6 +119,27 @@ sealed interface CameraScannerUiState {
 data class CameraUiContent(
     val scannerState: CameraScannerUiState,
 )
+
+internal data class CameraScannerRestorableState(
+    val permissionDenied: Boolean = false,
+    val cameraError: String? = null,
+) {
+    companion object {
+        val Saver: Saver<CameraScannerRestorableState, List<Any?>> = Saver(
+            save = { saveCameraScannerRestorableState(it) },
+            restore = ::restoreCameraScannerRestorableState,
+        )
+    }
+}
+
+internal fun saveCameraScannerRestorableState(state: CameraScannerRestorableState): List<Any?> =
+    listOf(state.permissionDenied, state.cameraError)
+
+internal fun restoreCameraScannerRestorableState(saved: List<Any?>): CameraScannerRestorableState =
+    CameraScannerRestorableState(
+        permissionDenied = saved.getOrNull(0) as? Boolean ?: false,
+        cameraError = saved.getOrNull(1) as? String,
+    )
 
 internal fun cameraScreenUiState(scannerState: CameraScannerUiState): ScreenUiState<CameraUiContent> =
     ScreenUiState.Success(CameraUiContent(scannerState))
@@ -332,20 +355,22 @@ private fun CameraScannerScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val haptics = LocalHapticFeedback.current
-    var hasPermission by remember {
+    val hasCameraFeature = remember(context) { isCameraFeatureAvailable(context.packageManager) }
+    var hasPermission by rememberSaveable {
         mutableStateOf(
             isCameraPermissionGranted(
                 ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA),
             ),
         )
     }
-    var permissionDenied by remember { mutableStateOf(false) }
-    var cameraError by remember { mutableStateOf<String?>(null) }
+    var restorableState by rememberSaveable(stateSaver = CameraScannerRestorableState.Saver) {
+        mutableStateOf(CameraScannerRestorableState())
+    }
     var isCapturing by remember { mutableStateOf(false) }
     val hasDetectedBarcode = remember { AtomicBoolean(false) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         hasPermission = it
-        permissionDenied = !it
+        restorableState = restorableState.copy(permissionDenied = !it)
     }
 
     val controller = remember(context, scannerMode) {
@@ -358,11 +383,17 @@ private fun CameraScannerScreen(
         }
     }
 
-    DisposableEffect(controller, lifecycleOwner, hasPermission, scannerMode) {
+    DisposableEffect(controller, lifecycleOwner, hasPermission, hasCameraFeature, scannerMode) {
         var scanner: com.google.mlkit.vision.barcode.BarcodeScanner? = null
-        if (hasPermission) {
-            controller.bindToLifecycle(lifecycleOwner)
-            if (scannerMode == ScannerMode.BARCODE) {
+        if (hasPermission && hasCameraFeature) {
+            val bound = runCatching { controller.bindToLifecycle(lifecycleOwner) }
+                .onFailure {
+                    restorableState = restorableState.copy(
+                        cameraError = scannerCameraBindFailureMessage(scannerMode),
+                    )
+                }
+                .isSuccess
+            if (bound && scannerMode == ScannerMode.BARCODE) {
                 val barcodeScanner = BarcodeScanning.getClient(
                     BarcodeScannerOptions.Builder()
                         .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
@@ -387,6 +418,11 @@ private fun CameraScannerScreen(
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val showSheet = hasPermission && scannerMode == ScannerMode.AI_MEAL && uiState !is CameraScannerUiState.Preview
+    val showCameraFallback = shouldShowCameraFallback(
+        hasPermission = hasPermission,
+        hasCameraFeature = hasCameraFeature,
+        cameraError = restorableState.cameraError,
+    )
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -394,7 +430,7 @@ private fun CameraScannerScreen(
     ) {
         if (!hasPermission) {
             PermissionGate(
-                permissionDenied = permissionDenied,
+                permissionDenied = restorableState.permissionDenied,
                 onGrant = { permissionLauncher.launch(Manifest.permission.CAMERA) },
                 onOpenSettings = {
                     context.startActivity(
@@ -408,22 +444,25 @@ private fun CameraScannerScreen(
             )
         } else {
             Box(modifier = Modifier.fillMaxSize()) {
-                AndroidView(
-                    factory = { previewContext ->
-                        PreviewView(previewContext).apply {
-                            this.controller = controller
-                            scaleType = PreviewView.ScaleType.FILL_CENTER
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                )
+                if (!showCameraFallback) {
+                    AndroidView(
+                        factory = { previewContext ->
+                            PreviewView(previewContext).apply {
+                                this.controller = controller
+                                scaleType = PreviewView.ScaleType.FILL_CENTER
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
 
-                // Beam: always in BARCODE mode, only during Processing in AI mode
-                val showBeam = scannerMode == ScannerMode.BARCODE || uiState is CameraScannerUiState.Processing
-                if (showBeam) FullscreenScanningBeam(modifier = Modifier.fillMaxSize())
+                    // Beam: always in BARCODE mode, only during Processing in AI mode
+                    val showBeam = scannerMode == ScannerMode.BARCODE || uiState is CameraScannerUiState.Processing
+                    if (showBeam) FullscreenScanningBeam(modifier = Modifier.fillMaxSize())
+                }
 
                 // Top hint card
                 val topHint = when {
+                    showCameraFallback -> scannerCameraUnavailableMessage(scannerMode)
                     scannerMode == ScannerMode.BARCODE -> "Richt de camera op de barcode van het product."
                     uiState is CameraScannerUiState.Preview -> uiState.contextHint.ifBlank {
                         "Zet het volledige bord of de verpakking duidelijk in beeld. TrainIQ maakt er bewerkbare producten en macro's van."
@@ -436,7 +475,8 @@ private fun CameraScannerScreen(
                 }
                 val topTitle = if (scannerMode == ScannerMode.BARCODE) "Barcodescanner" else "Camerascanner"
                 val helperMessage = when {
-                    scannerMode == ScannerMode.AI_MEAL && uiState is CameraScannerUiState.Preview -> cameraError ?: uiState.message
+                    showCameraFallback -> restorableState.cameraError
+                    scannerMode == ScannerMode.AI_MEAL && uiState is CameraScannerUiState.Preview -> restorableState.cameraError ?: uiState.message
                     else -> null
                 }
 
@@ -481,7 +521,9 @@ private fun CameraScannerScreen(
                                 .padding(MaterialTheme.spacing.large),
                             horizontalArrangement = Arrangement.Center,
                         ) {
-                            OutlinedButton(onClick = onBack) { Text("Annuleren") }
+                            OutlinedButton(onClick = onBack) {
+                                Text(if (showCameraFallback) scannerManualFallbackLabel(scannerMode) else "Annuleren")
+                            }
                         }
                     }
                     uiState is CameraScannerUiState.Preview -> {
@@ -494,11 +536,13 @@ private fun CameraScannerScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            OutlinedButton(onClick = onBack) { Text("Terug") }
+                            OutlinedButton(onClick = onBack) {
+                                Text(if (showCameraFallback) scannerManualFallbackLabel(scannerMode) else "Terug")
+                            }
                             Button(
                                 onClick = {
                                     if (isCapturing) return@Button
-                                    cameraError = null
+                                    restorableState = restorableState.copy(cameraError = null)
                                     isCapturing = true
                                     takeScannerPhoto(
                                         context = context,
@@ -509,11 +553,11 @@ private fun CameraScannerScreen(
                                         },
                                         onError = {
                                             isCapturing = false
-                                            cameraError = it
+                                            restorableState = restorableState.copy(cameraError = it)
                                         },
                                     )
                                 },
-                                enabled = uiState.isEnabled && !isCapturing,
+                                enabled = uiState.isEnabled && !isCapturing && !showCameraFallback,
                             ) { Text(if (isCapturing) "Foto maken..." else "Foto maken") }
                         }
                     }
@@ -587,19 +631,47 @@ private fun EmptySheetContent(
             .windowInsetsPadding(WindowInsets.navigationBars),
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
     ) {
-        Text("Geen producten gevonden", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+        Text(scannerEmptyTitle(), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
         Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
-            Button(onClick = onManual, modifier = Modifier.fillMaxWidth()) { Text("Handmatig toevoegen") }
-            OutlinedButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("Opnieuw proberen") }
+            Button(onClick = onManual, modifier = Modifier.fillMaxWidth()) { Text(scannerManualAddLabel()) }
+            OutlinedButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text(scannerRetryLabel()) }
         }
     }
 }
 
 internal fun shouldAutoRequestCameraPermissionOnEntry(): Boolean = false
+
+internal fun isCameraFeatureAvailable(packageManager: PackageManager): Boolean =
+    packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) ||
+        packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA)
+
+internal fun shouldShowCameraFallback(
+    hasPermission: Boolean,
+    hasCameraFeature: Boolean,
+    cameraError: String?,
+): Boolean = hasPermission && (!hasCameraFeature || cameraError != null)
+
+internal fun scannerCameraUnavailableMessage(scannerMode: ScannerMode): String =
+    when (scannerMode) {
+        ScannerMode.AI_MEAL -> "Camera niet beschikbaar. Je kunt deze maaltijd handmatig toevoegen."
+        ScannerMode.BARCODE -> "Camera niet beschikbaar. Voer de barcode handmatig in bij het product."
+    }
+
+internal fun scannerCameraBindFailureMessage(scannerMode: ScannerMode): String =
+    when (scannerMode) {
+        ScannerMode.AI_MEAL -> "Camera kan nu niet starten. Voeg de maaltijd handmatig toe of probeer later opnieuw."
+        ScannerMode.BARCODE -> "Camera kan nu niet starten. Voer de code handmatig in of probeer later opnieuw."
+    }
+
+internal fun scannerManualFallbackLabel(scannerMode: ScannerMode): String =
+    when (scannerMode) {
+        ScannerMode.AI_MEAL -> "Handmatig toevoegen"
+        ScannerMode.BARCODE -> "Code handmatig invoeren"
+    }
 
 internal enum class ScannerSheetErrorAction { Dismiss, ScanAgain }
 
@@ -627,24 +699,33 @@ private fun PermissionGate(
             ) {
                 Text("Cameratoegang nodig", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                 Text(
-                    if (permissionDenied) {
-                        "TrainIQ heeft cameratoegang nodig om maaltijden of barcodes te scannen. Als Android de vraag niet meer toont, open dan de app-instellingen."
-                    } else {
-                        "Geef cameratoegang om de scanner te gebruiken."
-                    },
+                    scannerPermissionGateMessage(permissionDenied),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-                    Button(onClick = onGrant, modifier = Modifier.fillMaxWidth()) { Text("Toegang geven") }
+                    Button(onClick = onGrant, modifier = Modifier.fillMaxWidth()) { Text(scannerPermissionGrantLabel()) }
                     if (permissionDenied) {
-                        OutlinedButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) { Text("Instellingen openen") }
+                        OutlinedButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) { Text(scannerPermissionSettingsLabel()) }
                     }
-                    OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Terug") }
+                    OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text(scannerPermissionBackLabel()) }
                 }
             }
         }
     }
 }
+
+internal fun scannerPermissionGateMessage(permissionDenied: Boolean): String =
+    if (permissionDenied) {
+        "TrainIQ heeft cameratoegang nodig om maaltijden of barcodes te scannen. Als Android de vraag niet meer toont, open dan de app-instellingen."
+    } else {
+        "Geef cameratoegang om de scanner te gebruiken."
+    }
+
+internal fun scannerPermissionGrantLabel(): String = "Toegang geven"
+
+internal fun scannerPermissionSettingsLabel(): String = "Instellingen openen"
+
+internal fun scannerPermissionBackLabel(): String = "Terug"
 
 @Composable
 private fun ProcessingSheetContent() {
@@ -655,9 +736,9 @@ private fun ProcessingSheetContent() {
             .windowInsetsPadding(WindowInsets.navigationBars),
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
     ) {
-        Text("Scannen...", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(scannerProcessingTitle(), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text(
-            "Gemini Flash herkent producten, schat porties en berekent macro's.",
+            scannerProcessingMessage(),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -679,7 +760,7 @@ private fun CompletedSheetContent(
             .windowInsetsPadding(WindowInsets.navigationBars),
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
     ) {
-        Text("Scan voltooid", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(scannerCompletedTitle(), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text(
             buildString {
                 append(scannerCompletedMessage(itemCount, suggestedMealType))
@@ -691,8 +772,8 @@ private fun CompletedSheetContent(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
-            Button(onClick = onReviewItems, modifier = Modifier.fillMaxWidth()) { Text("Producten controleren") }
-            OutlinedButton(onClick = onScanAgain, modifier = Modifier.fillMaxWidth()) { Text("Opnieuw scannen") }
+            Button(onClick = onReviewItems, modifier = Modifier.fillMaxWidth()) { Text(scannerReviewProductsLabel()) }
+            OutlinedButton(onClick = onScanAgain, modifier = Modifier.fillMaxWidth()) { Text(scannerScanAgainLabel()) }
         }
     }
 }
@@ -705,6 +786,23 @@ internal fun scannerCompletedMessage(itemCount: Int, suggestedMealType: MealType
         append("$itemCount ${if (itemCount == 1) "product gevonden" else "producten gevonden"}.")
         suggestedMealType?.let { append(" Suggestie: ${it.dutchLabel}.") }
     }
+
+internal fun scannerProcessingTitle(): String = "Scannen..."
+
+internal fun scannerProcessingMessage(): String =
+    "Gemini Flash herkent producten, schat porties en berekent macro's."
+
+internal fun scannerCompletedTitle(): String = "Scan voltooid"
+
+internal fun scannerReviewProductsLabel(): String = "Producten controleren"
+
+internal fun scannerScanAgainLabel(): String = "Opnieuw scannen"
+
+internal fun scannerEmptyTitle(): String = "Geen producten gevonden"
+
+internal fun scannerManualAddLabel(): String = "Handmatig toevoegen"
+
+internal fun scannerRetryLabel(): String = "Opnieuw proberen"
 
 private val MealType.dutchLabel: String
     get() = when (this) {
@@ -736,7 +834,7 @@ private fun ErrorSheetContent(
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
             Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text(retryLabel) }
-            OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Terug") }
+            OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text(scannerPermissionBackLabel()) }
         }
     }
 }

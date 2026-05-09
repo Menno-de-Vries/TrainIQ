@@ -250,11 +250,20 @@ class TrainIqDataCoordinator @Inject constructor(
     }
 
     suspend fun updateActiveWorkoutDraft(exerciseId: Long, draft: ActiveWorkoutSetDraft): ActiveWorkoutSession? =
-        mutateActiveWorkout { active, now ->
-            active.copy(
+        withContext(Dispatchers.IO) {
+            val active = runtimeStore.state.value.activeWorkoutSession ?: return@withContext null
+            val now = System.currentTimeMillis()
+            val updated = active.copy(
                 updatedAt = now,
                 drafts = active.drafts.toMutableMap().apply { put(exerciseId, draft.toStorage()) },
             )
+            runtimeStore.updateActiveWorkoutDraft(
+                sessionId = updated.sessionId,
+                exerciseId = exerciseId,
+                draft = requireNotNull(updated.drafts[exerciseId]),
+                updatedAt = updated.updatedAt,
+            )
+            updated.toDomain()
         }
 
     suspend fun logActiveWorkoutSet(
@@ -263,20 +272,30 @@ class TrainIqDataCoordinator @Inject constructor(
         draft: ActiveWorkoutSetDraft,
         restSeconds: Int,
     ): ActiveWorkoutSession {
-        var result: ActiveWorkoutSession? = null
-        runtimeStore.update { state ->
+        val mutation = withContext(Dispatchers.IO) {
             val mutation = ActiveWorkoutSessionMutations.logSet(
-                state = state,
+                state = runtimeStore.state.value,
                 dayId = dayId,
                 set = set,
                 draft = draft,
                 restSeconds = restSeconds,
                 now = System.currentTimeMillis(),
             )
-            result = mutation.active.toDomain()
-            mutation.state
+            val loggedSet = requireNotNull(mutation.active.loggedSets.lastOrNull()) {
+                "Active workout set logging did not produce a stored set."
+            }
+            val event = requireNotNull(mutation.state.workoutLogEvents.lastOrNull()) {
+                "Active workout set logging did not produce a workout log event."
+            }
+            runtimeStore.logActiveWorkoutSet(
+                active = mutation.active,
+                set = loggedSet,
+                draft = requireNotNull(mutation.active.drafts[loggedSet.activeKey]),
+                event = event,
+            )
+            mutation
         }
-        return requireNotNull(result)
+        return mutation.active.toDomain()
     }
 
     suspend fun updateActiveWorkoutSet(
@@ -351,12 +370,21 @@ class TrainIqDataCoordinator @Inject constructor(
         }
 
     suspend fun updateActiveWorkoutRestTimer(endsAt: Long?, totalSeconds: Int): ActiveWorkoutSession? =
-        mutateActiveWorkout { active, now ->
-            active.copy(
+        withContext(Dispatchers.IO) {
+            val active = runtimeStore.state.value.activeWorkoutSession ?: return@withContext null
+            val now = System.currentTimeMillis()
+            val updated = active.copy(
                 updatedAt = now,
                 restTimerEndsAt = endsAt,
                 restTimerTotalSeconds = if (endsAt == null) 0 else totalSeconds.coerceAtLeast(0),
             )
+            runtimeStore.updateActiveWorkoutRestTimer(
+                sessionId = updated.sessionId,
+                endsAt = updated.restTimerEndsAt,
+                totalSeconds = updated.restTimerTotalSeconds,
+                updatedAt = updated.updatedAt,
+            )
+            updated.toDomain()
         }
 
     suspend fun finishActiveWorkout(dayId: Long): WorkoutCompletionResult {
@@ -394,14 +422,10 @@ class TrainIqDataCoordinator @Inject constructor(
     }
 
     suspend fun discardActiveWorkout(dayId: Long) {
-        runtimeStore.update { state ->
-            val active = state.activeWorkoutSession?.takeIf { it.dayId == dayId } ?: return@update state
-            state.copy(
-                activeWorkoutSession = null,
-                sessions = state.sessions.filterNot { it.id == active.sessionId && !it.completed && it.status == "DRAFT" },
-                performedExercises = state.performedExercises.filterNot { it.sessionId == active.sessionId },
-                workoutLogEvents = state.workoutLogEvents.filterNot { it.sessionId == active.sessionId },
-            )
+        withContext(Dispatchers.IO) {
+            val active = runtimeStore.state.value.activeWorkoutSession?.takeIf { it.dayId == dayId }
+                ?: return@withContext
+            runtimeStore.discardActiveWorkoutSession(active.sessionId)
         }
     }
 

@@ -163,6 +163,83 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         update { it.copy(profile = null) }
     }
 
+    suspend fun updateActiveWorkoutRestTimer(
+        sessionId: Long,
+        endsAt: Long?,
+        totalSeconds: Int,
+        updatedAt: Long,
+    ) {
+        mutex.withLock {
+            dao.updateActiveWorkoutRestTimer(
+                sessionId = sessionId,
+                endsAt = endsAt,
+                totalSeconds = totalSeconds,
+                updatedAt = updatedAt,
+            )
+        }
+    }
+
+    suspend fun updateActiveWorkoutDraft(
+        sessionId: Long,
+        exerciseId: Long,
+        draft: ActiveWorkoutDraftStorage,
+        updatedAt: Long,
+    ) {
+        mutex.withLock {
+            dao.updateActiveWorkoutDraft(
+                sessionId = sessionId,
+                draft = ActiveWorkoutDraftEntity(
+                    sessionId = sessionId,
+                    exerciseId = exerciseId,
+                    weight = draft.weight,
+                    reps = draft.reps,
+                    rpe = draft.rpe,
+                    setType = draft.setType.name,
+                ),
+                updatedAt = updatedAt,
+            )
+        }
+    }
+
+    suspend fun logActiveWorkoutSet(
+        active: ActiveWorkoutSessionStorage,
+        set: ActiveWorkoutSetStorage,
+        draft: ActiveWorkoutDraftStorage,
+        event: WorkoutLogEventStorage,
+    ) {
+        mutex.withLock {
+            dao.logActiveWorkoutSet(
+                session = ActiveWorkoutSessionEntity(
+                    sessionId = active.sessionId,
+                    dayId = active.dayId,
+                    routineId = active.routineId,
+                    startedAt = active.startedAt,
+                    updatedAt = active.updatedAt,
+                    restTimerEndsAt = active.restTimerEndsAt,
+                    restTimerTotalSeconds = active.restTimerTotalSeconds,
+                ),
+                draft = ActiveWorkoutDraftEntity(
+                    sessionId = active.sessionId,
+                    exerciseId = set.activeKey,
+                    weight = draft.weight,
+                    reps = draft.reps,
+                    rpe = draft.rpe,
+                    setType = draft.setType.name,
+                ),
+                set = set.toActiveWorkoutSetEntity(sessionId = active.sessionId),
+                event = event.toWorkoutLogEventEntity(),
+                eventSets = event.toWorkoutLogEventSetEntities(),
+                activeKey = set.activeKey,
+            )
+        }
+    }
+
+    suspend fun discardActiveWorkoutSession(sessionId: Long) {
+        mutex.withLock {
+            dao.discardActiveWorkoutSession(sessionId)
+        }
+    }
+
     private suspend fun seedRoomFromLegacyJsonIfNeeded() {
         mutex.withLock {
             if (dao.mirrorRowCount() > 0) return
@@ -289,6 +366,64 @@ private fun ActiveWorkoutSetEntity.toStorage() = ActiveWorkoutSetStorage(
     rpe = rpe,
     repsInReserve = repsInReserve,
     setType = setType.toEnum(SetType.NORMAL),
+    restSeconds = restSeconds,
+    orderIndex = orderIndex,
+    completed = completed,
+    loggedAt = loggedAt,
+)
+
+private fun ActiveWorkoutSetStorage.toActiveWorkoutSetEntity(sessionId: Long) = ActiveWorkoutSetEntity(
+    sessionId = sessionId,
+    id = id,
+    exerciseId = exerciseId,
+    performedExerciseId = performedExerciseId,
+    sourceWorkoutExerciseId = sourceWorkoutExerciseId,
+    weight = weight,
+    reps = reps,
+    rpe = rpe,
+    repsInReserve = repsInReserve,
+    setType = setType.name,
+    restSeconds = restSeconds,
+    orderIndex = orderIndex,
+    completed = completed,
+    loggedAt = loggedAt,
+)
+
+private fun WorkoutLogEventStorage.toWorkoutLogEventEntity() = WorkoutLogEventEntity(
+    id = id,
+    dayId = dayId,
+    sessionId = sessionId,
+    type = type.name,
+    syncStatus = syncStatus.name,
+    createdAt = createdAt,
+    undoExpiresAt = undoExpiresAt,
+    targetEventId = targetEventId,
+)
+
+private fun WorkoutLogEventStorage.toWorkoutLogEventSetEntities(): List<WorkoutLogEventSetEntity> = buildList {
+    set?.let { add(it.toWorkoutLogEventSetEntity(eventId = id, snapshotRole = "CURRENT", snapshotIndex = 0)) }
+    previousLoggedSets.forEachIndexed { index, previous ->
+        add(previous.toWorkoutLogEventSetEntity(eventId = id, snapshotRole = "PREVIOUS", snapshotIndex = index))
+    }
+}
+
+private fun ActiveWorkoutSetStorage.toWorkoutLogEventSetEntity(
+    eventId: Long,
+    snapshotRole: String,
+    snapshotIndex: Int,
+) = WorkoutLogEventSetEntity(
+    eventId = eventId,
+    snapshotRole = snapshotRole,
+    snapshotIndex = snapshotIndex,
+    id = id,
+    exerciseId = exerciseId,
+    performedExerciseId = performedExerciseId,
+    sourceWorkoutExerciseId = sourceWorkoutExerciseId,
+    weight = weight,
+    reps = reps,
+    rpe = rpe,
+    repsInReserve = repsInReserve,
+    setType = setType.name,
     restSeconds = restSeconds,
     orderIndex = orderIndex,
     completed = completed,

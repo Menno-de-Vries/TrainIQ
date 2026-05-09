@@ -9,7 +9,9 @@ import com.trainiq.domain.model.WorkoutExercisePlan
 import com.trainiq.domain.model.WorkoutRoutine
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.dp
+import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -30,9 +32,38 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun `critical headers and set labels allow wrapping at large font scale`() {
+        val appDesign = testSourceFile("core/ui/AppDesign.kt").readText()
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val appScreenHeaderBody = appDesign.substringAfter("fun AppScreenHeader(").substringBefore("fun AppCard(")
+        val routineSetRowBody = workoutScreen.substringAfter("private fun RoutineSetRow(").substringBefore("BoxWithConstraints")
+
+        assertFalse(appScreenHeaderBody.contains("maxLines = 1"))
+        assertFalse(appScreenHeaderBody.contains("TextOverflow.Ellipsis"))
+        assertFalse(routineSetRowBody.contains("softWrap = false"))
+    }
+
+    @Test
     fun `active logged set count text uses Dutch singular and plural`() {
         assertEquals("1 set gelogd", activeLoggedSetCountText(1))
         assertEquals("2 sets gelogd", activeLoggedSetCountText(2))
+    }
+
+    @Test
+    fun `active workout bottom bar exposes merged accessibility summary`() {
+        val state = ActiveWorkoutUiState(
+            workout = WorkoutDay(id = 1, routineId = 1, name = "Push", orderIndex = 0, exercises = emptyList()),
+            loggedSetsThisSession = mapOf(42L to listOf(sampleLoggedSet(id = 7L))),
+        )
+
+        assertEquals("Rust 1:30", activeWorkoutBottomBarStatusText(restTimerSeconds = 90))
+        assertEquals("Klaar voor volgende set", activeWorkoutBottomBarStatusText(restTimerSeconds = 0))
+        assertEquals("Training afronden", activeWorkoutFinishContentDescription(enabled = true))
+        assertEquals("Training afronden niet beschikbaar", activeWorkoutFinishContentDescription(enabled = false))
+        assertEquals(
+            "Rust 1:30. 1 set gelogd. Training afronden",
+            activeWorkoutBottomBarContentDescription(state, restTimerSeconds = 90),
+        )
     }
 
     @Test
@@ -47,6 +78,25 @@ class WorkoutInputValidationTest {
 
         assertEquals(1, state.visibleLoggedSetCount)
         assertEquals("1 set gelogd", activeLoggedSetCountText(state.visibleLoggedSetCount))
+    }
+
+    @Test
+    fun `active workout sticky status exposes merged accessibility summary`() {
+        val state = ActiveWorkoutUiState(
+            elapsedSeconds = 125L,
+            completedSets = 3,
+            targetSets = 5,
+            totalVolume = 1200.0,
+        )
+
+        assertEquals(
+            "Actieve training: tijd 2:05, sets 3 van 5, volume 1200 kg, rust 1:15.",
+            activeWorkoutStickyStatusContentDescription(state, restTimerSeconds = 75),
+        )
+        assertEquals(
+            "Actieve training: tijd 2:05, sets 3 van 5, volume 1200 kg, rust klaar.",
+            activeWorkoutStickyStatusContentDescription(state, restTimerSeconds = 0),
+        )
     }
 
     @Test
@@ -95,6 +145,38 @@ class WorkoutInputValidationTest {
     @Test
     fun `rest timer finished message is fully Dutch`() {
         assertEquals("Rusttijd klaar - volgende set klaar", restTimerFinishedMessage())
+    }
+
+    @Test
+    fun `active workout rest status label stays Dutch`() {
+        assertEquals("Rust", activeWorkoutRestStatusLabel())
+    }
+
+    @Test
+    fun `status metrics expose merged accessibility labels`() {
+        assertEquals("Rust: 1:30", statusMetricContentDescription("Rust", "1:30"))
+        assertEquals("Volume: 1200 kg", statusMetricContentDescription("Volume", "1200 kg"))
+    }
+
+    @Test
+    fun `rest timer icon controls expose contextual Dutch accessibility labels`() {
+        assertEquals("Rusttimer 30 seconden korter", restTimerAdjustContentDescription(-30))
+        assertEquals("Rusttimer 30 seconden langer", restTimerAdjustContentDescription(30))
+        assertEquals("Rusttimer opnieuw starten", restTimerRestartContentDescription())
+        assertEquals("Rusttimer overslaan", restTimerSkipContentDescription())
+        assertEquals("Overslaan", restTimerSkipLabel())
+    }
+
+    @Test
+    fun `rest timer card exposes merged accessibility summary`() {
+        assertEquals(
+            "Rusttimer: 1:15 resterend, herstel, totaal 2:30.",
+            restTimerCardContentDescription(restTimerSeconds = 75, totalSeconds = 150),
+        )
+        assertEquals(
+            "Rusttimer: 0:10 resterend, bijna klaar.",
+            restTimerCardContentDescription(restTimerSeconds = 10, totalSeconds = 0),
+        )
     }
 
     @Test
@@ -182,6 +264,24 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun `routine set metric labels stay Dutch and compact`() {
+        val set = RoutineSet(
+            id = 1,
+            workoutExerciseId = 10,
+            orderIndex = 0,
+            targetReps = 8,
+            targetWeightKg = 80.0,
+            restSeconds = 90,
+            targetRpe = 7.0,
+        )
+
+        assertEquals(
+            listOf("Herh.", "Kg", "Rust", "RPE"),
+            routineSetMetricCells(set).map { it.label },
+        )
+    }
+
+    @Test
     fun `routine set metric layout uses one row when enough width is available`() {
         assertEquals(RoutineSetMetricLayout.OneRow, routineSetMetricLayoutForWidth(260.dp))
     }
@@ -202,7 +302,7 @@ class WorkoutInputValidationTest {
         )
 
         assertEquals(
-            listOf("Reps" to "12", "Kg" to "50 kg", "Rust" to "90s", "RPE" to "6.5"),
+            listOf("Herh." to "12", "Kg" to "50 kg", "Rust" to "90s", "RPE" to "6.5"),
             activeSetMetricCells(repRange = "8-12", plannedSet = null, loggedSet = loggedSet)
                 .map { it.label to it.value },
         )
@@ -521,3 +621,11 @@ private fun sampleLoggedSet(id: Long): LoggedSet =
         rpe = 8.0,
         restSeconds = 90,
     )
+
+private fun testSourceFile(relativePackagePath: String): File {
+    val userDir = File(System.getProperty("user.dir"))
+    return listOf(
+        File(userDir, "src/main/java/com/trainiq/$relativePackagePath"),
+        File(userDir, "app/src/main/java/com/trainiq/$relativePackagePath"),
+    ).first(File::isFile)
+}

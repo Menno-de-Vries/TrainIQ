@@ -28,6 +28,7 @@ import java.util.Base64
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import com.trainiq.domain.model.buildGoalBaseline
 import com.trainiq.domain.model.suggestMealType
 
@@ -79,7 +80,7 @@ class MealAnalysisService internal constructor(
         }
         val imageBytes = prepareMealScanImageBytes(file) ?: return fallbackMealScan()
         val response = runCatching {
-            callGeminiWithBoundedRetry {
+            callGeminiWithBoundedRetry(feature = AiFeature.MEAL_SCAN) {
                 api.generateContent(
                 model = GEMINI_FLASH_MODEL,
                 apiKey = apiKey,
@@ -108,7 +109,8 @@ class MealAnalysisService internal constructor(
                 ),
                 )
             }
-        }.getOrElse {
+        }.getOrElse { error ->
+            if (error is CancellationException) throw error
             return fallbackMealScan()
         }
         val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
@@ -258,7 +260,7 @@ class WorkoutDebriefService internal constructor(
     ): WorkoutDebrief =
         runCatching {
             val apiKey = apiKeyProvider() ?: return fallbackWorkoutDebriefResult(totalVolume, progression)
-            val response = callGeminiWithBoundedRetry {
+            val response = callGeminiWithBoundedRetry(feature = AiFeature.WORKOUT_DEBRIEF) {
                 api.generateContent(
                 model = GEMINI_FLASH_MODEL,
                 apiKey = apiKey,
@@ -293,7 +295,10 @@ class WorkoutDebriefService internal constructor(
             }
             val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
             parseWorkoutDebriefResponse(text, totalVolume, progression)
-        }.getOrElse { fallbackWorkoutDebriefResult(totalVolume, progression) }
+        }.getOrElse { error ->
+            if (error is CancellationException) throw error
+            fallbackWorkoutDebriefResult(totalVolume, progression)
+        }
 }
 
 @Singleton
@@ -333,7 +338,7 @@ class GoalAdvisorService internal constructor(
             )
             if (!isAiReady()) return baseline
             val apiKey = apiKeyProvider() ?: return baseline
-            val response = callGeminiWithBoundedRetry {
+            val response = callGeminiWithBoundedRetry(feature = AiFeature.GOAL_ADVICE) {
                 api.generateContent(
                 model = GEMINI_FLASH_MODEL,
                 apiKey = apiKey,
@@ -369,7 +374,8 @@ class GoalAdvisorService internal constructor(
             }
             val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
             parseGoalAdvice(text, baseline)
-        }.getOrElse {
+        }.getOrElse { error ->
+            if (error is CancellationException) throw error
             deterministicGoalAdvice(
                 height = height,
                 weight = weight,
@@ -489,7 +495,7 @@ class WeeklyReportService @Inject constructor(
         runCatching {
             if (!aiUsageGate.isAiReady()) return fallbackWeeklyReport(adherence)
             val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return fallbackWeeklyReport(adherence)
-            val response = callGeminiWithBoundedRetry {
+            val response = callGeminiWithBoundedRetry(feature = AiFeature.WEEKLY_REPORT) {
                 api.generateContent(
                 model = GEMINI_FLASH_MODEL,
                 apiKey = apiKey,
@@ -512,7 +518,10 @@ class WeeklyReportService @Inject constructor(
             }
             val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
             parseWeeklyReportResponse(text, adherence)
-        }.getOrElse { fallbackWeeklyReport(adherence) }
+        }.getOrElse { error ->
+            if (error is CancellationException) throw error
+            fallbackWeeklyReport(adherence)
+        }
 
 }
 

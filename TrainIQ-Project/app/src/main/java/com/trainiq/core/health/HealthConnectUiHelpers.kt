@@ -21,6 +21,11 @@ internal data class HealthConnectPermissionCopy(
     val label: String,
 )
 
+internal data class HealthConnectRationaleReason(
+    val title: String,
+    val description: String,
+)
+
 internal val HealthConnectReadPermissions = setOf(
     HealthPermission.getReadPermission(StepsRecord::class),
     HealthPermission.getReadPermission(HeartRateRecord::class),
@@ -37,6 +42,33 @@ internal val HealthConnectPermissionCopyBySignal = listOf(
     HealthConnectPermissionCopy(HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class), "Actieve calorieen"),
     HealthConnectPermissionCopy(HealthPermission.getReadPermission(WeightRecord::class), "Gewicht"),
     HealthConnectPermissionCopy(HealthPermission.getReadPermission(ExerciseSessionRecord::class), "Workouts"),
+)
+
+internal val HealthConnectRationaleReasons = listOf(
+    HealthConnectRationaleReason(
+        title = "Stappen",
+        description = "Stappen tonen bewegingsvolume en consistentie, zodat TrainIQ een actieve week kan onderscheiden van alleen korte zware trainingsmomenten.",
+    ),
+    HealthConnectRationaleReason(
+        title = "Hartslag",
+        description = "Hartslag geeft een signaal voor intensiteit en herstel, zodat adviezen minder hoeven te gokken naar stress, conditie en vermoeidheid.",
+    ),
+    HealthConnectRationaleReason(
+        title = "Slaap",
+        description = "Slaap helpt TrainIQ inschatten hoe hersteld je bent en maakt readiness, deload-signalen en sessieadvies concreter.",
+    ),
+    HealthConnectRationaleReason(
+        title = "Actieve calorieen",
+        description = "Actieve calorieen geven context voor energieverbruik bovenop rustverbruik en helpen training en voeding realistischer naast elkaar te zetten.",
+    ),
+    HealthConnectRationaleReason(
+        title = "Gewicht",
+        description = "Gewichtstrends geven voortgang context. TrainIQ gebruikt ze om prestaties en voeding te verbinden aan echte lichaamsverandering.",
+    ),
+    HealthConnectRationaleReason(
+        title = "Workouts",
+        description = "Workouts geven duur en trainingscontext, zodat TrainIQ Health Connect-data kan koppelen aan je trainingsbelasting.",
+    ),
 )
 
 internal fun healthConnectPermissionResultMessage(grantedPermissions: Set<String>): String? {

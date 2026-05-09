@@ -306,6 +306,35 @@ interface TrainIqDao {
     @Query("SELECT * FROM active_workout_sessions ORDER BY updatedAt DESC LIMIT 1")
     fun observeActiveWorkoutSessions(): Flow<List<ActiveWorkoutSessionEntity>>
 
+    @Query(
+        """
+        UPDATE active_workout_sessions
+        SET restTimerEndsAt = :endsAt,
+            restTimerTotalSeconds = :totalSeconds,
+            updatedAt = :updatedAt
+        WHERE sessionId = :sessionId
+        """,
+    )
+    suspend fun updateActiveWorkoutRestTimer(
+        sessionId: Long,
+        endsAt: Long?,
+        totalSeconds: Int,
+        updatedAt: Long,
+    )
+
+    @Query("UPDATE active_workout_sessions SET updatedAt = :updatedAt WHERE sessionId = :sessionId")
+    suspend fun updateActiveWorkoutSessionUpdatedAt(sessionId: Long, updatedAt: Long)
+
+    @Transaction
+    suspend fun updateActiveWorkoutDraft(
+        sessionId: Long,
+        draft: ActiveWorkoutDraftEntity,
+        updatedAt: Long,
+    ) {
+        insertActiveWorkoutDrafts(listOf(draft))
+        updateActiveWorkoutSessionUpdatedAt(sessionId = sessionId, updatedAt = updatedAt)
+    }
+
     @Query("SELECT * FROM active_workout_drafts ORDER BY session_id ASC, exercise_id ASC")
     fun observeActiveWorkoutDrafts(): Flow<List<ActiveWorkoutDraftEntity>>
 
@@ -318,8 +347,52 @@ interface TrainIqDao {
     @Query("SELECT * FROM workout_log_events ORDER BY created_at ASC")
     fun observeWorkoutLogEvents(): Flow<List<WorkoutLogEventEntity>>
 
+    @Query("DELETE FROM active_workout_collapsed_exercises WHERE session_id = :sessionId AND exercise_id = :exerciseId")
+    suspend fun deleteActiveWorkoutCollapsedExercise(sessionId: Long, exerciseId: Long)
+
+    @Transaction
+    suspend fun logActiveWorkoutSet(
+        session: ActiveWorkoutSessionEntity,
+        draft: ActiveWorkoutDraftEntity,
+        set: ActiveWorkoutSetEntity,
+        event: WorkoutLogEventEntity,
+        eventSets: List<WorkoutLogEventSetEntity>,
+        activeKey: Long,
+    ) {
+        insertActiveWorkoutSessions(listOf(session))
+        insertActiveWorkoutDrafts(listOf(draft))
+        deleteActiveWorkoutCollapsedExercise(sessionId = session.sessionId, exerciseId = activeKey)
+        insertActiveWorkoutSets(listOf(set))
+        insertWorkoutLogEvents(listOf(event))
+        insertWorkoutLogEventSets(eventSets)
+    }
+
     @Query("SELECT * FROM workout_log_event_sets ORDER BY event_id ASC, snapshot_role ASC, snapshot_index ASC")
     fun observeWorkoutLogEventSets(): Flow<List<WorkoutLogEventSetEntity>>
+
+    @Query("DELETE FROM workout_log_event_sets WHERE event_id IN (SELECT id FROM workout_log_events WHERE session_id = :sessionId)")
+    suspend fun deleteWorkoutLogEventSetsForSession(sessionId: Long)
+
+    @Query("DELETE FROM workout_log_events WHERE session_id = :sessionId")
+    suspend fun deleteWorkoutLogEventsForSession(sessionId: Long)
+
+    @Query("DELETE FROM active_workout_sessions WHERE sessionId = :sessionId")
+    suspend fun deleteActiveWorkoutSession(sessionId: Long)
+
+    @Query("DELETE FROM performed_exercises WHERE session_id = :sessionId")
+    suspend fun deletePerformedExercisesForSession(sessionId: Long)
+
+    @Query("DELETE FROM workout_sessions WHERE id = :sessionId AND completed = 0 AND status = 'DRAFT'")
+    suspend fun deleteDraftWorkoutSession(sessionId: Long)
+
+    @Transaction
+    suspend fun discardActiveWorkoutSession(sessionId: Long) {
+        deleteWorkoutLogEventSetsForSession(sessionId)
+        deleteWorkoutLogEventsForSession(sessionId)
+        deleteActiveWorkoutSession(sessionId)
+        deletePerformedExercisesForSession(sessionId)
+        deleteDraftWorkoutSession(sessionId)
+    }
 
     @Query("SELECT * FROM workout_days WHERE id = :dayId LIMIT 1")
     suspend fun getWorkoutDay(dayId: Long): WorkoutDayEntity?

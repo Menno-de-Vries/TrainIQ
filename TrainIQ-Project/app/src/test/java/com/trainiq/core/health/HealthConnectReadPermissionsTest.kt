@@ -38,4 +38,19 @@ class HealthConnectReadPermissionsTest {
             healthConnectPermissionResultMessage(grantedPermissions = HealthConnectReadPermissions),
         )
     }
+
+    @Test
+    fun rationaleReasonsExplainEachRequestedSignalWithoutMakingAllMandatory() {
+        assertEquals(
+            HealthConnectPermissionCopyBySignal.map { it.label },
+            HealthConnectRationaleReasons.map { it.title },
+        )
+        assertEquals(HealthConnectReadPermissions.size, HealthConnectRationaleReasons.size)
+        assertTrue(HealthConnectRationaleReasons.all { it.description.isNotBlank() })
+        assertFalse(
+            HealthConnectRationaleReasons
+                .joinToString(" ") { "${it.title} ${it.description}" }
+                .contains("verplicht", ignoreCase = true),
+        )
+    }
 }

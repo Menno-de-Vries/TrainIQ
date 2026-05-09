@@ -158,6 +158,7 @@ import com.trainiq.core.ui.clearFocusOnTapOutside
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.ui.EmptyStateCard
 import com.trainiq.core.ui.PrimaryActionButton
+import com.trainiq.core.ui.lineChartContentDescription
 import com.trainiq.core.ui.SecondaryActionButton
 import com.trainiq.core.ui.TapOnlyOutlinedTextField
 import com.trainiq.core.ui.bringIntoViewOnFocus
@@ -2706,7 +2707,7 @@ private fun RoutineSetHeaderRow() {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 HeaderLabel("Setconfiguratie")
                 Text(
-                    "Reps - Kg - Rust - RPE",
+                    "${RepetitionsMetricLabel} - Kg - Rust - RPE",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.trainIqColors.mutedText,
                     maxLines = 1,
@@ -2778,17 +2779,13 @@ private fun RoutineSetRow(
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis,
+                    maxLines = 2,
                 )
                 Text(
                     set.setType.label(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis,
+                    maxLines = 2,
                 )
             }
             IconButton(modifier = Modifier.size(BuilderRowActionWidth), onClick = onDelete) {
@@ -2875,6 +2872,8 @@ internal data class RoutineSetMetricCell(
     val value: String,
 )
 
+internal const val RepetitionsMetricLabel = "Herh."
+
 internal enum class RoutineSetMetricLayout {
     OneRow,
     BalancedGrid,
@@ -2884,7 +2883,7 @@ internal fun routineSetMetricLayoutForWidth(availableWidth: Dp): RoutineSetMetri
     if (availableWidth >= 240.dp) RoutineSetMetricLayout.OneRow else RoutineSetMetricLayout.BalancedGrid
 
 internal fun routineSetMetricCells(set: RoutineSet): List<RoutineSetMetricCell> = listOf(
-    RoutineSetMetricCell("Reps", set.targetReps.takeIf { it > 0 }?.toString() ?: "-"),
+    RoutineSetMetricCell(RepetitionsMetricLabel, set.targetReps.takeIf { it > 0 }?.toString() ?: "-"),
     RoutineSetMetricCell("Kg", set.targetWeightKg.takeIf { it > 0.0 }?.let { "${formatWeight(it)} kg" } ?: "-"),
     RoutineSetMetricCell("Rust", set.restSeconds.takeIf { it > 0 }?.let { "${it}s" } ?: "-"),
     RoutineSetMetricCell("RPE", set.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight) ?: "-"),
@@ -2908,7 +2907,7 @@ internal fun activeSetMetricCells(
         ?: plannedSet?.targetRpe?.takeIf { it > 0.0 }?.let(::formatWeight)
         ?: "-"
     return listOf(
-        RoutineSetMetricCell("Reps", reps),
+        RoutineSetMetricCell(RepetitionsMetricLabel, reps),
         RoutineSetMetricCell("Kg", weight),
         RoutineSetMetricCell("Rust", rest),
         RoutineSetMetricCell("RPE", rpe),
@@ -4045,19 +4044,33 @@ private fun ExerciseProgressChart(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
-                SimpleLineChart(points = points, modifier = Modifier.fillMaxWidth().height(132.dp))
+                SimpleLineChart(
+                    points = points,
+                    chartName = title,
+                    valueSuffix = valueSuffix,
+                    modifier = Modifier.fillMaxWidth().height(132.dp),
+                )
             }
         }
     }
 }
 
 @Composable
-private fun SimpleLineChart(points: List<ChartPoint>, modifier: Modifier = Modifier) {
+private fun SimpleLineChart(
+    points: List<ChartPoint>,
+    chartName: String,
+    valueSuffix: String,
+    modifier: Modifier = Modifier,
+) {
     val lineColor = MaterialTheme.colorScheme.primary
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val dotColor = MaterialTheme.colorScheme.primary
-    Canvas(modifier = modifier) {
-        val chartPoints = points.takeLast(12)
+    val chartPoints = points.takeLast(12)
+    Canvas(
+        modifier = modifier.semantics {
+            contentDescription = lineChartContentDescription(chartPoints, chartName, valueSuffix)
+        },
+    ) {
         val maxValue = chartPoints.maxOfOrNull { it.value }?.takeIf { it > 0.0 } ?: 1.0
         val minValue = chartPoints.minOfOrNull { it.value } ?: 0.0
         val range = (maxValue - minValue).takeIf { it > 0.0 } ?: 1.0
@@ -4978,7 +4991,14 @@ private fun ActiveWorkoutStickyStatus(uiState: ActiveWorkoutUiState, restTimerSe
     } else {
         0f
     }
-    AppCard(modifier = Modifier.padding(top = 12.dp), accent = MaterialTheme.colorScheme.primary) {
+    AppCard(
+        modifier = Modifier
+            .padding(top = 12.dp)
+            .semantics(mergeDescendants = true) {
+                contentDescription = activeWorkoutStickyStatusContentDescription(uiState, restTimerSeconds)
+            },
+        accent = MaterialTheme.colorScheme.primary,
+    ) {
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -5023,7 +5043,10 @@ private fun ActiveWorkoutBottomBar(uiState: ActiveWorkoutUiState, restTimerSecon
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .semantics(mergeDescendants = true) {
+                    contentDescription = activeWorkoutBottomBarContentDescription(uiState, restTimerSeconds)
+                },
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -5048,7 +5071,10 @@ private fun ActiveWorkoutBottomBar(uiState: ActiveWorkoutUiState, restTimerSecon
                 enabled = uiState.workout != null,
                 modifier = Modifier
                     .weight(1f)
-                    .defaultMinSize(minHeight = 48.dp),
+                    .defaultMinSize(minHeight = 48.dp)
+                    .semantics {
+                        contentDescription = activeWorkoutFinishContentDescription(uiState.workout != null)
+                    },
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
             ) {
                 Text("Training afronden")
@@ -5126,7 +5152,15 @@ private fun RestTimerCard(
     onSkip: () -> Unit,
     onRestart: () -> Unit,
 ) {
-    AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber, elevated = true) {
+    AppCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                contentDescription = restTimerCardContentDescription(restTimerSeconds, totalSeconds)
+            },
+        accent = MaterialTheme.trainIqColors.amber,
+        elevated = true,
+    ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -5165,13 +5199,19 @@ private fun RestTimerCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = { onAdjust(-30) }) { Icon(Icons.Rounded.Remove, contentDescription = "30 seconden minder") }
-                IconButton(onClick = { onAdjust(30) }) { Icon(Icons.Rounded.Add, contentDescription = "30 seconden meer") }
-                IconButton(onClick = onRestart) { Icon(Icons.Rounded.Replay, contentDescription = "Timer opnieuw starten") }
+                IconButton(onClick = { onAdjust(-30) }) {
+                    Icon(Icons.Rounded.Remove, contentDescription = restTimerAdjustContentDescription(-30))
+                }
+                IconButton(onClick = { onAdjust(30) }) {
+                    Icon(Icons.Rounded.Add, contentDescription = restTimerAdjustContentDescription(30))
+                }
+                IconButton(onClick = onRestart) {
+                    Icon(Icons.Rounded.Replay, contentDescription = restTimerRestartContentDescription())
+                }
                 Spacer(modifier = Modifier.weight(1f))
                 TextButton(onClick = onSkip) {
-                    Icon(Icons.Rounded.SkipNext, contentDescription = null)
-                    Text("Overslaan")
+                    Icon(Icons.Rounded.SkipNext, contentDescription = restTimerSkipContentDescription())
+                    Text(restTimerSkipLabel())
                 }
             }
         }
@@ -5797,10 +5837,17 @@ private fun WorkoutSessionStatusCard(uiState: ActiveWorkoutUiState) {
     }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                StatusMetric("Sets", "${summary.loggedSetCount}/${summary.targetSets}")
-                StatusMetric("Rest", if (uiState.restTimerSeconds > 0) formatTimer(uiState.restTimerSeconds) else "Klaar")
-                StatusMetric("Volume", "${summary.volume.toInt()} kg")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+            ) {
+                StatusMetric("Sets", "${summary.loggedSetCount}/${summary.targetSets}", Modifier.weight(1f))
+                StatusMetric(
+                    activeWorkoutRestStatusLabel(),
+                    if (uiState.restTimerSeconds > 0) formatTimer(uiState.restTimerSeconds) else "Klaar",
+                    Modifier.weight(1f),
+                )
+                StatusMetric("Volume", "${summary.volume.toInt()} kg", Modifier.weight(1f))
             }
             LinearProgressIndicator(
                 progress = { if (summary.targetSets > 0) (summary.loggedSetCount / summary.targetSets.toFloat()).coerceIn(0f, 1f) else 0f },
@@ -5817,7 +5864,12 @@ private fun WorkoutSessionStatusCard(uiState: ActiveWorkoutUiState) {
 
 @Composable
 private fun StatusMetric(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(
+        modifier = modifier.semantics(mergeDescendants = true) {
+            contentDescription = statusMetricContentDescription(label, value)
+        },
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
             value,
@@ -5920,6 +5972,29 @@ internal fun activeExerciseDeleteLabel(): String = "Oefening verwijderen"
 
 internal fun restTimerFinishedMessage(): String = "Rusttijd klaar - volgende set klaar"
 
+internal fun statusMetricContentDescription(label: String, value: String): String = "$label: $value"
+
+internal fun activeWorkoutRestStatusLabel(): String = "Rust"
+
+internal fun restTimerAdjustContentDescription(deltaSeconds: Int): String =
+    if (deltaSeconds < 0) {
+        "Rusttimer ${-deltaSeconds} seconden korter"
+    } else {
+        "Rusttimer $deltaSeconds seconden langer"
+    }
+
+internal fun restTimerRestartContentDescription(): String = "Rusttimer opnieuw starten"
+
+internal fun restTimerSkipLabel(): String = "Overslaan"
+
+internal fun restTimerSkipContentDescription(): String = "Rusttimer overslaan"
+
+internal fun restTimerCardContentDescription(restTimerSeconds: Int, totalSeconds: Int): String {
+    val status = if (restTimerSeconds <= 15) "bijna klaar" else "herstel"
+    val total = totalSeconds.takeIf { it > 0 }?.let { ", totaal ${formatTimer(it)}" }.orEmpty()
+    return "Rusttimer: ${formatTimer(restTimerSeconds)} resterend, $status$total."
+}
+
 internal fun exerciseHistorySubtitleText(muscleGroup: String?, equipment: String?): String =
     listOfNotNull(
         muscleGroup?.takeIf { it.isNotBlank() }?.toDutchMuscleGroupLabel(),
@@ -6016,6 +6091,30 @@ internal fun discardActiveWorkoutBodyText(): String =
 
 internal fun activeLoggedSetCountText(count: Int): String =
     "$count ${if (count == 1) "set" else "sets"} gelogd"
+
+internal fun activeWorkoutBottomBarStatusText(restTimerSeconds: Int): String =
+    if (restTimerSeconds > 0) "Rust ${formatTimer(restTimerSeconds)}" else "Klaar voor volgende set"
+
+internal fun activeWorkoutFinishContentDescription(enabled: Boolean): String =
+    if (enabled) "Training afronden" else "Training afronden niet beschikbaar"
+
+internal fun activeWorkoutBottomBarContentDescription(
+    uiState: ActiveWorkoutUiState,
+    restTimerSeconds: Int,
+): String =
+    "${activeWorkoutBottomBarStatusText(restTimerSeconds)}. " +
+        "${activeLoggedSetCountText(uiState.visibleLoggedSetCount)}. " +
+        activeWorkoutFinishContentDescription(uiState.workout != null)
+
+internal fun activeWorkoutStickyStatusContentDescription(
+    uiState: ActiveWorkoutUiState,
+    restTimerSeconds: Int,
+): String {
+    val restText = if (restTimerSeconds > 0) formatTimer(restTimerSeconds) else "klaar"
+    return "Actieve training: tijd ${formatTimer(uiState.elapsedSeconds.toInt())}, " +
+        "sets ${uiState.completedSets} van ${uiState.targetSets}, " +
+        "volume ${uiState.totalVolume.toInt()} kg, rust $restText."
+}
 
 internal val ActiveWorkoutUiState.visibleLoggedSetCount: Int
     get() = loggedSetsThisSession.values.sumOf { it.size }

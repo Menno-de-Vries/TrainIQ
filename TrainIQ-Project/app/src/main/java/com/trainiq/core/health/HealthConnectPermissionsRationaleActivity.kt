@@ -88,7 +88,7 @@ class HealthConnectPermissionsRationaleActivity : ComponentActivity() {
                                 )
                             }
 
-                            PermissionReason.entries.forEach { reason ->
+                            HealthConnectRationaleReasons.forEach { reason ->
                                 ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                                     Column(
                                         modifier = Modifier.padding(MaterialTheme.spacing.medium),

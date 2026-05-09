@@ -11,6 +11,8 @@ import com.trainiq.domain.model.MealAnalysisSource
 import com.trainiq.domain.model.WeeklyReportSource
 import java.io.File
 import java.io.RandomAccessFile
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
@@ -84,6 +86,98 @@ class AiServicesTest {
 
         assertEquals(MealAnalysisSource.API, result.source)
         assertEquals(2, api.callCount)
+    }
+
+    @Test
+    fun callGeminiWithBoundedRetry_whenFeatureTimeoutExceeded_throwsTypedTimeoutWithoutRetrying() = runTest {
+        var callCount = 0
+
+        val error = runCatching {
+            callGeminiWithBoundedRetry(
+                feature = AiFeature.MEAL_SCAN,
+                timeoutMillis = 1L,
+                initialBackoffMillis = 0L,
+            ) {
+                callCount += 1
+                delay(10L)
+            }
+        }.exceptionOrNull()
+
+        assertTrue(error is AiTimeoutException)
+        assertEquals(1, callCount)
+        assertTrue(error?.message.orEmpty().contains("maaltijdscan"))
+    }
+
+    @Test
+    fun callGeminiWithBoundedRetry_whenCoroutineIsCancelled_propagatesCancellation() = runTest {
+        val cancellation = CancellationException("caller left screen")
+
+        val error = runCatching {
+            callGeminiWithBoundedRetry(
+                feature = AiFeature.GOAL_ADVICE,
+                initialBackoffMillis = 0L,
+            ) {
+                throw cancellation
+            }
+        }.exceptionOrNull()
+
+        assertTrue(error is CancellationException)
+        assertEquals("caller left screen", error?.message)
+    }
+
+    @Test
+    fun callGeminiWithBoundedRetry_whenRateLimitPersists_throttlesSameFeatureOnly() = runTest {
+        var now = 1_000L
+        val throttle = AiFeatureThrottle(nowMillis = { now })
+        var mealScanCalls = 0
+
+        val firstError = runCatching {
+            callGeminiWithBoundedRetry(
+                feature = AiFeature.MEAL_SCAN,
+                initialBackoffMillis = 0L,
+                throttle = throttle,
+            ) {
+                mealScanCalls += 1
+                throw rateLimitError()
+            }
+        }.exceptionOrNull()
+        val secondMealError = runCatching {
+            callGeminiWithBoundedRetry(
+                feature = AiFeature.MEAL_SCAN,
+                initialBackoffMillis = 0L,
+                throttle = throttle,
+            ) {
+                mealScanCalls += 1
+                mealScanResponse("""{"items":[],"suggestedMealType":"LUNCH"}""")
+            }
+        }.exceptionOrNull()
+
+        var goalCalls = 0
+        val goalResponse = callGeminiWithBoundedRetry(
+            feature = AiFeature.GOAL_ADVICE,
+            initialBackoffMillis = 0L,
+            throttle = throttle,
+        ) {
+            goalCalls += 1
+            mealScanResponse("""{"items":[],"suggestedMealType":"LUNCH"}""")
+        }
+        now += AiFeature.MEAL_SCAN.throttleCooldownMillis + 1L
+        val mealResponseAfterCooldown = callGeminiWithBoundedRetry(
+            feature = AiFeature.MEAL_SCAN,
+            initialBackoffMillis = 0L,
+            throttle = throttle,
+        ) {
+            mealScanCalls += 1
+            mealScanResponse("""{"items":[],"suggestedMealType":"LUNCH"}""")
+        }
+
+        assertTrue(firstError is AiRateLimitException)
+        assertTrue(secondMealError is AiFeatureThrottledException)
+        assertTrue(secondMealError?.toAiUserMessage("fallback").orEmpty().contains("maaltijdscan", ignoreCase = true))
+        assertEquals(3, mealScanCalls)
+        assertEquals(1, goalCalls)
+        assertTrue(goalResponse.candidates.isNotEmpty())
+        assertTrue(mealResponseAfterCooldown.candidates.isNotEmpty())
     }
 
     @Test
@@ -193,6 +287,19 @@ class AiServicesTest {
         assertEquals(MealAnalysisSource.LOCAL_FALLBACK, result.source)
         assertTrue(result.items.isEmpty())
         assertEquals("AI-maaltijdanalyse is nu niet beschikbaar. Je kunt de maaltijd handmatig toevoegen.", result.notes)
+    }
+
+    @Test
+    fun analyzeMealImage_whenCallerCancels_propagatesCancellationInsteadOfFallback() = runTest {
+        val api = FakeGeminiApi(error = CancellationException("screen stopped"))
+        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+
+        val error = runCatching {
+            service.analyzeMealImage(tempImagePath(), "", 43_200_000L)
+        }.exceptionOrNull()
+
+        assertTrue(error is CancellationException)
+        assertEquals("screen stopped", error?.message)
     }
 
     @Test

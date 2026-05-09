@@ -15,7 +15,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -31,6 +30,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -118,7 +119,7 @@ fun GeneratedRoutinePreviewDialog(
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
-                AssistChip(onClick = {}, label = { Text(routine.source.label()) })
+                GeneratedRoutineInfoPill(label = routine.source.label(), contentDescription = "Bron: ${routine.source.label()}")
             }
             Column(
                 modifier = Modifier
@@ -235,6 +236,27 @@ private fun GeneratedRoutineSource.label(): String = when (this) {
     GeneratedRoutineSource.LOCAL_FALLBACK -> "Lokale analyse"
 }
 
+@Composable
+private fun GeneratedRoutineInfoPill(
+    label: String,
+    modifier: Modifier = Modifier,
+    contentDescription: String = label,
+) {
+    Card(
+        modifier = modifier.semantics {
+            this.contentDescription = contentDescription
+        },
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun GeneratedRoutineMetaRow(routine: GeneratedRoutine) {
@@ -243,19 +265,10 @@ private fun GeneratedRoutineMetaRow(routine: GeneratedRoutine) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        AssistChip(
-            onClick = {},
-            label = { Text("${routine.days.size} dagen") },
-        )
+        GeneratedRoutineInfoPill(label = "${routine.days.size} dagen")
         if (routine.estimatedDurationMinutes > 0) {
-            AssistChip(
-                onClick = {},
-                label = { Text("${routine.estimatedDurationMinutes} min/sessie") },
-            )
+            GeneratedRoutineInfoPill(label = "${routine.estimatedDurationMinutes} min/sessie")
         }
-        AssistChip(
-            onClick = {},
-            label = { Text("${routine.days.sumOf { it.exercises.size }} oefeningen") },
-        )
+        GeneratedRoutineInfoPill(label = "${routine.days.sumOf { it.exercises.size }} oefeningen")
     }
 }

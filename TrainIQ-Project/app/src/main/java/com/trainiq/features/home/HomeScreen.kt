@@ -31,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -44,8 +45,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.HealthConnectClient
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
 import com.trainiq.core.health.HealthConnectRefreshOnResume
 import com.trainiq.core.health.rememberHealthConnectPermissionRequester
@@ -125,12 +129,12 @@ class HomeViewModel @Inject constructor(
             delay(2_000L)
             refreshHealthConnectStatus()
         }
+    }
+
+    fun refreshDashboardAndHealthStatus() {
         viewModelScope.launch {
-            while (true) {
-                delay(60_000L)
-                refreshDashboardDataSafely { refreshDashboardDataUseCase() }
-                refreshHealthConnectStatus()
-            }
+            refreshDashboardDataSafely { refreshDashboardDataUseCase() }
+            refreshHealthConnectStatus()
         }
     }
 
@@ -178,6 +182,8 @@ internal suspend fun refreshDashboardDataSafely(refreshDashboardData: suspend ()
     }
 }
 
+internal const val HomePeriodicRefreshIntervalMillis: Long = 60_000L
+
 @Composable
 fun HomeRoute(
     onStartWorkout: (Long) -> Unit,
@@ -189,11 +195,21 @@ fun HomeRoute(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val requestHealthPermission = rememberHealthConnectPermissionRequester(viewModel::refreshHealthConnectStatus)
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     HealthConnectRefreshOnResume(
         onRefresh = viewModel::refreshHealthConnectStatus,
         refreshOnFirstResume = false,
     )
+
+    LaunchedEffect(lifecycleOwner, viewModel) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                delay(HomePeriodicRefreshIntervalMillis)
+                viewModel.refreshDashboardAndHealthStatus()
+            }
+        }
+    }
 
     HomeScreen(
         uiState = uiState,

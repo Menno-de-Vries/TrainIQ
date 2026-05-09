@@ -17,15 +17,95 @@ class CameraScannerStateTest {
     }
 
     @Test
+    fun cameraPermissionGateCopy_explainsInitialAndDeniedStates() {
+        assertEquals("Geef cameratoegang om de scanner te gebruiken.", scannerPermissionGateMessage(permissionDenied = false))
+
+        val deniedMessage = scannerPermissionGateMessage(permissionDenied = true)
+        assertTrue(deniedMessage.contains("maaltijden of barcodes"))
+        assertTrue(deniedMessage.contains("app-instellingen"))
+        assertEquals("Toegang geven", scannerPermissionGrantLabel())
+        assertEquals("Instellingen openen", scannerPermissionSettingsLabel())
+        assertEquals("Terug", scannerPermissionBackLabel())
+    }
+
+    @Test
     fun scannerActionLabels_matchTheActualAction() {
         assertEquals("Sluiten", scannerErrorPrimaryActionLabel(ScannerSheetErrorAction.Dismiss))
         assertEquals("Opnieuw scannen", scannerErrorPrimaryActionLabel(ScannerSheetErrorAction.ScanAgain))
     }
 
     @Test
+    fun scannerSheetCopy_exposesStateAndActionLabelsForAccessibility() {
+        assertEquals("Scannen...", scannerProcessingTitle())
+        assertTrue(scannerProcessingMessage().contains("Gemini Flash"))
+        assertEquals("Scan voltooid", scannerCompletedTitle())
+        assertEquals("Producten controleren", scannerReviewProductsLabel())
+        assertEquals("Opnieuw scannen", scannerScanAgainLabel())
+        assertEquals("Geen producten gevonden", scannerEmptyTitle())
+        assertEquals("Handmatig toevoegen", scannerManualAddLabel())
+        assertEquals("Opnieuw proberen", scannerRetryLabel())
+    }
+
+    @Test
     fun cameraPermissionState_usesExistingGrantedPermission() {
         assertEquals(true, isCameraPermissionGranted(PackageManager.PERMISSION_GRANTED))
         assertEquals(false, isCameraPermissionGranted(PackageManager.PERMISSION_DENIED))
+    }
+
+    @Test
+    fun cameraFallbackState_showsFallbackWhenPermissionGrantedButNoCamera() {
+        assertEquals(true, shouldShowCameraFallback(hasPermission = true, hasCameraFeature = false, cameraError = null))
+        assertEquals(false, shouldShowCameraFallback(hasPermission = false, hasCameraFeature = false, cameraError = null))
+        assertEquals(false, shouldShowCameraFallback(hasPermission = true, hasCameraFeature = true, cameraError = null))
+    }
+
+    @Test
+    fun cameraFallbackState_showsFallbackWhenCameraBindFails() {
+        assertEquals(
+            true,
+            shouldShowCameraFallback(
+                hasPermission = true,
+                hasCameraFeature = true,
+                cameraError = scannerCameraBindFailureMessage(ScannerMode.AI_MEAL),
+            ),
+        )
+    }
+
+    @Test
+    fun scannerCameraUnavailableMessage_pointsToManualMealFallback() {
+        val message = scannerCameraUnavailableMessage(ScannerMode.AI_MEAL)
+
+        assertTrue(message.contains("Camera niet beschikbaar"))
+        assertTrue(message.contains("handmatig"))
+    }
+
+    @Test
+    fun scannerManualFallbackLabel_matchesScannerMode() {
+        assertEquals("Handmatig toevoegen", scannerManualFallbackLabel(ScannerMode.AI_MEAL))
+        assertEquals("Code handmatig invoeren", scannerManualFallbackLabel(ScannerMode.BARCODE))
+    }
+
+    @Test
+    fun cameraRestorableState_preservesPermissionDeniedAndCameraError() {
+        val saved = saveCameraScannerRestorableState(
+            CameraScannerRestorableState(
+                permissionDenied = true,
+                cameraError = "Camera kan nu niet starten.",
+            ),
+        )
+
+        val restored = restoreCameraScannerRestorableState(saved)
+
+        assertEquals(true, restored.permissionDenied)
+        assertEquals("Camera kan nu niet starten.", restored.cameraError)
+    }
+
+    @Test
+    fun cameraRestorableState_defaultsMissingValuesAfterRecreation() {
+        val restored = restoreCameraScannerRestorableState(emptyList())
+
+        assertEquals(false, restored.permissionDenied)
+        assertEquals(null, restored.cameraError)
     }
 
     @Test

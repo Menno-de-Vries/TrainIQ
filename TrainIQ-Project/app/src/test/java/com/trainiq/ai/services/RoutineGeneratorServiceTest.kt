@@ -15,6 +15,7 @@ class RoutineGeneratorServiceTest {
 
         assertTrue(source.contains("callGeminiWithBoundedRetry"))
         assertTrue(source.contains("responseJsonSchema = GeminiJsonSchemas.routineGenerator"))
+        assertTrue(source.contains("AiFeatureThrottledException"))
     }
 
     @Test

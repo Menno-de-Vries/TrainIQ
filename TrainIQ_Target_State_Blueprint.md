@@ -50,6 +50,35 @@ Evidence gathered during the May 8, 2026 optimization retest, after the second i
 
 Important filename note: the requested target file name contained `Blprint`, but the repository contains this file as `TrainIQ_Target_State_Blueprint.md`. This existing file is the canonical target-state document.
 
+Evidence gathered during the May 9, 2026 full QA audit:
+
+- Repo-local Codex skills were added for repeatable `superpowers`, `test-android-apps`, and `trainiq-target-state-qa` workflows.
+- `:app:testDebugUnitTest`, `:app:assembleDebug`, `:app:lintDebug`, `:app:compileDebugAndroidTestKotlin`, `:macrobenchmark:compileProfileableJavaWithJavac`, `:app:checkReleaseSigningReadiness`, and `:app:connectedDebugAndroidTest` passed on the available environment.
+- App installed and launched on `emulator-5554`; cold `am start -W` reached Home with `Status: ok`, `WaitTime: 6749`, and an empty crash buffer.
+- The same debug emulator smoke still showed startup/frame risk: `gfxinfo` reported 6 janky frames out of 8 rendered frames on the first-draw sample. This is not release-certifying evidence, but it keeps performance investigation open.
+- CI now runs on `pull_request` and protected branch pushes, release shrinking is enabled, and R8/ProGuard configuration exists. Remaining release blockers are owner gates, physical-device performance thresholds/evidence, production AI boundary signoff, accessibility signoff, Play/Data Safety confirmation, and migration-marker release gating.
+
+Refresh evidence from the later May 9, 2026 QA pass:
+
+- `:app:testDebugUnitTest` for `LineChartSemanticsTest`, `:app:assembleDebug`, `:app:lintDebug`, `:app:compileDebugAndroidTestKotlin`, `:app:checkReleaseSigningReadiness`, `:macrobenchmark:compileProfileableJavaWithJavac`, and targeted connected `AppLineChartAccessibilityTest` passed.
+- App installed and launched again on `emulator-5554`; cold `am start -W` reached Home with `Status: ok`, `WaitTime: 7260`, and an empty crash buffer.
+- Shared line-chart semantics now have automated unit and connected accessibility coverage in the current worktree, but manual TalkBack/Switch Access release signoff remains open for the broader app.
+
+Additional refresh evidence from the latest May 9, 2026 QA pass:
+
+- Targeted unit coverage for camera scanner state, Health Connect background sync retry policy, and line-chart semantics passed; `:app:assembleDebug`, `:app:lintDebug`, `:app:compileDebugAndroidTestKotlin`, targeted connected `AppLineChartAccessibilityTest`, `:app:installDebug`, `:app:checkReleaseSigningReadiness`, and `:macrobenchmark:compileProfileableJavaWithJavac` passed.
+- App installed and launched on `emulator-5554`; cold `am start -W` reached Home with `Status: ok`, `WaitTime: 6446`, and an empty crash buffer.
+- Debug `gfxinfo` still reported 6 janky frames out of 8 rendered frames on the first-draw sample, so startup/frame performance remains an open risk until profileable/release physical-device evidence is collected.
+- Camera scanner permission/error state and Health Connect background failure retry policy are improved in the current worktree, but scanner no-camera/CameraX bind-failure runtime handling and end-to-end revoked/provider Health Connect flows still need device evidence.
+
+Refresh evidence from the May 10, 2026 full QA audit:
+
+- Repo-local `trainiq-target-state-qa` skill now contains the reusable target-state audit workflow and valid frontmatter.
+- `:app:testDebugUnitTest`, `:app:assembleDebug`, `:app:lintDebug`, `:app:compileDebugAndroidTestKotlin`, `:app:checkReleaseSigningReadiness`, and `:macrobenchmark:compileProfileableJavaWithJavac` passed in one Gradle verification run.
+- Release-readiness verification also passed `:app:assembleRelease` and `:app:bundleRelease`; local release signing was not configured, so unsigned local artifacts are expected.
+- App installed on `emulator-5554`, and Home rendered after launch, but `am start -W` returned `Status: timeout`, `WaitTime: 20254`. Crash buffer was empty. `dumpsys gfxinfo com.trainiq framestats` was inconclusive because it returned `Failure while dumping the app`.
+- Open risks remain concentrated in targeted Room persistence migration, release owner gates, manual accessibility signoff, physical-device performance evidence, migration-marker CI/release gating, Health Connect runtime permission/provider evidence, compact large-font UI proof, and production AI boundary decisions.
+
 ## 3. Prioritized Findings
 
 ### Current Optimization Risks
@@ -102,11 +131,11 @@ Important filename note: the requested target file name contained `Blprint`, but
    - Risk: billing, abuse/quota, privacy, and third-party sharing ownership can remain unresolved at release time.
    - Target: release readiness must choose and document one mode: BYOK accepted, backend gateway implemented, OAuth-mediated access, or AI scoped out.
 
-9. **Release and CI gates are still too manual.**
-   - Severity: Low/Medium.
-   - Evidence: GitHub workflow is manual-only, migration marker generation is not wired into release build gates, release minification is disabled, and Baseline Profile generation still lacks a `BaselineProfileRule` producer workflow.
-   - Risk: regressions can land without PR validation, releases can omit fresh migration proof, performance claims remain weak, and release artifacts ship larger and less hardened than necessary.
-   - Target: CI must run on PR/protected-branch push; releases must require migration-marker evidence or an owner-approved exception; baseline profiles must be generated, not only required by benchmarks; release shrinking must be enabled or explicitly waived.
+9. **Release gates still depend on owner signoff and physical-device evidence.**
+   - Severity: Medium.
+   - Evidence: GitHub workflow now runs unit tests, lint, Android test compile, macrobenchmark compile, and signing readiness on PR/protected-branch push; release shrinking is enabled. However, migration marker generation is not wired into release build gates, performance thresholds still need product confirmation, physical-device benchmark evidence is missing, and owner release documents still block legal/privacy/accessibility/AI signoff.
+   - Risk: regressions are less likely to land silently, but releases can still ship without fresh migration proof, physical-device performance evidence, accessibility signoff, Play/Data Safety confirmation, or a signed production AI boundary.
+   - Target: releases must require migration-marker evidence or an owner-approved exception; baseline profiles must be generated, not only required by benchmarks; physical-device macrobenchmark/profileable evidence must meet approved thresholds; owner release blockers must be closed before production submission.
 
 ## 4. Architecture Target State
 
@@ -466,6 +495,7 @@ Developer experience:
 - Health Connect should stay on stable `1.1.0` unless an alpha feature is explicitly required.
 - Evaluate Room stable updates before the next modernization pass, then re-run the full migration chain and FK orphan tests.
 - Migration readiness marker generation must be wired into CI/release onboarding and release artifacts must be blocked without fresh marker evidence or an owner-approved exception.
+- CI/release validation must run migration-marker generation before release artifacts are accepted, or the release owner must record a dated exception explaining why marker evidence is diagnostic-only for that release.
 - Settings copy must match implementation: Keystore/encrypted local storage for Gemini keys, not generic app preferences.
 - Release builds should enable shrinking/obfuscation or carry an owner-approved written exception.
 - Room runtime source-of-truth promotion must be gated by the readiness signal, or the readiness signal must be explicitly reframed as diagnostic-only.
@@ -558,7 +588,137 @@ A TrainIQ feature is complete only when:
 - It does not log secrets or sensitive health data.
 - It updates this blueprint if a target-state decision changes.
 
-## 14. Source References From This Review
+## 14. vNext Developer Target Addendum
+
+This addendum converts the 2026-05-10 vNext research into developer-friendly target state. It is intentionally phased: confirmed target state belongs in `Now`; speculative ideas remain `Decision needed` until product, privacy, security, or medical/legal owners approve scope.
+
+Research docs:
+
+- `docs/TrainIQ_vNext_Research.md`
+- `docs/TrainIQ_Target_State_Backlog.md`
+- `docs/TrainIQ_Architecture_Decisions.md`
+
+### 14.1 Product Backbone
+
+TrainIQ vNext target:
+
+```text
+Local-first health data + explicit consent + reliable training/nutrition logs
+    -> deterministic readiness and data-quality model
+    -> bounded Gemini 2.5 Flash summaries where enabled
+    -> one calm next-best action
+```
+
+Confirmed target-state requirements:
+
+- First-run onboarding must capture goal, training experience, schedule, equipment, constraints, Health Connect consent, AI mode, notification/reminder preferences, and privacy expectations.
+- Home must present one primary next-best action, one reason, a data-quality label, and a fallback action.
+- Recovery/readiness must be conservative, data-quality-aware, and non-clinical. It may guide training/recovery choices, but must not diagnose, treat, or claim medical certainty.
+- Progress must explain trends with context: timeframe, data quality, relevant inputs, and uncertainty when inputs are missing or stale.
+- Export/import/delete controls must be explicit about scope and must never include secrets.
+
+Decision needed:
+
+- Supported goal types and coaching assertiveness.
+- Whether to add manual soreness/energy/readiness check-ins.
+- Reminder categories and default cadence.
+- Export formats and scope.
+
+### 14.2 Screen and Flow Acceptance Criteria
+
+Onboarding:
+
+- User can complete onboarding with Health Connect disabled and AI disabled.
+- Skipped capabilities remain visible as Settings/Home actions.
+- Entered state survives rotation, app switch, and process recreation where feasible.
+- Compact and large-font evidence exists at 360x640 and 360x800, font scale 1.3 and 1.5.
+
+Home:
+
+- First draw does not wait for AI or Health Connect full sync.
+- Missing or denied Health Connect metrics are never silently treated as measured zero values.
+- Primary action has a local deterministic fallback when AI is disabled, offline, rate-limited, or invalid.
+
+Recovery/readiness:
+
+- Output includes recommendation, confidence/data quality, inputs used, missing/stale inputs, and fallback action.
+- Copy avoids diagnosis, treatment, clinical promises, and unsupported medical claims.
+- AI output is schema-validated and replaceable by local fallback.
+
+Progress/export:
+
+- Charts have semantic summaries.
+- Trends include timeframe and data-quality context.
+- Export preview shows included categories before generating a file.
+- Export excludes API keys, telemetry tokens, signing data, and internal-only diagnostics by default.
+
+### 14.3 Backend and Data Responsibilities
+
+Confirmed target-state requirements:
+
+- Room remains the authoritative source for app-owned data.
+- JSON import/export is compatibility tooling, not normal runtime mutation authority.
+- Every normal user mutation must have a bounded targeted DAO path or documented full-replacement transaction semantics.
+- Active workout finish/edit/undo, routine edit/delete, meal save/delete, recipe save/delete, measurement add/delete, and profile writes must have process-restart correctness tests before the persistence migration is considered complete.
+- Health Connect sync state must preserve per-metric independence: denied, stale, failed, unavailable, and synced states must not poison unrelated metrics.
+- Health Connect cache/token metadata may remain in DataStore only while payloads are small and cleanup/debug requirements are simple. Move it to Room when payload growth, migration semantics, or privacy review requires stronger lifecycle control.
+- `TrainIqDataCoordinator` should keep being decomposed into focused concrete services/repositories after hot-path persistence is stable.
+
+### 14.4 Privacy, Security, and AI Boundaries
+
+Confirmed target-state requirements:
+
+- Health Connect background reads require explicit user value, runtime feature/permission support, Play/Data Safety parity, and owner signoff.
+- Telemetry upload is disabled unless the user explicitly opts in and release docs define endpoint, auth, payload, retention, and redaction.
+- Gemini key handling must not use URL query parameters or logs.
+- AI features must use structured JSON outputs, feature-specific timeouts, bounded retry/backoff, cancellation propagation, user-safe errors, and deterministic fallback where feasible.
+
+Decision needed:
+
+- Production AI mode: BYOK/direct-client, backend gateway, OAuth-mediated access, hybrid, or AI scoped out.
+- Background Health Connect release justification.
+- Telemetry upload policy and retention.
+- Barcode product lookup data source and offline/not-found policy.
+
+### 14.5 Android Quality and Release Criteria
+
+Confirmed target-state requirements:
+
+- Release readiness is gated, not only code-complete.
+- Manual TalkBack and Switch Access signoff is required for onboarding, active workout, scanner, Health Connect rationale, AI routine generation, Settings destructive actions, and Progress charts.
+- Health Connect runtime matrix must cover provider missing/update, no permission, partial permission, revoke while open, and background-read unavailable/granted states.
+- Performance thresholds must be owner-approved for startup, top-level navigation, active workout logging, scanner launch, and settings scroll.
+- Physical-device profileable or release macrobenchmark evidence is required before performance claims.
+- CI/release must either generate Room migration verification markers before artifacts are accepted or record a dated owner exception that marker evidence is diagnostic-only for that release.
+- Minified/profileable or release-like smoke tests must run before production upload.
+
+### 14.6 Phased vNext Roadmap
+
+Now:
+
+- Close P0/P1 data, release, accessibility, Health Connect, and performance evidence gaps.
+- Add guided onboarding target and tests.
+- Implement deterministic Home next-best-action selector.
+- Continue targeted Room writes one flow at a time.
+- Run Health Connect runtime matrix.
+
+Next:
+
+- Add goal/adherence model.
+- Add conservative recovery/readiness model.
+- Add opt-in reminders.
+- Add progress narrative and export.
+- Split concrete backend/data services after persistence hot paths are stable.
+
+Later:
+
+- Adaptive plan changes and deload suggestions.
+- Barcode product lookup if data-source policy is approved.
+- Cloud backup/account sync if privacy/security model is approved.
+- Gemini Nano/local multimodal feedback where platform support and product value are clear.
+- Wear OS companion only if training/rest-timer use cases justify the maintenance cost.
+
+## 15. Source References From This Review
 
 Local evidence:
 

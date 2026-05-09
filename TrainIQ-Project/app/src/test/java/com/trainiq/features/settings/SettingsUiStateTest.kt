@@ -6,6 +6,8 @@ import com.trainiq.core.theme.ThemeMode
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SettingsUiStateTest {
@@ -52,5 +54,19 @@ class SettingsUiStateTest {
     @Test
     fun geminiApiKeyInput_isAlwaysMaskedWhileTyping() {
         assertEquals(true, shouldMaskGeminiApiKeyInput())
+    }
+
+    @Test
+    fun destructiveSettingsDialogCopyNamesScopeAndKeepsCancelAvailable() {
+        assertEquals("API-sleutel verwijderen?", destructiveSettingsActionTitle(PendingDestructiveSettingsAction.CLEAR_API_KEY))
+        assertEquals("Profiel resetten?", destructiveSettingsActionTitle(PendingDestructiveSettingsAction.RESET_PROFILE))
+        assertEquals("Alle lokale appdata wissen?", destructiveSettingsActionTitle(PendingDestructiveSettingsAction.CLEAR_ALL_DATA))
+
+        val clearAllDataBody = destructiveSettingsActionBody(PendingDestructiveSettingsAction.CLEAR_ALL_DATA)
+        assertTrue(clearAllDataBody.contains("lokale trainingen"))
+        assertTrue(clearAllDataBody.contains("Health Connect-cache"))
+        assertTrue(clearAllDataBody.contains("Health Connect-permissies zelf beheer je in Android"))
+        assertTrue(clearAllDataBody.contains("niet automatisch ongedaan"))
+        assertFalse(clearAllDataBody.contains("cloud", ignoreCase = true))
     }
 }

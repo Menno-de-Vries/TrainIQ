@@ -8,6 +8,7 @@ import com.trainiq.data.remote.GeminiApi
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 
 data class GeneratedRoutine(
@@ -90,7 +91,7 @@ class RoutineGeneratorService @Inject constructor(
                 Log.d(RoutineGeneratorLogTag, "Routine AI fallback: Gemini API-key ontbreekt.")
                 return fallback
             }
-            val response = callGeminiWithBoundedRetry {
+            val response = callGeminiWithBoundedRetry(feature = AiFeature.ROUTINE_GENERATION) {
                 api.generateContent(
                     model = GEMINI_FLASH_MODEL,
                     apiKey = apiKey,
@@ -130,8 +131,9 @@ class RoutineGeneratorService @Inject constructor(
                 }
             }
         } catch (throwable: Throwable) {
+            if (throwable is CancellationException) throw throwable
             val mapped = throwable.asAiRateLimitExceptionIfNeeded()
-            if (mapped is AiRateLimitException) throw mapped
+            if (mapped is AiRateLimitException || mapped is AiFeatureThrottledException) throw mapped
             val detail = if (throwable is HttpException) "HTTP ${throwable.code()}" else throwable::class.simpleName.orEmpty()
             Log.d(RoutineGeneratorLogTag, "Routine AI fallback: Gemini-aanroep mislukt ($detail).")
             fallback
