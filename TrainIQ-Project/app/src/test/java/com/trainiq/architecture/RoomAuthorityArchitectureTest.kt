@@ -164,6 +164,23 @@ class RoomAuthorityArchitectureTest {
     }
 
     @Test
+    fun activeWorkoutSetDeleteUsesTargetedRoomWrite() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val deleteSetBody = repository.substringAfter("suspend fun deleteActiveWorkoutSet(")
+            .substringBefore("suspend fun undoWorkoutLogEvent(")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(deleteSetBody.contains("runtimeStore.deleteActiveWorkoutSet("))
+        assertFalse(deleteSetBody.contains("mutateActiveWorkout"))
+        assertFalse(deleteSetBody.contains("runtimeStore.update {"))
+        assertTrue(runtimeStore.contains("suspend fun deleteActiveWorkoutSet("))
+        assertTrue(dao.contains("suspend fun deleteActiveWorkoutSet("))
+        assertTrue(dao.contains("DELETE FROM active_workout_sets WHERE session_id = :sessionId AND id = :setId"))
+        assertTrue(dao.contains("deletePendingAddSetWorkoutLogEvent("))
+    }
+
+    @Test
     fun activeWorkoutDiscardUsesTargetedRoomDelete() {
         val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
         val discardBody = repository.substringAfter("suspend fun discardActiveWorkout(")

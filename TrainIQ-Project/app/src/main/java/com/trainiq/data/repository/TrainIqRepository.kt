@@ -351,10 +351,18 @@ class TrainIqDataCoordinator @Inject constructor(
         return updated.toDomain()
     }
 
-    suspend fun deleteActiveWorkoutSet(setId: Long): ActiveWorkoutSession? =
-        mutateActiveWorkout { active, now ->
-            active.deleteSetById(setId = setId, now = now)
-        }
+    suspend fun deleteActiveWorkoutSet(setId: Long): ActiveWorkoutSession? {
+        val active = runtimeStore.state.value.activeWorkoutSession ?: return null
+        if (active.loggedSets.none { it.id == setId }) return null
+        val now = System.currentTimeMillis()
+        val updated = active.deleteSetById(setId = setId, now = now)
+        runtimeStore.deleteActiveWorkoutSet(
+            sessionId = updated.sessionId,
+            setId = setId,
+            updatedAt = updated.updatedAt,
+        )
+        return updated.toDomain()
+    }
 
     suspend fun undoWorkoutLogEvent(eventId: Long): ActiveWorkoutSession? {
         var result: ActiveWorkoutSession? = null

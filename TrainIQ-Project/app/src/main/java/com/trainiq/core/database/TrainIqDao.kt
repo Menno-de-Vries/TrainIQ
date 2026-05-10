@@ -439,6 +439,35 @@ interface TrainIqDao {
         updateActiveWorkoutSessionUpdatedAt(sessionId = sessionId, updatedAt = updatedAt)
     }
 
+    @Query("DELETE FROM active_workout_sets WHERE session_id = :sessionId AND id = :setId")
+    suspend fun deleteActiveWorkoutSet(sessionId: Long, setId: Long)
+
+    @Query(
+        """
+        DELETE FROM workout_log_events
+        WHERE session_id = :sessionId
+            AND type = 'ADD_SET'
+            AND sync_status = 'PENDING'
+            AND id IN (
+                SELECT event_id
+                FROM workout_log_event_sets
+                WHERE id = :setId AND snapshot_role = 'CURRENT'
+            )
+        """,
+    )
+    suspend fun deletePendingAddSetWorkoutLogEvent(sessionId: Long, setId: Long)
+
+    @Transaction
+    suspend fun deleteActiveWorkoutSet(
+        sessionId: Long,
+        setId: Long,
+        updatedAt: Long,
+    ) {
+        deleteActiveWorkoutSet(sessionId = sessionId, setId = setId)
+        deletePendingAddSetWorkoutLogEvent(sessionId = sessionId, setId = setId)
+        updateActiveWorkoutSessionUpdatedAt(sessionId = sessionId, updatedAt = updatedAt)
+    }
+
     @Transaction
     suspend fun updateActiveWorkoutSet(
         sessionId: Long,
