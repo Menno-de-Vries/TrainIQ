@@ -1770,10 +1770,16 @@ private fun SavedFoodsCard(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.trainIqColors.mutedText,
                             )
+                            Button(
+                                onClick = { onQuickAdd(food) },
+                                enabled = !isAddPending,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text(savedFoodAddToMealLabel()) }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                OutlinedButton(onClick = { onSelect(food.id) }, modifier = Modifier.weight(1f)) { Text(if (selectedFoodId == food.id) "Geselecteerd" else "Gebruiken") }
-                                Button(onClick = { onQuickAdd(food) }, enabled = !isAddPending, modifier = Modifier.weight(1f)) { Text("Aan maaltijd") }
-                                TextButton(onClick = { onDelete(food.id) }) { Text("Verwijderen") }
+                                OutlinedButton(onClick = { onSelect(food.id) }, modifier = Modifier.weight(1f)) {
+                                    Text(savedFoodEditLabel(selected = selectedFoodId == food.id))
+                                }
+                                TextButton(onClick = { onDelete(food.id) }, modifier = Modifier.weight(1f)) { Text("Verwijderen") }
                             }
                         }
                     }
@@ -2306,6 +2312,11 @@ internal fun aiMealAnalyzingLabel(): String = "Maaltijd analyseren..."
 
 internal fun nutritionTabTitles(): List<String> =
     listOf("Vandaag", "Toevoegen", "AI-resultaat", "Recepten", "Producten", "Historie")
+
+internal fun savedFoodAddToMealLabel(): String = "Aan maaltijd toevoegen"
+
+internal fun savedFoodEditLabel(selected: Boolean): String =
+    if (selected) "Wordt bewerkt" else "Bewerken"
 
 internal fun nutritionEnergyProgressFraction(calories: Double, energyBalance: EnergyBalanceSnapshot?): Float {
     val target = energyBalance?.caloriesOut?.takeIf { it > 0 } ?: return 0f

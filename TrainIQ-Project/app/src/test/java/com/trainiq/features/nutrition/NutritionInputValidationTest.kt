@@ -159,6 +159,13 @@ class NutritionInputValidationTest {
     }
 
     @Test
+    fun savedFoodActionLabels_areExplicitForMealAndEditingActions() {
+        assertEquals("Aan maaltijd toevoegen", savedFoodAddToMealLabel())
+        assertEquals("Bewerken", savedFoodEditLabel(selected = false))
+        assertEquals("Wordt bewerkt", savedFoodEditLabel(selected = true))
+    }
+
+    @Test
     fun nutritionEnergyProgress_usesEnergyOutWhenAvailableInsteadOfHardcodedTarget() {
         val balance = EnergyBalanceSnapshot(
             caloriesIn = 1_400,
