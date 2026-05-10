@@ -1490,7 +1490,13 @@ fun WorkoutScreen(
             return@LazyColumn
         }
         item { RoutineCreationCard(onShowCreateDialog = { showCreateDialog = true }, onShowAiDialog = { showAiDialog = true }) }
-        item { ActiveRoutineCard(activeRoutine = overview.activeRoutine, onStartWorkout = onStartWorkout) }
+        item {
+            ActiveRoutineCard(
+                activeRoutine = overview.activeRoutine,
+                onStartWorkout = onStartWorkout,
+                onOpenDetails = { selectedRoutineId = it },
+            )
+        }
         item { SectionHeader("Routines") }
         if (overview.routines.isEmpty()) {
             item { EmptyCard("Nog geen routines", "Maak een routine, voeg trainingsdagen toe en koppel oefeningen om te starten.") }
@@ -1690,7 +1696,11 @@ private fun TrainingWithoutOverscroll(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun ActiveRoutineCard(activeRoutine: WorkoutRoutine?, onStartWorkout: (Long) -> Unit) {
+private fun ActiveRoutineCard(
+    activeRoutine: WorkoutRoutine?,
+    onStartWorkout: (Long) -> Unit,
+    onOpenDetails: (Long) -> Unit,
+) {
     AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.mint) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Actieve routine", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -1714,6 +1724,12 @@ private fun ActiveRoutineCard(activeRoutine: WorkoutRoutine?, onStartWorkout: (L
                 val startableDay = activeRoutine.firstStartableDay()
                 if (startableDay == null) {
                     Text(activeRoutineNeedsExerciseText())
+                    PrimaryActionButton(
+                        onClick = { onOpenDetails(activeRoutine.id) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(activeRoutineSetupLabel())
+                    }
                 } else {
                     Button(
                         onClick = { onStartWorkout(startableDay.id) },
@@ -6155,6 +6171,8 @@ private fun routineFocusLabel(routine: WorkoutRoutine): String =
     routine.days.flatMap { it.exercises }.focusLabel()
 
 internal fun activeRoutineStartLabel(dayName: String): String = "Training starten"
+
+internal fun activeRoutineSetupLabel(): String = "Routine inrichten"
 
 internal fun activeRoutineNeedsExerciseText(): String =
     "Open deze routine hieronder en voeg eerst een trainingsdag met oefening toe voordat je start."

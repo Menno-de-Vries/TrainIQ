@@ -128,6 +128,34 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun `empty active routine exposes setup entry in active routine card`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val activeRoutineCard = workoutScreen
+            .substringAfter("private fun ActiveRoutineCard(")
+            .substringBefore("@Composable\nprivate fun SectionHeader")
+
+        assertTrue(activeRoutineCard.contains("onOpenDetails: (Long) -> Unit"))
+        assertTrue(activeRoutineCard.contains("activeRoutineSetupLabel()"))
+        assertTrue(activeRoutineCard.contains("onOpenDetails(activeRoutine.id)"))
+    }
+
+    @Test
+    fun `routine setup label stays Dutch`() {
+        assertEquals("Routine inrichten", activeRoutineSetupLabel())
+    }
+
+    @Test
+    fun `routine overview keeps details action`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val routineCardOverview = workoutScreen
+            .substringAfter("if (!detailMode) {")
+            .substringBefore("return\n    }")
+
+        assertTrue(routineCardOverview.contains("onOpenDetails"))
+        assertTrue(routineCardOverview.contains("Text(\"Details\")"))
+    }
+
+    @Test
     fun `blank workout day fallback stays Dutch`() {
         assertEquals("Sessie", defaultWorkoutDayName())
     }

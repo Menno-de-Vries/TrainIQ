@@ -706,3 +706,26 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
 - Scanner capture/back flow: PASS, `Foto maken` action remained stable; Back returned from scanner to Voeding, then Back returned to Start.
 - Crash evidence: PASS, `crash-buffer.txt`, `direct-crash-buffer.txt`, and `capture-crash-buffer.txt` were empty.
 - Remaining risk: Camera permission denial was not shown because the device already allowed or did not prompt during this run. A true denial-path pass still needs app permission reset or a fresh install/user profile before release accessibility signoff.
+
+## 2026-05-10 Physical Device Active-Workout Completion Attempt
+
+- Device: Samsung SM-S931B, Android 16, physical device via `C:\Users\menno\AppData\Local\Android\Sdk\platform-tools\adb.exe`.
+- Evidence folder: `.codex/device-qa/2026-05-10-active-workout-completion-debrief/`.
+- Cold launch: PASS, `adb shell am start -W -n com.trainiq/.MainActivity` returned `Status: ok`, `WaitTime: 771`; a later relaunch after the blocked setup returned `WaitTime: 716`.
+- Routine setup: PARTIAL, `Lege routine maken` opened the expected `Routine maken` dialog. After hiding the Samsung keyboard before pressing `Maken`, the app showed `Routine aangemaakt.` and `QA routine` as the active routine.
+- Completion/debrief coverage: NOT RUN/BLOCKED. The newly created empty routine showed `Open deze routine hieronder en voeg eerst een trainingsdag met oefening toe voordat je start.`, but no routine-detail, day-add, exercise-add, or workout-start control was visible in the UI dump after repeated taps and scroll attempts.
+- Crash evidence: PASS, `crash-buffer.txt` was empty.
+- Verification: PASS, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest --console=plain --no-configuration-cache`.
+- Follow-up needed: create or expose a reliable QA fixture/setup path for an active routine with at least one workout day, exercise, and routine set, then rerun active-workout finish and completion/debrief runtime QA.
+
+## 2026-05-10 Training Setup Entry Polish
+
+- Files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/workout/WorkoutInputValidationTest.kt`
+- Fix: empty active routines now expose a visible `Routine inrichten` action from the active-routine card. The action reuses the existing routine detail mode instead of adding a new builder path.
+- Regression coverage: source-level tests now guard that the empty active routine card exposes the setup callback/label, the label remains Dutch, and the routine overview keeps the existing `Details` action.
+- Verification: PASS, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --console=plain --no-configuration-cache`.
+- Verification: PASS, `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
+- Physical-device evidence: PASS on SM-S931B, installed debug build, launched with `WaitTime: 1151`, created empty `QA routine`, verified `Routine inrichten` appears after scrolling the active-routine card, and verified tapping it opens the existing routine detail screen with `Info`/`Sessies`.
+- Crash evidence: PASS, `.codex/device-qa/2026-05-10-training-setup-entry-after/final-crash-buffer.txt` was empty.
