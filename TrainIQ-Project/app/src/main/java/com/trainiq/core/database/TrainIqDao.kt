@@ -225,6 +225,9 @@ interface TrainIqDao {
     @Insert
     suspend fun insertMeasurement(measurement: BodyMeasurementEntity)
 
+    @Query("DELETE FROM body_measurements WHERE id = :measurementId")
+    suspend fun deleteMeasurement(measurementId: Long)
+
     @Query("SELECT COUNT(*) FROM exercises")
     suspend fun exerciseCount(): Int
 
@@ -365,6 +368,74 @@ interface TrainIqDao {
         insertActiveWorkoutSets(listOf(set))
         insertWorkoutLogEvents(listOf(event))
         insertWorkoutLogEventSets(eventSets)
+    }
+
+    @Query(
+        """
+        UPDATE workout_log_event_sets
+        SET exercise_id = :exerciseId,
+            performed_exercise_id = :performedExerciseId,
+            source_workout_exercise_id = :sourceWorkoutExerciseId,
+            weight = :weight,
+            reps = :reps,
+            rpe = :rpe,
+            reps_in_reserve = :repsInReserve,
+            set_type = :setType,
+            rest_seconds = :restSeconds,
+            order_index = :orderIndex,
+            completed = :completed,
+            logged_at = :loggedAt
+        WHERE id = :setId AND snapshot_role = 'CURRENT'
+        """,
+    )
+    suspend fun updateWorkoutLogCurrentSetSnapshot(
+        setId: Long,
+        exerciseId: Long,
+        performedExerciseId: Long,
+        sourceWorkoutExerciseId: Long?,
+        weight: Double,
+        reps: Int,
+        rpe: Double,
+        repsInReserve: Int?,
+        setType: String,
+        restSeconds: Int,
+        orderIndex: Int,
+        completed: Boolean,
+        loggedAt: Long,
+    )
+
+    @Transaction
+    suspend fun updateActiveWorkoutSet(
+        sessionId: Long,
+        draft: ActiveWorkoutDraftEntity,
+        set: ActiveWorkoutSetEntity,
+        restTimerEndsAt: Long?,
+        restTimerTotalSeconds: Int,
+        updatedAt: Long,
+    ) {
+        insertActiveWorkoutDrafts(listOf(draft))
+        insertActiveWorkoutSets(listOf(set))
+        updateWorkoutLogCurrentSetSnapshot(
+            setId = set.id,
+            exerciseId = set.exerciseId,
+            performedExerciseId = set.performedExerciseId,
+            sourceWorkoutExerciseId = set.sourceWorkoutExerciseId,
+            weight = set.weight,
+            reps = set.reps,
+            rpe = set.rpe,
+            repsInReserve = set.repsInReserve,
+            setType = set.setType,
+            restSeconds = set.restSeconds,
+            orderIndex = set.orderIndex,
+            completed = set.completed,
+            loggedAt = set.loggedAt,
+        )
+        updateActiveWorkoutRestTimer(
+            sessionId = sessionId,
+            endsAt = restTimerEndsAt,
+            totalSeconds = restTimerTotalSeconds,
+            updatedAt = updatedAt,
+        )
     }
 
     @Query("SELECT * FROM workout_log_event_sets ORDER BY event_id ASC, snapshot_role ASC, snapshot_index ASC")

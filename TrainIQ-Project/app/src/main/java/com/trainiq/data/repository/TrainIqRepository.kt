@@ -304,41 +304,37 @@ class TrainIqDataCoordinator @Inject constructor(
         draft: ActiveWorkoutSetDraft,
         restSeconds: Int,
     ): ActiveWorkoutSession? {
-        var result: ActiveWorkoutSession? = null
         val now = System.currentTimeMillis()
-        runtimeStore.update { state ->
-            val active = state.activeWorkoutSession ?: return@update state
-            val updatedSet = active.loggedSets.firstOrNull { it.id == setId }?.let { existing ->
-                existing.copy(
-                    exerciseId = set.exerciseId,
-                    performedExerciseId = set.performedExerciseId.takeIf { it > 0L } ?: existing.performedExerciseId,
-                    sourceWorkoutExerciseId = set.sourceWorkoutExerciseId ?: existing.sourceWorkoutExerciseId,
-                    weight = set.weight,
-                    reps = set.reps,
-                    rpe = set.rpe,
-                    repsInReserve = set.repsInReserve,
-                    setType = set.setType,
-                    restSeconds = restSeconds.coerceAtLeast(0),
-                    completed = true,
-                    loggedAt = now,
-                )
-            } ?: return@update state
-            val updatedState = state.updateActiveWorkoutSetById(setId = setId, set = updatedSet, now = now)
-            val updated = updatedState
-                .copy(
-                    activeWorkoutSession = updatedState.activeWorkoutSession
-                        ?.copy(
-                            drafts = active.drafts.toMutableMap().apply {
-                                put(updatedSet.activeKey, draft.toStorage())
-                            },
-                            restTimerEndsAt = if (restSeconds > 0) now + restSeconds * 1_000L else null,
-                            restTimerTotalSeconds = restSeconds.coerceAtLeast(0),
-                        ),
-                )
-            result = updated.activeWorkoutSession?.toDomain()
-            updated
-        }
-        return result
+        val active = runtimeStore.state.value.activeWorkoutSession ?: return null
+        val updatedSet = active.loggedSets.firstOrNull { it.id == setId }?.let { existing ->
+            existing.copy(
+                exerciseId = set.exerciseId,
+                performedExerciseId = set.performedExerciseId.takeIf { it > 0L } ?: existing.performedExerciseId,
+                sourceWorkoutExerciseId = set.sourceWorkoutExerciseId ?: existing.sourceWorkoutExerciseId,
+                weight = set.weight,
+                reps = set.reps,
+                rpe = set.rpe,
+                repsInReserve = set.repsInReserve,
+                setType = set.setType,
+                restSeconds = restSeconds.coerceAtLeast(0),
+                completed = true,
+                loggedAt = now,
+            )
+        } ?: return null
+        val updated = active.updateSetById(setId = setId, set = updatedSet, now = now)
+            .copy(
+                drafts = active.drafts.toMutableMap().apply {
+                    put(updatedSet.activeKey, draft.toStorage())
+                },
+                restTimerEndsAt = if (restSeconds > 0) now + restSeconds * 1_000L else null,
+                restTimerTotalSeconds = restSeconds.coerceAtLeast(0),
+            )
+        runtimeStore.updateActiveWorkoutSet(
+            active = updated,
+            set = updatedSet,
+            draft = requireNotNull(updated.drafts[updatedSet.activeKey]),
+        )
+        return updated.toDomain()
     }
 
     suspend fun updateActiveWorkoutSetType(setId: Long, setType: SetType): ActiveWorkoutSession? =
@@ -1154,24 +1150,20 @@ class TrainIqDataCoordinator @Inject constructor(
     fun observeProgressOverview(): Flow<ProgressOverview> = snapshotState.map(::buildProgressOverview)
 
     suspend fun addMeasurement(weight: Double, bodyFat: Double, muscleMass: Double) {
-        runtimeStore.update { state ->
-            val measurementId = (state.measurements.maxOfOrNull { it.id } ?: 0L) + 1L
-            state.copy(
-                measurements = state.measurements + BodyMeasurementEntity(
-                    id = measurementId,
-                    date = System.currentTimeMillis(),
-                    weight = weight,
-                    bodyFat = bodyFat,
-                    muscleMass = muscleMass,
-                ),
+        val measurementId = (runtimeStore.state.value.measurements.maxOfOrNull { it.id } ?: 0L) + 1L
+        runtimeStore.addMeasurement(
+            BodyMeasurementEntity(
+                id = measurementId,
+                date = System.currentTimeMillis(),
+                weight = weight,
+                bodyFat = bodyFat,
+                muscleMass = muscleMass,
             )
-        }
+        )
     }
 
     suspend fun deleteMeasurement(measurementId: Long) {
-        runtimeStore.update { state ->
-            state.copy(measurements = state.measurements.filterNot { it.id == measurementId })
-        }
+        runtimeStore.deleteMeasurement(measurementId)
     }
 
     fun observeCoachOverview(): Flow<CoachOverview> = snapshotState.mapLatest { snapshot ->

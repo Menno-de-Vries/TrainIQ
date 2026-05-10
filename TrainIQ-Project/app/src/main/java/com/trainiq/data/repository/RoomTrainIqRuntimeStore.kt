@@ -234,9 +234,45 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         }
     }
 
+    suspend fun updateActiveWorkoutSet(
+        active: ActiveWorkoutSessionStorage,
+        set: ActiveWorkoutSetStorage,
+        draft: ActiveWorkoutDraftStorage,
+    ) {
+        mutex.withLock {
+            dao.updateActiveWorkoutSet(
+                sessionId = active.sessionId,
+                draft = ActiveWorkoutDraftEntity(
+                    sessionId = active.sessionId,
+                    exerciseId = set.activeKey,
+                    weight = draft.weight,
+                    reps = draft.reps,
+                    rpe = draft.rpe,
+                    setType = draft.setType.name,
+                ),
+                set = set.toActiveWorkoutSetEntity(sessionId = active.sessionId),
+                restTimerEndsAt = active.restTimerEndsAt,
+                restTimerTotalSeconds = active.restTimerTotalSeconds,
+                updatedAt = active.updatedAt,
+            )
+        }
+    }
+
     suspend fun discardActiveWorkoutSession(sessionId: Long) {
         mutex.withLock {
             dao.discardActiveWorkoutSession(sessionId)
+        }
+    }
+
+    suspend fun addMeasurement(measurement: BodyMeasurementEntity) {
+        mutex.withLock {
+            dao.insertMeasurement(measurement)
+        }
+    }
+
+    suspend fun deleteMeasurement(measurementId: Long) {
+        mutex.withLock {
+            dao.deleteMeasurement(measurementId)
         }
     }
 

@@ -114,6 +114,22 @@ class RoomAuthorityArchitectureTest {
     }
 
     @Test
+    fun activeWorkoutSetEditingUsesTargetedRoomWrite() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val updateSetBody = repository.substringAfter("suspend fun updateActiveWorkoutSet(")
+            .substringBefore("suspend fun updateActiveWorkoutSetType(")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(updateSetBody.contains("runtimeStore.updateActiveWorkoutSet("))
+        assertFalse(updateSetBody.contains("runtimeStore.update {"))
+        assertTrue(runtimeStore.contains("suspend fun updateActiveWorkoutSet("))
+        assertTrue(dao.contains("suspend fun updateActiveWorkoutSet("))
+        assertTrue(dao.contains("insertActiveWorkoutSets(listOf(set))"))
+        assertTrue(dao.contains("updateWorkoutLogCurrentSetSnapshot("))
+    }
+
+    @Test
     fun activeWorkoutDiscardUsesTargetedRoomDelete() {
         val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
         val discardBody = repository.substringAfter("suspend fun discardActiveWorkout(")
@@ -128,6 +144,23 @@ class RoomAuthorityArchitectureTest {
         assertTrue(dao.contains("deleteActiveWorkoutSession(sessionId)"))
         assertTrue(dao.contains("deleteDraftWorkoutSession(sessionId)"))
         assertTrue(dao.contains("deleteWorkoutLogEventsForSession(sessionId)"))
+    }
+
+    @Test
+    fun bodyMeasurementsUseTargetedRoomWrites() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val measurementBody = repository.substringAfter("suspend fun addMeasurement(")
+            .substringBefore("fun observeCoachOverview()")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(measurementBody.contains("runtimeStore.addMeasurement("))
+        assertTrue(measurementBody.contains("runtimeStore.deleteMeasurement("))
+        assertFalse(measurementBody.contains("runtimeStore.update {"))
+        assertTrue(runtimeStore.contains("suspend fun addMeasurement("))
+        assertTrue(runtimeStore.contains("suspend fun deleteMeasurement("))
+        assertTrue(dao.contains("suspend fun insertMeasurement(measurement: BodyMeasurementEntity)"))
+        assertTrue(dao.contains("DELETE FROM body_measurements WHERE id = :measurementId"))
     }
 
     @Test
