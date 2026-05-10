@@ -46,6 +46,7 @@ import com.trainiq.domain.model.WorkoutSyncStatus
 import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -306,6 +307,21 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         }
     }
 
+    suspend fun saveMeal(meal: LoggedMealStorage, items: List<LoggedMealItemStorage>) {
+        mutex.withLock {
+            dao.saveMeal(
+                meal = meal.toMealEntity(items),
+                items = items.mapIndexed { index, item -> item.toMealItemEntity(orderIndex = index) },
+            )
+        }
+    }
+
+    suspend fun deleteMeal(mealId: Long) {
+        mutex.withLock {
+            dao.deleteMealWithItems(mealId)
+        }
+    }
+
     suspend fun discardActiveWorkoutSession(sessionId: Long) {
         mutex.withLock {
             dao.discardActiveWorkoutSession(sessionId)
@@ -438,6 +454,33 @@ private fun MealItemEntity.toStorage() = LoggedMealItemStorage(
     carbs = carbs,
     fat = fat,
     notes = notes,
+)
+
+private fun LoggedMealStorage.toMealEntity(items: List<LoggedMealItemStorage>) = MealEntity(
+    id = id,
+    date = timestamp,
+    mealType = mealType.name,
+    name = name,
+    notes = notes,
+    calories = items.sumOf { it.calories }.roundToInt(),
+    protein = items.sumOf { it.protein }.roundToInt(),
+    carbs = items.sumOf { it.carbs }.roundToInt(),
+    fat = items.sumOf { it.fat }.roundToInt(),
+)
+
+private fun LoggedMealItemStorage.toMealItemEntity(orderIndex: Int) = MealItemEntity(
+    id = id,
+    mealId = mealId,
+    itemType = itemType.name,
+    referenceId = referenceId,
+    name = name,
+    gramsUsed = gramsUsed,
+    calories = calories,
+    protein = protein,
+    carbs = carbs,
+    fat = fat,
+    notes = notes,
+    orderIndex = orderIndex,
 )
 
 private fun ActiveWorkoutSetEntity.toStorage() = ActiveWorkoutSetStorage(

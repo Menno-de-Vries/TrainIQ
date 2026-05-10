@@ -215,6 +215,24 @@ class RoomAuthorityArchitectureTest {
     }
 
     @Test
+    fun mealsUseTargetedRoomWrites() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val mealBody = repository.substringAfter("suspend fun saveMeal(")
+            .substringBefore("suspend fun deleteFood(")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(mealBody.contains("runtimeStore.saveMeal("))
+        assertTrue(mealBody.contains("runtimeStore.deleteMeal("))
+        assertFalse(mealBody.contains("runtimeStore.update {"))
+        assertTrue(runtimeStore.contains("suspend fun saveMeal(meal: LoggedMealStorage"))
+        assertTrue(runtimeStore.contains("suspend fun deleteMeal(mealId: Long)"))
+        assertTrue(dao.contains("suspend fun saveMeal(meal: MealEntity, items: List<MealItemEntity>)"))
+        assertTrue(dao.contains("DELETE FROM meal_items WHERE meal_id = :mealId"))
+        assertTrue(dao.contains("DELETE FROM meals WHERE id = :mealId"))
+    }
+
+    @Test
     fun roomImportReportsUseCurrentRoomSchemaVersion() {
         val database = File(mainSources, "core/database/TrainIqDatabase.kt").readText()
         val importPlanner = File(mainSources, "data/migration/JsonRoomImportPlanner.kt").readText()

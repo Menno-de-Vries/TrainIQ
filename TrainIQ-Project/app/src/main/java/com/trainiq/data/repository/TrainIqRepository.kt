@@ -1137,23 +1137,13 @@ class TrainIqDataCoordinator @Inject constructor(
             recipes = snapshot.recipes,
         )
         require(mealItems.isNotEmpty()) { "Deze maaltijd bevat geen beschikbare producten of recepten meer." }
-        runtimeStore.update { state ->
-            state.copy(
-                meals = state.meals.filterNot { it.id == mealId } + mealStorage,
-                mealItems = state.mealItems.filterNot { it.mealId == mealId } + mealItems,
-            )
-        }
+        runtimeStore.saveMeal(meal = mealStorage, items = mealItems)
         scannedMealResult.value = null
         return mealId
     }
 
     suspend fun deleteMeal(mealId: Long) {
-        runtimeStore.update { state ->
-            state.copy(
-                meals = state.meals.filterNot { it.id == mealId },
-                mealItems = state.mealItems.filterNot { it.mealId == mealId },
-            )
-        }
+        runtimeStore.deleteMeal(mealId)
     }
 
     suspend fun deleteFood(foodId: Long) {

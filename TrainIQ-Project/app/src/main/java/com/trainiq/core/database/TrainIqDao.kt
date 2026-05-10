@@ -222,6 +222,25 @@ interface TrainIqDao {
     @Insert
     suspend fun insertMeal(meal: MealEntity)
 
+    @Query("DELETE FROM meal_items WHERE meal_id = :mealId")
+    suspend fun deleteMealItems(mealId: Long)
+
+    @Query("DELETE FROM meals WHERE id = :mealId")
+    suspend fun deleteMeal(mealId: Long)
+
+    @Transaction
+    suspend fun saveMeal(meal: MealEntity, items: List<MealItemEntity>) {
+        insertMeals(listOf(meal))
+        deleteMealItems(meal.id)
+        insertMealItems(items)
+    }
+
+    @Transaction
+    suspend fun deleteMealWithItems(mealId: Long) {
+        deleteMealItems(mealId)
+        deleteMeal(mealId)
+    }
+
     @Insert
     suspend fun insertMeasurement(measurement: BodyMeasurementEntity)
 
