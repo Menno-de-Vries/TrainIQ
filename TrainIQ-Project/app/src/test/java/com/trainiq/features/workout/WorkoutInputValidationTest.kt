@@ -352,6 +352,24 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun `active set rows keep manually reduced target without hiding logged sets`() {
+        assertEquals(2, visibleActiveSetRows(plannedSetCount = 2, loggedSetCount = 0, manualExtraSetRequested = false))
+        assertEquals(3, visibleActiveSetRows(plannedSetCount = 2, loggedSetCount = 3, manualExtraSetRequested = false))
+        assertEquals(4, visibleActiveSetRows(plannedSetCount = 3, loggedSetCount = 3, manualExtraSetRequested = true))
+    }
+
+    @Test
+    fun `active replacement picker allows custom exercise creation`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val activeReplacementPicker = workoutScreen
+            .substringAfter("replacingActivePlan?.let { plan ->")
+            .substringBefore("creatingActiveReplacement?.let")
+
+        assertTrue(activeReplacementPicker.contains("allowCustomExercise = true"))
+        assertTrue(activeReplacementPicker.contains("creatingActiveReplacement = plan"))
+    }
+
+    @Test
     fun `active exercise rest override is per exercise and clamped`() {
         assertEquals(90, activeExerciseRestSeconds(baseRestSeconds = 90, overrideRestSeconds = null))
         assertEquals(120, activeExerciseRestSeconds(baseRestSeconds = 90, overrideRestSeconds = 120))

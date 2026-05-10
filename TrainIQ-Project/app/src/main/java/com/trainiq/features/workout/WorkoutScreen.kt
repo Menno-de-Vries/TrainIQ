@@ -55,6 +55,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudQueue
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ExpandLess
@@ -1043,6 +1044,32 @@ class WorkoutViewModel @Inject constructor(
         }
     }
 
+    fun replaceActiveExerciseWithCustom(
+        workoutExerciseId: Long,
+        name: String,
+        muscleGroup: String,
+        equipment: String,
+    ) {
+        val workout = _activeWorkout.value ?: return
+        val plan = workout.exercises.firstOrNull { it.id == workoutExerciseId } ?: return
+        viewModelScope.launch {
+            addExerciseToDayUseCase(
+                dayId = workout.id,
+                name = name,
+                muscleGroup = muscleGroup,
+                equipment = equipment,
+                targetSets = plan.targetSets,
+                repRange = plan.repRange,
+                restSeconds = plan.restSeconds,
+                targetWeightKg = plan.targetWeightKg,
+                targetRpe = plan.targetRpe,
+            )
+            removeExerciseFromDayUseCase(workoutExerciseId)
+            _activeWorkout.value = getWorkoutDayUseCase(workout.id)
+            _message.value = "Oefening vervangen door $name."
+        }
+    }
+
     fun removeExerciseFromActiveWorkout(workoutExerciseId: Long) {
         val workout = _activeWorkout.value ?: return
         val currentPlan = workout.exercises.firstOrNull { it.id == workoutExerciseId } ?: return
@@ -1531,6 +1558,13 @@ class WorkoutCompletionViewModel @Inject constructor(
                 WorkoutCompletionUiState.Error("Deze afgeronde training kon niet worden geladen.")
             } else {
                 WorkoutCompletionUiState.Success(summary)
+            }
+            if (summary?.debrief?.source == WorkoutDebriefSource.LOCAL_FALLBACK) {
+                kotlinx.coroutines.delay(2_500L)
+                val refreshed = getWorkoutCompletionSummaryUseCase(sessionId)
+                if (refreshed != null && refreshed.debrief.source != summary.debrief.source) {
+                    _uiState.value = WorkoutCompletionUiState.Success(refreshed)
+                }
             }
         }
     }
@@ -3503,6 +3537,7 @@ private fun ExercisePickerSheet(
     exercises: List<Exercise>,
     title: String = "Oefening toevoegen",
     showDefaults: Boolean = true,
+    allowCustomExercise: Boolean = showDefaults,
     targetSets: String,
     repRange: String,
     restSeconds: String,
@@ -3680,6 +3715,8 @@ private fun ExercisePickerSheet(
                                 }
                             }
                         }
+                    }
+                    if (allowCustomExercise) {
                         item {
                             TextButton(onClick = onCustomExercise, modifier = Modifier.fillMaxWidth()) {
                                 Text("Voeg eigen oefening toe")
@@ -4304,6 +4341,7 @@ fun ActiveWorkoutRoute(
         onRestartRestTimer = viewModel::restartRestTimer,
         onToggleExerciseCollapsed = viewModel::setExerciseCollapsed,
         onReplaceActiveExercise = viewModel::replaceExerciseInActiveWorkout,
+        onReplaceActiveExerciseWithCustom = viewModel::replaceActiveExerciseWithCustom,
         onRemoveActiveExercise = viewModel::removeExerciseFromActiveWorkout,
         onFinish = { onWorkoutProcessing(dayId) },
         onDiscard = { viewModel.discardWorkout(dayId) },
@@ -4741,6 +4779,7 @@ fun ActiveWorkoutScreen(
     onRestartRestTimer: (Int) -> Unit,
     onToggleExerciseCollapsed: (Long, Boolean) -> Unit,
     onReplaceActiveExercise: (Long, Exercise) -> Unit,
+    onReplaceActiveExerciseWithCustom: (Long, String, String, String) -> Unit,
     onRemoveActiveExercise: (Long) -> Unit,
     onFinish: () -> Unit,
     onDiscard: () -> Unit,
@@ -4749,6 +4788,7 @@ fun ActiveWorkoutScreen(
     var showFinishConfirm by remember { mutableStateOf(false) }
     var showDiscardConfirm by remember { mutableStateOf(false) }
     var replacingActivePlan by remember { mutableStateOf<WorkoutExercisePlan?>(null) }
+    var creatingActiveReplacement by remember { mutableStateOf<WorkoutExercisePlan?>(null) }
     var pendingActiveReplacement by remember { mutableStateOf<Pair<WorkoutExercisePlan, Exercise>?>(null) }
     var pendingRemoveActivePlan by remember { mutableStateOf<WorkoutExercisePlan?>(null) }
     val currentOnDismissMessage by rememberUpdatedState(onDismissMessage)
@@ -4781,8 +4821,31 @@ fun ActiveWorkoutScreen(
                     onReplaceActiveExercise(plan.id, exercise)
                 }
             },
-            onCustomExercise = {},
+            allowCustomExercise = true,
+            onCustomExercise = {
+                replacingActivePlan = null
+                creatingActiveReplacement = plan
+            },
             onDismiss = { replacingActivePlan = null },
+        )
+    }
+    creatingActiveReplacement?.let { plan ->
+        CustomExerciseDialog(
+            targetSets = plan.targetSets.toString(),
+            repRange = plan.repRange,
+            restSeconds = plan.restSeconds.toString(),
+            targetWeightKg = plan.targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty(),
+            targetRpe = plan.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty(),
+            onTargetSetsChange = {},
+            onRepRangeChange = {},
+            onRestSecondsChange = {},
+            onTargetWeightChange = {},
+            onTargetRpeChange = {},
+            onConfirm = { name, muscleGroup, equipment ->
+                creatingActiveReplacement = null
+                onReplaceActiveExerciseWithCustom(plan.id, name, muscleGroup, equipment)
+            },
+            onDismiss = { creatingActiveReplacement = null },
         )
     }
 
@@ -5329,9 +5392,9 @@ private fun ActiveExerciseCard(
     onReplaceExercise: () -> Unit,
     onRemoveExercise: () -> Unit,
 ) {
-    var manualExtraSetCount by rememberSaveable(plan.id) { mutableIntStateOf(0) }
+    var activeSetTargetDelta by rememberSaveable(plan.id) { mutableIntStateOf(0) }
     val plannedSetCount = plan.plannedSetCount()
-    val activeSetTargetCount = plannedSetCount + manualExtraSetCount
+    val activeSetTargetCount = (plannedSetCount + activeSetTargetDelta).coerceAtLeast(loggedSets.size)
     val hasPendingCorrection = pendingCorrectionSetId != null && loggedSets.any { it.id == pendingCorrectionSetId }
     val showLogger = shouldShowActiveSetLogger(
         isSessionFinished = isSessionFinished,
@@ -5416,7 +5479,7 @@ private fun ActiveExerciseCard(
                             leadingIcon = { Icon(Icons.Rounded.Add, contentDescription = null) },
                             onClick = {
                                 menuExpanded = false
-                                manualExtraSetCount += 1
+                                activeSetTargetDelta += 1
                             },
                         )
                         DropdownMenuItem(
@@ -5463,6 +5526,10 @@ private fun ActiveExerciseCard(
                     },
                     onEdit = { loggedSets.getOrNull(index)?.let { onEditSet(it.id) } },
                     onDelete = { loggedSets.getOrNull(index)?.let { onDeleteSet(it.id) } },
+                    canRemovePlanned = !isSessionFinished &&
+                        loggedSets.getOrNull(index) == null &&
+                        activeSetTargetCount > loggedSets.size,
+                    onRemovePlanned = { activeSetTargetDelta -= 1 },
                     onRelog = { loggedSets.getOrNull(index)?.let { onRelogSet(it.id) } },
                 )
             }
@@ -5754,6 +5821,8 @@ private fun SetRow(
     onCycleType: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    canRemovePlanned: Boolean,
+    onRemovePlanned: () -> Unit,
     onRelog: () -> Unit,
 ) {
     var showDeleteConfirm by remember(index, loggedSet) { mutableStateOf(false) }
@@ -5822,6 +5891,10 @@ private fun SetRow(
                 }
                 IconButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.size(40.dp)) {
                     Icon(Icons.Rounded.Delete, contentDescription = "Set verwijderen")
+                }
+            } else if (canRemovePlanned) {
+                IconButton(onClick = onRemovePlanned, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Rounded.DeleteOutline, contentDescription = "Geplande set uit deze training verwijderen")
                 }
             }
         }
