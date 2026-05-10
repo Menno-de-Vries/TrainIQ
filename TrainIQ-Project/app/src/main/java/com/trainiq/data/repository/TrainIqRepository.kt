@@ -702,7 +702,9 @@ class TrainIqDataCoordinator @Inject constructor(
     }
 
     suspend fun addSetToExercise(workoutExerciseId: Long) {
-        runtimeStore.update { state -> state.withRoutineSetAdded(workoutExerciseId) }
+        replaceTargetedRoutineSetsForExercise(workoutExerciseId) { state ->
+            state.withRoutineSetAdded(workoutExerciseId)
+        }
     }
 
     suspend fun updateRoutineSet(set: RoutineSet) {
@@ -736,16 +738,19 @@ class TrainIqDataCoordinator @Inject constructor(
     }
 
     suspend fun deleteRoutineSet(setId: Long) {
-        runtimeStore.update { state ->
-            val removed = state.routineSets.firstOrNull { it.id == setId } ?: return@update state
+        val workoutExerciseId = runtimeStore.state.value.routineSets
+            .firstOrNull { it.id == setId }
+            ?.workoutExerciseId
+            ?: return
+        replaceTargetedRoutineSetsForExercise(workoutExerciseId) { state ->
             state.copy(routineSets = state.routineSets.filterNot { it.id == setId })
-                .renumberRoutineSets(removed.workoutExerciseId)
-                .withWorkoutExerciseTargetsSynced(removed.workoutExerciseId)
+                .renumberRoutineSets(workoutExerciseId)
+                .withWorkoutExerciseTargetsSynced(workoutExerciseId)
         }
     }
 
     suspend fun moveRoutineSet(workoutExerciseId: Long, orderedSetIds: List<Long>) {
-        runtimeStore.update { state ->
+        replaceTargetedRoutineSetsForExercise(workoutExerciseId) { state ->
             val requestedOrder = orderedSetIds.distinct().withIndex().associate { it.value to it.index }
             val exerciseSets = state.routineSets.filter { it.workoutExerciseId == workoutExerciseId }
             val fallbackOrder = exerciseSets
@@ -764,6 +769,22 @@ class TrainIqDataCoordinator @Inject constructor(
                 },
             ).withWorkoutExerciseTargetsSynced(workoutExerciseId)
         }
+    }
+
+    private suspend fun replaceTargetedRoutineSetsForExercise(
+        workoutExerciseId: Long,
+        transform: (TrainIqStorageState) -> TrainIqStorageState,
+    ) {
+        val updated = transform(runtimeStore.state.value)
+        val updatedExercise = updated.workoutExercises.firstOrNull { it.id == workoutExerciseId } ?: return
+        val updatedSets = updated.routineSets
+            .filter { it.workoutExerciseId == workoutExerciseId }
+            .sortedWith(compareBy<RoutineSetEntity> { it.orderIndex }.thenBy { it.id })
+        runtimeStore.replaceRoutineSetsForExercise(
+            workoutExerciseId = workoutExerciseId,
+            sets = updatedSets,
+            workoutExercise = updatedExercise,
+        )
     }
 
     suspend fun addWorkoutDay(routineId: Long, name: String) {

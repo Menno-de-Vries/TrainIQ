@@ -179,6 +179,20 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         }
     }
 
+    suspend fun replaceRoutineSetsForExercise(
+        workoutExerciseId: Long,
+        sets: List<RoutineSetEntity>,
+        workoutExercise: WorkoutExerciseEntity,
+    ) {
+        mutex.withLock {
+            dao.replaceRoutineSetsForExercise(
+                workoutExerciseId = workoutExerciseId,
+                sets = sets,
+                workoutExercise = workoutExercise,
+            )
+        }
+    }
+
     suspend fun createRoutine(name: String, description: String) {
         mutex.withLock {
             val routineId = (dao.getMaxRoutineId() ?: 0L) + 1L

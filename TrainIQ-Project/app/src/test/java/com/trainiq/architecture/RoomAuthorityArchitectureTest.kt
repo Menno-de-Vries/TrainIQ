@@ -308,6 +308,27 @@ class RoomAuthorityArchitectureTest {
     }
 
     @Test
+    fun routineSetAddDeleteMoveUseTargetedRoomWrites() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val routineSetAddBody = repository.substringAfter("suspend fun addSetToExercise(")
+            .substringBefore("suspend fun updateRoutineSet(")
+        val routineSetDeleteMoveBody = repository.substringAfter("suspend fun deleteRoutineSet(")
+            .substringBefore("suspend fun addWorkoutDay(")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(routineSetAddBody.contains("replaceTargetedRoutineSetsForExercise("))
+        assertTrue(routineSetDeleteMoveBody.contains("replaceTargetedRoutineSetsForExercise("))
+        assertFalse(routineSetAddBody.contains("runtimeStore.update {"))
+        assertFalse(routineSetDeleteMoveBody.contains("runtimeStore.update {"))
+        assertTrue(runtimeStore.contains("suspend fun replaceRoutineSetsForExercise("))
+        assertTrue(dao.contains("suspend fun replaceRoutineSetsForExercise("))
+        assertTrue(dao.contains("deleteRoutineSetsForExercise(workoutExerciseId)"))
+        assertTrue(dao.contains("insertRoutineSets(sets)"))
+        assertTrue(dao.contains("insertWorkoutExercise(workoutExercise)"))
+    }
+
+    @Test
     fun routineCoreMutationsUseTargetedRoomWrites() {
         val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
         val routineBody = repository.substringAfter("suspend fun createRoutine(")

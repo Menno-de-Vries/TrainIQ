@@ -688,6 +688,17 @@ interface TrainIqDao {
     @Query("DELETE FROM routine_sets WHERE workoutExerciseId = :workoutExerciseId")
     suspend fun deleteRoutineSetsForExercise(workoutExerciseId: Long)
 
+    @Transaction
+    suspend fun replaceRoutineSetsForExercise(
+        workoutExerciseId: Long,
+        sets: List<RoutineSetEntity>,
+        workoutExercise: WorkoutExerciseEntity,
+    ) {
+        deleteRoutineSetsForExercise(workoutExerciseId)
+        insertRoutineSets(sets)
+        insertWorkoutExercise(workoutExercise)
+    }
+
     @Query("DELETE FROM workout_exercises WHERE dayId = :dayId")
     suspend fun deleteWorkoutExercisesForDay(dayId: Long)
 
