@@ -130,6 +130,23 @@ class RoomAuthorityArchitectureTest {
     }
 
     @Test
+    fun activeWorkoutCollapseUsesTargetedRoomWrite() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val collapseBody = repository.substringAfter("suspend fun setActiveWorkoutCollapsed(")
+            .substringBefore("suspend fun updateActiveWorkoutRestTimer(")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(collapseBody.contains("runtimeStore.setActiveWorkoutCollapsedExercise("))
+        assertFalse(collapseBody.contains("mutateActiveWorkout"))
+        assertFalse(collapseBody.contains("runtimeStore.update {"))
+        assertTrue(runtimeStore.contains("suspend fun setActiveWorkoutCollapsedExercise("))
+        assertTrue(dao.contains("suspend fun setActiveWorkoutCollapsedExercise("))
+        assertTrue(dao.contains("insertActiveWorkoutCollapsedExercises(listOf(collapsedExercise))"))
+        assertTrue(dao.contains("deleteActiveWorkoutCollapsedExercise("))
+    }
+
+    @Test
     fun activeWorkoutDiscardUsesTargetedRoomDelete() {
         val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
         val discardBody = repository.substringAfter("suspend fun discardActiveWorkout(")

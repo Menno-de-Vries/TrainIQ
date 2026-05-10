@@ -357,13 +357,25 @@ class TrainIqDataCoordinator @Inject constructor(
         return result
     }
 
-    suspend fun setActiveWorkoutCollapsed(exerciseId: Long, collapsed: Boolean): ActiveWorkoutSession? =
-        mutateActiveWorkout { active, now ->
-            active.copy(
-                updatedAt = now,
-                collapsedExerciseIds = if (collapsed) active.collapsedExerciseIds + exerciseId else active.collapsedExerciseIds - exerciseId,
-            )
-        }
+    suspend fun setActiveWorkoutCollapsed(exerciseId: Long, collapsed: Boolean): ActiveWorkoutSession? {
+        val active = runtimeStore.state.value.activeWorkoutSession ?: return null
+        val now = System.currentTimeMillis()
+        val updated = active.copy(
+            updatedAt = now,
+            collapsedExerciseIds = if (collapsed) {
+                active.collapsedExerciseIds + exerciseId
+            } else {
+                active.collapsedExerciseIds - exerciseId
+            },
+        )
+        runtimeStore.setActiveWorkoutCollapsedExercise(
+            sessionId = updated.sessionId,
+            exerciseId = exerciseId,
+            collapsed = collapsed,
+            updatedAt = updated.updatedAt,
+        )
+        return updated.toDomain()
+    }
 
     suspend fun updateActiveWorkoutRestTimer(endsAt: Long?, totalSeconds: Int): ActiveWorkoutSession? =
         withContext(Dispatchers.IO) {

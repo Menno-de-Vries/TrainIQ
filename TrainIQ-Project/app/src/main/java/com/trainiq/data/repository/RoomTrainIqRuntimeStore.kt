@@ -258,6 +258,24 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         }
     }
 
+    suspend fun setActiveWorkoutCollapsedExercise(
+        sessionId: Long,
+        exerciseId: Long,
+        collapsed: Boolean,
+        updatedAt: Long,
+    ) {
+        mutex.withLock {
+            dao.setActiveWorkoutCollapsedExercise(
+                collapsedExercise = ActiveWorkoutCollapsedExerciseEntity(
+                    sessionId = sessionId,
+                    exerciseId = exerciseId,
+                ),
+                collapsed = collapsed,
+                updatedAt = updatedAt,
+            )
+        }
+    }
+
     suspend fun discardActiveWorkoutSession(sessionId: Long) {
         mutex.withLock {
             dao.discardActiveWorkoutSession(sessionId)

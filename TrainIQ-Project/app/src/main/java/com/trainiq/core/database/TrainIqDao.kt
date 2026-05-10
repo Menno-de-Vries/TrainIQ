@@ -354,6 +354,23 @@ interface TrainIqDao {
     suspend fun deleteActiveWorkoutCollapsedExercise(sessionId: Long, exerciseId: Long)
 
     @Transaction
+    suspend fun setActiveWorkoutCollapsedExercise(
+        collapsedExercise: ActiveWorkoutCollapsedExerciseEntity,
+        collapsed: Boolean,
+        updatedAt: Long,
+    ) {
+        if (collapsed) {
+            insertActiveWorkoutCollapsedExercises(listOf(collapsedExercise))
+        } else {
+            deleteActiveWorkoutCollapsedExercise(
+                sessionId = collapsedExercise.sessionId,
+                exerciseId = collapsedExercise.exerciseId,
+            )
+        }
+        updateActiveWorkoutSessionUpdatedAt(sessionId = collapsedExercise.sessionId, updatedAt = updatedAt)
+    }
+
+    @Transaction
     suspend fun logActiveWorkoutSet(
         session: ActiveWorkoutSessionEntity,
         draft: ActiveWorkoutDraftEntity,

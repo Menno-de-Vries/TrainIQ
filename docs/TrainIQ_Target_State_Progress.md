@@ -7,7 +7,7 @@ Updated date: 2026-05-10
 - Previous alignment: 93%
 - Current estimated alignment: 94%
 - Delta: +1 percentage point
-- Reason: 2026-05-10 polish removed shared header and routine set label ellipsis/no-wrap constraints, added regression coverage, wired Room migration-marker generation into the signed-release CI gate, and moved body measurement add/delete plus active-workout set editing to targeted Room writes. AI routine compact presentation proof, manual accessibility evidence, performance owner gates, and larger persistence work remain open, so the rounded alignment score stays at 94%.
+- Reason: 2026-05-10 polish removed shared header and routine set label ellipsis/no-wrap constraints, added regression coverage, wired Room migration-marker generation into the signed-release CI gate, and moved body measurement add/delete, active-workout set editing, and active-workout collapse toggles to targeted Room writes. AI routine compact presentation proof, manual accessibility evidence, performance owner gates, and larger persistence work remain open, so the rounded alignment score stays at 94%.
 
 ## Completed Findings
 
@@ -21,7 +21,7 @@ Updated date: 2026-05-10
 
 ## Partially Completed Findings
 
-- QA-2026-05-09-001 (P0): Active-workout rest timer updates now use a targeted Room `UPDATE active_workout_sessions` path, active-workout draft updates now use a targeted `active_workout_drafts` upsert plus session timestamp update, active-workout set logging/editing now uses targeted active-session/set/event upserts, active-workout discard now uses targeted deletes, and body measurement add/delete now uses targeted Room writes instead of full JSON mirror import. The broader hot-path persistence migration remains open for finish, meals, routines, and profile writes.
+- QA-2026-05-09-001 (P0): Active-workout rest timer updates now use a targeted Room `UPDATE active_workout_sessions` path, active-workout draft updates now use a targeted `active_workout_drafts` upsert plus session timestamp update, active-workout set logging/editing now uses targeted active-session/set/event upserts, active-workout collapse/expand and discard now use targeted writes/deletes, and body measurement add/delete now uses targeted Room writes instead of full JSON mirror import. The broader hot-path persistence migration remains open for finish, meals, routines, and profile writes.
 - QA-2026-05-09-011 (P2): Generated routine preview now uses a scrollable modal sheet with read-only Dutch metadata pills, active/routine set metric rows now use compact Dutch `Herh.` labels instead of `Reps`, active-workout session status now uses Dutch `Rust` instead of `Rest`, active-workout status metrics now use equal weighted columns, and rest timer icon-only actions now include contextual Dutch `Rusttimer ...` labels; compact active-workout/runtime font-scale QA remains open.
 - QA-2026-05-09-012 (P2): Basic automated accessibility coverage now exists for shared chart semantics, generated routine preview source guards, active/routine set metric label guards, active-workout rest status label guards, active-workout sticky status summary semantics, active-workout bottom bar summary semantics, status metric summary semantics, rest-timer card summary semantics, rest timer action-description guards including skip, Health Connect rationale reasons, Settings destructive confirmation copy, camera fallback policy/copy, scanner permission-gate copy, and scanner sheet state/action copy. Signed manual accessibility checks remain open.
 - QA-2026-05-10-016 (P1): Shared `AppScreenHeader` title/subtitle text and routine set index/type labels now allow controlled wrapping, with a source-level regression guard. AI routine dialog compact behavior and runtime 360x640/360x800 font-scale proof remain open.
@@ -59,6 +59,7 @@ Updated date: 2026-05-10
 - No new webresearch was needed for the 2026-05-10 CI migration-marker polish; local Gradle task wiring and workflow scope were sufficient.
 - No new webresearch was needed for the 2026-05-10 measurement persistence polish; local Room DAO patterns and existing architecture guards were sufficient.
 - No new webresearch was needed for the 2026-05-10 active-set edit persistence polish; local Room DAO patterns and existing architecture guards were sufficient.
+- No new webresearch was needed for the 2026-05-10 active-collapse persistence polish; local Room DAO patterns and existing architecture guards were sufficient.
 
 ## Regression Checks Run
 
@@ -75,6 +76,11 @@ Updated date: 2026-05-10
 - 2026-05-10 active-set edit persistence after-change PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
 - 2026-05-10 active-set edit persistence after-change PASS: `./gradlew.bat :app:lintDebug --console=plain --no-configuration-cache`.
 - 2026-05-10 verify-only PASS: `./gradlew.bat :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+- 2026-05-10 active-collapse persistence baseline PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.architecture.RoomAuthorityArchitectureTest" --console=plain --no-configuration-cache`.
+- 2026-05-10 active-collapse persistence after-change PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.architecture.RoomAuthorityArchitectureTest" --console=plain --no-configuration-cache`.
+- 2026-05-10 active-collapse persistence after-change PASS: `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
+- 2026-05-10 active-collapse persistence after-change PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+- 2026-05-10 active-collapse persistence after-change PASS: `./gradlew.bat :app:lintDebug --console=plain --no-configuration-cache`.
 - 2026-05-10 PASS: `./gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:compileDebugAndroidTestKotlin :app:checkReleaseSigningReadiness :macrobenchmark:compileProfileableJavaWithJavac --console=plain --no-configuration-cache`
 - 2026-05-10 baseline PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --console=plain --no-configuration-cache`
 - 2026-05-10 RED: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest.critical headers and set labels allow wrapping at large font scale" --console=plain --no-configuration-cache` failed while the new guard detected the old ellipsis/no-wrap constraints.
