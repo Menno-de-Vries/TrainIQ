@@ -27,6 +27,8 @@ Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emula
   - Current worktree moves active-workout set type editing from full JSON mirror import to targeted active set type, current undo snapshot type, and session timestamp updates.
   - Current worktree moves active-workout set deletion from full JSON mirror import to targeted active set deletion, pending add-event cleanup, and session timestamp updates.
   - Current worktree moves active-workout collapse/expand toggles from full JSON mirror import to targeted `active_workout_collapsed_exercises` insert/delete plus session timestamp update.
+  - Current worktree moves active-workout finish from full JSON mirror import to a targeted Room transaction for completed `workout_sessions`, `performed_exercises`, `workout_sets`, debrief fields, and active-workout runtime cleanup.
+  - Current worktree moves active-workout undo from full JSON mirror import to a targeted Room transaction for restored `active_workout_sets`, pending undo event snapshots, and active session timestamp updates.
   - Current worktree moves body measurement add/delete from full JSON mirror import to targeted `body_measurements` insert/delete paths through the same DAO/runtime-store/repository path.
   - Current worktree moves meal save/delete from full JSON mirror import to targeted `meals` and `meal_items` upsert/delete transactions.
   - Current worktree moves profile save/reset from full JSON mirror import to targeted `user_profile` upsert/delete calls.
@@ -83,6 +85,14 @@ Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emula
   - 2026-05-10 active-set delete after-change PASS: `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
   - 2026-05-10 active-set delete after-change PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
   - 2026-05-10 active-set delete after-change PASS: `./gradlew.bat :app:lintDebug --console=plain --no-configuration-cache`.
+  - 2026-05-10 active-workout finish persistence after-change PASS: `./gradlew :app:testDebugUnitTest --tests com.trainiq.architecture.RoomAuthorityArchitectureTest`.
+  - 2026-05-10 active-workout finish persistence after-change PASS: `./gradlew :app:testDebugUnitTest --tests com.trainiq.data.repository.TrainIqRepositoryTest --tests com.trainiq.data.repository.WorkoutSessionTransactionTest --tests com.trainiq.data.repository.ActiveWorkoutSessionMutationsTest --tests com.trainiq.data.repository.WorkoutLogEventTest --tests com.trainiq.data.repository.WorkoutCompletionSummaryTest`.
+  - 2026-05-10 active-workout finish persistence after-change PASS: `./gradlew :app:assembleDebug`.
+  - 2026-05-10 active-workout finish persistence after-change PASS: `./gradlew :app:lintDebug`.
+  - 2026-05-10 active-workout undo persistence after-change PASS: `./gradlew :app:testDebugUnitTest --tests com.trainiq.architecture.RoomAuthorityArchitectureTest --tests com.trainiq.data.repository.WorkoutLogEventTest`.
+  - 2026-05-10 active-workout undo persistence after-change PASS: `./gradlew :app:testDebugUnitTest --tests com.trainiq.data.repository.TrainIqRepositoryTest --tests com.trainiq.data.repository.ActiveWorkoutSessionMutationsTest --tests com.trainiq.data.repository.WorkoutLogEventTest --tests com.trainiq.domain.usecase.StartWorkoutSessionUseCaseTest --tests com.trainiq.features.workout.WorkoutInputValidationTest`.
+  - 2026-05-10 active-workout undo persistence after-change PASS: `./gradlew :app:assembleDebug`.
+  - 2026-05-10 active-workout undo persistence after-change PASS: `./gradlew :app:lintDebug`.
   - 2026-05-10 meal persistence after-change PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.architecture.RoomAuthorityArchitectureTest" --console=plain --no-configuration-cache`.
   - 2026-05-10 meal persistence after-change PASS: `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
   - 2026-05-10 meal persistence after-change PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.

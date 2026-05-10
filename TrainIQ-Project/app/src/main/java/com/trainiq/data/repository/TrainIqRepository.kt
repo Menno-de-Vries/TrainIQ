@@ -365,13 +365,16 @@ class TrainIqDataCoordinator @Inject constructor(
     }
 
     suspend fun undoWorkoutLogEvent(eventId: Long): ActiveWorkoutSession? {
-        var result: ActiveWorkoutSession? = null
-        runtimeStore.update { state ->
-            val updated = state.undoWorkoutSetEvent(eventId = eventId, now = System.currentTimeMillis())
-            result = updated.activeWorkoutSession?.toDomain()
-            updated
-        }
-        return result
+        val updated = runtimeStore.state.value.undoWorkoutSetEvent(
+            eventId = eventId,
+            now = System.currentTimeMillis(),
+        )
+        val active = updated.activeWorkoutSession ?: return null
+        val undoEvent = updated.workoutLogEvents.lastOrNull {
+            it.type == WorkoutLogEventType.UNDO_SET && it.targetEventId == eventId
+        } ?: return active.toDomain()
+        runtimeStore.undoActiveWorkoutLogEvent(active = active, undoEvent = undoEvent)
+        return active.toDomain()
     }
 
     suspend fun setActiveWorkoutCollapsed(exerciseId: Long, collapsed: Boolean): ActiveWorkoutSession? {
@@ -425,9 +428,6 @@ class TrainIqDataCoordinator @Inject constructor(
             activeSessionId = active?.sessionId,
             activeStartedAt = active?.startedAt,
         )
-        runtimeStore.update { state ->
-            if (state.activeWorkoutSession?.dayId == dayId) state.copy(activeWorkoutSession = null) else state
-        }
         return result
     }
 
@@ -525,14 +525,6 @@ class TrainIqDataCoordinator @Inject constructor(
                 completedAt = now + index,
             )
         }
-        runtimeStore.update { state ->
-            state.copy(
-                sessions = listOf(newSession) + state.sessions.filterNot { it.id == sessionId },
-                performedExercises = performedExercises + state.performedExercises.filterNot { it.sessionId == sessionId },
-                workoutSets = newSets + state.workoutSets.filterNot { it.sessionId == sessionId },
-            ).finalizeWorkoutLogEventsForCompletedSession(sessionId)
-        }
-
         val debriefSets = loggedSets.filter { it.setType.isProgressionType() }.ifEmpty { loggedSets }
         val currentVolume = debriefSets.sumOf { it.weight * it.reps }
         val comparison = buildWorkoutProgressComparison(
@@ -572,13 +564,12 @@ class TrainIqDataCoordinator @Inject constructor(
             .distinct()
             .count()
         val localDebrief = fallbackWorkoutDebriefResult(currentVolume, progression)
-        runtimeStore.update { state ->
-            state.copy(
-                sessions = state.sessions.map { session ->
-                    if (session.id == sessionId) session.withDebrief(localDebrief) else session
-                },
-            )
-        }
+        runtimeStore.finishActiveWorkoutSession(
+            session = newSession.withDebrief(localDebrief),
+            performedExercises = performedExercises,
+            sets = newSets,
+            activeSessionId = activeSessionId,
+        )
         scope.launch {
             val refreshedDebrief = workoutDebriefService.generateWorkoutDebrief(
                 totalVolume = currentVolume,
@@ -589,17 +580,7 @@ class TrainIqDataCoordinator @Inject constructor(
                 topExercises = topExercises,
                 weeklyFrequency = weeklyFrequency,
             )
-            runtimeStore.update { state ->
-                state.copy(
-                    sessions = state.sessions.map { session ->
-                        if (session.id == sessionId && session.completed && session.status == "COMPLETED") {
-                            session.withDebrief(refreshedDebrief)
-                        } else {
-                            session
-                        }
-                    },
-                )
-            }
+            runtimeStore.updateWorkoutSessionDebrief(sessionId = sessionId, debrief = refreshedDebrief)
         }
         return WorkoutCompletionResult(sessionId = sessionId, debrief = localDebrief)
     }

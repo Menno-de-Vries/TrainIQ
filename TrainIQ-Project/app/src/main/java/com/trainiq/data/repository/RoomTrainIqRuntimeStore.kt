@@ -41,6 +41,7 @@ import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.model.LoggedMealItemType
 import com.trainiq.domain.model.MealType
 import com.trainiq.domain.model.SetType
+import com.trainiq.domain.model.WorkoutDebrief
 import com.trainiq.domain.model.WorkoutLogEventType
 import com.trainiq.domain.model.WorkoutSyncStatus
 import java.security.MessageDigest
@@ -321,6 +322,21 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         }
     }
 
+    suspend fun undoActiveWorkoutLogEvent(
+        active: ActiveWorkoutSessionStorage,
+        undoEvent: WorkoutLogEventStorage,
+    ) {
+        mutex.withLock {
+            dao.undoActiveWorkoutLogEvent(
+                sessionId = active.sessionId,
+                restoredSets = active.loggedSets.map { it.toActiveWorkoutSetEntity(sessionId = active.sessionId) },
+                undoEvent = undoEvent.toWorkoutLogEventEntity(),
+                undoEventSets = undoEvent.toWorkoutLogEventSetEntities(),
+                updatedAt = active.updatedAt,
+            )
+        }
+    }
+
     suspend fun saveMeal(meal: LoggedMealStorage, items: List<LoggedMealItemStorage>) {
         mutex.withLock {
             dao.saveMeal(
@@ -339,6 +355,41 @@ class RoomTrainIqRuntimeStore @Inject constructor(
     suspend fun discardActiveWorkoutSession(sessionId: Long) {
         mutex.withLock {
             dao.discardActiveWorkoutSession(sessionId)
+        }
+    }
+
+    suspend fun finishActiveWorkoutSession(
+        session: WorkoutSessionEntity,
+        performedExercises: List<PerformedExerciseEntity>,
+        sets: List<WorkoutSetEntity>,
+        activeSessionId: Long?,
+    ) {
+        mutex.withLock {
+            dao.finishActiveWorkoutSession(
+                session = session,
+                performedExercises = performedExercises,
+                sets = sets,
+                activeSessionId = activeSessionId,
+            )
+        }
+    }
+
+    suspend fun updateWorkoutSessionDebrief(sessionId: Long, debrief: WorkoutDebrief) {
+        mutex.withLock {
+            dao.updateWorkoutSessionDebrief(
+                sessionId = sessionId,
+                summary = debrief.summary,
+                progressionFeedback = debrief.progressionFeedback,
+                recommendation = debrief.recommendation,
+                nextSessionFocus = debrief.nextSessionFocus,
+                recoveryScore = debrief.recoveryScore,
+                intensitySignal = debrief.intensitySignal,
+                wins = debrief.wins.joinToString("\n"),
+                risks = debrief.risks.joinToString("\n"),
+                nextLoadTarget = debrief.nextLoadTarget,
+                recoveryAdvice = debrief.recoveryAdvice,
+                source = debrief.source.name,
+            )
         }
     }
 

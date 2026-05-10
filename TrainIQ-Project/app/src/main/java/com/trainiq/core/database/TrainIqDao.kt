@@ -467,6 +467,15 @@ interface TrainIqDao {
     @Query("DELETE FROM active_workout_sets WHERE session_id = :sessionId AND id = :setId")
     suspend fun deleteActiveWorkoutSet(sessionId: Long, setId: Long)
 
+    @Query("DELETE FROM active_workout_drafts WHERE session_id = :sessionId")
+    suspend fun deleteActiveWorkoutDraftsForSession(sessionId: Long)
+
+    @Query("DELETE FROM active_workout_collapsed_exercises WHERE session_id = :sessionId")
+    suspend fun deleteActiveWorkoutCollapsedExercisesForSession(sessionId: Long)
+
+    @Query("DELETE FROM active_workout_sets WHERE session_id = :sessionId")
+    suspend fun deleteActiveWorkoutSetsForSession(sessionId: Long)
+
     @Query(
         """
         DELETE FROM workout_log_events
@@ -527,6 +536,21 @@ interface TrainIqDao {
         )
     }
 
+    @Transaction
+    suspend fun undoActiveWorkoutLogEvent(
+        sessionId: Long,
+        restoredSets: List<ActiveWorkoutSetEntity>,
+        undoEvent: WorkoutLogEventEntity,
+        undoEventSets: List<WorkoutLogEventSetEntity>,
+        updatedAt: Long,
+    ) {
+        deleteActiveWorkoutSetsForSession(sessionId)
+        insertActiveWorkoutSets(restoredSets)
+        insertWorkoutLogEvents(listOf(undoEvent))
+        insertWorkoutLogEventSets(undoEventSets)
+        updateActiveWorkoutSessionUpdatedAt(sessionId = sessionId, updatedAt = updatedAt)
+    }
+
     @Query("SELECT * FROM workout_log_event_sets ORDER BY event_id ASC, snapshot_role ASC, snapshot_index ASC")
     fun observeWorkoutLogEventSets(): Flow<List<WorkoutLogEventSetEntity>>
 
@@ -542,6 +566,9 @@ interface TrainIqDao {
     @Query("DELETE FROM performed_exercises WHERE session_id = :sessionId")
     suspend fun deletePerformedExercisesForSession(sessionId: Long)
 
+    @Query("DELETE FROM workout_sets WHERE sessionId = :sessionId")
+    suspend fun deleteWorkoutSetsForSession(sessionId: Long)
+
     @Query("DELETE FROM workout_sessions WHERE id = :sessionId AND completed = 0 AND status = 'DRAFT'")
     suspend fun deleteDraftWorkoutSession(sessionId: Long)
 
@@ -553,6 +580,62 @@ interface TrainIqDao {
         deletePerformedExercisesForSession(sessionId)
         deleteDraftWorkoutSession(sessionId)
     }
+
+    @Transaction
+    suspend fun finishActiveWorkoutSession(
+        session: WorkoutSessionEntity,
+        performedExercises: List<PerformedExerciseEntity>,
+        sets: List<WorkoutSetEntity>,
+        activeSessionId: Long?,
+    ) {
+        importWorkoutSessions(listOf(session))
+        deleteWorkoutSetsForSession(session.id)
+        deletePerformedExercisesForSession(session.id)
+        insertPerformedExercises(performedExercises)
+        importWorkoutSets(sets)
+        activeSessionId?.let { sessionId ->
+            deleteWorkoutLogEventSetsForSession(sessionId)
+            deleteWorkoutLogEventsForSession(sessionId)
+            deleteActiveWorkoutSetsForSession(sessionId)
+            deleteActiveWorkoutCollapsedExercisesForSession(sessionId)
+            deleteActiveWorkoutDraftsForSession(sessionId)
+            deleteActiveWorkoutSession(sessionId)
+        }
+    }
+
+    @Query(
+        """
+        UPDATE workout_sessions
+        SET debrief_summary = :summary,
+            debrief_progression_feedback = :progressionFeedback,
+            debrief_recommendation = :recommendation,
+            debrief_next_session_focus = :nextSessionFocus,
+            debrief_recovery_score = :recoveryScore,
+            debrief_intensity_signal = :intensitySignal,
+            debrief_wins = :wins,
+            debrief_risks = :risks,
+            debrief_next_load_target = :nextLoadTarget,
+            debrief_recovery_advice = :recoveryAdvice,
+            debrief_source = :source
+        WHERE id = :sessionId
+            AND completed = 1
+            AND status = 'COMPLETED'
+        """,
+    )
+    suspend fun updateWorkoutSessionDebrief(
+        sessionId: Long,
+        summary: String,
+        progressionFeedback: String,
+        recommendation: String,
+        nextSessionFocus: String,
+        recoveryScore: Int,
+        intensitySignal: String,
+        wins: String,
+        risks: String,
+        nextLoadTarget: String,
+        recoveryAdvice: String,
+        source: String,
+    )
 
     @Query("SELECT * FROM workout_days WHERE id = :dayId LIMIT 1")
     suspend fun getWorkoutDay(dayId: Long): WorkoutDayEntity?
