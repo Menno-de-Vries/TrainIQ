@@ -345,7 +345,7 @@ fun HomeScreen(
                             MetricCard(
                                 title = "Stappen",
                                 value = when (healthConnectStatus.state) {
-                                    HealthConnectState.CONNECTED -> "${healthConnectStatus.stepsToday ?: 0} stappen"
+                                    HealthConnectState.CONNECTED -> "${healthConnectStatus.stepsToday ?: 0}"
                                     HealthConnectState.NO_DATA -> "Geen data"
                                     else -> "Offline"
                                 },
@@ -410,9 +410,15 @@ internal fun buildHomeRecoverySubtitle(
     averageHeartRateBpm: Int?,
     todaysWorkoutCalories: Int,
 ): String = buildString {
-    append(stepsToday?.let { "$it stappen" } ?: "Stappen offline")
-    averageHeartRateBpm?.let { append(" - Gem. hartslag $it") }
-    append(" - Training $todaysWorkoutCalories kcal")
+    if (stepsToday == null) {
+        append("Stappen offline")
+        append(" - ")
+    }
+    averageHeartRateBpm?.let {
+        append("Gem. hartslag $it bpm")
+        append(" - ")
+    }
+    append("Training $todaysWorkoutCalories kcal")
 }
 
 @Composable
@@ -513,14 +519,33 @@ private fun NextWorkoutCard(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.trainIqColors.mutedText,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AppChip(label = "Training starten")
-                    AppChip(label = "RPE 8")
+                nextWorkoutIntensityLabel(dashboard.nextWorkout)?.let { intensityLabel ->
+                    Text(
+                        intensityLabel,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
                 }
                 PrimaryActionButton(onClick = { onStartWorkout(dashboard.nextWorkout.id) }) { Text("Training starten") }
             }
         }
     }
+}
+
+internal fun nextWorkoutIntensityLabel(day: com.trainiq.domain.model.WorkoutDay): String? {
+    val plannedRpeValues = day.exercises
+        .mapNotNull { exercise ->
+            exercise.sets.map { it.targetRpe }.filter { it > 0.0 }.average().takeIf { !it.isNaN() }
+                ?: exercise.targetRpe.takeIf { it > 0.0 }
+        }
+    if (plannedRpeValues.isEmpty()) return null
+    val averageRpe = plannedRpeValues.average()
+    return "Doel RPE ${formatHomeRpe(averageRpe)}"
+}
+
+private fun formatHomeRpe(rpe: Double): String {
+    val rounded = kotlin.math.round(rpe * 10.0) / 10.0
+    return if (rounded % 1.0 == 0.0) rounded.toInt().toString() else rounded.toString()
 }
 
 @Composable

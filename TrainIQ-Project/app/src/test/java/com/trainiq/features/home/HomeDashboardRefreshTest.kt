@@ -1,5 +1,9 @@
 package com.trainiq.features.home
 
+import com.trainiq.domain.model.Exercise
+import com.trainiq.domain.model.RoutineSet
+import com.trainiq.domain.model.WorkoutDay
+import com.trainiq.domain.model.WorkoutExercisePlan
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
@@ -71,7 +75,7 @@ class HomeDashboardRefreshTest {
             todaysWorkoutCalories = 320,
         )
 
-        assertTrue(result == "4000 stappen - Training 320 kcal")
+        assertTrue(result == "Training 320 kcal")
     }
 
     @Test
@@ -82,7 +86,7 @@ class HomeDashboardRefreshTest {
             todaysWorkoutCalories = 180,
         )
 
-        assertTrue(result == "2800 stappen - Gem. hartslag 64 - Training 180 kcal")
+        assertTrue(result == "Gem. hartslag 64 bpm - Training 180 kcal")
     }
 
     @Test
@@ -95,4 +99,51 @@ class HomeDashboardRefreshTest {
 
         assertTrue(result == "Stappen offline - Training 180 kcal")
     }
+
+    @Test
+    fun nextWorkoutIntensityLabel_whenPlannedRpeExists_usesRoutineData() {
+        val result = nextWorkoutIntensityLabel(
+            workoutDay(
+                targetRpe = 7.0,
+                setRpeValues = listOf(8.0, 9.0),
+            ),
+        )
+
+        assertTrue(result == "Doel RPE 8.5")
+    }
+
+    @Test
+    fun nextWorkoutIntensityLabel_whenNoPlannedRpe_omitsLabel() {
+        val result = nextWorkoutIntensityLabel(workoutDay(targetRpe = 0.0))
+
+        assertTrue(result == null)
+    }
+
+    private fun workoutDay(
+        targetRpe: Double,
+        setRpeValues: List<Double> = emptyList(),
+    ): WorkoutDay = WorkoutDay(
+        id = 1L,
+        routineId = 1L,
+        name = "Push",
+        orderIndex = 0,
+        exercises = listOf(
+            WorkoutExercisePlan(
+                id = 10L,
+                exercise = Exercise(id = 20L, name = "Bench press", muscleGroup = "Chest", equipment = "Barbell"),
+                targetSets = 3,
+                repRange = "8-10",
+                restSeconds = 90,
+                targetRpe = targetRpe,
+                sets = setRpeValues.mapIndexed { index, rpe ->
+                    RoutineSet(
+                        id = index.toLong() + 1L,
+                        workoutExerciseId = 10L,
+                        orderIndex = index,
+                        targetRpe = rpe,
+                    )
+                },
+            ),
+        ),
+    )
 }

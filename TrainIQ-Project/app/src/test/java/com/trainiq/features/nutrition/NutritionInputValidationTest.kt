@@ -151,6 +151,14 @@ class NutritionInputValidationTest {
     }
 
     @Test
+    fun nutritionTabTitles_keepOverviewEntryAndAiResultSeparated() {
+        assertEquals(
+            listOf("Vandaag", "Toevoegen", "AI-resultaat", "Recepten", "Producten", "Historie"),
+            nutritionTabTitles(),
+        )
+    }
+
+    @Test
     fun nutritionEnergyProgress_usesEnergyOutWhenAvailableInsteadOfHardcodedTarget() {
         val balance = EnergyBalanceSnapshot(
             caloriesIn = 1_400,
