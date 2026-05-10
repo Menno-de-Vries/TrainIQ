@@ -284,6 +284,7 @@ data class ActiveWorkoutUiState(
     val debrief: WorkoutDebrief? = null,
     val drafts: Map<Long, SetInputDraft> = emptyMap(),
     val draftErrors: Map<Long, SetInputFieldErrors> = emptyMap(),
+    val exerciseRestOverrides: Map<Long, Int> = emptyMap(),
     val collapsedExerciseIds: Set<Long> = emptySet(),
     val elapsedSeconds: Long = 0L,
     val completedSets: Int = 0,
@@ -449,6 +450,7 @@ class WorkoutViewModel @Inject constructor(
     private val _activeFocusTarget = MutableStateFlow<ActiveWorkoutFocusTarget?>(null)
     private val _pendingLoggingExerciseIds = MutableStateFlow<Set<Long>>(emptySet())
     private val _pendingCorrectionSetIds = MutableStateFlow<Map<Long, Long>>(emptyMap())
+    private val _exerciseRestOverrides = MutableStateFlow<Map<Long, Int>>(emptyMap())
 
     private val _message = MutableStateFlow<String?>(null)
     private val message: StateFlow<String?> = _message.asStateFlow()
@@ -497,10 +499,16 @@ class WorkoutViewModel @Inject constructor(
         state.copy(debrief = debrief)
     }.combine(_elapsedSeconds) { state, elapsedSeconds ->
         state.copy(elapsedSeconds = elapsedSeconds)
+    }.combine(_restTimerSeconds) { state, restTimerSeconds ->
+        state.copy(restTimerSeconds = restTimerSeconds)
+    }.combine(_restTimerTotalSeconds) { state, restTimerTotalSeconds ->
+        state.copy(restTimerTotalSeconds = restTimerTotalSeconds)
     }.combine(_drafts) { state, drafts ->
         state.copy(drafts = drafts)
     }.combine(_draftErrors) { state, draftErrors ->
         state.copy(draftErrors = draftErrors)
+    }.combine(_exerciseRestOverrides) { state, exerciseRestOverrides ->
+        state.copy(exerciseRestOverrides = exerciseRestOverrides)
     }.combine(_loggingSummary) { state, loggingSummary ->
         state.copy(loggingSummary = loggingSummary)
     }.combine(_activeFocusTarget) { state, activeFocusTarget ->
@@ -563,6 +571,7 @@ class WorkoutViewModel @Inject constructor(
                 _loggedSetsThisSession.value = emptyMap()
                 _drafts.value = emptyMap()
                 _draftErrors.value = emptyMap()
+                _exerciseRestOverrides.value = emptyMap()
                 _message.value = "Voeg eerst oefeningen toe aan deze sessie voordat je start."
                 return@launch
             }
@@ -615,6 +624,26 @@ class WorkoutViewModel @Inject constructor(
         }
     }
 
+    fun relogSet(exerciseId: Long, setId: Long) {
+        val set = _loggedSetsThisSession.value[exerciseId].orEmpty().firstOrNull { it.id == setId } ?: return
+        _drafts.value = _drafts.value.toMutableMap().apply { put(exerciseId, set.toDraft()) }
+        _pendingCorrectionSetIds.value = _pendingCorrectionSetIds.value - exerciseId
+        clearSetInputError(exerciseId)
+        viewModelScope.launch {
+            deleteActiveWorkoutSetUseCase(setId)?.let(::applyActiveSession)
+            _message.value = "Set teruggezet. Pas aan en log opnieuw."
+        }
+    }
+
+    fun adjustExerciseRest(exerciseId: Long, baseRestSeconds: Int, deltaSeconds: Int) {
+        val current = _exerciseRestOverrides.value[exerciseId] ?: baseRestSeconds
+        val next = activeExerciseRestSeconds(baseRestSeconds, current + deltaSeconds)
+        _exerciseRestOverrides.value = _exerciseRestOverrides.value.toMutableMap().apply {
+            put(exerciseId, next)
+        }
+        _message.value = "Rust voor deze oefening ingesteld op ${next}s."
+    }
+
     fun logSet(plan: WorkoutExercisePlan): Boolean {
         diagnosticsTracker.tap("Workout:SetLogClicked")
         val key = plan.activeKey
@@ -660,7 +689,10 @@ class WorkoutViewModel @Inject constructor(
                 it.weight.isNotBlank() || it.reps.isNotBlank() || it.rpe.isNotBlank()
             } ?: SetInputDraft(setType = draft.setType)
             try {
-                val restSeconds = plan.plannedRestSeconds(correctionSet?.orderIndex ?: loggedCount)
+                val restSeconds = activeExerciseRestSeconds(
+                    baseRestSeconds = plan.plannedRestSeconds(correctionSet?.orderIndex ?: loggedCount),
+                    overrideRestSeconds = _exerciseRestOverrides.value[key],
+                )
                 val active = if (correctionSet != null) {
                     updateActiveWorkoutSetUseCase(
                         setId = correctionSet.id,
@@ -740,6 +772,7 @@ class WorkoutViewModel @Inject constructor(
             _activeSession.value = null
             _drafts.value = emptyMap()
             _draftErrors.value = emptyMap()
+            _exerciseRestOverrides.value = emptyMap()
             _progressionSuggestions.value = getProgressionSuggestionsUseCase(dayId)
             if (result.sessionId > 0L) {
                 _workoutCompletions.tryEmit(result.sessionId)
@@ -756,6 +789,7 @@ class WorkoutViewModel @Inject constructor(
             _loggedSetsThisSession.value = emptyMap()
             _drafts.value = emptyMap()
             _draftErrors.value = emptyMap()
+            _exerciseRestOverrides.value = emptyMap()
             _message.value = "Actieve training weggegooid."
         }
     }
@@ -1096,7 +1130,7 @@ class WorkoutViewModel @Inject constructor(
             while (true) {
                 val startedAt = _activeSession.value?.startedAt ?: sessionStartTime
                 if (startedAt > 0L) {
-                    _elapsedSeconds.value = ((System.currentTimeMillis() - startedAt) / 1_000).coerceAtLeast(0)
+                    _elapsedSeconds.value = activeWorkoutElapsedSeconds(startedAt = startedAt, now = System.currentTimeMillis())
                 }
                 updateRestTimerFromSession()
                 delay(1_000)
@@ -1187,7 +1221,10 @@ class WorkoutViewModel @Inject constructor(
             session.loggedSets.any { it.activeKey == key && it.id == setId }
         }
         _drafts.value = session.drafts.mapValues { it.value.toUiDraft() }
-        _elapsedSeconds.value = ((System.currentTimeMillis() - session.startedAt) / 1_000).coerceAtLeast(0)
+        _activeWorkout.value?.exercises?.map { it.activeKey }?.toSet()?.let { activeKeys ->
+            _exerciseRestOverrides.value = _exerciseRestOverrides.value.filterKeys { it in activeKeys }
+        }
+        _elapsedSeconds.value = activeWorkoutElapsedSeconds(startedAt = session.startedAt, now = System.currentTimeMillis())
         updateRestTimerFromSession()
     }
 
@@ -1998,7 +2035,7 @@ private fun RoutineCard(
     }
 
     AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.primary) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (isEditing) {
                 TapOnlyOutlinedTextField(editName, { editName = it }, label = { Text("Routinenaam") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
                 TapOnlyOutlinedTextField(editDescription, { editDescription = it }, label = { Text("Beschrijving") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
@@ -2893,6 +2930,7 @@ internal fun activeSetMetricCells(
     repRange: String,
     plannedSet: RoutineSet?,
     loggedSet: LoggedSet?,
+    activeRestSeconds: Int,
 ): List<RoutineSetMetricCell> {
     val reps = loggedSet?.reps?.takeIf { it > 0 }?.toString()
         ?: plannedSet?.targetReps?.takeIf { it > 0 }?.toString()
@@ -2901,7 +2939,7 @@ internal fun activeSetMetricCells(
         ?: plannedSet?.targetWeightKg?.takeIf { it > 0.0 }?.let { "${formatWeight(it)} kg" }
         ?: "-"
     val rest = loggedSet?.restSeconds?.takeIf { it > 0 }?.let { "${it}s" }
-        ?: plannedSet?.restSeconds?.takeIf { it > 0 }?.let { "${it}s" }
+        ?: activeRestSeconds.takeIf { it > 0 }?.let { "${it}s" }
         ?: "-"
     val rpe = loggedSet?.rpe?.takeIf { it > 0.0 }?.let(::formatWeight)
         ?: plannedSet?.targetRpe?.takeIf { it > 0.0 }?.let(::formatWeight)
@@ -4256,9 +4294,11 @@ fun ActiveWorkoutRoute(
         onSetTypeChange = viewModel::updateLoggedSetType,
         onEditSet = viewModel::editLoggedSet,
         onDeleteSet = { setId -> viewModel.deleteLoggedSet(setId) },
+        onRelogSet = viewModel::relogSet,
         onDismissMessage = viewModel::clearMessage,
         onLogSet = viewModel::logSet,
         onLogSameAgain = viewModel::logSameAgain,
+        onAdjustExerciseRest = viewModel::adjustExerciseRest,
         onAdjustRestTimer = viewModel::adjustRestTimer,
         onSkipRestTimer = viewModel::skipRestTimer,
         onRestartRestTimer = viewModel::restartRestTimer,
@@ -4331,8 +4371,8 @@ private fun WorkoutProcessingScreen(
                     )
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         AppChip(label = "Opslaan", accent = MaterialTheme.colorScheme.primary)
-                        AppChip(label = "Gemini 2.5 Flash", accent = MaterialTheme.colorScheme.secondary)
-                        AppChip(label = "Fallback klaar", accent = MaterialTheme.colorScheme.tertiary)
+                        AppChip(label = "AI-terugblik", accent = MaterialTheme.colorScheme.secondary)
+                        AppChip(label = "Lokale fallback", accent = MaterialTheme.colorScheme.tertiary)
                     }
                     if (uiState is WorkoutProcessingUiState.Error) {
                         Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
@@ -4441,22 +4481,8 @@ private fun WorkoutCompletionScreen(
                 is WorkoutCompletionUiState.Success -> {
                     val summary = uiState.summary
                     item { CompletionHeader(summary) }
-                    item {
-                        CompletionActions(
-                            countdown = countdown,
-                            autoReturnActive = autoReturnActive,
-                            onBackToTraining = {
-                                cancelAutoReturn()
-                                onBackToTraining()
-                            },
-                            onHome = {
-                                cancelAutoReturn()
-                                onHome()
-                            },
-                        )
-                    }
-                    item { CompletionStats(summary) }
                     item { CompletionSmartSummary(summary) }
+                    item { CompletionStats(summary) }
                     item { CompletionExerciseOverview(summary.exercises) }
                     item {
                         CompletionActions(
@@ -4482,7 +4508,13 @@ private fun WorkoutCompletionScreen(
 private fun CompletionHeader(summary: WorkoutCompletionSummary) {
     AppCard(accent = MaterialTheme.colorScheme.primary, elevated = true) {
         AppChip(label = "Voltooid", accent = MaterialTheme.colorScheme.primary)
-        Text(summary.workoutName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+        Text(
+            summary.workoutName,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.ExtraBold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
         Text(
             "${formatTimer(summary.durationSeconds.toInt())} - klaar om ${formatHistoryDate(summary.endedAt)}",
             style = MaterialTheme.typography.bodyMedium,
@@ -4520,7 +4552,7 @@ private fun CompletionSmartSummary(summary: WorkoutCompletionSummary) {
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Slimme samenvatting", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                AppChip(label = debrief.source.shortLabel(), accent = intensityContentColor(debrief.intensitySignal))
+                AppChip(label = workoutDebriefSourceChipLabel(debrief.source), accent = intensityContentColor(debrief.intensitySignal))
             }
             AppChip(label = summary.recommendationLabel, accent = intensityContentColor(debrief.intensitySignal))
         }
@@ -4541,6 +4573,11 @@ private fun CompletionSmartSummary(summary: WorkoutCompletionSummary) {
 private fun WorkoutDebriefSource.shortLabel(): String = when (this) {
     WorkoutDebriefSource.GEMINI_2_5_FLASH -> "Gemini 2.5 Flash"
     WorkoutDebriefSource.LOCAL_FALLBACK -> "Lokale analyse"
+}
+
+internal fun workoutDebriefSourceChipLabel(source: WorkoutDebriefSource): String = when (source) {
+    WorkoutDebriefSource.GEMINI_2_5_FLASH -> source.shortLabel()
+    WorkoutDebriefSource.LOCAL_FALLBACK -> "Lokale fallback"
 }
 
 @Composable
@@ -4694,9 +4731,11 @@ fun ActiveWorkoutScreen(
     onSetTypeChange: (Long, SetType) -> Unit,
     onEditSet: (Long, Long) -> Unit,
     onDeleteSet: (Long) -> Unit,
+    onRelogSet: (Long, Long) -> Unit,
     onDismissMessage: () -> Unit,
     onLogSet: (WorkoutExercisePlan) -> Boolean,
     onLogSameAgain: (WorkoutExercisePlan) -> Boolean,
+    onAdjustExerciseRest: (Long, Int, Int) -> Unit,
     onAdjustRestTimer: (Int) -> Unit,
     onSkipRestTimer: () -> Unit,
     onRestartRestTimer: (Int) -> Unit,
@@ -4756,6 +4795,9 @@ fun ActiveWorkoutScreen(
                 ActiveWorkoutBottomBar(
                     uiState = uiState,
                     restTimerSeconds = restTimerSeconds,
+                    restTimerTotalSeconds = restTimerTotalSeconds,
+                    onAdjustRestTimer = onAdjustRestTimer,
+                    onSkipRestTimer = onSkipRestTimer,
                     onFinishClick = {
                         if (uiState.needsFinishConfirmation) showFinishConfirm = true else onFinish()
                     },
@@ -4823,7 +4865,7 @@ fun ActiveWorkoutScreen(
                 item { EmptyCard("Geen oefeningen", "Voeg oefeningen toe aan deze routine voordat je een training start.") }
                 return@LazyColumn
             }
-            if (restTimerSeconds > 0 && uiState.debrief == null) {
+            if (restTimerSeconds > 0) {
                 item(key = "active-workout-rest-timer") {
                     RestTimerCard(
                         restTimerSeconds = restTimerSeconds,
@@ -4865,8 +4907,10 @@ fun ActiveWorkoutScreen(
                                 onSetTypeChange = onSetTypeChange,
                                 onEditSet = onEditSet,
                                 onDeleteSet = onDeleteSet,
+                                onRelogSet = onRelogSet,
                                 onLogSet = onLogSet,
                                 onLogSameAgain = onLogSameAgain,
+                                onAdjustExerciseRest = onAdjustExerciseRest,
                                 onToggleCollapsed = onToggleExerciseCollapsed,
                                 onReplaceExercise = { replacingActivePlan = plan },
                                 onRemoveExercise = { pendingRemoveActivePlan = plan },
@@ -4888,8 +4932,10 @@ fun ActiveWorkoutScreen(
                         onSetTypeChange = onSetTypeChange,
                         onEditSet = onEditSet,
                         onDeleteSet = onDeleteSet,
+                        onRelogSet = onRelogSet,
                         onLogSet = onLogSet,
                         onLogSameAgain = onLogSameAgain,
+                        onAdjustExerciseRest = onAdjustExerciseRest,
                         onToggleCollapsed = onToggleExerciseCollapsed,
                         onReplaceExercise = { replacingActivePlan = group.first() },
                         onRemoveExercise = { pendingRemoveActivePlan = group.first() },
@@ -5037,47 +5083,80 @@ private fun ActiveWorkoutStickyStatus(uiState: ActiveWorkoutUiState, restTimerSe
 }
 
 @Composable
-private fun ActiveWorkoutBottomBar(uiState: ActiveWorkoutUiState, restTimerSeconds: Int, onFinishClick: () -> Unit) {
+private fun ActiveWorkoutBottomBar(
+    uiState: ActiveWorkoutUiState,
+    restTimerSeconds: Int,
+    restTimerTotalSeconds: Int,
+    onAdjustRestTimer: (Int) -> Unit,
+    onSkipRestTimer: () -> Unit,
+    onFinishClick: () -> Unit,
+) {
     Surface(color = MaterialTheme.colorScheme.background, tonalElevation = 0.dp) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .padding(horizontal = 10.dp, vertical = 0.dp)
                 .semantics(mergeDescendants = true) {
                     contentDescription = activeWorkoutBottomBarContentDescription(uiState, restTimerSeconds)
                 },
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    if (restTimerSeconds > 0) "Rust ${formatTimer(restTimerSeconds)}" else "Klaar voor volgende set",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    activeLoggedSetCountText(uiState.visibleLoggedSetCount),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+            if (restTimerSeconds > 0) {
+                AppLinearProgress(
+                    progress = if (restTimerTotalSeconds > 0) {
+                        restTimerSeconds / restTimerTotalSeconds.toFloat()
+                    } else {
+                        0f
+                    },
                 )
             }
-            PrimaryActionButton(
-                onClick = onFinishClick,
-                enabled = uiState.workout != null,
-                modifier = Modifier
-                    .weight(1f)
-                    .defaultMinSize(minHeight = 48.dp)
-                    .semantics {
-                        contentDescription = activeWorkoutFinishContentDescription(uiState.workout != null)
-                    },
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Training afronden")
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                    Text(
+                        if (restTimerSeconds > 0) "Rust ${formatTimer(restTimerSeconds)}" else "Klaar voor volgende set",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        activeLoggedSetCountText(uiState.visibleLoggedSetCount),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (restTimerSeconds > 0) {
+                    IconButton(onClick = { onAdjustRestTimer(-30) }, modifier = Modifier.size(38.dp)) {
+                        Icon(Icons.Rounded.Remove, contentDescription = restTimerAdjustContentDescription(-30))
+                    }
+                    IconButton(onClick = { onAdjustRestTimer(30) }, modifier = Modifier.size(38.dp)) {
+                        Icon(Icons.Rounded.Add, contentDescription = restTimerAdjustContentDescription(30))
+                    }
+                    IconButton(
+                        onClick = onSkipRestTimer,
+                        modifier = Modifier.size(38.dp),
+                    ) {
+                        Icon(Icons.Rounded.SkipNext, contentDescription = restTimerSkipContentDescription())
+                    }
+                }
+                PrimaryActionButton(
+                    onClick = onFinishClick,
+                    enabled = uiState.workout != null,
+                    modifier = Modifier
+                        .defaultMinSize(minWidth = 42.dp, minHeight = 38.dp)
+                        .semantics {
+                            contentDescription = activeWorkoutFinishContentDescription(uiState.workout != null)
+                        },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null)
+                }
             }
         }
     }
@@ -5096,8 +5175,10 @@ private fun ActiveWorkoutPlanCard(
     onSetTypeChange: (Long, SetType) -> Unit,
     onEditSet: (Long, Long) -> Unit,
     onDeleteSet: (Long) -> Unit,
+    onRelogSet: (Long, Long) -> Unit,
     onLogSet: (WorkoutExercisePlan) -> Boolean,
     onLogSameAgain: (WorkoutExercisePlan) -> Boolean,
+    onAdjustExerciseRest: (Long, Int, Int) -> Unit,
     onToggleCollapsed: (Long, Boolean) -> Unit,
     onReplaceExercise: () -> Unit,
     onRemoveExercise: () -> Unit,
@@ -5107,9 +5188,11 @@ private fun ActiveWorkoutPlanCard(
     val draftErrors = uiState.draftErrors[key] ?: SetInputFieldErrors()
     val loggedSets = uiState.loggedSetsThisSession[key].orEmpty()
     val collapsed = key in uiState.collapsedExerciseIds
+    val activeRestSeconds = activeExerciseRestSeconds(plan.restSeconds, uiState.exerciseRestOverrides[key])
     ActiveExerciseCard(
         plan = plan,
         loggedSets = loggedSets,
+        activeRestSeconds = activeRestSeconds,
         suggestion = suggestion,
         draft = draft,
         draftErrors = draftErrors,
@@ -5123,6 +5206,7 @@ private fun ActiveWorkoutPlanCard(
         onSetTypeChange = { setId, setType -> onSetTypeChange(setId, setType) },
         onEditSet = { setId -> onEditSet(key, setId) },
         onDeleteSet = { setId -> onDeleteSet(setId) },
+        onRelogSet = { setId -> onRelogSet(key, setId) },
         onToggleCollapsed = { onToggleCollapsed(key, !collapsed) },
         onCopyLastSet = {
             loggedSets.lastOrNull()?.let { lastSet ->
@@ -5139,6 +5223,7 @@ private fun ActiveWorkoutPlanCard(
                 hapticOnSuccess()
             }
         },
+        onAdjustExerciseRest = { deltaSeconds -> onAdjustExerciseRest(key, activeRestSeconds, deltaSeconds) },
         onReplaceExercise = onReplaceExercise,
         onRemoveExercise = onRemoveExercise,
     )
@@ -5196,22 +5281,21 @@ private fun RestTimerCard(
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = { onAdjust(-30) }) {
+                IconButton(onClick = { onAdjust(-30) }, modifier = Modifier.size(40.dp)) {
                     Icon(Icons.Rounded.Remove, contentDescription = restTimerAdjustContentDescription(-30))
                 }
-                IconButton(onClick = { onAdjust(30) }) {
+                IconButton(onClick = { onAdjust(30) }, modifier = Modifier.size(40.dp)) {
                     Icon(Icons.Rounded.Add, contentDescription = restTimerAdjustContentDescription(30))
                 }
-                IconButton(onClick = onRestart) {
+                IconButton(onClick = onRestart, modifier = Modifier.size(40.dp)) {
                     Icon(Icons.Rounded.Replay, contentDescription = restTimerRestartContentDescription())
                 }
                 Spacer(modifier = Modifier.weight(1f))
-                TextButton(onClick = onSkip) {
+                IconButton(onClick = onSkip, modifier = Modifier.size(40.dp)) {
                     Icon(Icons.Rounded.SkipNext, contentDescription = restTimerSkipContentDescription())
-                    Text(restTimerSkipLabel())
                 }
             }
         }
@@ -5222,6 +5306,7 @@ private fun RestTimerCard(
 private fun ActiveExerciseCard(
     plan: WorkoutExercisePlan,
     loggedSets: List<LoggedSet>,
+    activeRestSeconds: Int,
     suggestion: ProgressionSuggestion?,
     draft: SetInputDraft,
     draftErrors: SetInputFieldErrors,
@@ -5235,10 +5320,12 @@ private fun ActiveExerciseCard(
     onSetTypeChange: (Long, SetType) -> Unit,
     onEditSet: (Long) -> Unit,
     onDeleteSet: (Long) -> Unit,
+    onRelogSet: (Long) -> Unit,
     onToggleCollapsed: () -> Unit,
     onCopyLastSet: () -> Unit,
     onLogSet: () -> Unit,
     onLogSameAgain: () -> Unit,
+    onAdjustExerciseRest: (Int) -> Unit,
     onReplaceExercise: () -> Unit,
     onRemoveExercise: () -> Unit,
 ) {
@@ -5297,7 +5384,7 @@ private fun ActiveExerciseCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        "${loggedSets.size}/$plannedSetCount sets - ${plan.repRange} reps - ${plan.restSeconds}s rust",
+                        "${loggedSets.size}/$plannedSetCount sets - ${plan.repRange} reps",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.trainIqColors.mutedText,
                         maxLines = 1,
@@ -5305,6 +5392,11 @@ private fun ActiveExerciseCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+                ActiveExerciseRestControl(
+                    restSeconds = activeRestSeconds,
+                    onDecrease = { onAdjustExerciseRest(-30) },
+                    onIncrease = { onAdjustExerciseRest(30) },
+                )
                 IconButton(onClick = onToggleCollapsed) {
                     Icon(
                         if (collapsed) Icons.Rounded.ExpandMore else Icons.Rounded.ExpandLess,
@@ -5361,6 +5453,7 @@ private fun ActiveExerciseCard(
                     repRange = plan.repRange,
                     plannedSet = plannedSets.getOrNull(index),
                     loggedSet = loggedSets.getOrNull(index),
+                    activeRestSeconds = activeRestSeconds,
                     isCurrent = index == loggedSets.size || pendingCorrectionSetId?.let { loggedSets.getOrNull(index)?.id == it } == true,
                     isCorrecting = pendingCorrectionSetId?.let { loggedSets.getOrNull(index)?.id == it } == true,
                     onCycleType = {
@@ -5370,6 +5463,7 @@ private fun ActiveExerciseCard(
                     },
                     onEdit = { loggedSets.getOrNull(index)?.let { onEditSet(it.id) } },
                     onDelete = { loggedSets.getOrNull(index)?.let { onDeleteSet(it.id) } },
+                    onRelog = { loggedSets.getOrNull(index)?.let { onRelogSet(it.id) } },
                 )
             }
             if (collapsed) return@Column
@@ -5440,6 +5534,44 @@ private fun ActiveExerciseCard(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActiveExerciseRestControl(
+    restSeconds: Int,
+    onDecrease: () -> Unit,
+    onIncrease: () -> Unit,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        shape = MaterialTheme.shapes.small,
+    ) {
+        Row(
+            modifier = Modifier
+                .defaultMinSize(minHeight = 36.dp)
+                .semantics(mergeDescendants = true) {
+                    contentDescription = activeExerciseRestControlDescription(restSeconds)
+                }
+                .padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(0.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onDecrease, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Rounded.Remove, contentDescription = restTimerAdjustContentDescription(-30))
+            }
+            Text(
+                "${restSeconds}s",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                softWrap = false,
+            )
+            IconButton(onClick = onIncrease, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Rounded.Add, contentDescription = restTimerAdjustContentDescription(30))
             }
         }
     }
@@ -5616,11 +5748,13 @@ private fun SetRow(
     repRange: String,
     plannedSet: RoutineSet?,
     loggedSet: LoggedSet?,
+    activeRestSeconds: Int,
     isCurrent: Boolean,
     isCorrecting: Boolean,
     onCycleType: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    onRelog: () -> Unit,
 ) {
     var showDeleteConfirm by remember(index, loggedSet) { mutableStateOf(false) }
     val background = if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
@@ -5629,6 +5763,7 @@ private fun SetRow(
         repRange = repRange,
         plannedSet = plannedSet,
         loggedSet = loggedSet,
+        activeRestSeconds = activeRestSeconds,
     )
     if (showDeleteConfirm) {
         AlertDialog(
@@ -5650,14 +5785,14 @@ private fun SetRow(
         modifier = Modifier
             .fillMaxWidth()
             .background(rpeColor, MaterialTheme.shapes.medium)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .defaultMinSize(minHeight = ActiveSetHeaderMinHeight),
-            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(modifier = Modifier.size(20.dp), contentAlignment = Alignment.Center) {
@@ -5679,25 +5814,14 @@ private fun SetRow(
                 overflow = TextOverflow.Ellipsis,
             )
             if (loggedSet != null) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.54f),
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    shape = MaterialTheme.shapes.small,
-                ) {
-                    Text(
-                        if (isCorrecting) "Bewerken" else "Voltooid",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                IconButton(onClick = onRelog, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Rounded.Replay, contentDescription = relogSetContentDescription())
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    IconButton(onClick = onEdit, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Rounded.Edit, contentDescription = "Gelogde set corrigeren")
-                    }
-                    IconButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Rounded.Delete, contentDescription = "Set verwijderen")
-                    }
+                IconButton(onClick = onEdit, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Rounded.Edit, contentDescription = "Gelogde set corrigeren")
+                }
+                IconButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Rounded.Delete, contentDescription = "Set verwijderen")
                 }
             }
         }
@@ -5989,6 +6113,11 @@ internal fun restTimerSkipLabel(): String = "Overslaan"
 
 internal fun restTimerSkipContentDescription(): String = "Rusttimer overslaan"
 
+internal fun relogSetContentDescription(): String = "Set opnieuw loggen"
+
+internal fun activeExerciseRestControlDescription(restSeconds: Int): String =
+    "Rust voor deze oefening: ${restSeconds}s"
+
 internal fun restTimerCardContentDescription(restTimerSeconds: Int, totalSeconds: Int): String {
     val status = if (restTimerSeconds <= 15) "bijna klaar" else "herstel"
     val total = totalSeconds.takeIf { it > 0 }?.let { ", totaal ${formatTimer(it)}" }.orEmpty()
@@ -6094,6 +6223,16 @@ internal fun activeLoggedSetCountText(count: Int): String =
 
 internal fun activeWorkoutBottomBarStatusText(restTimerSeconds: Int): String =
     if (restTimerSeconds > 0) "Rust ${formatTimer(restTimerSeconds)}" else "Klaar voor volgende set"
+
+private const val MaxDisplayedActiveWorkoutSeconds: Long = 4 * 60 * 60
+
+internal fun activeWorkoutElapsedSeconds(startedAt: Long, now: Long): Long {
+    if (startedAt <= 0L || now <= startedAt) return 0L
+    return ((now - startedAt) / 1_000L).coerceIn(0L, MaxDisplayedActiveWorkoutSeconds)
+}
+
+internal fun activeExerciseRestSeconds(baseRestSeconds: Int, overrideRestSeconds: Int?): Int =
+    (overrideRestSeconds ?: baseRestSeconds).coerceIn(0, MaxRestSeconds)
 
 internal fun activeWorkoutFinishContentDescription(enabled: Boolean): String =
     if (enabled) "Training afronden" else "Training afronden niet beschikbaar"

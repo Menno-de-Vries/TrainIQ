@@ -504,6 +504,7 @@ fun SectionHeader(
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

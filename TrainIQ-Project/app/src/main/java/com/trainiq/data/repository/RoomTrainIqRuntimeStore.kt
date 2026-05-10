@@ -172,6 +172,12 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         }
     }
 
+    suspend fun updateRoutineSet(set: RoutineSetEntity, workoutExercise: WorkoutExerciseEntity) {
+        mutex.withLock {
+            dao.updateRoutineSet(set = set, workoutExercise = workoutExercise)
+        }
+    }
+
     suspend fun updateActiveWorkoutRestTimer(
         sessionId: Long,
         endsAt: Long?,

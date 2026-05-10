@@ -86,4 +86,11 @@ class ActiveWorkoutSessionMutationsTest {
         assertEquals(ActiveWorkoutSetStorage::class, result.state.workoutLogEvents.single().set!!::class)
         assertEquals(updatedActive, result.active)
     }
+
+    @Test
+    fun activeWorkoutDurationSeconds_capsStaleRestoredSessions() {
+        assertEquals(120L, activeWorkoutDurationSeconds(startedAt = 1_000L, now = 121_000L))
+        assertEquals(MaxActiveWorkoutDurationSeconds, activeWorkoutDurationSeconds(startedAt = 1_000L, now = 90_000_000L))
+        assertEquals(1L, activeWorkoutDurationSeconds(startedAt = 0L, now = 90_000_000L))
+    }
 }

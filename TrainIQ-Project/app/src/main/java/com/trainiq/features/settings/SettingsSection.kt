@@ -6,6 +6,8 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -449,6 +451,7 @@ private fun SettingsErrorScreen(message: String) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
     themeMode: ThemeMode,
@@ -619,7 +622,11 @@ fun SettingsScreen(
         item {
             SectionCard(title = "Health Connect") {
                 Text("Status: ${healthStatusLabel(healthStatus)}")
-                Text(healthStatus.message)
+                Text(
+                    healthConnectSettingsMessage(healthStatus),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 healthStatus.lastSyncedAt?.let {
                     Text("Laatst gecontroleerd: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it))}")
                 }
@@ -640,7 +647,10 @@ fun SettingsScreen(
                     HealthConnectState.PROVIDER_MISSING -> Text("Installeer of update Health Connect eerst, kom daarna terug en vernieuw.")
                     else -> Unit
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small), verticalAlignment = Alignment.CenterVertically) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
+                ) {
                     when (healthStatus.state) {
                         HealthConnectState.PROVIDER_MISSING -> Button(onClick = onOpenHealthInstall) { Text("Installeren / bijwerken") }
                         HealthConnectState.PERMISSION_REQUIRED -> Button(onClick = onRequestHealthPermission) { Text("Toegang geven") }
@@ -884,6 +894,15 @@ private fun healthStatusLabel(status: HealthConnectStatus): String = when (statu
     HealthConnectState.CONNECTED -> "Verbonden"
     HealthConnectState.NO_DATA -> "Verbonden, nog geen data"
     HealthConnectState.ERROR -> "Fout"
+}
+
+internal fun healthConnectSettingsMessage(status: HealthConnectStatus): String = when (status.state) {
+    HealthConnectState.UNSUPPORTED -> "Health Connect wordt niet ondersteund op dit apparaat."
+    HealthConnectState.PROVIDER_MISSING -> "Installeer of update Health Connect en vernieuw daarna de status."
+    HealthConnectState.PERMISSION_REQUIRED -> "Geef toegang om stappen, hartslag, slaap, calorieen, gewicht en workouts te synchroniseren."
+    HealthConnectState.CONNECTED -> "Verbonden. TrainIQ synchroniseert toegestane metrics wanneer data beschikbaar is."
+    HealthConnectState.NO_DATA -> "Verbonden, maar er is nog geen recente Health Connect-data gevonden."
+    HealthConnectState.ERROR -> "Health Connect kan nu niet worden gelezen. Vernieuw straks opnieuw."
 }
 
 internal fun settingsUiState(

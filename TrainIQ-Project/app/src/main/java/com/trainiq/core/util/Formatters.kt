@@ -1,8 +1,10 @@
 ﻿package com.trainiq.core.util
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -78,18 +80,25 @@ fun EnergyBalanceCard(
         0f
     }
     AppCard(modifier = modifier) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            androidx.compose.foundation.layout.Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall)) {
-                Text("Energiebalans", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
-                Text(
-                    energyBalance?.let { "Inname, verbranding en stappen live bij elkaar" }
-                        ?: "Vul je profiel in voor rustverbranding, vertering, beweging en trainingsverbruik.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.trainIqColors.mutedText,
-                )
-            }
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
+        ) {
+            Text("Energiebalans", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+            Text(
+                energyBalance?.let { "Inname, verbranding en stappen live bij elkaar" }
+                    ?: "Vul je profiel in voor rustverbranding, vertering, beweging en trainingsverbruik.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.trainIqColors.mutedText,
+            )
             energyBalance?.let {
-                Text(energyBalanceValueText(it.balance), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    energyBalanceValueText(it.balance),
+                    modifier = Modifier.align(Alignment.End),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
         }
         AppLinearProgress(progress = progress)
@@ -116,7 +125,7 @@ fun MacroBreakdownCard(
     AppCard(modifier = modifier) {
         Text("Macrodoelen", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
         Text(
-            "Eiwit $protein/$proteinTarget g - koolhydraten $carbs/$carbsTarget g - vet $fat/$fatTarget g",
+            "Eiwit $protein/$proteinTarget g - Kh $carbs/$carbsTarget g - Vet $fat/$fatTarget g",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.trainIqColors.mutedText,
         )

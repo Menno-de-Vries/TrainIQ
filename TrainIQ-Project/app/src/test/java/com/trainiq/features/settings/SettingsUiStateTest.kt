@@ -57,6 +57,28 @@ class SettingsUiStateTest {
     }
 
     @Test
+    fun healthConnectSettingsMessageUsesCompactCopyForLowerSettingsSection() {
+        assertEquals(
+            "Geef toegang om stappen, hartslag, slaap, calorieen, gewicht en workouts te synchroniseren.",
+            healthConnectSettingsMessage(
+                HealthConnectStatus(
+                    state = HealthConnectState.PERMISSION_REQUIRED,
+                    message = "Long provider message that should not drive the settings layout.",
+                ),
+            ),
+        )
+        assertEquals(
+            "Verbonden. TrainIQ synchroniseert toegestane metrics wanneer data beschikbaar is.",
+            healthConnectSettingsMessage(
+                HealthConnectStatus(
+                    state = HealthConnectState.CONNECTED,
+                    message = "Long provider message that should not drive the settings layout.",
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun destructiveSettingsDialogCopyNamesScopeAndKeepsCancelAvailable() {
         assertEquals("API-sleutel verwijderen?", destructiveSettingsActionTitle(PendingDestructiveSettingsAction.CLEAR_API_KEY))
         assertEquals("Profiel resetten?", destructiveSettingsActionTitle(PendingDestructiveSettingsAction.RESET_PROFILE))

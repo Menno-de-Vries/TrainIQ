@@ -4,6 +4,7 @@ import com.trainiq.domain.model.Exercise
 import com.trainiq.domain.model.LoggedSet
 import com.trainiq.domain.model.RoutineSet
 import com.trainiq.domain.model.SetType
+import com.trainiq.domain.model.WorkoutDebriefSource
 import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutExercisePlan
 import com.trainiq.domain.model.WorkoutRoutine
@@ -168,6 +169,16 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun `logged set relog action exposes compact accessibility label`() {
+        assertEquals("Set opnieuw loggen", relogSetContentDescription())
+    }
+
+    @Test
+    fun `active exercise rest control exposes compact accessibility label`() {
+        assertEquals("Rust voor deze oefening: 120s", activeExerciseRestControlDescription(120))
+    }
+
+    @Test
     fun `rest timer card exposes merged accessibility summary`() {
         assertEquals(
             "Rusttimer: 1:15 resterend, herstel, totaal 2:30.",
@@ -177,6 +188,19 @@ class WorkoutInputValidationTest {
             "Rusttimer: 0:10 resterend, bijna klaar.",
             restTimerCardContentDescription(restTimerSeconds = 10, totalSeconds = 0),
         )
+    }
+
+    @Test
+    fun `active workout elapsed time is capped for stale restored sessions`() {
+        assertEquals(120L, activeWorkoutElapsedSeconds(startedAt = 1_000L, now = 121_000L))
+        assertEquals(14_400L, activeWorkoutElapsedSeconds(startedAt = 1_000L, now = 90_000_000L))
+        assertEquals(0L, activeWorkoutElapsedSeconds(startedAt = 0L, now = 90_000_000L))
+    }
+
+    @Test
+    fun `completion source chip distinguishes local fallback from gemini`() {
+        assertEquals("Gemini 2.5 Flash", workoutDebriefSourceChipLabel(WorkoutDebriefSource.GEMINI_2_5_FLASH))
+        assertEquals("Lokale fallback", workoutDebriefSourceChipLabel(WorkoutDebriefSource.LOCAL_FALLBACK))
     }
 
     @Test
@@ -303,7 +327,7 @@ class WorkoutInputValidationTest {
 
         assertEquals(
             listOf("Herh." to "12", "Kg" to "50 kg", "Rust" to "90s", "RPE" to "6.5"),
-            activeSetMetricCells(repRange = "8-12", plannedSet = null, loggedSet = loggedSet)
+            activeSetMetricCells(repRange = "8-12", plannedSet = null, loggedSet = loggedSet, activeRestSeconds = 120)
                 .map { it.label to it.value },
         )
     }
@@ -321,10 +345,18 @@ class WorkoutInputValidationTest {
         )
 
         assertEquals(
-            listOf("12", "-", "90s", "-"),
-            activeSetMetricCells(repRange = "8-12", plannedSet = plannedSet, loggedSet = null)
+            listOf("12", "-", "120s", "-"),
+            activeSetMetricCells(repRange = "8-12", plannedSet = plannedSet, loggedSet = null, activeRestSeconds = 120)
                 .map { it.value },
         )
+    }
+
+    @Test
+    fun `active exercise rest override is per exercise and clamped`() {
+        assertEquals(90, activeExerciseRestSeconds(baseRestSeconds = 90, overrideRestSeconds = null))
+        assertEquals(120, activeExerciseRestSeconds(baseRestSeconds = 90, overrideRestSeconds = 120))
+        assertEquals(0, activeExerciseRestSeconds(baseRestSeconds = 90, overrideRestSeconds = -30))
+        assertEquals(900, activeExerciseRestSeconds(baseRestSeconds = 90, overrideRestSeconds = 1200))
     }
 
     @Test

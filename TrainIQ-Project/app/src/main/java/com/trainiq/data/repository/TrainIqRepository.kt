@@ -414,8 +414,9 @@ class TrainIqDataCoordinator @Inject constructor(
 
     suspend fun finishActiveWorkout(dayId: Long): WorkoutCompletionResult {
         val active = runtimeStore.state.value.activeWorkoutSession?.takeIf { it.dayId == dayId }
+        val now = System.currentTimeMillis()
         val durationSeconds = active?.let {
-            ((System.currentTimeMillis() - it.startedAt) / 1_000).coerceAtLeast(1)
+            activeWorkoutDurationSeconds(startedAt = it.startedAt, now = now)
         } ?: 1L
         val result = finishWorkout(
             dayId = dayId,
@@ -774,27 +775,33 @@ class TrainIqDataCoordinator @Inject constructor(
     }
 
     suspend fun updateRoutineSet(set: RoutineSet) {
-        runtimeStore.update { state ->
-            state.copy(routineSets = state.routineSets.map { existing ->
-                if (existing.id == set.id) set.toEntity() else existing
-            }).withWorkoutExerciseTargetsSynced(set.workoutExerciseId)
-        }
+        updateTargetedRoutineSet(set.id) { set.toEntity() }
     }
 
     suspend fun updateRoutineSetType(setId: Long, setType: SetType) {
-        runtimeStore.update { state -> state.updateRoutineSet(setId) { it.copy(setType = setType.name) } }
+        updateTargetedRoutineSet(setId) { it.copy(setType = setType.name) }
     }
 
     suspend fun updateRoutineSetReps(setId: Long, targetReps: Int) {
-        runtimeStore.update { state -> state.updateRoutineSet(setId) { it.copy(targetReps = targetReps.coerceAtLeast(0)) } }
+        updateTargetedRoutineSet(setId) { it.copy(targetReps = targetReps.coerceAtLeast(0)) }
     }
 
     suspend fun updateRoutineSetWeight(setId: Long, targetWeightKg: Double) {
-        runtimeStore.update { state -> state.updateRoutineSet(setId) { it.copy(targetWeightKg = targetWeightKg.coerceAtLeast(0.0)) } }
+        updateTargetedRoutineSet(setId) { it.copy(targetWeightKg = targetWeightKg.coerceAtLeast(0.0)) }
     }
 
     suspend fun updateRoutineSetRestTime(setId: Long, restSeconds: Int) {
-        runtimeStore.update { state -> state.updateRoutineSet(setId) { it.copy(restSeconds = restSeconds.coerceAtLeast(0)) } }
+        updateTargetedRoutineSet(setId) { it.copy(restSeconds = restSeconds.coerceAtLeast(0)) }
+    }
+
+    private suspend fun updateTargetedRoutineSet(
+        setId: Long,
+        transform: (RoutineSetEntity) -> RoutineSetEntity,
+    ) {
+        val updated = runtimeStore.state.value.updateRoutineSet(setId = setId, transform = transform)
+        val updatedSet = updated.routineSets.firstOrNull { it.id == setId } ?: return
+        val updatedExercise = updated.workoutExercises.firstOrNull { it.id == updatedSet.workoutExerciseId } ?: return
+        runtimeStore.updateRoutineSet(set = updatedSet, workoutExercise = updatedExercise)
     }
 
     suspend fun deleteRoutineSet(setId: Long) {
@@ -2022,6 +2029,13 @@ private fun ActiveWorkoutSessionStorage.updateSetById(
     )
 
 internal fun defaultWorkoutSessionName(existingSessionCount: Int): String = "Sessie ${existingSessionCount + 1}"
+
+internal const val MaxActiveWorkoutDurationSeconds: Long = 4 * 60 * 60
+
+internal fun activeWorkoutDurationSeconds(startedAt: Long, now: Long): Long {
+    if (startedAt <= 0L || now <= startedAt) return 1L
+    return ((now - startedAt) / 1_000L).coerceIn(1L, MaxActiveWorkoutDurationSeconds)
+}
 
 internal fun formatProgressionPercent(value: Double): String =
     String.format(Locale.forLanguageTag("nl-NL"), "%.1f", value)

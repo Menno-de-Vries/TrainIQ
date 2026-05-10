@@ -210,6 +210,12 @@ interface TrainIqDao {
     @Upsert
     suspend fun insertWorkoutExercise(exercise: WorkoutExerciseEntity)
 
+    @Transaction
+    suspend fun updateRoutineSet(set: RoutineSetEntity, workoutExercise: WorkoutExerciseEntity) {
+        insertRoutineSets(listOf(set))
+        insertWorkoutExercise(workoutExercise)
+    }
+
     @Insert
     suspend fun insertWorkoutSession(session: WorkoutSessionEntity): Long
 

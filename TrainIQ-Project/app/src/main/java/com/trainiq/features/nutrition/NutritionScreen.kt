@@ -27,7 +27,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
@@ -39,6 +38,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -679,12 +679,18 @@ fun NutritionScreen(
                     message?.let { MessageCard(message = it, onDismiss = onDismissMessage) }
                 }
                 Surface(tonalElevation = 2.dp) {
-                    TabRow(selectedTabIndex = selectedTab) {
+                    ScrollableTabRow(selectedTabIndex = selectedTab, edgePadding = 0.dp) {
                         tabs.forEachIndexed { index, title ->
                             Tab(
                                 selected = selectedTab == index,
                                 onClick = { selectedTab = index },
-                                text = { Text(title) },
+                                text = {
+                                    Text(
+                                        title,
+                                        maxLines = 1,
+                                        style = MaterialTheme.typography.labelLarge,
+                                    )
+                                },
                             )
                         }
                     }
@@ -1666,7 +1672,7 @@ private fun FoodEditorCard(
                 NutritionNumberField(value = protein, onValueChange = onProteinChange, label = "Eiwit / 100g", modifier = Modifier.weight(1f), error = errors.protein)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                NutritionNumberField(value = carbs, onValueChange = onCarbsChange, label = "Koolhydraten / 100g", modifier = Modifier.weight(1f), error = errors.carbs)
+                NutritionNumberField(value = carbs, onValueChange = onCarbsChange, label = "Kh / 100g", modifier = Modifier.weight(1f), error = errors.carbs)
                 NutritionNumberField(value = fat, onValueChange = onFatChange, label = "Vet / 100g", modifier = Modifier.weight(1f), error = errors.fat)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -1832,7 +1838,7 @@ private fun RecipeEditorCard(
                 NutritionNumberField(value = quickIngredientProtein, onValueChange = onQuickIngredientProteinChange, label = "Eiwit / 100g", modifier = Modifier.weight(1f), error = quickIngredientErrors.protein)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                NutritionNumberField(value = quickIngredientCarbs, onValueChange = onQuickIngredientCarbsChange, label = "Koolhydraten / 100g", modifier = Modifier.weight(1f), error = quickIngredientErrors.carbs)
+                NutritionNumberField(value = quickIngredientCarbs, onValueChange = onQuickIngredientCarbsChange, label = "Kh / 100g", modifier = Modifier.weight(1f), error = quickIngredientErrors.carbs)
                 NutritionNumberField(value = quickIngredientFat, onValueChange = onQuickIngredientFatChange, label = "Vet / 100g", modifier = Modifier.weight(1f), error = quickIngredientErrors.fat)
             }
             OutlinedButton(onClick = onCreateIngredient, enabled = !isQuickIngredientSaving, modifier = Modifier.fillMaxWidth()) { Text(if (isQuickIngredientSaving) "Opslaan..." else "Ingrediënt opslaan en toevoegen") }

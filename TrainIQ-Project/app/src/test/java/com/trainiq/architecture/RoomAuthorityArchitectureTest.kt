@@ -252,6 +252,23 @@ class RoomAuthorityArchitectureTest {
     }
 
     @Test
+    fun routineSetEditingUsesTargetedRoomWrites() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val routineSetBody = repository.substringAfter("suspend fun updateRoutineSet(")
+            .substringBefore("suspend fun deleteRoutineSet(")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(routineSetBody.contains("updateTargetedRoutineSet("))
+        assertTrue(routineSetBody.contains("runtimeStore.updateRoutineSet("))
+        assertFalse(routineSetBody.contains("runtimeStore.update {"))
+        assertTrue(runtimeStore.contains("suspend fun updateRoutineSet(set: RoutineSetEntity"))
+        assertTrue(dao.contains("suspend fun updateRoutineSet(set: RoutineSetEntity, workoutExercise: WorkoutExerciseEntity)"))
+        assertTrue(dao.contains("insertRoutineSets(listOf(set))"))
+        assertTrue(dao.contains("insertWorkoutExercise(workoutExercise)"))
+    }
+
+    @Test
     fun roomImportReportsUseCurrentRoomSchemaVersion() {
         val database = File(mainSources, "core/database/TrainIqDatabase.kt").readText()
         val importPlanner = File(mainSources, "data/migration/JsonRoomImportPlanner.kt").readText()
