@@ -93,6 +93,10 @@ Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emula
   - 2026-05-10 active-workout undo persistence after-change PASS: `./gradlew :app:testDebugUnitTest --tests com.trainiq.data.repository.TrainIqRepositoryTest --tests com.trainiq.data.repository.ActiveWorkoutSessionMutationsTest --tests com.trainiq.data.repository.WorkoutLogEventTest --tests com.trainiq.domain.usecase.StartWorkoutSessionUseCaseTest --tests com.trainiq.features.workout.WorkoutInputValidationTest`.
   - 2026-05-10 active-workout undo persistence after-change PASS: `./gradlew :app:assembleDebug`.
   - 2026-05-10 active-workout undo persistence after-change PASS: `./gradlew :app:lintDebug`.
+  - 2026-05-10 routine core persistence after-change PASS: `./gradlew :app:testDebugUnitTest --tests com.trainiq.architecture.RoomAuthorityArchitectureTest`.
+  - 2026-05-10 routine core persistence after-change PASS: `./gradlew :app:testDebugUnitTest --tests com.trainiq.data.repository.TrainIqRepositoryTest --tests com.trainiq.features.workout.WorkoutInputValidationTest --tests com.trainiq.domain.usecase.StartWorkoutSessionUseCaseTest`.
+  - 2026-05-10 routine core persistence after-change PASS: `./gradlew :app:assembleDebug`.
+  - 2026-05-10 routine core persistence after-change PASS: `./gradlew :app:lintDebug`.
   - 2026-05-10 meal persistence after-change PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.architecture.RoomAuthorityArchitectureTest" --console=plain --no-configuration-cache`.
   - 2026-05-10 meal persistence after-change PASS: `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
   - 2026-05-10 meal persistence after-change PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
@@ -106,7 +110,7 @@ Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emula
   - 2026-05-10 routine-set edit persistence after-change PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
   - 2026-05-10 routine-set edit persistence after-change PASS: `./gradlew.bat :app:lintDebug --console=plain --no-configuration-cache`.
 - external sources used: None. Local Room DAO patterns and existing architecture tests were sufficient; no Android/Room API ambiguity blocked this batch.
-- remaining risk: This moves the rest timer, active draft, active set logging/editing/type editing/deletion, active collapse/expand, active discard, meal save/delete, profile save/reset, routine set edits, and body measurement add/delete paths to targeted Room persistence. Finish, routine add/delete/reorder, and process-restart correctness tests still need targeted DAO work before QA-001 can close.
+- remaining risk: This moves the rest timer, active draft, active set logging/editing/type editing/deletion/undo, active collapse/expand, active discard/finish, routine create/update/delete, exercise reorder, meal save/delete, profile save/reset, routine set edits, and body measurement add/delete paths to targeted Room persistence. Workout day/exercise add/remove, routine set add/delete/move, and process-restart correctness tests still need targeted DAO work before QA-001 can close.
 
 ### QA-2026-05-09-002
 
@@ -481,7 +485,7 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
 - current evidence with file references:
   - `TrainIQ-Project/app/src/main/java/com/trainiq/data/repository/RoomTrainIqRuntimeStore.kt:138` still provides `update(transform)` that serializes the entire current app state and imports it through the Room mirror path.
   - `TrainIQ-Project/app/src/main/java/com/trainiq/data/repository/TrainIqRepository.kt:239` starts/resumes active workout sessions through `runtimeStore.update`.
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/data/repository/TrainIqRepository.kt:747` through `TrainIQ-Project/app/src/main/java/com/trainiq/data/repository/TrainIqRepository.kt:825` show routine set add/delete/reorder and day mutations still using full-state update; routine set edits now use targeted Room writes.
+  - Routine create/update/delete and exercise reorder now use targeted Room writes. Routine set add/delete/move and day/exercise mutations still use full-state update.
   - `TrainIQ-Project/app/src/main/java/com/trainiq/data/repository/TrainIqRepository.kt:1051` through `TrainIQ-Project/app/src/main/java/com/trainiq/data/repository/TrainIqRepository.kt:1152` show recipe and food mutations still using full-state update. Active set editing/deletion, meal save/delete, profile save/reset, and body measurement add/delete now use targeted Room writes.
   - 2026-05-10 emulator smoke installed the app and reached Home, but `adb shell am start -W -n com.trainiq/.MainActivity` returned `Status: timeout`, `WaitTime: 20254`; crash buffer was empty.
 - external sources used:

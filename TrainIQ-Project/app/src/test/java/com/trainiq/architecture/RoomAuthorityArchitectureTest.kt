@@ -308,6 +308,42 @@ class RoomAuthorityArchitectureTest {
     }
 
     @Test
+    fun routineCoreMutationsUseTargetedRoomWrites() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val routineBody = repository.substringAfter("suspend fun createRoutine(")
+            .substringBefore("suspend fun searchExercises(")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(routineBody.contains("runtimeStore.createRoutine("))
+        assertTrue(routineBody.contains("runtimeStore.updateRoutine("))
+        assertTrue(routineBody.contains("runtimeStore.deleteRoutine("))
+        assertFalse(routineBody.contains("runtimeStore.update {"))
+        assertTrue(runtimeStore.contains("suspend fun createRoutine("))
+        assertTrue(runtimeStore.contains("suspend fun updateRoutine("))
+        assertTrue(runtimeStore.contains("suspend fun deleteRoutine("))
+        assertTrue(dao.contains("suspend fun insertRoutine(routine: WorkoutRoutineEntity)"))
+        assertTrue(dao.contains("suspend fun deleteRoutineAndNormalizeActive("))
+        assertTrue(dao.contains("setActiveRoutine(routine.id)"))
+    }
+
+    @Test
+    fun routineExerciseReorderUsesTargetedRoomWrites() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val reorderBody = repository.substringAfter("suspend fun reorderExercises(")
+            .substringBefore("suspend fun setSupersetGroup(")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(reorderBody.contains("runtimeStore.reorderExercises("))
+        assertFalse(reorderBody.contains("runtimeStore.update {"))
+        assertTrue(runtimeStore.contains("suspend fun reorderExercises("))
+        assertTrue(runtimeStore.contains("getWorkoutExercisesForDay(dayId)"))
+        assertTrue(dao.contains("suspend fun reorderExercises(dayId: Long, orderedIds: List<Long>)"))
+        assertTrue(dao.contains("updateWorkoutExerciseOrder(dayId, workoutExerciseId, index)"))
+    }
+
+    @Test
     fun roomImportReportsUseCurrentRoomSchemaVersion() {
         val database = File(mainSources, "core/database/TrainIqDatabase.kt").readText()
         val importPlanner = File(mainSources, "data/migration/JsonRoomImportPlanner.kt").readText()

@@ -179,6 +179,43 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         }
     }
 
+    suspend fun createRoutine(name: String, description: String) {
+        mutex.withLock {
+            val routineId = (dao.getMaxRoutineId() ?: 0L) + 1L
+            dao.insertRoutine(
+                WorkoutRoutineEntity(
+                    id = routineId,
+                    name = name,
+                    description = description,
+                    active = dao.routineCount() == 0,
+                ),
+            )
+        }
+    }
+
+    suspend fun updateRoutine(routineId: Long, name: String, description: String) {
+        mutex.withLock {
+            dao.updateRoutine(routineId = routineId, name = name, description = description)
+        }
+    }
+
+    suspend fun deleteRoutine(routineId: Long) {
+        mutex.withLock {
+            dao.deleteRoutineAndNormalizeActive(routineId)
+        }
+    }
+
+    suspend fun reorderExercises(dayId: Long, orderedIds: List<Long>) {
+        mutex.withLock {
+            val requestedOrder = orderedIds.distinct()
+            val fallbackOrder = dao.getWorkoutExercisesForDay(dayId)
+                .filterNot { it.id in requestedOrder }
+                .sortedWith(compareBy<WorkoutExerciseEntity> { it.orderIndex }.thenBy { it.id })
+                .map { it.id }
+            dao.reorderExercises(dayId = dayId, orderedIds = requestedOrder + fallbackOrder)
+        }
+    }
+
     suspend fun updateActiveWorkoutRestTimer(
         sessionId: Long,
         endsAt: Long?,

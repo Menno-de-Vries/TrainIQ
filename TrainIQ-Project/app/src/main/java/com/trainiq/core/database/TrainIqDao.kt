@@ -664,6 +664,12 @@ interface TrainIqDao {
     @Query("SELECT COUNT(*) FROM workout_routines")
     suspend fun routineCount(): Int
 
+    @Query("SELECT COUNT(*) FROM workout_routines WHERE active = 1")
+    suspend fun activeRoutineCount(): Int
+
+    @Query("SELECT * FROM workout_routines ORDER BY id ASC")
+    suspend fun getRoutinesSnapshot(): List<WorkoutRoutineEntity>
+
     @Query("SELECT MAX(id) FROM workout_routines")
     suspend fun getMaxRoutineId(): Long?
 
@@ -725,6 +731,16 @@ interface TrainIqDao {
         }
         deleteWorkoutDaysForRoutine(routineId)
         deleteRoutine(routineId)
+    }
+
+    @Transaction
+    suspend fun deleteRoutineAndNormalizeActive(routineId: Long) {
+        deleteRoutineCascade(routineId)
+        if (activeRoutineCount() == 0) {
+            getRoutinesSnapshot().firstOrNull()?.let { routine ->
+                setActiveRoutine(routine.id)
+            }
+        }
     }
 
     @Query("SELECT * FROM workout_days WHERE routineId = :routineId")

@@ -586,46 +586,15 @@ class TrainIqDataCoordinator @Inject constructor(
     }
 
     suspend fun createRoutine(name: String, description: String) {
-        runtimeStore.update { state ->
-            val routineId = (state.routines.maxOfOrNull { it.id } ?: 0L) + 1L
-            val routine = WorkoutRoutineEntity(
-                id = routineId,
-                name = name,
-                description = description,
-                active = state.routines.isEmpty(),
-            )
-            state.copy(routines = state.routines + routine)
-        }
+        runtimeStore.createRoutine(name = name, description = description)
     }
 
     suspend fun updateRoutine(routineId: Long, name: String, description: String) {
-        runtimeStore.update { state ->
-            state.copy(routines = state.routines.map {
-                if (it.id == routineId) it.copy(name = name, description = description) else it
-            })
-        }
+        runtimeStore.updateRoutine(routineId = routineId, name = name, description = description)
     }
 
     suspend fun deleteRoutine(routineId: Long) {
-        runtimeStore.update { state ->
-            val remainingDays = state.days.filterNot { it.routineId == routineId }
-            val removedDayIds = state.days.filter { it.routineId == routineId }.map { it.id }.toSet()
-            val remainingRoutines = state.routines.filterNot { it.id == routineId }
-            val normalizedRoutines = if (remainingRoutines.none { it.active } && remainingRoutines.isNotEmpty()) {
-                remainingRoutines.mapIndexed { index, routine -> routine.copy(active = index == 0) }
-            } else {
-                remainingRoutines
-            }
-            state.copy(
-                routines = normalizedRoutines,
-                days = remainingDays,
-                workoutExercises = state.workoutExercises.filterNot { it.dayId in removedDayIds },
-                routineSets = state.routineSets.filterNot { routineSet ->
-                    state.workoutExercises.any { it.dayId in removedDayIds && it.id == routineSet.workoutExerciseId }
-                },
-                activeWorkoutSession = state.activeWorkoutSession?.takeUnless { it.dayId in removedDayIds },
-            )
-        }
+        runtimeStore.deleteRoutine(routineId)
     }
 
     suspend fun searchExercises(query: String): List<Exercise> = withContext(Dispatchers.IO) {
@@ -644,26 +613,7 @@ class TrainIqDataCoordinator @Inject constructor(
     }
 
     suspend fun reorderExercises(dayId: Long, orderedIds: List<Long>) {
-        runtimeStore.update { state ->
-            val requestedOrder = orderedIds.distinct().withIndex().associate { it.value to it.index }
-            val dayExercises = state.workoutExercises.filter { it.dayId == dayId }
-            val firstAppendedOrder = requestedOrder.size
-            val fallbackOrder = dayExercises
-                .filterNot { it.id in requestedOrder }
-                .sortedWith(compareBy<WorkoutExerciseEntity> { it.orderIndex }.thenBy { it.id })
-                .withIndex()
-                .associate { it.value.id to firstAppendedOrder + it.index }
-            val nextOrder = requestedOrder + fallbackOrder
-            state.copy(
-                workoutExercises = state.workoutExercises.map { exercise ->
-                    if (exercise.dayId == dayId) {
-                        exercise.copy(orderIndex = nextOrder[exercise.id] ?: exercise.orderIndex)
-                    } else {
-                        exercise
-                    }
-                },
-            )
-        }
+        runtimeStore.reorderExercises(dayId = dayId, orderedIds = orderedIds)
     }
 
     suspend fun setSupersetGroup(workoutExerciseIds: List<Long>, groupId: Long?) {
