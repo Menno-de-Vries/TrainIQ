@@ -24,6 +24,7 @@ Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emula
   - Current worktree moves active-workout discard from full JSON mirror import to targeted deletes for workout log-event snapshots, workout log events, active workout session children, performed exercises, and the draft workout session through the same DAO/runtime-store/repository path.
   - Current worktree moves active-workout set logging from full JSON mirror import to targeted upserts for the active session, draft, active set, undo log event, and undo snapshot rows through the same DAO/runtime-store/repository path.
   - Current worktree moves active-workout set editing from full JSON mirror import to targeted active set, draft, rest-timer, and current undo snapshot updates through the same DAO/runtime-store/repository path.
+  - Current worktree moves active-workout set type editing from full JSON mirror import to targeted active set type, current undo snapshot type, and session timestamp updates.
   - Current worktree moves active-workout collapse/expand toggles from full JSON mirror import to targeted `active_workout_collapsed_exercises` insert/delete plus session timestamp update.
   - Current worktree moves body measurement add/delete from full JSON mirror import to targeted `body_measurements` insert/delete paths through the same DAO/runtime-store/repository path.
   - `TrainIQ-Project/app/src/test/java/com/trainiq/architecture/RoomAuthorityArchitectureTest.kt` now guards that `updateActiveWorkoutRestTimer(...)`, `updateActiveWorkoutDraft(...)`, `logActiveWorkoutSet(...)`, and `discardActiveWorkout(...)` use targeted Room updates/deletes instead of `runtimeStore.update { ... }`.
@@ -70,8 +71,12 @@ Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emula
   - 2026-05-10 active-collapse after-change PASS: `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
   - 2026-05-10 active-collapse after-change PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
   - 2026-05-10 active-collapse after-change PASS: `./gradlew.bat :app:lintDebug --console=plain --no-configuration-cache`.
+  - 2026-05-10 active-set-type edit after-change PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.architecture.RoomAuthorityArchitectureTest" --console=plain --no-configuration-cache`.
+  - 2026-05-10 active-set-type edit after-change PASS: `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
+  - 2026-05-10 active-set-type edit after-change PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - 2026-05-10 active-set-type edit after-change PASS: `./gradlew.bat :app:lintDebug --console=plain --no-configuration-cache`.
 - external sources used: None. Local Room DAO patterns and existing architecture tests were sufficient; no Android/Room API ambiguity blocked this batch.
-- remaining risk: This moves the rest timer, active draft, active set logging/editing, active collapse/expand, active discard, and body measurement add/delete paths to targeted Room persistence. Finish, meal save/delete, routine edit/delete, and profile writes still need targeted DAO migrations and process-restart correctness tests before QA-001 can close.
+- remaining risk: This moves the rest timer, active draft, active set logging/editing/type editing, active collapse/expand, active discard, and body measurement add/delete paths to targeted Room persistence. Finish, meal save/delete, routine edit/delete, and profile writes still need targeted DAO migrations and process-restart correctness tests before QA-001 can close.
 
 ### QA-2026-05-09-002
 
@@ -471,7 +476,11 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
   - 2026-05-10 active-set edit after-change PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
   - 2026-05-10 active-set edit after-change PASS: `./gradlew.bat :app:lintDebug --console=plain --no-configuration-cache`.
   - 2026-05-10 active-collapse after-change PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.architecture.RoomAuthorityArchitectureTest" --console=plain --no-configuration-cache`.
-- remaining risk: Measurement writes, active set edits, and active collapse toggles are targeted, but process-restart instrumentation proof and larger hot paths remain open.
+  - 2026-05-10 active-set-type edit after-change PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.architecture.RoomAuthorityArchitectureTest" --console=plain --no-configuration-cache`.
+  - 2026-05-10 active-set-type edit after-change PASS: `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
+  - 2026-05-10 active-set-type edit after-change PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - 2026-05-10 active-set-type edit after-change PASS: `./gradlew.bat :app:lintDebug --console=plain --no-configuration-cache`.
+- remaining risk: Measurement writes, active set edits/type edits, and active collapse toggles are targeted, but process-restart instrumentation proof and larger hot paths remain open.
 
 ### QA-2026-05-10-015
 

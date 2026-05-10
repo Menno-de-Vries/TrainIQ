@@ -421,6 +421,24 @@ interface TrainIqDao {
         loggedAt: Long,
     )
 
+    @Query("UPDATE active_workout_sets SET set_type = :setType WHERE session_id = :sessionId AND id = :setId")
+    suspend fun updateActiveWorkoutSetType(sessionId: Long, setId: Long, setType: String)
+
+    @Query("UPDATE workout_log_event_sets SET set_type = :setType WHERE id = :setId AND snapshot_role = 'CURRENT'")
+    suspend fun updateWorkoutLogCurrentSetSnapshotType(setId: Long, setType: String)
+
+    @Transaction
+    suspend fun updateActiveWorkoutSetType(
+        sessionId: Long,
+        setId: Long,
+        setType: String,
+        updatedAt: Long,
+    ) {
+        updateActiveWorkoutSetType(sessionId = sessionId, setId = setId, setType = setType)
+        updateWorkoutLogCurrentSetSnapshotType(setId = setId, setType = setType)
+        updateActiveWorkoutSessionUpdatedAt(sessionId = sessionId, updatedAt = updatedAt)
+    }
+
     @Transaction
     suspend fun updateActiveWorkoutSet(
         sessionId: Long,
