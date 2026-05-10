@@ -679,3 +679,30 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
 - `adb -s emulator-5554 logcat -d -b crash`: PASS, empty crash buffer.
 - `adb -s emulator-5554 shell dumpsys gfxinfo com.trainiq framestats`: FAIL/INCONCLUSIVE, returned `Failure while dumping the app`.
 - `:app:lintDebug`: PASS with warnings reported by the release-readiness worker, including blocking `SharedPreferences.commit()` in `AndroidKeystoreGeminiKeyStore.kt`, unused legacy color resources, and dependency update warnings.
+
+## 2026-05-10 Physical Device Normal/Weird Flow QA
+
+- Device: Samsung SM-S931B, Android 16, physical device via `C:\Users\menno\AppData\Local\Android\Sdk\platform-tools\adb.exe`.
+- Evidence folder: `.codex/device-qa/2026-05-10-normal-weird-flow/`.
+- Build/install: PASS, `./gradlew.bat :app:assembleDebug :app:installDebug --console=plain --no-configuration-cache`.
+- Unit verification: PASS, `./gradlew.bat :app:testDebugUnitTest --console=plain --no-configuration-cache`.
+- Cold launch after unlock: PASS, `adb shell am start -W -n com.trainiq/.MainActivity` returned `Status: ok`, `WaitTime: 721`; Home rendered with onboarding CTA and bottom navigation.
+- Force-stop resume: PASS, `WaitTime: 702`; Home rendered after `am force-stop` and relaunch.
+- Normal flow coverage: PASS for top-level Start, Training, Voeding, Coach, Meer/Instellingen navigation; settings scroll; empty routine dialog; AI routine generation dialog; nutrition add bottom sheet; manual product entry.
+- Weird flow coverage: PASS/no crash for repeated back presses, rapid tab tapping, horizontal swipes, landscape rotation and portrait restore, force-stop resume, and back-stack exits.
+- Crash evidence: PASS, `crash-buffer.txt`, `targeted-crash-buffer.txt`, `deep-crash-buffer.txt`, and `scanner-crash-buffer.txt` were empty.
+- Findings from this pass:
+  - Back-spam exits to the launcher from top-level screens. This appears platform-normal, but it means follow-up automated weird-flow scripts must relaunch before continuing tap sequences.
+  - Scanner/photo permission flow was not precisely reached in this coordinate pass; follow-up should target the `Foto / AI-inschatting` action from the nutrition sheet with UIAutomator node bounds instead of approximate taps.
+
+## 2026-05-10 Physical Device Scanner Follow-up QA
+
+- Device: Samsung SM-S931B, Android 16, physical device via `C:\Users\menno\AppData\Local\Android\Sdk\platform-tools\adb.exe`.
+- Evidence folder: `.codex/device-qa/2026-05-10-scanner-permission-precise/`.
+- Build/install: PASS, `./gradlew.bat :app:assembleDebug :app:installDebug --console=plain --no-configuration-cache`.
+- Cold launch: PASS, `adb shell am start -W -n com.trainiq/.MainActivity` returned `Status: ok`, `WaitTime: 739`.
+- Nutrition source sheet: PASS, `Toevoegen aan Ochtend` sheet rendered with `Handmatig product maken`, `Opgeslagen product gebruiken`, `Opgeslagen recept gebruiken`, `AI-context voor foto`, and `Foto / AI-inschatting`.
+- Scanner entry: PASS, direct tap on `Foto / AI-inschatting` node bounds `[72,1842][1008,1986]` opened `Camerascanner`.
+- Scanner capture/back flow: PASS, `Foto maken` action remained stable; Back returned from scanner to Voeding, then Back returned to Start.
+- Crash evidence: PASS, `crash-buffer.txt`, `direct-crash-buffer.txt`, and `capture-crash-buffer.txt` were empty.
+- Remaining risk: Camera permission denial was not shown because the device already allowed or did not prompt during this run. A true denial-path pass still needs app permission reset or a fresh install/user profile before release accessibility signoff.

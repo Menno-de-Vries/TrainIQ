@@ -83,6 +83,7 @@ Updated date: 2026-05-10
 - 2026-05-10 active-workout runtime polish PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --tests "com.trainiq.architecture.ScreenUiStateArchitectureTest" --console=plain --no-configuration-cache`.
 - 2026-05-10 active-workout runtime polish PASS: `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
 - 2026-05-10 active-workout physical-device smoke PASS: installed debug build on SM-S931B, launched active routine, verified `Rust voor deze oefening: 90s`, per-exercise `+30` to `120s`, compact `Training afronden` icon action, and 48dp bottom-bar control height in `.codex/device-qa/2026-05-10-training-session-simulation-after-fix/12-bottom-bar-min-height.xml`.
+- 2026-05-10 scanner follow-up physical-device QA PASS: installed debug build on SM-S931B, launched Nutrition add sheet, opened `Foto / AI-inschatting` via UIAutomator bounds, verified `Camerascanner` and `Foto maken`, verified Back returns to Voeding/Start, and captured empty crash buffers in `.codex/device-qa/2026-05-10-scanner-permission-precise/`.
 - 2026-05-10 active-set edit persistence after-change PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
 - 2026-05-10 active-set edit persistence after-change PASS: `./gradlew.bat :app:lintDebug --console=plain --no-configuration-cache`.
 - 2026-05-10 verify-only PASS: `./gradlew.bat :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
