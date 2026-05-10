@@ -29,6 +29,7 @@ Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emula
   - Current worktree moves active-workout collapse/expand toggles from full JSON mirror import to targeted `active_workout_collapsed_exercises` insert/delete plus session timestamp update.
   - Current worktree moves body measurement add/delete from full JSON mirror import to targeted `body_measurements` insert/delete paths through the same DAO/runtime-store/repository path.
   - Current worktree moves meal save/delete from full JSON mirror import to targeted `meals` and `meal_items` upsert/delete transactions.
+  - Current worktree moves profile save/reset from full JSON mirror import to targeted `user_profile` upsert/delete calls.
   - `TrainIQ-Project/app/src/test/java/com/trainiq/architecture/RoomAuthorityArchitectureTest.kt` now guards that `updateActiveWorkoutRestTimer(...)`, `updateActiveWorkoutDraft(...)`, `logActiveWorkoutSet(...)`, and `discardActiveWorkout(...)` use targeted Room updates/deletes instead of `runtimeStore.update { ... }`.
 - expected target-state behavior: Normal user mutations use bounded targeted DAO transactions. Startup and critical input paths do not perform full-state JSON serialization, broad import planning, or broad mirror table replacement.
 - concrete recommended fix: Keep JSON import for legacy/import tooling only. Add targeted DAO-backed repository mutations for active workout logging, meal save/delete, routine edit/delete, measurement edit/delete, finish/discard, and profile writes. Add a regression guard that these hot paths do not call `RoomTrainIqRuntimeStore.update()`.
@@ -85,8 +86,12 @@ Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emula
   - 2026-05-10 meal persistence after-change PASS: `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
   - 2026-05-10 meal persistence after-change PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
   - 2026-05-10 meal persistence after-change PASS: `./gradlew.bat :app:lintDebug --console=plain --no-configuration-cache`.
+  - 2026-05-10 profile persistence after-change PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.architecture.RoomAuthorityArchitectureTest" --console=plain --no-configuration-cache`.
+  - 2026-05-10 profile persistence after-change PASS: `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
+  - 2026-05-10 profile persistence after-change PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - 2026-05-10 profile persistence after-change PASS: `./gradlew.bat :app:lintDebug --console=plain --no-configuration-cache`.
 - external sources used: None. Local Room DAO patterns and existing architecture tests were sufficient; no Android/Room API ambiguity blocked this batch.
-- remaining risk: This moves the rest timer, active draft, active set logging/editing/type editing/deletion, active collapse/expand, active discard, meal save/delete, and body measurement add/delete paths to targeted Room persistence. Finish, routine edit/delete, and profile writes still need targeted DAO migrations and process-restart correctness tests before QA-001 can close.
+- remaining risk: This moves the rest timer, active draft, active set logging/editing/type editing/deletion, active collapse/expand, active discard, meal save/delete, profile save/reset, and body measurement add/delete paths to targeted Room persistence. Finish and routine edit/delete still need targeted DAO migrations and process-restart correctness tests before QA-001 can close.
 
 ### QA-2026-05-09-002
 
@@ -462,7 +467,7 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
   - `TrainIQ-Project/app/src/main/java/com/trainiq/data/repository/RoomTrainIqRuntimeStore.kt:138` still provides `update(transform)` that serializes the entire current app state and imports it through the Room mirror path.
   - `TrainIQ-Project/app/src/main/java/com/trainiq/data/repository/TrainIqRepository.kt:239` starts/resumes active workout sessions through `runtimeStore.update`.
   - `TrainIQ-Project/app/src/main/java/com/trainiq/data/repository/TrainIqRepository.kt:747` through `TrainIQ-Project/app/src/main/java/com/trainiq/data/repository/TrainIqRepository.kt:825` show routine set/day mutations still using full-state update.
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/data/repository/TrainIqRepository.kt:1051` through `TrainIQ-Project/app/src/main/java/com/trainiq/data/repository/TrainIqRepository.kt:1152` show recipe and food mutations still using full-state update. Active set editing/deletion, meal save/delete, and body measurement add/delete now use targeted Room writes.
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/data/repository/TrainIqRepository.kt:1051` through `TrainIQ-Project/app/src/main/java/com/trainiq/data/repository/TrainIqRepository.kt:1152` show recipe and food mutations still using full-state update. Active set editing/deletion, meal save/delete, profile save/reset, and body measurement add/delete now use targeted Room writes.
   - 2026-05-10 emulator smoke installed the app and reached Home, but `adb shell am start -W -n com.trainiq/.MainActivity` returned `Status: timeout`, `WaitTime: 20254`; crash buffer was empty.
 - external sources used:
   - None for the local persistence finding. Local source and emulator evidence were sufficient.
@@ -498,7 +503,11 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
   - 2026-05-10 meal persistence after-change PASS: `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
   - 2026-05-10 meal persistence after-change PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
   - 2026-05-10 meal persistence after-change PASS: `./gradlew.bat :app:lintDebug --console=plain --no-configuration-cache`.
-- remaining risk: Meal writes, measurement writes, active set edits/type edits/deletes, and active collapse toggles are targeted, but process-restart instrumentation proof and larger hot paths remain open.
+  - 2026-05-10 profile persistence after-change PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.architecture.RoomAuthorityArchitectureTest" --console=plain --no-configuration-cache`.
+  - 2026-05-10 profile persistence after-change PASS: `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
+  - 2026-05-10 profile persistence after-change PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - 2026-05-10 profile persistence after-change PASS: `./gradlew.bat :app:lintDebug --console=plain --no-configuration-cache`.
+- remaining risk: Profile writes, meal writes, measurement writes, active set edits/type edits/deletes, and active collapse toggles are targeted, but process-restart instrumentation proof and larger hot paths remain open.
 
 ### QA-2026-05-10-015
 

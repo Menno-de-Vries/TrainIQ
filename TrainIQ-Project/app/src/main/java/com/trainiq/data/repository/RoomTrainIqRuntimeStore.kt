@@ -161,7 +161,15 @@ class RoomTrainIqRuntimeStore @Inject constructor(
     }
 
     suspend fun clearProfile() {
-        update { it.copy(profile = null) }
+        mutex.withLock {
+            dao.clearMirrorUserProfile()
+        }
+    }
+
+    suspend fun saveProfile(profile: UserProfileEntity) {
+        mutex.withLock {
+            dao.upsertUserProfile(profile)
+        }
     }
 
     suspend fun updateActiveWorkoutRestTimer(

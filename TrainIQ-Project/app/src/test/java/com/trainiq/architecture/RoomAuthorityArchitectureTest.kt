@@ -233,6 +233,25 @@ class RoomAuthorityArchitectureTest {
     }
 
     @Test
+    fun profileWritesUseTargetedRoomWrites() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val profileBody = repository.substringAfter("suspend fun saveProfile(")
+            .substringBefore("private fun buildWeeklySummary(")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val clearProfileBody = runtimeStore.substringAfter("suspend fun clearProfile()")
+            .substringBefore("suspend fun saveProfile(profile: UserProfileEntity)")
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(profileBody.contains("runtimeStore.saveProfile("))
+        assertFalse(profileBody.contains("runtimeStore.update {"))
+        assertTrue(runtimeStore.contains("suspend fun saveProfile(profile: UserProfileEntity)"))
+        assertTrue(clearProfileBody.contains("dao.clearMirrorUserProfile()"))
+        assertFalse(clearProfileBody.contains("update {"))
+        assertTrue(dao.contains("suspend fun upsertUserProfile(profile: UserProfileEntity)"))
+        assertTrue(dao.contains("DELETE FROM user_profile"))
+    }
+
+    @Test
     fun roomImportReportsUseCurrentRoomSchemaVersion() {
         val database = File(mainSources, "core/database/TrainIqDatabase.kt").readText()
         val importPlanner = File(mainSources, "data/migration/JsonRoomImportPlanner.kt").readText()

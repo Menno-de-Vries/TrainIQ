@@ -1238,26 +1238,24 @@ class TrainIqDataCoordinator @Inject constructor(
     fun observeUserProfile(): Flow<UserProfile?> = snapshotState.map { it.profile }
 
     suspend fun saveProfile(profile: UserProfile) {
-        runtimeStore.update { state ->
-            state.copy(
-                profile = UserProfileEntity(
-                    id = profile.id,
-                    name = profile.name,
-                    age = profile.age,
-                    sex = profile.sex.name,
-                    height = profile.height,
-                    weight = profile.weight,
-                    bodyFat = profile.bodyFat,
-                    activityLevel = profile.activityLevel,
-                    goal = profile.goal,
-                    calorieTarget = profile.calorieTarget,
-                    proteinTarget = profile.proteinTarget,
-                    carbsTarget = profile.carbsTarget,
-                    fatTarget = profile.fatTarget,
-                    trainingFocus = profile.trainingFocus,
-                ),
-            )
-        }
+        runtimeStore.saveProfile(
+            UserProfileEntity(
+                id = profile.id,
+                name = profile.name,
+                age = profile.age,
+                sex = profile.sex.name,
+                height = profile.height,
+                weight = profile.weight,
+                bodyFat = profile.bodyFat,
+                activityLevel = profile.activityLevel,
+                goal = profile.goal,
+                calorieTarget = profile.calorieTarget,
+                proteinTarget = profile.proteinTarget,
+                carbsTarget = profile.carbsTarget,
+                fatTarget = profile.fatTarget,
+                trainingFocus = profile.trainingFocus,
+            ),
+        )
     }
 
     private fun buildWeeklySummary(snapshot: RepositorySnapshot, progress: ProgressOverview): String {
