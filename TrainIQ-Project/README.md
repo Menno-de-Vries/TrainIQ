@@ -58,6 +58,8 @@ TrainIQ uses the Health Connect Play Store onboarding overlay for provider-missi
 
 Gemini is disabled until the user explicitly enables AI and stores an API key in Settings. Keys are stored through Android Keystore after migration from any legacy plaintext preference.
 
+Create or view a Gemini API key at [Google AI Studio API Keys](https://aistudio.google.com/app/apikey). In TrainIQ, open Settings, paste the key into `Gemini API-sleutel`, save it, then enable AI. Keep the key private: do not commit it and do not place production secrets in `BuildConfig`.
+
 Runtime AI calls use:
 
 - `gemini-2.5-flash`;

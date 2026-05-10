@@ -652,7 +652,11 @@ class WorkoutViewModel @Inject constructor(
         val loggedSets = _loggedSetsThisSession.value[key].orEmpty()
         val correctionSet = correctionSetId?.let { id -> loggedSets.firstOrNull { it.id == id } }
         val loggedCount = loggedSets.size
-        val draft = _drafts.value[key] ?: plan.nextPlannedDraft(loggedCount)
+        val draft = activeSetUiDraft(
+            savedDraft = _drafts.value[key],
+            plan = plan,
+            loggedSetCount = loggedCount,
+        )
         val validation = validateSetInput(draft)
         if (validation is SetLogValidationResult.Invalid) {
             _draftErrors.value = _draftErrors.value.toMutableMap().apply { put(key, validation.fieldErrors) }
@@ -1371,8 +1375,12 @@ fun WorkoutScreen(
     var showCreateDialog by remember { mutableStateOf(false) }
     var isGenerating by remember { mutableStateOf(false) }
     var selectedRoutineId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val trainingListState = rememberLazyListState()
     LaunchedEffect(selectedRoutineId) {
         onDetailModeChanged(selectedRoutineId != null)
+        if (selectedRoutineId != null) {
+            trainingListState.scrollToItem(0)
+        }
     }
     BackHandler(enabled = selectedRoutineId != null) {
         selectedRoutineId = null
@@ -1429,6 +1437,7 @@ fun WorkoutScreen(
 
     TrainingWithoutOverscroll {
         LazyColumn(
+            state = trainingListState,
             modifier = Modifier
                 .fillMaxSize()
                 .clearFocusOnScrollOrDrag()
@@ -1489,13 +1498,24 @@ fun WorkoutScreen(
             }
             return@LazyColumn
         }
-        item { RoutineCreationCard(onShowCreateDialog = { showCreateDialog = true }, onShowAiDialog = { showAiDialog = true }) }
-        item {
-            ActiveRoutineCard(
-                activeRoutine = overview.activeRoutine,
-                onStartWorkout = onStartWorkout,
-                onOpenDetails = { selectedRoutineId = it },
-            )
+        if (overview.activeRoutine != null) {
+            item {
+                ActiveRoutineCard(
+                    activeRoutine = overview.activeRoutine,
+                    onStartWorkout = onStartWorkout,
+                    onOpenDetails = { selectedRoutineId = it },
+                )
+            }
+            item { RoutineCreationCard(onShowCreateDialog = { showCreateDialog = true }, onShowAiDialog = { showAiDialog = true }) }
+        } else {
+            item { RoutineCreationCard(onShowCreateDialog = { showCreateDialog = true }, onShowAiDialog = { showAiDialog = true }) }
+            item {
+                ActiveRoutineCard(
+                    activeRoutine = overview.activeRoutine,
+                    onStartWorkout = onStartWorkout,
+                    onOpenDetails = { selectedRoutineId = it },
+                )
+            }
         }
         item { SectionHeader("Routines") }
         if (overview.routines.isEmpty()) {
@@ -1728,6 +1748,7 @@ private fun ActiveRoutineCard(
                         onClick = { onOpenDetails(activeRoutine.id) },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
+                        Icon(Icons.Rounded.Add, contentDescription = null)
                         Text(activeRoutineSetupLabel())
                     }
                 } else {
@@ -1954,7 +1975,7 @@ private fun RoutineCard(
     var showStarterExercisePicker by remember(routine.id) { mutableStateOf(false) }
     var showStarterCustomExerciseDialog by remember(routine.id) { mutableStateOf(false) }
     var showDeleteRoutineConfirm by remember(routine.id) { mutableStateOf(false) }
-    var detailTab by rememberSaveable(routine.id) { mutableStateOf("info") }
+    var detailTab by rememberSaveable(routine.id) { mutableStateOf(initialRoutineDetailTab(routine)) }
     var editError by rememberSaveable(routine.id) { mutableStateOf<String?>(null) }
 
     if (showStarterExercisePicker) {
@@ -5263,9 +5284,13 @@ private fun ActiveWorkoutPlanCard(
     onRemoveExercise: () -> Unit,
 ) {
     val key = plan.activeKey
-    val draft = uiState.drafts[key] ?: SetInputDraft()
-    val draftErrors = uiState.draftErrors[key] ?: SetInputFieldErrors()
     val loggedSets = uiState.loggedSetsThisSession[key].orEmpty()
+    val draft = activeSetUiDraft(
+        savedDraft = uiState.drafts[key],
+        plan = plan,
+        loggedSetCount = loggedSets.size,
+    )
+    val draftErrors = uiState.draftErrors[key] ?: SetInputFieldErrors()
     val collapsed = key in uiState.collapsedExerciseIds
     val activeRestSeconds = activeExerciseRestSeconds(plan.restSeconds, uiState.exerciseRestOverrides[key])
     ActiveExerciseCard(
@@ -6174,8 +6199,11 @@ internal fun activeRoutineStartLabel(dayName: String): String = "Training starte
 
 internal fun activeRoutineSetupLabel(): String = "Routine inrichten"
 
+internal fun initialRoutineDetailTab(routine: WorkoutRoutine): String =
+    if (routine.firstStartableDay() == null) "sessions" else "info"
+
 internal fun activeRoutineNeedsExerciseText(): String =
-    "Open deze routine hieronder en voeg eerst een trainingsdag met oefening toe voordat je start."
+    "Tik op Routine inrichten en voeg eerst een oefening toe voordat je start."
 
 internal fun defaultWorkoutDayName(): String = "Sessie"
 
@@ -6730,18 +6758,34 @@ private fun WorkoutExercisePlan.nextPlannedDraft(loggedCount: Int): SetInputDraf
         ?: toPlannedDraft()
 
 private fun RoutineSet.toDraft() = SetInputDraft(
-    weight = targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty(),
+    weight = activeSetDraftWeightText(targetWeightKg),
     reps = targetReps.takeIf { it > 0 }?.toString().orEmpty(),
     rpe = targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty(),
     setType = setType,
 )
 
 private fun WorkoutExercisePlan.toPlannedDraft() = SetInputDraft(
-    weight = targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty(),
+    weight = activeSetDraftWeightText(targetWeightKg),
     reps = displayRepTarget(repRange).takeIf { it.isNotBlank() && it != repRange } ?: repRange.toIntOrNull()?.toString().orEmpty(),
     rpe = targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty(),
     setType = setType,
 )
+
+internal fun activeSetDraftWeightText(targetWeightKg: Double): String =
+    targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight) ?: "0"
+
+internal fun activeSetUiDraft(
+    savedDraft: SetInputDraft?,
+    plan: WorkoutExercisePlan,
+    loggedSetCount: Int,
+): SetInputDraft {
+    val plannedDraft = plan.nextPlannedDraft(loggedSetCount)
+    return savedDraft?.copy(
+        weight = savedDraft.weight.ifBlank { plannedDraft.weight },
+        reps = savedDraft.reps.ifBlank { plannedDraft.reps },
+        rpe = savedDraft.rpe.ifBlank { plannedDraft.rpe },
+    ) ?: plannedDraft
+}
 
 private fun ProgressionSuggestion.toLastSessionDraft(): SetInputDraft? {
     val weight = lastLoggedWeightKg ?: return null

@@ -122,7 +122,7 @@ class WorkoutInputValidationTest {
     @Test
     fun `active routine without exercises explains the editor action`() {
         assertEquals(
-            "Open deze routine hieronder en voeg eerst een trainingsdag met oefening toe voordat je start.",
+            "Tik op Routine inrichten en voeg eerst een oefening toe voordat je start.",
             activeRoutineNeedsExerciseText(),
         )
     }
@@ -132,16 +132,90 @@ class WorkoutInputValidationTest {
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
         val activeRoutineCard = workoutScreen
             .substringAfter("private fun ActiveRoutineCard(")
-            .substringBefore("@Composable\nprivate fun SectionHeader")
+            .substringBefore("private fun SectionHeader")
 
         assertTrue(activeRoutineCard.contains("onOpenDetails: (Long) -> Unit"))
         assertTrue(activeRoutineCard.contains("activeRoutineSetupLabel()"))
         assertTrue(activeRoutineCard.contains("onOpenDetails(activeRoutine.id)"))
+        assertTrue(activeRoutineCard.contains("Icon(Icons.Rounded.Add"))
     }
 
     @Test
     fun `routine setup label stays Dutch`() {
         assertEquals("Routine inrichten", activeRoutineSetupLabel())
+    }
+
+    @Test
+    fun `routine detail opens sessions first when routine is not startable`() {
+        val emptyRoutine = WorkoutRoutine(
+            id = 1,
+            name = "Routine",
+            description = "",
+            active = true,
+            days = emptyList(),
+        )
+        val routineWithEmptyDay = emptyRoutine.copy(
+            days = listOf(WorkoutDay(id = 1, routineId = 1, name = "Sessie", orderIndex = 0, exercises = emptyList())),
+        )
+
+        assertEquals("sessions", initialRoutineDetailTab(emptyRoutine))
+        assertEquals("sessions", initialRoutineDetailTab(routineWithEmptyDay))
+    }
+
+    @Test
+    fun `routine detail opens info first when routine can start`() {
+        val exercise = Exercise(id = 1, name = "Bench press", muscleGroup = "Chest", equipment = "Barbell")
+        val routine = WorkoutRoutine(
+            id = 1,
+            name = "Routine",
+            description = "",
+            active = true,
+            days = listOf(
+                WorkoutDay(
+                    id = 1,
+                    routineId = 1,
+                    name = "Push",
+                    orderIndex = 0,
+                    exercises = listOf(
+                        WorkoutExercisePlan(
+                            id = 1,
+                            exercise = exercise,
+                            targetSets = 3,
+                            repRange = "8-12",
+                            restSeconds = 90,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals("info", initialRoutineDetailTab(routine))
+    }
+
+    @Test
+    fun `routine detail resets training list scroll when opened`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val routeBody = workoutScreen
+            .substringAfter("var selectedRoutineId by rememberSaveable")
+            .substringBefore("@HiltViewModel\nclass WorkoutCompletionViewModel")
+
+        assertTrue(routeBody.contains("val trainingListState = rememberLazyListState()"))
+        assertTrue(routeBody.contains("trainingListState.scrollToItem(0)"))
+        assertTrue(routeBody.contains("state = trainingListState"))
+    }
+
+    @Test
+    fun `active routine is prioritized before routine creation when present`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val overviewBody = workoutScreen
+            .substringAfter("if (selectedRoutine != null) {")
+            .substringAfter("return@LazyColumn")
+            .substringBefore("item { SectionHeader(\"Routines\") }")
+
+        assertTrue(overviewBody.contains("if (overview.activeRoutine != null)"))
+        assertTrue(overviewBody.indexOf("ActiveRoutineCard(") < overviewBody.indexOf("RoutineCreationCard("))
+        assertTrue(overviewBody.contains("else"))
+        assertTrue(overviewBody.lastIndexOf("RoutineCreationCard(") < overviewBody.lastIndexOf("ActiveRoutineCard("))
     }
 
     @Test
@@ -473,6 +547,30 @@ class WorkoutInputValidationTest {
         assertEquals(0.0, result.weight, 0.0)
         assertEquals(12, result.reps)
         assertEquals(7.0, result.rpe, 0.0)
+    }
+
+    @Test
+    fun `active logger defaults missing planned weight to zero for bodyweight logging`() {
+        assertEquals("0", activeSetDraftWeightText(0.0))
+        assertEquals("0", activeSetDraftWeightText(-1.0))
+        assertEquals("80.5", activeSetDraftWeightText(80.5))
+    }
+
+    @Test
+    fun `active logger ui draft falls back to planned bodyweight set`() {
+        val exercise = Exercise(id = 1, name = "Ab Wheel Rollout", muscleGroup = "Core", equipment = "Lichaamsgewicht")
+        val plan = WorkoutExercisePlan(
+            id = 1,
+            exercise = exercise,
+            targetSets = 3,
+            repRange = "8-12",
+            restSeconds = 90,
+            targetWeightKg = 0.0,
+        )
+
+        assertEquals(SetInputDraft(weight = "0", reps = "12"), activeSetUiDraft(savedDraft = null, plan = plan, loggedSetCount = 0))
+        assertEquals(SetInputDraft(weight = "0", reps = "12"), activeSetUiDraft(savedDraft = SetInputDraft(weight = "", reps = "12"), plan = plan, loggedSetCount = 0))
+        assertEquals(SetInputDraft(weight = "20", reps = "8"), activeSetUiDraft(savedDraft = SetInputDraft(weight = "20", reps = "8"), plan = plan, loggedSetCount = 0))
     }
 
     @Test

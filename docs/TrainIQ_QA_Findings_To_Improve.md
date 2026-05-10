@@ -729,3 +729,158 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
 - Verification: PASS, `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
 - Physical-device evidence: PASS on SM-S931B, installed debug build, launched with `WaitTime: 1151`, created empty `QA routine`, verified `Routine inrichten` appears after scrolling the active-routine card, and verified tapping it opens the existing routine detail screen with `Info`/`Sessies`.
 - Crash evidence: PASS, `.codex/device-qa/2026-05-10-training-setup-entry-after/final-crash-buffer.txt` was empty.
+
+## 2026-05-10 Training Setup Tab Polish
+
+- Files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/workout/WorkoutInputValidationTest.kt`
+- Fix: not-startable routines now open routine detail on `Sessies` first, so the `Routine inrichten` path lands where `Eerste oefening toevoegen` is available. Startable routines still open on `Info`, preserving the existing normal detail flow.
+- Regression coverage: targeted tests guard the default detail tab for empty routines, routines with empty days, and routines with a startable exercise.
+- Verification: RED, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --console=plain --no-configuration-cache` failed on missing `initialRoutineDetailTab`.
+- Verification: PASS, same targeted test after implementation.
+- Verification: PASS, `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
+- Remaining risk: runtime device proof should now rerun the full empty-routine setup, add-first-exercise, active-workout finish, and completion/debrief flow.
+
+## 2026-05-10 Training Setup QA Then Copy Polish
+
+- QA scope: reran the targeted workout regression suite against the current setup-entry and setup-tab changes before making another app change.
+- QA finding: the empty active-routine helper copy still said to open the routine below, while the UI now exposes a direct `Routine inrichten` action. This was a low-risk UX mismatch in the setup flow.
+- Files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/workout/WorkoutInputValidationTest.kt`
+- Fix: updated the helper copy to `Tik op Routine inrichten en voeg eerst een oefening toe voordat je start.`
+- Verification: QA baseline PASS, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --console=plain --no-configuration-cache`.
+- Verification: RED, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest.active routine without exercises explains the editor action" --console=plain --no-configuration-cache` failed on the stale copy.
+- Verification: PASS, same targeted test after copy polish.
+- Verification: PASS, full `WorkoutInputValidationTest`.
+- Verification: PASS, `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
+- Remaining risk: physical-device add-first-exercise and completion/debrief runtime QA remains the next step.
+
+## 2026-05-10 Training Setup QA Then Button Polish
+
+- QA scope: reran targeted workout regression coverage for the setup-entry/setup-tab path and inspected the current active-routine card source.
+- QA finding: the `Routine inrichten` primary setup action was text-only while comparable add/setup actions in the Training screen use the Add icon for quick scanning. The existing source-level guard also sliced too broadly, so it could pass by seeing Add icons outside `ActiveRoutineCard`.
+- Files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/workout/WorkoutInputValidationTest.kt`
+- Fix: added `Icons.Rounded.Add` to the `Routine inrichten` button and tightened the regression guard to inspect only `ActiveRoutineCard`.
+- Verification: QA baseline PASS, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --console=plain --no-configuration-cache`.
+- Verification: RED, targeted setup-entry test failed once the source slice was narrowed and the Add icon was required.
+- Verification: PASS, same targeted test after button affordance polish.
+- Verification: PASS, full `WorkoutInputValidationTest`.
+- Verification: PASS, `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
+- Remaining risk: physical-device add-first-exercise and completion/debrief runtime QA remains the next step.
+
+## 2026-05-10 Training Setup Runtime QA Then Scroll Polish
+
+- QA scope: physical-device runtime QA on Samsung SM-S931B for the empty active-routine setup path after the setup-entry, setup-tab, copy, and button-affordance polish.
+- Evidence folder: `.codex/device-qa/2026-05-10-qa-polish-training-setup-runtime/`.
+- QA evidence:
+  - PASS build/install: `./gradlew.bat :app:assembleDebug :app:installDebug --console=plain --no-configuration-cache`.
+  - PASS clean launch: `adb shell am start -W -n com.trainiq/.MainActivity` returned `Status: ok`, `WaitTime: 936`.
+  - PASS recovery from weird keyboard/settings interruption: app returned to the create-routine dialog without crash and retained the entered routine name.
+  - PASS empty active routine card showed the updated helper copy and `Routine inrichten`.
+  - PASS tapping `Routine inrichten` opened detail mode with `Sessies` selected and `Eerste oefening toevoegen` reachable.
+  - QA finding: opening detail from a scrolled Training list could preserve the old scroll offset, clipping the detail header/back affordance at the top.
+- Files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/workout/WorkoutInputValidationTest.kt`
+- Fix: Training now keeps a `LazyListState` and scrolls to item 0 when routine detail mode opens.
+- Verification: RED, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest.routine detail resets training list scroll when opened" --console=plain --no-configuration-cache` failed before the scroll reset.
+- Verification: PASS, same targeted test after polish.
+- Verification: PASS, full `WorkoutInputValidationTest`.
+- Verification: PASS, `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
+- Verification: PASS, `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; after force-stop relaunch `Status: ok`, `WaitTime: 705`.
+- Runtime smoke after polish: PASS, retapping `Routine inrichten` opened detail with `Terug naar routines`, routine title, `Info`, and selected `Sessies` visible at the top instead of clipped.
+- Crash evidence: PASS, `.codex/device-qa/2026-05-10-qa-polish-training-setup-runtime/14-after-polish-crash-buffer.txt` was empty.
+- Remaining risk: full add-first-exercise, active-workout start, finish, and completion/debrief runtime QA remains open.
+
+## 2026-05-10 Extended QA Timebox
+
+- QA scope: broad Android QA pass across build/test/lint, top-level navigation, Training setup, Nutrition, Settings/More, crash buffers, and source-level consistency checks.
+- Timebox start: 2026-05-10T20:17:57+02:00.
+- Evidence folder: `.codex/device-qa/2026-05-10-hour-qa/`.
+- Build/static verification:
+  - PASS, `./gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS source scan: no broad TODO/FIXME/HACK hotspots in app source; typed navigation use remains concentrated in `TrainIqNav.kt`.
+  - PASS/expected: decorative `contentDescription = null` icons exist inside labeled buttons/rows; actionable workout controls inspected in this pass have labels or merged semantics.
+- Physical-device QA:
+  - Device: Samsung SM-S931B, Android 16, `RFCY60HNHNJ`.
+  - PASS clean launch: `adb shell am start -W -n com.trainiq/.MainActivity` returned `Status: ok`, `WaitTime: 735`.
+  - PASS top-level traversal: Start, Training, Voeding, Coach, and Meer rendered without crash.
+  - PASS crash evidence: `.codex/device-qa/2026-05-10-hour-qa/04-tab-traverse-crash-buffer.txt` was empty.
+  - PASS Nutrition smoke: Voeding rendered Vandaag/Toevoegen/AI-resultaat/Recepten tabs, meal sections, and add actions; crash buffer stayed empty.
+  - PASS Settings/More smoke: Settings rendered status, theme mode, AI status, Health Connect status, and progress entry without crash.
+  - PARTIAL Training setup: active empty routine card showed `Routine inrichten`; setup path remains reachable, but full add-first-exercise/start/finish/debrief was not completed in this pass because the coordinate attempt missed the setup button and scrolled into the exercise library instead of opening detail.
+- New QA finding:
+  - finding_id: QA-2026-05-10-022
+  - priority: P2
+  - area: UX, accessibility
+  - status: done
+  - owner suggestion: Android UI owner
+  - current evidence with file references:
+    - `.codex/device-qa/2026-05-10-hour-qa/03-tab-training.xml` shows that after clean launch with an existing empty active routine, the Training first viewport prioritizes `Routine maken` before `Actieve routine`.
+    - In the same dump, the active routine card starts at `bounds="[48,1195][1032,1746]"` and the `Routine inrichten` button extends to `bounds="[96,1666][984,1818]"`, below the scroll viewport ending at `1746`, so the primary next setup action is partly clipped.
+    - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt` currently emits `RoutineCreationCard` before `ActiveRoutineCard` in the Training `LazyColumn`.
+  - expected target-state behavior: When an active routine exists, Training should prioritize the current next action. Empty active-routine setup should be visible and tappable without relying on precise scroll position.
+  - concrete recommended fix: In the Training screen, render `ActiveRoutineCard` before `RoutineCreationCard` when an active routine exists, while keeping routine creation available directly below. Add a source-level ordering guard and rerun the physical-device setup smoke.
+  - regression risk: Low to medium. It changes first-viewport ordering but does not remove any action; verify empty/no-active-routine onboarding still shows routine creation clearly.
+  - minimal verification command/check: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --console=plain --no-configuration-cache`, `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`, and physical-device Training first-viewport smoke.
+- External sources used: None. Local runtime evidence and source inspection were sufficient.
+- Remaining risk: full add-first-exercise, active-workout start, finish, and completion/debrief runtime QA remains open.
+
+## 2026-05-10 Training First-Viewport Order Polish
+
+- Finding closed: QA-2026-05-10-022.
+- Files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/workout/WorkoutInputValidationTest.kt`
+- Fix: Training now renders `ActiveRoutineCard` before `RoutineCreationCard` when `overview.activeRoutine` exists, while preserving the original no-active-routine flow where routine creation appears first.
+- Regression coverage: added a targeted source-level guard that verifies the active-routine-first branch and the no-active-routine creation-first fallback.
+- Verification: RED, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest.active routine is prioritized before routine creation when present" --console=plain --no-configuration-cache` failed on the old ordering.
+- Verification: PASS, same targeted test after implementation.
+- Verification: PASS, full `WorkoutInputValidationTest`.
+- Verification: PASS, `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
+- Physical-device evidence: PASS on SM-S931B, installed debug build, launched with `am start -S -W` `Status: ok`, navigated to Training, verified `Actieve routine` and fully visible `Routine inrichten` appear before `Routine maken`; evidence in `.codex/device-qa/2026-05-10-training-first-viewport-after-order-polish/15-training-final.xml`.
+- Crash evidence: PASS, `.codex/device-qa/2026-05-10-training-first-viewport-after-order-polish/16-crash-buffer-final.txt` was empty.
+- External sources used: None. Local runtime evidence and source inspection were sufficient.
+- Remaining risk: full add-first-exercise, active-workout start, finish, and completion/debrief runtime QA remains open.
+
+## 2026-05-10 Settings Gemini Key Help Polish
+
+- Target-state link: Settings is the control center for AI, privacy, and local key handling; Gemini keys must not be committed or placed in `BuildConfig`.
+- Files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/settings/SettingsSection.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/settings/SettingsUiStateTest.kt`
+  - `TrainIQ-Project/README.md`
+- Fix: Settings now shows a compact Gemini API-key setup instruction, the official Google AI Studio API Keys URL, and a warning not to share or commit the key. The Android README mirrors the same short setup path.
+- Regression coverage: added a targeted Settings guard for the Google AI Studio label, URL, paste/save instruction, and no-commit warning.
+- Verification: baseline PASS, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+- Verification: RED, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.settings.SettingsUiStateTest.geminiApiKeyHelpPointsToGoogleAiStudioWithoutEncouragingCommittedSecrets" --console=plain --no-configuration-cache` failed before the helper functions existed.
+- Verification: PASS, same targeted test after implementation.
+- Verification: PASS, full `SettingsUiStateTest`.
+- Verification: PASS, `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
+- Physical-device evidence: PASS on SM-S931B, installed debug build, launched Settings, verified `AI / Gemini`, `Google AI Studio`, `https://aistudio.google.com/app/apikey`, and `commit hem nooit`; evidence in `.codex/device-qa/2026-05-10-settings-gemini-key-help-polish/03-settings-ai.xml`.
+- Crash evidence: PASS, `.codex/device-qa/2026-05-10-settings-gemini-key-help-polish/04-crash-buffer.txt` was empty.
+- External sources used: Google AI for Developers, Using Gemini API keys, accessed 2026-05-10: https://ai.google.dev/gemini-api/docs/api-key. It documents creating/managing Gemini API keys in Google AI Studio and links to the API Keys page.
+- Remaining risk: BYOK/direct-client production mode remains an owner decision under existing release/privacy findings.
+
+## 2026-05-10 Training Setup To Completion Polish
+
+- Target-state link: Training setup should let users move from an empty active routine to a saved workout and completion/debrief without hidden validation traps.
+- QA evidence before fix: physical-device QA on SM-S931B could create a session, add `Ab Wheel Rollout`, start the workout, and reach the active logger, but tapping `Set loggen` failed with `Voer een gewicht tussen 0 en 1000 kg in.` even though the bodyweight set visually had no planned kg.
+- Files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/workout/WorkoutInputValidationTest.kt`
+- Fix: active workout logger defaults missing planned weight to `0` for bodyweight/no-weight sets, and both UI draft rendering and `logSet` use the same effective draft that fills missing saved-draft fields from the planned set.
+- Regression coverage: added targeted tests for bodyweight draft weight text and effective UI draft fallback, including persisted drafts with blank weight but planned reps.
+- Verification: baseline PASS, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --console=plain --no-configuration-cache`.
+- Verification: RED, targeted bodyweight draft tests failed before `activeSetDraftWeightText` and `activeSetUiDraft` existed.
+- Verification: PASS, full `WorkoutInputValidationTest` after implementation.
+- Verification: PASS, `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
+- Tooling note: parallel Gradle invocations caused Kotlin/KSP incremental-cache lock failures; `./gradlew.bat --stop` followed by sequential test/build resolved the tooling issue.
+- Physical-device evidence: PASS on SM-S931B. The app launched with `Status: ok`, Training started the QA routine, the active logger accepted `Set loggen` without weight/reps errors, `1 set gelogd` appeared, finish confirmation saved the partial session, and completion rendered `Voltooid`, `Slimme samenvatting`, `Lokale fallback`, `Sets 1`, and `Sterkste set: 0 kg x 12`.
+- Crash evidence: PASS, `.codex/device-qa/2026-05-10-training-setup-to-completion-polish/40-after-save-crash-buffer.txt` was empty.
+- External sources used: None. Local runtime evidence and existing app tests were sufficient.
+- Remaining risk: completion with Gemini-enabled debrief still needs API-key/network-path evidence; this pass verified local fallback completion.

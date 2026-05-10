@@ -18,6 +18,9 @@ Updated date: 2026-05-10
 - QA-2026-05-09-013 (P2): Scanner now handles no camera feature and CameraX bind failure with user-facing manual meal/barcode fallback actions.
 - QA-2026-05-09-007 (P1): AI calls now use named feature timeout budgets, cancellation propagation, local fallback handling, central 429 retry/backoff, feature-scoped 429 throttles, and user-message mapping for timeout/rate-limit/throttle cases.
 - QA-2026-05-10-020 (P1): CI now includes a `room-migration-marker` emulator job that runs `:app:generateCiRoomMigrationChainVerificationMarkers`, and the signed-release job depends on it before building release artifacts.
+- QA-2026-05-10-022 (P2): Training now prioritizes the existing active routine before routine creation, so `Routine inrichten` is fully visible in the first viewport when setup is the current next action.
+- 2026-05-10 Settings Gemini key help polish: Settings and the Android README now point users to Google AI Studio API Keys, explain the short paste/save/enable flow, and warn not to share or commit the key.
+- 2026-05-10 Training setup-to-completion polish: bodyweight/no-weight active logger drafts now default missing planned weight to `0`, persisted drafts fill missing fields from the planned set, and physical-device QA reached saved completion/debrief with local fallback.
 
 ## Partially Completed Findings
 
@@ -55,7 +58,8 @@ Updated date: 2026-05-10
   - Android Health Connect sync data: https://developer.android.com/health-and-fitness/health-connect/sync-data. Supports separate changes tokens per data type, token-expiry handling, foreground/background read constraints.
   - Android Baseline Profiles: https://developer.android.com/baseline-profiles and https://developer.android.com/topic/performance/baselineprofiles/create-baselineprofile. Supports the release-performance requirement for generated profiles and physical/profileable evidence.
   - Compose accessibility/scalable content: https://developer.android.com/develop/ui/compose/accessibility and https://developer.android.com/develop/ui/compose/accessibility/scalable-content. Supports large-font/reflow and manual assistive-tech findings.
-  - Gemini thinking and structured output: https://ai.google.dev/gemini-api/docs/thinking and https://ai.google.dev/gemini-api/docs/structured-output. Supports the existing Gemini 2.5 Flash structured JSON/thinking-budget target.
+- Gemini thinking and structured output: https://ai.google.dev/gemini-api/docs/thinking and https://ai.google.dev/gemini-api/docs/structured-output. Supports the existing Gemini 2.5 Flash structured JSON/thinking-budget target.
+- Gemini API keys: https://ai.google.dev/gemini-api/docs/api-key. Supports the Settings/README helper copy that directs users to Google AI Studio API Keys and keeps keys out of committed code.
 - No new webresearch was needed for the 2026-05-10 shared header/routine label wrapping polish; existing finding evidence and the previously recorded Compose scalable-content source were sufficient.
 - No new webresearch was needed for the 2026-05-10 CI migration-marker polish; local Gradle task wiring and workflow scope were sufficient.
 - No new webresearch was needed for the 2026-05-10 measurement persistence polish; local Room DAO patterns and existing architecture guards were sufficient.
@@ -86,6 +90,14 @@ Updated date: 2026-05-10
 - 2026-05-10 scanner follow-up physical-device QA PASS: installed debug build on SM-S931B, launched Nutrition add sheet, opened `Foto / AI-inschatting` via UIAutomator bounds, verified `Camerascanner` and `Foto maken`, verified Back returns to Voeding/Start, and captured empty crash buffers in `.codex/device-qa/2026-05-10-scanner-permission-precise/`.
 - 2026-05-10 active-workout completion/debrief QA BLOCKED: physical-device run on SM-S931B created an empty active `QA routine`, but completion/debrief runtime coverage could not start because no visible routine-detail/day-add/exercise-add/start control was exposed after routine creation. Evidence and empty crash buffer are in `.codex/device-qa/2026-05-10-active-workout-completion-debrief/`.
 - 2026-05-10 training setup-entry polish PASS: empty active routines now expose `Routine inrichten`; physical-device smoke on SM-S931B confirmed it opens the existing routine detail screen with `Info`/`Sessies`, unblocking the next setup step for active-workout completion/debrief QA.
+- 2026-05-10 training setup-tab polish PASS: not-startable routines now open detail mode on `Sessies`, so `Routine inrichten` lands on the first-exercise setup area while startable routines keep opening on `Info`; RED/PASS targeted `WorkoutInputValidationTest` and PASS `:app:assembleDebug`.
+- 2026-05-10 training setup QA-then-polish PASS: QA baseline reran targeted `WorkoutInputValidationTest`, then polish updated the empty active-routine copy to point users at `Routine inrichten`; RED/PASS targeted copy test, PASS full workout test, PASS `:app:assembleDebug`.
+- 2026-05-10 training setup button polish PASS: QA baseline reran targeted `WorkoutInputValidationTest`, then polish added an Add icon to `Routine inrichten` and tightened the source guard to inspect only `ActiveRoutineCard`; RED/PASS targeted setup-entry test, PASS full workout test, PASS `:app:assembleDebug`.
+- 2026-05-10 training setup runtime QA-then-polish PASS: physical-device QA on SM-S931B verified `Routine inrichten` opens detail on `Sessies`; QA found the detail header could be clipped when opening from a scrolled list, then polish added a Training list scroll reset on detail open; RED/PASS targeted scroll-reset test, PASS full workout test, PASS `:app:assembleDebug`, PASS reinstall/device smoke with empty crash buffer.
+- 2026-05-10 extended QA timebox PASS/PARTIAL: broad Gradle gate passed with `:app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:compileDebugAndroidTestKotlin`; SM-S931B launch, top-level traversal, Nutrition, and Settings/More smoke passed with empty crash buffers; Training setup flow found QA-2026-05-10-022 and full add-first-exercise/start/finish/debrief remains open.
+- 2026-05-10 training first-viewport order polish PASS: RED/PASS targeted ordering guard, PASS full `WorkoutInputValidationTest`, PASS `:app:assembleDebug`, PASS install/device smoke on SM-S931B with `Actieve routine` and fully visible `Routine inrichten` before `Routine maken`, and empty crash buffer in `.codex/device-qa/2026-05-10-training-first-viewport-after-order-polish/`.
+- 2026-05-10 Settings Gemini key help polish PASS: baseline Settings test passed, RED/PASS targeted Gemini-key help guard, PASS full `SettingsUiStateTest`, PASS `:app:assembleDebug`, PASS install/device Settings smoke on SM-S931B showing Google AI Studio URL and no-commit warning with empty crash buffer.
+- 2026-05-10 Training setup-to-completion polish PASS: baseline workout test passed, RED/PASS targeted bodyweight active-logger draft tests, PASS full `WorkoutInputValidationTest`, PASS `:app:assembleDebug`, PASS `:app:installDebug`, PASS SM-S931B runtime from Training start to `Set loggen`, `Opslaan`, and `Voltooid` completion/debrief with empty crash buffer.
 - 2026-05-10 active-set edit persistence after-change PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
 - 2026-05-10 active-set edit persistence after-change PASS: `./gradlew.bat :app:lintDebug --console=plain --no-configuration-cache`.
 - 2026-05-10 verify-only PASS: `./gradlew.bat :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
@@ -250,7 +262,8 @@ Updated date: 2026-05-10
 ## Next Safest Actions
 
 1. Continue QA-2026-05-09-001/QA-2026-05-10-014 by moving active workout finish/undo or routine add/delete/reorder to targeted Room writes with process-restart correctness tests.
-2. Investigate the 2026-05-10 `am start -W` timeout with profileable/physical-device macrobenchmark evidence, then set owner-approved thresholds.
-3. Run manual TalkBack/Switch Access signoff and compact/font-scale QA for active workout, scanner states, Health Connect rationale, AI routine generation, and Settings destructive actions.
-4. Close Play/Data Safety, background Health Connect, production AI boundary, and versioning owner decisions before release upload.
-5. Watch the first GitHub-hosted `room-migration-marker` emulator run and tune CI infrastructure only if it fails for environment reasons.
+2. Run a Gemini-enabled workout debrief pass with a real local API key only when credentials/network use are explicitly approved; local fallback completion is already verified.
+3. Investigate the 2026-05-10 `am start -W` timeout with profileable/physical-device macrobenchmark evidence, then set owner-approved thresholds.
+4. Run manual TalkBack/Switch Access signoff and compact/font-scale QA for active workout, scanner states, Health Connect rationale, AI routine generation, and Settings destructive actions.
+5. Close Play/Data Safety, background Health Connect, production AI boundary, and versioning owner decisions before release upload.
+6. Watch the first GitHub-hosted `room-migration-marker` emulator run and tune CI infrastructure only if it fails for environment reasons.

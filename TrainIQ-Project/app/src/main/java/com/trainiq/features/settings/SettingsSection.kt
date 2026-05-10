@@ -607,6 +607,16 @@ fun SettingsScreen(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     singleLine = true,
                 )
+                Text(
+                    geminiApiKeySetupHelpText(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "${geminiApiKeySourceLabel()}: ${geminiApiKeySourceUrl()}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                     Button(onClick = {
                         onSaveApiKey(apiKey)
@@ -929,6 +939,13 @@ internal fun maskedSettingsApiKey(key: String): String {
 }
 
 internal fun shouldMaskGeminiApiKeyInput(): Boolean = true
+
+internal fun geminiApiKeySourceLabel(): String = "Google AI Studio API Keys"
+
+internal fun geminiApiKeySourceUrl(): String = "https://aistudio.google.com/app/apikey"
+
+internal fun geminiApiKeySetupHelpText(): String =
+    "Maak of bekijk je sleutel in Google AI Studio, plak hem hier en zet AI aan. Deel je sleutel niet en commit hem nooit."
 
 private fun BiologicalSex.displayLabel(): String = when (this) {
     BiologicalSex.MALE -> "Man"

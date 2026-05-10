@@ -57,6 +57,18 @@ class SettingsUiStateTest {
     }
 
     @Test
+    fun geminiApiKeyHelpPointsToGoogleAiStudioWithoutEncouragingCommittedSecrets() {
+        assertEquals("Google AI Studio API Keys", geminiApiKeySourceLabel())
+        assertEquals("https://aistudio.google.com/app/apikey", geminiApiKeySourceUrl())
+
+        val help = geminiApiKeySetupHelpText()
+        assertTrue(help.contains("Google AI Studio"))
+        assertTrue(help.contains("plak hem hier"))
+        assertTrue(help.contains("Deel je sleutel niet"))
+        assertTrue(help.contains("commit hem nooit"))
+    }
+
+    @Test
     fun healthConnectSettingsMessageUsesCompactCopyForLowerSettingsSection() {
         assertEquals(
             "Geef toegang om stappen, hartslag, slaap, calorieen, gewicht en workouts te synchroniseren.",
