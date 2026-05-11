@@ -26,3 +26,5 @@ qa-cycle-runtime/training-after-fix.png
 /.codex/android-smoke
 /.codex/android-qa
 /.codex/device-qa
+/TrainIQ-Project/.codex/device-qa/2026-05-11-ai-routine-deeper-fontscale-qa
+/TrainIQ-Project/.codex/device-qa

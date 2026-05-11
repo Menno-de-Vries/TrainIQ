@@ -1,6 +1,7 @@
 package com.trainiq.data.repository
 
 import java.io.File
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -8,14 +9,10 @@ class WorkoutSessionTransactionTest {
     private val source = File("src/main/java/com/trainiq/data/repository/RoomTrainIqRuntimeStore.kt").readText()
 
     @Test
-    fun runtimeUpdatesAreSerializedAndCommittedThroughRoomImportTransaction() {
-        val updateBody = source.substringAfter("suspend fun update(").substringBefore("suspend fun clearAll()")
-
-        assertTrue(updateBody.contains("mutex.withLock"))
-        assertTrue(updateBody.contains("val updatedJson = gson.toJson(updated)"))
-        assertTrue(updateBody.contains("sink.importTransaction"))
-        assertTrue(updateBody.contains("planner.plan(updatedJson)"))
-        assertTrue(updateBody.contains("mirrorRun ="))
+    fun runtimeStoreDoesNotExposeBroadFullStateUpdateTransaction() {
+        assertFalse(source.contains("suspend fun update(transform:"))
+        assertFalse(source.contains("val updatedJson = gson.toJson(updated)"))
+        assertFalse(source.contains("mirrorRun ="))
     }
 
     @Test

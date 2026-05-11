@@ -79,6 +79,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
@@ -269,6 +270,7 @@ fun TapOnlyOutlinedTextField(
     value: String,
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
+    accessibilityLabel: String? = null,
     label: @Composable (() -> Unit)? = null,
     placeholder: @Composable (() -> Unit)? = null,
     suffix: @Composable (() -> Unit)? = null,
@@ -295,6 +297,13 @@ fun TapOnlyOutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         modifier = modifier
+            .then(
+                if (accessibilityLabel != null) {
+                    Modifier.semantics { contentDescription = accessibilityLabel }
+                } else {
+                    Modifier
+                },
+            )
             .pointerInput(focusManager, keyboardController, tapSlop) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
@@ -421,30 +430,44 @@ fun AppScreenHeader(
     actionContentDescription: String? = null,
     onActionClick: (() -> Unit)? = null,
 ) {
+    val compactShortScreen = LocalConfiguration.current.screenHeightDp <= 640
+    val titleStyle = if (compactShortScreen) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium
+    val subtitleStyle = if (compactShortScreen) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleMedium
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(top = 22.dp, bottom = 18.dp),
+            .padding(
+                top = if (compactShortScreen) 8.dp else 22.dp,
+                bottom = if (compactShortScreen) 8.dp else 18.dp,
+            ),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.Top,
     ) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.headlineMedium,
+                style = titleStyle,
                 fontWeight = FontWeight.ExtraBold,
                 color = MaterialTheme.colorScheme.onBackground,
+                maxLines = if (compactShortScreen) 1 else Int.MAX_VALUE,
+                overflow = TextOverflow.Ellipsis,
             )
             subtitle?.let {
                 Text(
                     text = it,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = subtitleStyle,
                     color = MaterialTheme.trainIqColors.mutedText,
+                    maxLines = if (compactShortScreen) 1 else Int.MAX_VALUE,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
         if (actionIcon != null && actionContentDescription != null && onActionClick != null) {
-            SecondaryActionButton(onClick = onActionClick, contentPadding = PaddingValues(12.dp)) {
+            SecondaryActionButton(
+                modifier = Modifier.semantics { contentDescription = actionContentDescription },
+                onClick = onActionClick,
+                contentPadding = PaddingValues(if (compactShortScreen) 8.dp else 12.dp),
+            ) {
                 Icon(actionIcon, contentDescription = actionContentDescription, modifier = Modifier.size(20.dp))
             }
         }

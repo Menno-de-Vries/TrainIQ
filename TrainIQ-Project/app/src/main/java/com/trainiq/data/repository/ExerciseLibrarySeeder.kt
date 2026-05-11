@@ -10,8 +10,9 @@ class ExerciseLibrarySeeder @Inject constructor(
     private val runtimeStore: RoomTrainIqRuntimeStore,
 ) {
     suspend fun ensureSeeded() {
-        if (shouldSkipExerciseLibrarySeed(runtimeStore.state.value)) return
-        runtimeStore.update(::mergeCanonicalExerciseLibrary)
+        val additions = missingCanonicalExercises(runtimeStore.state.value)
+        if (additions.isEmpty()) return
+        runtimeStore.seedExerciseLibrary(additions)
     }
 }
 
@@ -19,13 +20,17 @@ internal fun shouldSkipExerciseLibrarySeed(state: TrainIqStorageState): Boolean 
     state.exercises.size >= 50
 
 internal fun mergeCanonicalExerciseLibrary(state: TrainIqStorageState): TrainIqStorageState {
-    if (shouldSkipExerciseLibrarySeed(state)) return state
+    val additions = missingCanonicalExercises(state)
+    return if (additions.isEmpty()) state else state.copy(exercises = state.exercises + additions)
+}
+
+internal fun missingCanonicalExercises(state: TrainIqStorageState): List<ExerciseEntity> {
+    if (shouldSkipExerciseLibrarySeed(state)) return emptyList()
     val existingNames = state.exercises.map { it.name.lowercase() }.toSet()
     val nextId = (state.exercises.maxOfOrNull { it.id } ?: 0L) + 1L
-    val additions = canonicalExerciseLibrary()
+    return canonicalExerciseLibrary()
         .filter { it.name.lowercase() !in existingNames }
         .mapIndexed { index, exercise -> exercise.copy(id = nextId + index) }
-    return if (additions.isEmpty()) state else state.copy(exercises = state.exercises + additions)
 }
 
 private fun canonicalExerciseLibrary(): List<ExerciseEntity> = listOf(

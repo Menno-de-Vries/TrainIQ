@@ -32,6 +32,13 @@ class AdaptiveNavigationPolicyTest {
     }
 
     @Test
+    fun compactShortScreensUseCondensedBottomNavigation() {
+        assertTrue(shouldUseCompactShortBottomBar(TrainIqWindowWidthClass.Compact, screenHeightDp = 640))
+        assertFalse(shouldUseCompactShortBottomBar(TrainIqWindowWidthClass.Compact, screenHeightDp = 641))
+        assertFalse(shouldUseCompactShortBottomBar(TrainIqWindowWidthClass.Medium, screenHeightDp = 640))
+    }
+
+    @Test
     fun dashboardGridAddsColumnsOnWiderScreens() {
         assertTrue(adaptiveDashboardGridColumns(TrainIqWindowWidthClass.Compact) == 2)
         assertTrue(adaptiveDashboardGridColumns(TrainIqWindowWidthClass.Medium) == 3)

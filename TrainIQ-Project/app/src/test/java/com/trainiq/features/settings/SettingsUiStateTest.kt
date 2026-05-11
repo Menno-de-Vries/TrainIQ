@@ -5,6 +5,7 @@ import com.trainiq.core.datastore.WorkoutFeedbackPreferences
 import com.trainiq.core.theme.ThemeMode
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -102,5 +103,16 @@ class SettingsUiStateTest {
         assertTrue(clearAllDataBody.contains("Health Connect-permissies zelf beheer je in Android"))
         assertTrue(clearAllDataBody.contains("niet automatisch ongedaan"))
         assertFalse(clearAllDataBody.contains("cloud", ignoreCase = true))
+    }
+
+    @Test
+    fun healthConnectSettingsActionsKeepAccessibilityLabelsForLargeFontClipping() {
+        val source = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
+
+        assertTrue(source.contains("Health Connect-toegang geven"))
+        assertTrue(source.contains("Health Connect-status vernieuwen"))
+        assertTrue(source.contains("Health Connect-instellingen openen"))
+        assertTrue(source.contains("Health Connect installeren of bijwerken"))
+        assertTrue(source.contains("settingsActionLabel"))
     }
 }

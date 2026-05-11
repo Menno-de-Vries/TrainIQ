@@ -6,6 +6,7 @@ import com.trainiq.domain.model.MealScanItem
 import com.trainiq.domain.model.MealType
 import com.trainiq.domain.model.NutritionFacts
 import android.content.pm.PackageManager
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -44,6 +45,22 @@ class CameraScannerStateTest {
         assertEquals("Geen producten gevonden", scannerEmptyTitle())
         assertEquals("Handmatig toevoegen", scannerManualAddLabel())
         assertEquals("Opnieuw proberen", scannerRetryLabel())
+    }
+
+    @Test
+    fun nutritionFieldsExposeLabelsForCompactFontAccessibility() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val numberBody = source.substringAfter("private fun NutritionNumberField(")
+            .substringBefore("private fun NutritionTextField(")
+        val fieldBody = source.substringAfter("private fun NutritionTextField(")
+            .substringBefore("private fun EmptyStateCard(")
+
+        assertTrue(numberBody.contains(".semantics(mergeDescendants = true) { contentDescription = label }"))
+        assertTrue(fieldBody.contains(".semantics(mergeDescendants = true) { contentDescription = label }"))
+        assertTrue(source.contains("label = \"Productnaam\""))
+        assertTrue(source.contains("label = \"Barcode (optioneel)\""))
+        assertTrue(source.contains("label = \"kcal / 100g\""))
+        assertTrue(source.contains("label = \"Eiwit / 100g\""))
     }
 
     @Test

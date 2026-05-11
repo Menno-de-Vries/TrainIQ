@@ -125,6 +125,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -1697,10 +1698,20 @@ private fun RoutineCreationCard(onShowCreateDialog: () -> Unit, onShowAiDialog: 
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Button(onClick = onShowCreateDialog, modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = onShowCreateDialog,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = "Lege routine maken" },
+            ) {
                 Text("Lege routine maken")
             }
-            Button(onClick = onShowAiDialog, modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = onShowAiDialog,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = "Met AI genereren" },
+            ) {
                 Text("Met AI genereren")
             }
         }
@@ -1858,7 +1869,13 @@ private fun RoutineGeneratorDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                TapOnlyOutlinedTextField(equipment, { equipment = it }, label = { Text("Beschikbaar materiaal") }, modifier = Modifier.fillMaxWidth())
+                TapOnlyOutlinedTextField(
+                    value = equipment,
+                    onValueChange = { equipment = it },
+                    accessibilityLabel = "Beschikbaar materiaal",
+                    label = { Text("Beschikbaar materiaal") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 ExperienceLevelSelector(experienceLevel, onSelected = { experienceLevel = it })
                 SessionDurationSlider(durationMinutes = sessionDuration.toInt(), onValueChange = { sessionDuration = it })
                 IncludeDeloadRow(enabled = includeDeload, onCheckedChange = { includeDeload = it })
@@ -1919,7 +1936,13 @@ private fun IncludeDeloadRow(enabled: Boolean, onCheckedChange: (Boolean) -> Uni
             Text("Deload-richtlijn opnemen", style = MaterialTheme.typography.labelMedium)
             Text("Voegt hersteladvies toe voor lichtere weken.", style = MaterialTheme.typography.bodySmall)
         }
-        Switch(checked = enabled, onCheckedChange = onCheckedChange)
+        Switch(
+            checked = enabled,
+            onCheckedChange = onCheckedChange,
+            modifier = Modifier.semantics {
+                contentDescription = "Deload-richtlijn opnemen"
+            },
+        )
     }
 }
 
@@ -2220,7 +2243,13 @@ private fun RoutineCard(
             if (detailTab == "sessions") {
             Text("Sessie toevoegen", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                TapOnlyOutlinedTextField(dayName, { dayName = it }, label = { Text("Sessienaam (optioneel)") }, modifier = Modifier.weight(1f).bringIntoViewOnFocus())
+                TapOnlyOutlinedTextField(
+                    value = dayName,
+                    onValueChange = { dayName = it },
+                    accessibilityLabel = "Sessienaam optioneel",
+                    label = { Text("Sessienaam (optioneel)") },
+                    modifier = Modifier.weight(1f).bringIntoViewOnFocus(),
+                )
                 Button(onClick = { onAddDay(routine.id, dayName); dayName = "" }) { Text("Toevoegen") }
             }
             if (routine.days.isEmpty()) {
@@ -4933,11 +4962,18 @@ fun ActiveWorkoutScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         maxItemsInEachRow = 3,
                     ) {
-                        SecondaryActionButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Terug") }
+                        SecondaryActionButton(
+                            onClick = onBack,
+                            modifier = Modifier
+                                .weight(1f)
+                                .semantics { contentDescription = "Terug naar Training" },
+                        ) { Text("Terug") }
                         if (uiState.debrief == null) {
                             SecondaryActionButton(
                                 onClick = { showDiscardConfirm = true },
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .semantics { contentDescription = "Actieve training weggooien" },
                                 accent = MaterialTheme.colorScheme.error,
                             ) { Text("Weggooien") }
                         }
@@ -5433,6 +5469,7 @@ private fun ActiveExerciseCard(
     onReplaceExercise: () -> Unit,
     onRemoveExercise: () -> Unit,
 ) {
+    val compactShortScreen = LocalConfiguration.current.screenHeightDp <= 640
     var activeSetTargetDelta by rememberSaveable(plan.id) { mutableIntStateOf(0) }
     val plannedSetCount = plan.plannedSetCount()
     val activeSetTargetCount = (plannedSetCount + activeSetTargetDelta).coerceAtLeast(loggedSets.size)
@@ -5488,7 +5525,7 @@ private fun ActiveExerciseCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        "${loggedSets.size}/$plannedSetCount sets - ${plan.repRange} reps",
+                        "${loggedSets.size}/$plannedSetCount sets - ${plan.repRange} herh.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.trainIqColors.mutedText,
                         maxLines = 1,
@@ -5587,6 +5624,7 @@ private fun ActiveExerciseCard(
                 SetTypeSelector(
                     selectedType = draft.setType,
                     onSelectedTypeChange = { onDraftChange(draft.copy(setType = it)) },
+                    compact = compactShortScreen,
                 )
                 SetLoggerFields(
                     draft = draft,
@@ -6271,7 +6309,7 @@ internal fun exerciseSummaryMetaText(
     supersetGroupId: Long?,
 ): String = buildList {
     add("$setCount sets")
-    add("$repRange reps")
+    add("$repRange herh.")
     add("${restSeconds}s rust")
     add(rpe)
     supersetGroupId?.let { add("Superset $it") }

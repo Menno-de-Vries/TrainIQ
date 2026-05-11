@@ -53,6 +53,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -1620,7 +1622,9 @@ private fun NutritionNumberField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
-        modifier = modifier.bringIntoViewOnFocus(),
+        modifier = modifier
+            .semantics(mergeDescendants = true) { contentDescription = label }
+            .bringIntoViewOnFocus(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         singleLine = true,
         isError = error != null,
@@ -1641,7 +1645,9 @@ private fun NutritionTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
-        modifier = modifier.bringIntoViewOnFocus(),
+        modifier = modifier
+            .semantics(mergeDescendants = true) { contentDescription = label }
+            .bringIntoViewOnFocus(),
         singleLine = singleLine,
         isError = error != null,
         supportingText = error?.let { { Text(it) } },

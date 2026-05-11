@@ -211,6 +211,48 @@ interface TrainIqDao {
     suspend fun insertWorkoutExercise(exercise: WorkoutExerciseEntity)
 
     @Transaction
+    suspend fun replaceWorkoutExerciseInActiveWorkout(
+        workoutExercise: WorkoutExerciseEntity,
+        activeSessionId: Long?,
+        updatedAt: Long?,
+    ) {
+        insertWorkoutExercise(workoutExercise)
+        if (activeSessionId != null && updatedAt != null) {
+            updateActiveWorkoutSessionUpdatedAt(sessionId = activeSessionId, updatedAt = updatedAt)
+        }
+    }
+
+    @Transaction
+    suspend fun insertGeneratedRoutineGraph(
+        routine: WorkoutRoutineEntity,
+        days: List<WorkoutDayEntity>,
+        exercises: List<ExerciseEntity>,
+        workoutExercises: List<WorkoutExerciseEntity>,
+        sets: List<RoutineSetEntity>,
+    ) {
+        insertRoutines(listOf(routine))
+        insertWorkoutDays(days)
+        insertExercises(exercises)
+        insertWorkoutExercises(workoutExercises)
+        insertRoutineSets(sets)
+    }
+
+    @Transaction
+    suspend fun addWorkoutExerciseToDay(
+        day: WorkoutDayEntity?,
+        exercise: ExerciseEntity,
+        workoutExercise: WorkoutExerciseEntity,
+        sets: List<RoutineSetEntity>,
+    ) {
+        if (day != null) {
+            insertWorkoutDay(day)
+        }
+        insertExercise(exercise)
+        insertWorkoutExercise(workoutExercise)
+        insertRoutineSets(sets)
+    }
+
+    @Transaction
     suspend fun updateRoutineSet(set: RoutineSetEntity, workoutExercise: WorkoutExerciseEntity) {
         insertRoutineSets(listOf(set))
         insertWorkoutExercise(workoutExercise)
@@ -245,6 +287,31 @@ interface TrainIqDao {
     suspend fun deleteMealWithItems(mealId: Long) {
         deleteMealItems(mealId)
         deleteMeal(mealId)
+    }
+
+    @Query("DELETE FROM food_items WHERE id = :foodId")
+    suspend fun deleteFoodItem(foodId: Long)
+
+    @Upsert
+    suspend fun upsertRecipe(recipe: RecipeEntity)
+
+    @Query("DELETE FROM recipe_ingredients WHERE recipe_id = :recipeId")
+    suspend fun deleteRecipeIngredients(recipeId: Long)
+
+    @Query("DELETE FROM recipes WHERE id = :recipeId")
+    suspend fun deleteRecipe(recipeId: Long)
+
+    @Transaction
+    suspend fun saveRecipe(recipe: RecipeEntity, ingredients: List<RecipeIngredientEntity>) {
+        upsertRecipe(recipe)
+        deleteRecipeIngredients(recipe.id)
+        insertRecipeIngredients(ingredients)
+    }
+
+    @Transaction
+    suspend fun deleteRecipeWithIngredients(recipeId: Long) {
+        deleteRecipeIngredients(recipeId)
+        deleteRecipe(recipeId)
     }
 
     @Insert
@@ -374,6 +441,19 @@ interface TrainIqDao {
 
     @Query("SELECT * FROM workout_log_events ORDER BY created_at ASC")
     fun observeWorkoutLogEvents(): Flow<List<WorkoutLogEventEntity>>
+
+    @Transaction
+    suspend fun startOrResumeActiveWorkoutSession(
+        activeSession: ActiveWorkoutSessionEntity,
+        draftSession: WorkoutSessionEntity,
+        drafts: List<ActiveWorkoutDraftEntity>,
+        performedExercises: List<PerformedExerciseEntity>,
+    ) {
+        importWorkoutSessions(listOf(draftSession))
+        insertPerformedExercises(performedExercises)
+        insertActiveWorkoutSessions(listOf(activeSession))
+        insertActiveWorkoutDrafts(drafts)
+    }
 
     @Query("DELETE FROM active_workout_collapsed_exercises WHERE session_id = :sessionId AND exercise_id = :exerciseId")
     suspend fun deleteActiveWorkoutCollapsedExercise(sessionId: Long, exerciseId: Long)
@@ -572,6 +652,9 @@ interface TrainIqDao {
     @Query("DELETE FROM workout_sessions WHERE id = :sessionId AND completed = 0 AND status = 'DRAFT'")
     suspend fun deleteDraftWorkoutSession(sessionId: Long)
 
+    @Query("DELETE FROM workout_sessions WHERE id = :sessionId")
+    suspend fun deleteWorkoutSessionById(sessionId: Long)
+
     @Transaction
     suspend fun discardActiveWorkoutSession(sessionId: Long) {
         deleteWorkoutLogEventSetsForSession(sessionId)
@@ -579,6 +662,16 @@ interface TrainIqDao {
         deleteActiveWorkoutSession(sessionId)
         deletePerformedExercisesForSession(sessionId)
         deleteDraftWorkoutSession(sessionId)
+    }
+
+    @Transaction
+    suspend fun deleteWorkoutSessionCascade(sessionId: Long) {
+        deleteWorkoutLogEventSetsForSession(sessionId)
+        deleteWorkoutLogEventsForSession(sessionId)
+        deleteActiveWorkoutSession(sessionId)
+        deleteWorkoutSetsForSession(sessionId)
+        deletePerformedExercisesForSession(sessionId)
+        deleteWorkoutSessionById(sessionId)
     }
 
     @Transaction
@@ -689,6 +782,27 @@ interface TrainIqDao {
     suspend fun deleteRoutineSetsForExercise(workoutExerciseId: Long)
 
     @Transaction
+    suspend fun deleteWorkoutExerciseCascade(
+        workoutExerciseId: Long,
+        activeSession: ActiveWorkoutSessionEntity?,
+        activeDrafts: List<ActiveWorkoutDraftEntity>,
+        activeCollapsedExercises: List<ActiveWorkoutCollapsedExerciseEntity>,
+        activeSets: List<ActiveWorkoutSetEntity>,
+    ) {
+        deleteRoutineSetsForExercise(workoutExerciseId)
+        deleteWorkoutExercise(workoutExerciseId)
+        if (activeSession != null) {
+            insertActiveWorkoutSessions(listOf(activeSession))
+            deleteActiveWorkoutSetsForSession(activeSession.sessionId)
+            deleteActiveWorkoutCollapsedExercisesForSession(activeSession.sessionId)
+            deleteActiveWorkoutDraftsForSession(activeSession.sessionId)
+            insertActiveWorkoutDrafts(activeDrafts)
+            insertActiveWorkoutCollapsedExercises(activeCollapsedExercises)
+            insertActiveWorkoutSets(activeSets)
+        }
+    }
+
+    @Transaction
     suspend fun replaceRoutineSetsForExercise(
         workoutExerciseId: Long,
         sets: List<RoutineSetEntity>,
@@ -719,6 +833,9 @@ interface TrainIqDao {
 
     @Query("UPDATE workout_exercises SET order_index = :orderIndex WHERE dayId = :dayId AND id = :workoutExerciseId")
     suspend fun updateWorkoutExerciseOrder(dayId: Long, workoutExerciseId: Long, orderIndex: Int)
+
+    @Query("UPDATE workout_exercises SET superset_group_id = :groupId WHERE id IN (:workoutExerciseIds)")
+    suspend fun setSupersetGroup(workoutExerciseIds: List<Long>, groupId: Long?)
 
     @Transaction
     suspend fun reorderExercises(dayId: Long, orderedIds: List<Long>) {

@@ -17,6 +17,8 @@
 
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
+        <package android:name="com.google.android.healthconnect.controller" />
+        <package android:name="com.android.vending" />
     </queries>
 
     <application

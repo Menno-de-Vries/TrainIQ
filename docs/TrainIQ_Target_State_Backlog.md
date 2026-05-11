@@ -54,10 +54,11 @@ Updated date: 2026-05-10
 - dev notes: Continue one flow at a time; keep JSON import for legacy/import/export only.
 - affected modules/files: `core/database/TrainIqDao.kt`, `data/repository/RoomTrainIqRuntimeStore.kt`, `data/repository/TrainIqRepository.kt`, `app/src/test/java/com/trainiq/architecture`
 - acceptance criteria:
-  - Active workout finish/edit/undo, routine edit/delete, meal save/delete, recipe save/delete, measurement add/delete, and profile writes avoid full-state JSON mirror import.
+  - Active workout finish/edit/undo/session delete, routine edit/delete, generated-routine save, workout day/exercise add/remove, routine-level exercise add, meal save/delete, recipe save/delete, measurement add/delete, profile writes, and startup exercise-library seeding avoid full-state JSON mirror import.
   - Each migrated path has process-restart correctness coverage.
   - Delete/discard flows cannot resurrect stale rows.
 - verification: Architecture guard tests; repository/process-restart tests; `:app:test`; connected migration tests where needed.
+- current evidence: normal app-source callers of `runtimeStore.update(...)` have been removed as of 2026-05-11, and the public `RoomTrainIqRuntimeStore.update(transform)` API has also been removed. Focused architecture/seeder/transaction tests pass for the final exercise-library seeding migration and runtime API removal; earlier targeted restart coverage covers the main user mutation paths. The remaining full-state import surface is explicit migration/readiness infrastructure plus private one-time legacy seed support.
 - risks: High regression risk if changed broadly.
 - dependencies: Existing Room schema and migration test harness.
 - decision needed: no
@@ -77,6 +78,7 @@ Updated date: 2026-05-10
   - Partial permissions sync granted metrics without clearing unrelated caches.
   - Settings exposes direct manage-access path.
 - verification: Device/emulator script with UI dumps and logcat; unit tests for permission-state mapping.
+- current evidence: 2026-05-10 partial SM-S931B evidence confirms launchable Settings/Health Connect status copy, app-owned rationale screen rendering, Health Connect controller package visibility, and empty crash buffers; focused `*HealthConnect*` unit tests and manifest/build/lint checks pass. 2026-05-11 added a repeatable non-mutating collector at `TrainIQ-Project/scripts/collect-health-connect-runtime-evidence.ps1`; latest output at `TrainIQ-Project/.codex/device-qa/2026-05-11-health-connect-scripted-baseline-debug-v4/` confirms cold main launch, rationale launch, system manage-access launch, all requested health permissions ungranted, and an empty crash slice. Provider-missing, partial-grant, revoke-while-open, and background-read runtime states still need safe-profile evidence.
 - risks: Provider availability varies by device/API level.
 - dependencies: Emulator/device with Health Connect support.
 - decision needed: no

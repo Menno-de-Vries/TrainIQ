@@ -36,7 +36,6 @@ import com.trainiq.data.local.TrainIqStorageState
 import com.trainiq.data.local.WorkoutLogEventStorage
 import com.trainiq.data.migration.JsonRoomImportPlanner
 import com.trainiq.data.migration.RoomJsonImportSink
-import com.trainiq.data.migration.RoomMirrorImportRun
 import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.model.LoggedMealItemType
 import com.trainiq.domain.model.MealType
@@ -44,7 +43,6 @@ import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.WorkoutDebrief
 import com.trainiq.domain.model.WorkoutLogEventType
 import com.trainiq.domain.model.WorkoutSyncStatus
-import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.roundToInt
@@ -137,24 +135,6 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         )
     }.stateIn(scope, SharingStarted.Eagerly, TrainIqStorageState())
 
-    suspend fun update(transform: (TrainIqStorageState) -> TrainIqStorageState) {
-        mutex.withLock {
-            val updated = transform(state.value)
-            val updatedJson = gson.toJson(updated)
-            val startedAt = System.currentTimeMillis()
-            val plan = planner.plan(updatedJson)
-            sink.importTransaction(
-                plan = plan,
-                mirrorRun = RoomMirrorImportRun(
-                    generationId = "runtime-$startedAt",
-                    sourceFingerprint = updatedJson.sha256(),
-                    startedAt = startedAt,
-                    finishedAt = System.currentTimeMillis(),
-                ),
-            )
-        }
-    }
-
     suspend fun clearAll() {
         mutex.withLock {
             database.dao().clearMirrorTables()
@@ -219,6 +199,12 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         }
     }
 
+    suspend fun setActiveRoutine(routineId: Long) {
+        mutex.withLock {
+            dao.setActiveRoutine(routineId)
+        }
+    }
+
     suspend fun reorderExercises(dayId: Long, orderedIds: List<Long>) {
         mutex.withLock {
             val requestedOrder = orderedIds.distinct()
@@ -227,6 +213,124 @@ class RoomTrainIqRuntimeStore @Inject constructor(
                 .sortedWith(compareBy<WorkoutExerciseEntity> { it.orderIndex }.thenBy { it.id })
                 .map { it.id }
             dao.reorderExercises(dayId = dayId, orderedIds = requestedOrder + fallbackOrder)
+        }
+    }
+
+    suspend fun setSupersetGroup(workoutExerciseIds: List<Long>, groupId: Long?) {
+        val ids = workoutExerciseIds.distinct()
+        if (ids.isEmpty()) return
+        mutex.withLock {
+            dao.setSupersetGroup(workoutExerciseIds = ids, groupId = groupId)
+        }
+    }
+
+    suspend fun saveWorkoutExercise(workoutExercise: WorkoutExerciseEntity) {
+        mutex.withLock {
+            dao.insertWorkoutExercise(workoutExercise)
+        }
+    }
+
+    suspend fun seedExerciseLibrary(exercises: List<ExerciseEntity>) {
+        if (exercises.isEmpty()) return
+        mutex.withLock {
+            dao.insertExercises(exercises)
+        }
+    }
+
+    suspend fun replaceWorkoutExerciseInActiveWorkout(
+        workoutExercise: WorkoutExerciseEntity,
+        activeSessionId: Long?,
+        updatedAt: Long?,
+    ) {
+        mutex.withLock {
+            dao.replaceWorkoutExerciseInActiveWorkout(
+                workoutExercise = workoutExercise,
+                activeSessionId = activeSessionId,
+                updatedAt = updatedAt,
+            )
+        }
+    }
+
+    suspend fun addWorkoutDay(day: WorkoutDayEntity) {
+        mutex.withLock {
+            dao.insertWorkoutDay(day)
+        }
+    }
+
+    suspend fun removeWorkoutDay(dayId: Long) {
+        mutex.withLock {
+            dao.deleteWorkoutDayCascade(dayId)
+        }
+    }
+
+    suspend fun addWorkoutExerciseToDay(
+        day: WorkoutDayEntity?,
+        exercise: ExerciseEntity,
+        workoutExercise: WorkoutExerciseEntity,
+        sets: List<RoutineSetEntity>,
+    ) {
+        mutex.withLock {
+            dao.addWorkoutExerciseToDay(
+                day = day,
+                exercise = exercise,
+                workoutExercise = workoutExercise,
+                sets = sets,
+            )
+        }
+    }
+
+    suspend fun removeWorkoutExerciseFromDay(
+        workoutExerciseId: Long,
+        active: ActiveWorkoutSessionStorage?,
+    ) {
+        mutex.withLock {
+            dao.deleteWorkoutExerciseCascade(
+                workoutExerciseId = workoutExerciseId,
+                activeSession = active?.toActiveWorkoutSessionEntity(),
+                activeDrafts = active?.drafts?.map { (exerciseId, draft) ->
+                    ActiveWorkoutDraftEntity(
+                        sessionId = active.sessionId,
+                        exerciseId = exerciseId,
+                        weight = draft.weight,
+                        reps = draft.reps,
+                        rpe = draft.rpe,
+                        setType = draft.setType.name,
+                    )
+                }.orEmpty(),
+                activeCollapsedExercises = active?.collapsedExerciseIds?.map { exerciseId ->
+                    ActiveWorkoutCollapsedExerciseEntity(
+                        sessionId = active.sessionId,
+                        exerciseId = exerciseId,
+                    )
+                }.orEmpty(),
+                activeSets = active?.loggedSets?.map {
+                    it.toActiveWorkoutSetEntity(sessionId = active.sessionId)
+                }.orEmpty(),
+            )
+        }
+    }
+
+    suspend fun deleteWorkoutSession(sessionId: Long) {
+        mutex.withLock {
+            dao.deleteWorkoutSessionCascade(sessionId)
+        }
+    }
+
+    suspend fun saveGeneratedRoutine(
+        routine: WorkoutRoutineEntity,
+        days: List<WorkoutDayEntity>,
+        exercises: List<ExerciseEntity>,
+        workoutExercises: List<WorkoutExerciseEntity>,
+        sets: List<RoutineSetEntity>,
+    ) {
+        mutex.withLock {
+            dao.insertGeneratedRoutineGraph(
+                routine = routine,
+                days = days,
+                exercises = exercises,
+                workoutExercises = workoutExercises,
+                sets = sets,
+            )
         }
     }
 
@@ -264,6 +368,30 @@ class RoomTrainIqRuntimeStore @Inject constructor(
                     setType = draft.setType.name,
                 ),
                 updatedAt = updatedAt,
+            )
+        }
+    }
+
+    suspend fun startOrResumeActiveWorkoutSession(
+        active: ActiveWorkoutSessionStorage,
+        draftSession: WorkoutSessionEntity,
+        performedExercises: List<PerformedExerciseEntity>,
+    ) {
+        mutex.withLock {
+            dao.startOrResumeActiveWorkoutSession(
+                activeSession = active.toActiveWorkoutSessionEntity(),
+                draftSession = draftSession,
+                drafts = active.drafts.map { (exerciseId, draft) ->
+                    ActiveWorkoutDraftEntity(
+                        sessionId = active.sessionId,
+                        exerciseId = exerciseId,
+                        weight = draft.weight,
+                        reps = draft.reps,
+                        rpe = draft.rpe,
+                        setType = draft.setType.name,
+                    )
+                },
+                performedExercises = performedExercises,
             )
         }
     }
@@ -403,6 +531,35 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         }
     }
 
+    suspend fun saveFood(food: FoodItemStorage) {
+        mutex.withLock {
+            dao.insertFoodItems(listOf(food.toFoodItemEntity()))
+        }
+    }
+
+    suspend fun deleteFood(foodId: Long) {
+        mutex.withLock {
+            dao.deleteFoodItem(foodId)
+        }
+    }
+
+    suspend fun saveRecipe(recipe: RecipeStorage, ingredients: List<RecipeIngredientStorage>) {
+        mutex.withLock {
+            dao.saveRecipe(
+                recipe = recipe.toRecipeEntity(),
+                ingredients = ingredients.mapIndexed { index, ingredient ->
+                    ingredient.toRecipeIngredientEntity(orderIndex = index)
+                },
+            )
+        }
+    }
+
+    suspend fun deleteRecipe(recipeId: Long) {
+        mutex.withLock {
+            dao.deleteRecipeWithIngredients(recipeId)
+        }
+    }
+
     suspend fun discardActiveWorkoutSession(sessionId: Long) {
         mutex.withLock {
             dao.discardActiveWorkoutSession(sessionId)
@@ -534,7 +691,29 @@ private fun FoodItemEntity.toStorage() = FoodItemStorage(
     updatedAt = updatedAt,
 )
 
+private fun FoodItemStorage.toFoodItemEntity() = FoodItemEntity(
+    id = id,
+    name = name,
+    barcode = barcode,
+    caloriesPer100g = caloriesPer100g,
+    proteinPer100g = proteinPer100g,
+    carbsPer100g = carbsPer100g,
+    fatPer100g = fatPer100g,
+    sourceType = sourceType.name,
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+)
+
 private fun RecipeEntity.toStorage() = RecipeStorage(
+    id = id,
+    name = name,
+    notes = notes,
+    totalCookedGrams = totalCookedGrams,
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+)
+
+private fun RecipeStorage.toRecipeEntity() = RecipeEntity(
     id = id,
     name = name,
     notes = notes,
@@ -548,6 +727,14 @@ private fun RecipeIngredientEntity.toStorage() = RecipeIngredientStorage(
     recipeId = recipeId,
     foodItemId = foodItemId,
     gramsUsed = gramsUsed,
+)
+
+private fun RecipeIngredientStorage.toRecipeIngredientEntity(orderIndex: Int) = RecipeIngredientEntity(
+    id = id,
+    recipeId = recipeId,
+    foodItemId = foodItemId,
+    gramsUsed = gramsUsed,
+    orderIndex = orderIndex,
 )
 
 private fun MealEntity.toStorage() = LoggedMealStorage(
@@ -597,6 +784,16 @@ private fun LoggedMealItemStorage.toMealItemEntity(orderIndex: Int) = MealItemEn
     fat = fat,
     notes = notes,
     orderIndex = orderIndex,
+)
+
+private fun ActiveWorkoutSessionStorage.toActiveWorkoutSessionEntity() = ActiveWorkoutSessionEntity(
+    sessionId = sessionId,
+    dayId = dayId,
+    routineId = routineId,
+    startedAt = startedAt,
+    updatedAt = updatedAt,
+    restTimerEndsAt = restTimerEndsAt,
+    restTimerTotalSeconds = restTimerTotalSeconds,
 )
 
 private fun ActiveWorkoutSetEntity.toStorage() = ActiveWorkoutSetStorage(
@@ -704,8 +901,3 @@ private fun WorkoutLogEventSetEntity.toActiveStorage() = ActiveWorkoutSetStorage
 
 private inline fun <reified T : Enum<T>> String.toEnum(default: T): T =
     runCatching { enumValueOf<T>(trim().uppercase()) }.getOrDefault(default)
-
-private fun String.sha256(): String =
-    MessageDigest.getInstance("SHA-256")
-        .digest(toByteArray(Charsets.UTF_8))
-        .joinToString(separator = "") { byte -> "%02x".format(byte) }

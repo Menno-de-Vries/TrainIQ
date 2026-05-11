@@ -2,10 +2,11 @@ package com.trainiq.core.health
 
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
-import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.records.StepsRecord
-import org.junit.Assert.assertFalse
+import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
+import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -52,5 +53,21 @@ class HealthConnectReadPermissionsTest {
                 .joinToString(" ") { "${it.title} ${it.description}" }
                 .contains("verplicht", ignoreCase = true),
         )
+    }
+
+    @Test
+    fun manifestDeclaresHealthConnectProviderVisibility() {
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+
+        assertTrue(manifest.contains("""<package android:name="com.google.android.apps.healthdata" />"""))
+        assertTrue(manifest.contains("""<package android:name="com.google.android.healthconnect.controller" />"""))
+        assertTrue(manifest.contains("""<package android:name="com.android.vending" />"""))
+    }
+
+    @Test
+    fun manifestDeclaresBackgroundReadPermissionUsedBySchedulerGate() {
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+
+        assertTrue(manifest.contains("""android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"""))
     }
 }

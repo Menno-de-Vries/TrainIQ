@@ -97,7 +97,7 @@ Refresh evidence from the May 10, 2026 full QA audit:
 
 3. **Hot-path mutations are O(app-data-size).**
    - Severity: High.
-   - Evidence: active workout set logging and repository mutations route through `runtimeStore.update`, `gson.toJson(updated)`, import planning, and broad table upserts.
+   - Evidence: 2026-05-11 repository hot-path mutations have been moved off `runtimeStore.update` toward targeted Room writes, but only representative process-restart instrumentation exists so far.
    - Risk: set logging, draft edits, meal saves, recipe edits, and routine changes can slow down as local data grows and can contribute to startup/jank through mirror churn.
    - Target: active workout logging and meal saves must use bounded, targeted database writes with benchmark evidence; no full JSON serialization/import on critical user actions.
 
@@ -652,6 +652,50 @@ Progress/export:
 - Export preview shows included categories before generating a file.
 - Export excludes API keys, telemetry tokens, signing data, and internal-only diagnostics by default.
 
+### 14.2.1 Ready-to-Use Screen State Matrix
+
+Every primary screen must make its state explicit and verifiable before release. These requirements apply alongside the screen-specific criteria above.
+
+Home:
+
+- Loading: first draw shows locally available cached/profile data or skeleton content without waiting for AI or a full Health Connect sync.
+- Empty: no profile, no Health Connect data, or no training history produces one setup action and does not render missing metrics as zero.
+- Error/offline: AI/network/Health Connect failures show local fallback guidance and a retry/manage-access action where relevant.
+- Success: one next-best action, reason, data-quality label, and fallback action are visible on compact phones.
+- Verification: unit tests for next-best-action selection, UI dump for no-data/partial-data states, launch smoke with empty crash buffer.
+
+Training and active workout:
+
+- Loading: routine/session reads do not block the top-level Training tab indefinitely.
+- Empty: no routine and empty active routine states expose a direct setup path.
+- Error/offline: local logging remains available when AI/network is unavailable; save failures show retry-safe copy.
+- Success: adding a day, adding/removing exercises, logging sets, finishing, and discarding persist through app restart without stale row resurrection.
+- Verification: repository/process-restart tests for targeted Room writes, active-workout runtime smoke, compact/font-scale QA for logger controls.
+
+Nutrition and scanner:
+
+- Loading: camera/model work is cancelable and never blocks manual meal entry.
+- Empty: no meals/recipes/products produces direct add actions.
+- Error/offline: camera denied, camera unavailable, barcode not found, invalid AI JSON, rate limit, and offline states keep manual entry available.
+- Success: scan or manual entry produces editable nutrition rows before save.
+- Verification: state reducer tests, scanner permission/device smoke, compact/font-scale QA for permission and result states.
+
+Coach:
+
+- Loading: advice generation is cancelable and bounded by feature-specific timeout.
+- Empty: missing profile/history explains which setup action unlocks better advice.
+- Error/offline: AI disabled, missing key, 429/rate-limit, invalid JSON, and no network use deterministic fallback copy.
+- Success: advice includes inputs used, missing/stale inputs, confidence/data quality, and non-clinical wording.
+- Verification: AI contract tests, fallback tests, user-safe error copy review.
+
+Progress and settings:
+
+- Loading: local progress/settings render from Room/DataStore without network dependency.
+- Empty: no measurements/history explains what to log next.
+- Error/offline: export/import/settings actions fail closed with no secret or health-data leakage.
+- Success: charts expose semantic summaries; Settings exposes AI, Health Connect, export/delete, theme, and privacy controls.
+- Verification: chart semantics tests, Settings copy tests, export inspection, TalkBack/Switch Access manual signoff.
+
 ### 14.3 Backend and Data Responsibilities
 
 Confirmed target-state requirements:
@@ -761,6 +805,7 @@ Local evidence:
 
 Official and high-quality research:
 
+- Fresh webresearch check, accessed 2026-05-10: Android Developers Health Connect permissions UX confirmed manage-access and granted-permission clarity; Android Developers Compose accessibility/scalable-content guidance confirmed large-font/scalable-content verification; Android Developers Baseline Profiles guidance confirmed release-like startup/profile verification remains required.
 - Android core app quality: https://developer.android.com/docs/quality-guidelines/core-app-quality
 - Android edge-to-edge: https://developer.android.com/design/ui/mobile/guides/layout-and-content/edge-to-edge
 - Compose edge-to-edge setup: https://developer.android.com/develop/ui/compose/system/setup-e2e

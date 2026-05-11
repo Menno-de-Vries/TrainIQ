@@ -14,10 +14,12 @@ class ExerciseLibrarySeederTest {
         )
 
         val updated = mergeCanonicalExerciseLibrary(state)
+        val additions = missingCanonicalExercises(state)
 
         assertTrue(updated.exercises.any { it.name == "Bench Press" })
         assertTrue(updated.exercises.any { it.name == "Good Morning" })
         assertEquals(101L, updated.exercises.first { it.name == "Bench Press" }.id)
+        assertEquals(101L, additions.first { it.name == "Bench Press" }.id)
     }
 
     @Test
@@ -27,8 +29,10 @@ class ExerciseLibrarySeederTest {
         )
 
         val updated = mergeCanonicalExerciseLibrary(state)
+        val additions = missingCanonicalExercises(state)
 
         assertEquals(1, updated.exercises.count { it.name.equals("Bench Press", ignoreCase = true) })
+        assertTrue(additions.none { it.name.equals("Bench Press", ignoreCase = true) })
     }
 
     @Test
@@ -39,5 +43,6 @@ class ExerciseLibrarySeederTest {
 
         assertTrue(shouldSkipExerciseLibrarySeed(state))
         assertEquals(state, mergeCanonicalExerciseLibrary(state))
+        assertEquals(emptyList<ExerciseEntity>(), missingCanonicalExercises(state))
     }
 }

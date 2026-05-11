@@ -33,15 +33,80 @@ class WorkoutInputValidationTest {
     }
 
     @Test
-    fun `critical headers and set labels allow wrapping at large font scale`() {
+    fun `critical headers and set labels allow wrapping except short screen header condensation`() {
         val appDesign = testSourceFile("core/ui/AppDesign.kt").readText()
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
         val appScreenHeaderBody = appDesign.substringAfter("fun AppScreenHeader(").substringBefore("fun AppCard(")
         val routineSetRowBody = workoutScreen.substringAfter("private fun RoutineSetRow(").substringBefore("BoxWithConstraints")
 
-        assertFalse(appScreenHeaderBody.contains("maxLines = 1"))
-        assertFalse(appScreenHeaderBody.contains("TextOverflow.Ellipsis"))
+        assertTrue(appScreenHeaderBody.contains("compactShortScreen"))
+        assertTrue(appScreenHeaderBody.contains("maxLines = if (compactShortScreen) 1 else Int.MAX_VALUE"))
+        assertTrue(appScreenHeaderBody.contains("overflow = TextOverflow.Ellipsis"))
         assertFalse(routineSetRowBody.contains("softWrap = false"))
+    }
+
+    @Test
+    fun `AI routine equipment field keeps accessibility label at large font scale`() {
+        val appDesign = testSourceFile("core/ui/AppDesign.kt").readText()
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val fieldBody = appDesign.substringAfter("fun TapOnlyOutlinedTextField(")
+            .substringBefore("internal fun shouldSuppressTextInputGesture(")
+        val dialogBody = workoutScreen.substringAfter("private fun RoutineGeneratorDialog(")
+            .substringBefore("private fun ExperienceLevelSelector(")
+
+        assertTrue(fieldBody.contains("accessibilityLabel: String? = null"))
+        assertTrue(fieldBody.contains("Modifier.semantics { contentDescription = accessibilityLabel }"))
+        assertTrue(dialogBody.contains("accessibilityLabel = \"Beschikbaar materiaal\""))
+    }
+
+    @Test
+    fun `AI routine deload switch keeps accessibility label at large font scale`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val deloadBody = workoutScreen.substringAfter("private fun IncludeDeloadRow(")
+            .substringBefore("private fun RoutineDetailHeader(")
+
+        assertTrue(deloadBody.contains("Text(\"Deload-richtlijn opnemen\""))
+        assertTrue(deloadBody.contains("contentDescription = \"Deload-richtlijn opnemen\""))
+    }
+
+    @Test
+    fun `routine creation buttons keep accessibility labels when clipped at compact height`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val creationCardBody = workoutScreen.substringAfter("private fun RoutineCreationCard(")
+            .substringBefore("@Composable\n@OptIn(ExperimentalFoundationApi::class)")
+
+        assertTrue(creationCardBody.contains("contentDescription = \"Lege routine maken\""))
+        assertTrue(creationCardBody.contains("contentDescription = \"Met AI genereren\""))
+    }
+
+    @Test
+    fun `active workout header actions keep accessibility labels when clipped at compact height`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val activeWorkoutBody = workoutScreen.substringAfter("private fun ActiveWorkoutScreen(")
+            .substringBefore("if (showFinishConfirm)")
+
+        assertTrue(activeWorkoutBody.contains("contentDescription = \"Terug naar Training\""))
+        assertTrue(activeWorkoutBody.contains("contentDescription = \"Actieve training weggooien\""))
+    }
+
+    @Test
+    fun `active workout set type selector condenses on compact short screens`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val activeExerciseBody = workoutScreen.substringAfter("private fun ActiveExerciseCard(")
+            .substringBefore("private fun ActiveExerciseRestControl(")
+
+        assertTrue(activeExerciseBody.contains("val compactShortScreen = LocalConfiguration.current.screenHeightDp <= 640"))
+        assertTrue(activeExerciseBody.contains("compact = compactShortScreen"))
+    }
+
+    @Test
+    fun `routine session name field keeps accessibility label at compact font scale`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val detailBody = workoutScreen.substringAfter("private fun RoutineDetailView(")
+            .substringBefore("private fun ExercisePickerSection(")
+
+        assertTrue(detailBody.contains("accessibilityLabel = \"Sessienaam optioneel\""))
+        assertTrue(detailBody.contains("label = { Text(\"Sessienaam (optioneel)\") }"))
     }
 
     @Test
@@ -338,7 +403,7 @@ class WorkoutInputValidationTest {
             supersetGroupId = 12,
         )
 
-        assertEquals("3 sets - 8-10 reps - 90s rust - RPE 8 - Superset 12", text)
+        assertEquals("3 sets - 8-10 herh. - 90s rust - RPE 8 - Superset 12", text)
         assertEquals(false, text.contains("Â"))
     }
 

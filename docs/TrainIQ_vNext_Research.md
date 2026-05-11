@@ -244,6 +244,6 @@ These remain `Decision needed` until a product owner chooses scope.
 
 - Scope risk: too many partial features can weaken the core “what should I do next?” promise.
 - Trust risk: AI and health coaching need conservative language, data-quality labels, and no unsupported medical claims.
-- Data risk: remaining full-state persistence paths can resurrect stale rows or create jank as data grows.
+- Data risk: targeted Room writes now cover known repository mutation hot paths, but incomplete per-mutation process-restart coverage can still miss stale-row resurrection cases.
 - Accessibility risk: manual assistive-tech signoff is still blocked.
 - Release risk: owner gates and physical-device evidence remain required before production claims.

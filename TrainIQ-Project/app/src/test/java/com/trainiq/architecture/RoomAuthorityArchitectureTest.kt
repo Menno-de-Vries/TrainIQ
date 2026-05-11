@@ -41,13 +41,15 @@ class RoomAuthorityArchitectureTest {
     }
 
     @Test
-    fun runtimeStoreUpdatesUseFullReplacementSemanticsInsteadOfUpsertOnlyMirrorWrites() {
+    fun runtimeStoreDoesNotExposeBroadFullStateUpdateApi() {
         val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
-        val updateBody = runtimeStore.substringAfter("suspend fun update(transform:")
-            .substringBefore("suspend fun clearAll()")
+        val legacySeedBody = runtimeStore.substringAfter("private suspend fun seedRoomFromLegacyJsonIfNeeded()")
+            .substringBefore("private data class CorePlanTables")
 
-        assertTrue(updateBody.contains("mirrorRun ="))
-        assertFalse(updateBody.contains("sink.importTransaction(planner.plan(gson.toJson(updated)))"))
+        assertFalse(runtimeStore.contains("suspend fun update(transform:"))
+        assertFalse(runtimeStore.contains("RoomMirrorImportRun"))
+        assertTrue(legacySeedBody.contains("legacyStore.exportLegacyState()"))
+        assertTrue(legacySeedBody.contains("sink.importTransaction(planner.plan(gson.toJson(legacyState)))"))
     }
 
     @Test
@@ -78,6 +80,24 @@ class RoomAuthorityArchitectureTest {
         assertFalse(restTimerBody.contains("runtimeStore.update {"))
         assertTrue(runtimeStore.contains("suspend fun updateActiveWorkoutRestTimer("))
         assertTrue(dao.contains("UPDATE active_workout_sessions"))
+    }
+
+    @Test
+    fun activeWorkoutStartUsesTargetedRoomWrite() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val startBody = repository.substringAfter("suspend fun getOrStartActiveWorkoutSession(")
+            .substringBefore("suspend fun updateActiveWorkoutDraft(")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(startBody.contains("runtimeStore.startOrResumeActiveWorkoutSession("))
+        assertFalse(startBody.contains("runtimeStore.update {"))
+        assertTrue(runtimeStore.contains("suspend fun startOrResumeActiveWorkoutSession("))
+        assertTrue(dao.contains("suspend fun startOrResumeActiveWorkoutSession("))
+        assertTrue(dao.contains("insertActiveWorkoutSessions(listOf(activeSession))"))
+        assertTrue(dao.contains("insertActiveWorkoutDrafts(drafts)"))
+        assertTrue(dao.contains("insertPerformedExercises(performedExercises)"))
+        assertTrue(dao.contains("importWorkoutSessions(listOf(draftSession))"))
     }
 
     @Test
@@ -349,6 +369,20 @@ class RoomAuthorityArchitectureTest {
     }
 
     @Test
+    fun activeRoutineSelectionUsesTargetedRoomWrite() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val activeRoutineBody = repository.substringAfter("suspend fun setActiveRoutine(")
+            .substringBefore("suspend fun finishWorkout(")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(activeRoutineBody.contains("runtimeStore.setActiveRoutine(routineId)"))
+        assertFalse(activeRoutineBody.contains("runtimeStore.update {"))
+        assertTrue(runtimeStore.contains("suspend fun setActiveRoutine(routineId: Long)"))
+        assertTrue(dao.contains("UPDATE workout_routines SET active = CASE WHEN id = :routineId THEN 1 ELSE 0 END"))
+    }
+
+    @Test
     fun routineExerciseReorderUsesTargetedRoomWrites() {
         val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
         val reorderBody = repository.substringAfter("suspend fun reorderExercises(")
@@ -362,6 +396,183 @@ class RoomAuthorityArchitectureTest {
         assertTrue(runtimeStore.contains("getWorkoutExercisesForDay(dayId)"))
         assertTrue(dao.contains("suspend fun reorderExercises(dayId: Long, orderedIds: List<Long>)"))
         assertTrue(dao.contains("updateWorkoutExerciseOrder(dayId, workoutExerciseId, index)"))
+    }
+
+    @Test
+    fun supersetGroupUsesTargetedRoomWrite() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val supersetBody = repository.substringAfter("suspend fun setSupersetGroup(")
+            .substringBefore("suspend fun replaceExerciseInPlan(")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(supersetBody.contains("runtimeStore.setSupersetGroup("))
+        assertFalse(supersetBody.contains("runtimeStore.update {"))
+        assertTrue(runtimeStore.contains("suspend fun setSupersetGroup("))
+        assertTrue(dao.contains("UPDATE workout_exercises SET superset_group_id = :groupId WHERE id IN (:workoutExerciseIds)"))
+    }
+
+    @Test
+    fun workoutExercisePlanUpdateUsesTargetedRoomWrite() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val planBody = repository.substringAfter("suspend fun updateWorkoutExercisePlan(")
+            .substringBefore("suspend fun addSetToExercise(")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(planBody.contains("runtimeStore.replaceRoutineSetsForExercise("))
+        assertFalse(planBody.contains("runtimeStore.update {"))
+        assertTrue(runtimeStore.contains("suspend fun replaceRoutineSetsForExercise("))
+        assertTrue(dao.contains("suspend fun replaceRoutineSetsForExercise("))
+        assertTrue(dao.contains("deleteRoutineSetsForExercise(workoutExerciseId)"))
+        assertTrue(dao.contains("insertRoutineSets(sets)"))
+        assertTrue(dao.contains("insertWorkoutExercise(workoutExercise)"))
+    }
+
+    @Test
+    fun replaceExerciseInPlanUsesTargetedRoomWrite() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val replaceBody = repository.substringAfter("suspend fun replaceExerciseInPlan(")
+            .substringBefore("suspend fun replaceExerciseInActiveWorkout(")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(replaceBody.contains("runtimeStore.saveWorkoutExercise("))
+        assertFalse(replaceBody.contains("runtimeStore.update {"))
+        assertTrue(runtimeStore.contains("suspend fun saveWorkoutExercise("))
+        assertTrue(dao.contains("suspend fun insertWorkoutExercise(exercise: WorkoutExerciseEntity)"))
+    }
+
+    @Test
+    fun replaceExerciseInActiveWorkoutUsesTargetedRoomWrite() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val replaceBody = repository.substringAfter("suspend fun replaceExerciseInActiveWorkout(")
+            .substringBefore("suspend fun updateWorkoutExercisePlan(")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(replaceBody.contains("runtimeStore.replaceWorkoutExerciseInActiveWorkout("))
+        assertFalse(replaceBody.contains("runtimeStore.update {"))
+        assertTrue(runtimeStore.contains("suspend fun replaceWorkoutExerciseInActiveWorkout("))
+        assertTrue(dao.contains("suspend fun replaceWorkoutExerciseInActiveWorkout("))
+        assertTrue(dao.contains("insertWorkoutExercise(workoutExercise)"))
+        assertTrue(dao.contains("updateActiveWorkoutSessionUpdatedAt(sessionId = activeSessionId, updatedAt = updatedAt)"))
+    }
+
+    @Test
+    fun workoutDayAddRemoveUseTargetedRoomWrites() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val dayBody = repository.substringAfter("suspend fun addWorkoutDay(")
+            .substringBefore("suspend fun addExerciseToDay(")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(dayBody.contains("runtimeStore.addWorkoutDay("))
+        assertTrue(dayBody.contains("runtimeStore.removeWorkoutDay("))
+        assertFalse(dayBody.contains("runtimeStore.update {"))
+        assertTrue(runtimeStore.contains("suspend fun addWorkoutDay(day: WorkoutDayEntity)"))
+        assertTrue(runtimeStore.contains("suspend fun removeWorkoutDay(dayId: Long)"))
+        assertTrue(dao.contains("suspend fun insertWorkoutDay(day: WorkoutDayEntity)"))
+        assertTrue(dao.contains("suspend fun deleteWorkoutDayCascade(dayId: Long)"))
+    }
+
+    @Test
+    fun workoutExerciseAddRemoveUseTargetedRoomWrites() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val addBody = repository.substringAfter("suspend fun addExerciseToDay(")
+            .substringBefore("suspend fun addExerciseToRoutine(")
+        val addRoutineBody = repository.substringAfter("suspend fun addExerciseToRoutine(")
+            .substringBefore("suspend fun removeExerciseFromDay(")
+        val removeBody = repository.substringAfter("suspend fun removeExerciseFromDay(")
+            .substringBefore("suspend fun deleteWorkoutSession(")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(addBody.contains("runtimeStore.addWorkoutExerciseToDay("))
+        assertTrue(addRoutineBody.contains("runtimeStore.addWorkoutExerciseToDay("))
+        assertTrue(removeBody.contains("runtimeStore.removeWorkoutExerciseFromDay("))
+        assertFalse(addBody.contains("runtimeStore.update {"))
+        assertFalse(addRoutineBody.contains("runtimeStore.update {"))
+        assertFalse(removeBody.contains("runtimeStore.update {"))
+        assertTrue(runtimeStore.contains("suspend fun addWorkoutExerciseToDay("))
+        assertTrue(runtimeStore.contains("suspend fun removeWorkoutExerciseFromDay("))
+        assertTrue(dao.contains("suspend fun addWorkoutExerciseToDay("))
+        assertTrue(dao.contains("insertWorkoutDay(day)"))
+        assertTrue(dao.contains("suspend fun deleteWorkoutExerciseCascade("))
+        assertTrue(dao.contains("deleteRoutineSetsForExercise(workoutExerciseId)"))
+        assertTrue(dao.contains("deleteWorkoutExercise(workoutExerciseId)"))
+    }
+
+    @Test
+    fun workoutSessionDeleteUsesTargetedRoomWrites() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val deleteBody = repository.substringAfter("suspend fun deleteWorkoutSession(")
+            .substringBefore("suspend fun generateAiRoutine(")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(deleteBody.contains("runtimeStore.deleteWorkoutSession(sessionId)"))
+        assertFalse(deleteBody.contains("runtimeStore.update {"))
+        assertTrue(runtimeStore.contains("suspend fun deleteWorkoutSession(sessionId: Long)"))
+        assertTrue(dao.contains("suspend fun deleteWorkoutSessionCascade(sessionId: Long)"))
+        assertTrue(dao.contains("deleteWorkoutLogEventSetsForSession(sessionId)"))
+        assertTrue(dao.contains("deleteWorkoutSetsForSession(sessionId)"))
+        assertTrue(dao.contains("deletePerformedExercisesForSession(sessionId)"))
+        assertTrue(dao.contains("deleteWorkoutSessionById(sessionId)"))
+    }
+
+    @Test
+    fun generatedRoutineSaveUsesTargetedRoomWrites() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val saveBody = repository.substringAfter("suspend fun saveGeneratedRoutine(")
+            .substringBefore("fun observeNutritionOverview(")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(saveBody.contains("runtimeStore.saveGeneratedRoutine("))
+        assertFalse(saveBody.contains("runtimeStore.update {"))
+        assertTrue(runtimeStore.contains("suspend fun saveGeneratedRoutine("))
+        assertTrue(dao.contains("suspend fun insertGeneratedRoutineGraph("))
+        assertTrue(dao.contains("insertRoutines(listOf(routine))"))
+        assertTrue(dao.contains("insertWorkoutDays(days)"))
+        assertTrue(dao.contains("insertWorkoutExercises(workoutExercises)"))
+        assertTrue(dao.contains("insertRoutineSets(sets)"))
+    }
+
+    @Test
+    fun foodAndRecipeMutationsUseTargetedRoomWrites() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val nutritionBody = repository.substringAfter("suspend fun saveFoodItem(")
+            .substringBefore("fun observeProgressOverview(")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(nutritionBody.contains("runtimeStore.saveFood("))
+        assertTrue(nutritionBody.contains("runtimeStore.saveRecipe("))
+        assertTrue(nutritionBody.contains("runtimeStore.deleteFood(foodId)"))
+        assertTrue(nutritionBody.contains("runtimeStore.deleteRecipe(recipeId)"))
+        assertFalse(nutritionBody.contains("runtimeStore.update {"))
+        assertTrue(runtimeStore.contains("suspend fun saveFood(food: FoodItemStorage)"))
+        assertTrue(runtimeStore.contains("suspend fun saveRecipe(recipe: RecipeStorage"))
+        assertTrue(dao.contains("suspend fun deleteFoodItem(foodId: Long)"))
+        assertTrue(dao.contains("suspend fun saveRecipe(recipe: RecipeEntity"))
+        assertTrue(dao.contains("suspend fun deleteRecipeWithIngredients(recipeId: Long)"))
+    }
+
+    @Test
+    fun exerciseLibrarySeedingUsesTargetedRoomInsert() {
+        val seeder = File(mainSources, "data/repository/ExerciseLibrarySeeder.kt").readText()
+        val ensureSeededBody = seeder.substringAfter("suspend fun ensureSeeded()")
+            .substringBefore("internal fun shouldSkipExerciseLibrarySeed")
+        val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
+        val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
+
+        assertTrue(ensureSeededBody.contains("missingCanonicalExercises(runtimeStore.state.value)"))
+        assertTrue(ensureSeededBody.contains("runtimeStore.seedExerciseLibrary(additions)"))
+        assertFalse(ensureSeededBody.contains("runtimeStore.update"))
+        assertTrue(runtimeStore.contains("suspend fun seedExerciseLibrary(exercises: List<ExerciseEntity>)"))
+        assertTrue(runtimeStore.contains("dao.insertExercises(exercises)"))
+        assertTrue(dao.contains("suspend fun insertExercises(exercises: List<ExerciseEntity>)"))
     }
 
     @Test

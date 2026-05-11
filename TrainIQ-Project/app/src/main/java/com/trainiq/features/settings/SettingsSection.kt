@@ -39,6 +39,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -662,13 +664,25 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
                 ) {
                     when (healthStatus.state) {
-                        HealthConnectState.PROVIDER_MISSING -> Button(onClick = onOpenHealthInstall) { Text("Installeren / bijwerken") }
-                        HealthConnectState.PERMISSION_REQUIRED -> Button(onClick = onRequestHealthPermission) { Text("Toegang geven") }
-                        HealthConnectState.CONNECTED, HealthConnectState.NO_DATA -> Button(onClick = onOpenHealthSettings) { Text("Health Connect openen") }
+                        HealthConnectState.PROVIDER_MISSING -> Button(
+                            modifier = Modifier.settingsActionLabel("Health Connect installeren of bijwerken"),
+                            onClick = onOpenHealthInstall,
+                        ) { Text("Installeren / bijwerken") }
+                        HealthConnectState.PERMISSION_REQUIRED -> Button(
+                            modifier = Modifier.settingsActionLabel("Health Connect-toegang geven"),
+                            onClick = onRequestHealthPermission,
+                        ) { Text("Toegang geven") }
+                        HealthConnectState.CONNECTED, HealthConnectState.NO_DATA -> Button(
+                            modifier = Modifier.settingsActionLabel("Health Connect-instellingen openen"),
+                            onClick = onOpenHealthSettings,
+                        ) { Text("Health Connect openen") }
                         HealthConnectState.UNSUPPORTED -> Text("Niet ondersteund op dit apparaat.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         HealthConnectState.ERROR -> Text("Health Connect kan nu niet worden gelezen.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    TextButton(onClick = onRefreshHealth) { Text("Vernieuwen") }
+                    TextButton(
+                        modifier = Modifier.settingsActionLabel("Health Connect-status vernieuwen"),
+                        onClick = onRefreshHealth,
+                    ) { Text("Vernieuwen") }
                 }
             }
         }
@@ -859,6 +873,9 @@ fun SettingsScreen(
         )
     }
 }
+
+private fun Modifier.settingsActionLabel(label: String): Modifier =
+    semantics { contentDescription = label }
 
 internal fun destructiveSettingsActionTitle(action: PendingDestructiveSettingsAction): String =
     when (action) {

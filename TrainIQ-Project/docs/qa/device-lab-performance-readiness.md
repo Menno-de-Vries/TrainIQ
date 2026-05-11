@@ -1,8 +1,8 @@
 # Device-Lab Performance Readiness
 
-Last updated: 2026-05-08
+Last updated: 2026-05-11
 
-Status: readiness checklist. Certification is blocked until physical-device evidence exists.
+Status: partial physical-device evidence exists. Certification remains blocked until thresholds, device matrix, broader flow memory evidence, and owner approval exist.
 
 ## Build Commands
 
@@ -36,6 +36,16 @@ Optional release build, owner-controlled signing only:
 | Debug build/test/lint | Available locally | Does not certify release performance |
 | Emulator smoke | Available locally | Emulator is not device-lab certification |
 | Numeric thresholds | Missing | PRODUCT_CONFIRMATION_REQUIRED |
+
+## Physical-Device Evidence
+
+- 2026-05-11 SM-S931B profileable macrobenchmark: `docs/qa/performance-evidence-2026-05-11-sm-s931b-profileable.md`
+- PASS: `:app:assembleProfileable :macrobenchmark:assembleAndroidTest`
+- PASS: `:macrobenchmark:connectedProfileableAndroidTest` with 3 tests, 0 failures, 0 errors.
+- Recorded metrics include cold startup `timeToInitialDisplayMs` min / median / max of 202.812761 / 245.662812 / 337.020729 ms, plus top-level navigation and Settings scroll frame timing.
+- Follow-up profileable launch/memory/crash evidence captured `Status: ok`, `WaitTime: 161`, after-navigation `TOTAL PSS: 108947`, `TOTAL RSS: 219432`, `TOTAL SWAP PSS: 1267`, and empty logcat/dropbox crash/ANR slices in `.codex/device-qa/2026-05-11-profileable-memory-crash/`.
+- Active-workout logging was first attempted and blocked by missing profileable app state, then rerun with a profileable-only deterministic seed. The targeted `activeWorkoutLoggingFrames` run passed on SM-S931B with 1 test, 0 failures, 0 errors; metrics recorded `frameDurationCpuMs` P50 / P90 / P95 / P99 of 1.687865 / 2.4953752 / 2.960833 / 3.22850592 ms and `frameOverrunMs` P50 / P90 / P95 / P99 of -5.288078 / -4.1804796 / -3.9324458 / -3.733878 ms.
+- Certification remains blocked because thresholds are still `PRODUCT_CONFIRMATION_REQUIRED`, the device matrix is not owner-approved, and the run does not cover nutrition scanner, AI fallback/retry, broader repeated-flow memory deltas, or release-owner signoff.
 
 ## Release Guardrail
 

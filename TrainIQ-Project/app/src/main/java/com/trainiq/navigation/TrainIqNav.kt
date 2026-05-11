@@ -50,6 +50,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -138,6 +139,7 @@ fun TrainIqApp(
 ) {
     val navController = rememberNavController()
     val haptics = LocalHapticFeedback.current
+    val configuration = LocalConfiguration.current
     val items = listOf(
         TopLevelDestination(Home, Home::class, "Start", icon = Icons.Default.Home),
         TopLevelDestination(Train, Train::class, "Training", icon = Icons.AutoMirrored.Filled.DirectionsRun),
@@ -155,6 +157,10 @@ fun TrainIqApp(
     val density = LocalDensity.current
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
     val useNavigationRail = shouldUseNavigationRail(windowWidthClass)
+    val useCompactShortBottomBar = shouldUseCompactShortBottomBar(
+        widthClass = windowWidthClass,
+        screenHeightDp = configuration.screenHeightDp,
+    )
     val navigationItems = if (useNavigationRail) {
         items
     } else {
@@ -234,7 +240,10 @@ fun TrainIqApp(
                         modifier = Modifier
                             .fillMaxWidth()
                             .offset(y = navOffset)
-                            .padding(horizontal = 10.dp, vertical = 10.dp)
+                            .padding(
+                                horizontal = 10.dp,
+                                vertical = if (useCompactShortBottomBar) 4.dp else 10.dp,
+                            )
                             .navigationBarsPadding(),
                         color = MaterialTheme.trainIqColors.card,
                         tonalElevation = 0.dp,
@@ -243,7 +252,7 @@ fun TrainIqApp(
                         shape = RoundedCornerShape(MaterialTheme.radii.nav),
                     ) {
                         NavigationBar(
-                            modifier = Modifier.height(82.dp),
+                            modifier = Modifier.height(if (useCompactShortBottomBar) 58.dp else 82.dp),
                             tonalElevation = 0.dp,
                             containerColor = androidx.compose.ui.graphics.Color.Transparent,
                         ) {
@@ -271,13 +280,15 @@ fun TrainIqApp(
                                         ) {
                                             Icon(
                                                 imageVector = screen.icon,
-                                                contentDescription = null,
+                                                contentDescription = if (useCompactShortBottomBar) screen.label else null,
                                                 modifier = Modifier.size(24.dp),
                                             )
                                         }
                                     },
-                                    label = { Text(screen.bottomLabel, maxLines = 1) },
-                                    alwaysShowLabel = true,
+                                    label = if (useCompactShortBottomBar) null else {
+                                        { Text(screen.bottomLabel, maxLines = 1) }
+                                    },
+                                    alwaysShowLabel = !useCompactShortBottomBar,
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = MaterialTheme.colorScheme.primary,
                                         selectedTextColor = MaterialTheme.colorScheme.primary,
@@ -349,6 +360,12 @@ internal fun shouldClearTrainDetailMode(isTrainDestination: Boolean, isTopLevelD
 
 internal fun shouldUseNavigationRail(widthClass: TrainIqWindowWidthClass): Boolean =
     widthClass != TrainIqWindowWidthClass.Compact
+
+internal fun shouldUseCompactShortBottomBar(
+    widthClass: TrainIqWindowWidthClass,
+    screenHeightDp: Int,
+): Boolean =
+    widthClass == TrainIqWindowWidthClass.Compact && screenHeightDp <= 640
 
 private fun bottomNavigationDestinations(
     items: List<TopLevelDestination>,

@@ -1,10 +1,12 @@
 # Owner Action Tracker
 
-Last updated: 2026-05-08
+Last updated: 2026-05-11
 
 Release status: `BLOCKED`
 
 This tracker is the release-control source for owner-only approvals. Codex/local engineering must not mark any row `APPROVED` without the required owner evidence.
+
+Current owner handoff packet: `docs/release/owner-decision-packet-2026-05-10.md`
 
 | ID | Owner | Action | Blocking docs | Evidence required | Status | Release impact |
 |---|---|---|---|---|---|---|
@@ -12,6 +14,10 @@ This tracker is the release-control source for owner-only approvals. Codex/local
 | PERF-001 | Product owner, Android owner, release owner | Set numeric performance thresholds and run device-lab plan | `docs/qa/performance-threshold-decision-record.md`, `docs/qa/device-lab-performance-readiness.md`, `docs/qa/performance-evidence-template.md` | Approved thresholds, physical device matrix, macrobenchmark/profileable or release results, logcat crash/ANR scan | OPEN | Blocks performance certification and release |
 | A11Y-001 | Accessibility owner, manual QA tester, release owner | Complete human TalkBack/Switch Access signoff | `docs/qa/talkback-switch-access-test-script.md`, `docs/qa/human-assistive-tech-qa-signoff.md`, `docs/qa/accessibility-certification-boundary.md` | Completed flow table, recordings/screenshots, tester notes, device/Android/build/font/theme evidence, accessibility owner signoff | OPEN | Blocks accessibility certification and release |
 | AI-001 | Product owner, backend owner, security owner, legal/privacy owner | Choose production AI mode and update privacy/Data Safety docs | `docs/architecture/production-ai-boundary-decision-gate.md`, `docs/security/byok-vs-production-gateway-risk-register.md`, `docs/security/production-ai-boundary-checklist.md` | Signed AI mode decision, backend/security design if selected, risk acceptance or mitigations, updated Data Safety worksheet and privacy policy | OPEN | Blocks production AI readiness; release remains blocked unless AI is explicitly scoped out by product/security/legal |
+
+## Current Evidence Notes
+
+- PERF-001 has partial local evidence: `docs/qa/performance-evidence-2026-05-11-sm-s931b-profileable.md` records a SM-S931B profileable macrobenchmark run with 3 tests, 0 failures, 0 errors; a targeted deterministic active-workout logging run with 1 test, 0 failures, 0 errors; and profileable launch/memory/crash capture with empty crash/ANR slices. PERF-001 remains `OPEN` because thresholds, device matrix approval, broader repeated-flow memory evidence, and owner signoff are still missing.
 
 ## Status Rules
 
@@ -36,4 +42,3 @@ Release remains `BLOCKED` until:
 - `PERF-001` is `APPROVED`;
 - `A11Y-001` is `APPROVED`;
 - `AI-001` is `APPROVED`, or product/security/legal explicitly scope AI out and document release implications in this tracker and `docs/release/final-release-risk-register.md`.
-
