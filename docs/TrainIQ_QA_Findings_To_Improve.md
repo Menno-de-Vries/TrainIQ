@@ -230,7 +230,9 @@ Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emula
 - verification evidence:
   - RED: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.home.HomeDashboardRefreshTest" --console=plain` failed while `HomeViewModel` still owned the retained periodic `while (true)` refresh loop.
   - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.home.HomeDashboardRefreshTest" --console=plain`
-- remaining risk: Periodic refresh now runs under `HomeRoute` `repeatOnLifecycle(Lifecycle.State.STARTED)`, but manual top-level navigation log evidence that refresh pauses off-screen was not captured in this pass.
+  - 2026-05-12 PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.home.HomeDashboardRefreshTest" --console=plain --no-configuration-cache`.
+  - 2026-05-12 tooling note: `./gradlew.bat :app:testDebugUnitTest --tests "*Home*" --console=plain --no-configuration-cache` failed because the broad wildcard filter resolved to a non-test include (`ui-home.xml`); use the exact `HomeDashboardRefreshTest` class filter for repeatable verification.
+- remaining risk: Periodic refresh now runs under `HomeRoute` `repeatOnLifecycle(Lifecycle.State.STARTED)` and the exact source/unit guard passes, but manual top-level navigation log evidence that refresh pauses off-screen was not captured because adding runtime diagnostic logging solely for this evidence would be more invasive than the current risk.
 
 ### QA-2026-05-09-005
 
@@ -322,7 +324,9 @@ Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emula
 - verification evidence:
   - Baseline PASS: `./gradlew.bat :app:testDebugUnitTest --tests "*Camera*" --console=plain`
   - After-change PASS: `./gradlew.bat :app:testDebugUnitTest --tests "*Camera*" --console=plain`
-- remaining risk: `isCapturing` intentionally remains transient and resets after recreation to avoid resuming a stale photo capture. Emulator rotate/recreate scanner smoke was not run in this pass, so the release matrix item remains open.
+  - 2026-05-12 PASS: `./gradlew.bat :app:testDebugUnitTest --tests "*Camera*" --console=plain --no-configuration-cache`.
+  - 2026-05-12 PASS: disposable emulator smoke in `TrainIQ-Project/.codex/device-qa/2026-05-12-scanner-rotate-recreate-qa/` launched the AI scanner permission gate from the Ochtend meal sheet at 360x640/mdpi/font scale 1.5 without granting camera permission, rotated portrait to landscape and back to portrait, and captured `110-ai-scanner-before-rotate.xml`, `111-ai-scanner-landscape.xml`, and `112-ai-scanner-portrait-restored.xml` with `Cameratoegang nodig`, `Toegang geven`, `Terug`, `NAF=0`, and empty crash buffer.
+- remaining risk: `isCapturing` intentionally remains transient and resets after recreation to avoid resuming a stale photo capture. The permission-gate rotate/recreate smoke now passes; preview/capture rotation still needs safe camera-use signoff before release.
 
 ### QA-2026-05-09-009
 
@@ -549,7 +553,7 @@ Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emula
 - verification evidence:
   - RED: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.CameraScannerStateTest" --console=plain` failed while camera fallback helpers were absent.
   - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.CameraScannerStateTest" --console=plain`
-- remaining risk: Unit coverage verifies fallback policy and copy. Device smoke with a physically unavailable/disabled camera was not available in this pass. At font scale 1.5, the source sheet, AI-disabled photo action, manual product form, barcode scanner permission gate, and post-permission barcode preview rendered without NAF/crash. Real barcode recognition and AI photo capture still need manual/device signoff with safe camera usage.
+- remaining risk: Unit coverage verifies fallback policy and copy. Device smoke with a physically unavailable/disabled camera was not available in this pass. At font scale 1.5, the source sheet, AI-disabled photo action, manual product form, barcode scanner permission gate, AI scanner permission-gate rotate/recreate path, and post-permission barcode preview rendered without NAF/crash. Real barcode recognition and AI photo capture still need manual/device signoff with safe camera usage.
 
 ## Refresh Audit - 2026-05-10
 

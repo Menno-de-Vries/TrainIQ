@@ -1,6 +1,6 @@
 # Automation State: trainiq-app-ready-goal
 
-Updated: 2026-05-11
+Updated: 2026-05-12
 
 Current phase: Phase 4 verification completed for this safe batch after Phase 1 blueprint, Phase 2 docs, and one Phase 3 implementation batch.
 Blueprint status: enhanced. Added ready-to-use screen state matrix for Home, Training/active workout, Nutrition/scanner, Coach, Progress, and Settings.
@@ -57,6 +57,16 @@ Implementation batch:
 - Fixed Training routine-creation compact-font accessibility by adding explicit labels to `Lege routine maken` and `Met AI genereren` after 360x640 emulator evidence exposed clipped `NAF=1` controls. Training top/scrolled/routine-detail states now pass `NAF=0`.
 - Fixed 360x640 active-workout route compact-font accessibility by switching the set-type selector to its existing compact dropdown mode on screens `<= 640dp` high after seeded profileable route evidence exposed a clipped scrolled set-type chip with `NAF=1`; rerun active-workout top/scrolled states now pass `NAF=0`.
 - Captured broader 360x640 top-level compact-font smoke evidence for Start, Training, Voeding, Coach, Instellingen, and Settings-to-Voortgang top/scrolled states with `NAF=0` and empty crash buffers.
+- Captured scanner rotate/recreate runtime evidence for the AI scanner permission gate at 360x640/mdpi/font scale 1.5 with `NAF=0` through portrait, landscape, and restored portrait states and an empty crash buffer.
+- Re-ran exact Home lifecycle refresh source/unit verification and documented the repeatable test command after the broad wildcard filter resolved to a non-test include.
+- Refreshed the owner decision packet and owner action tracker with the latest local evidence plus the exact safe-device/manual/owner inputs needed before release evidence can continue.
+- Synchronized `docs/TrainIQ_Target_State_Backlog.md` with the 2026-05-12 owner/manual/safe-device stop condition.
+- Synchronized `TrainIQ-Project/docs/release/final-release-risk-register.md` with the latest performance, accessibility, Health Connect, scanner, signing/versioning, and owner-gate risks.
+- Added a filename-stability note to the owner decision packet so the retained `2026-05-10` path is not confused with stale 2026-05-12 content.
+- Synchronized `docs/TrainIQ_Target_State_Progress.md` next actions with the owner/manual/safe-device stop condition.
+- Refreshed the Play Console owner checklist with 2026-05-12 release-blocked status, current owner-packet references, Health Connect edge-state requirements, AI/Data Safety recheck guidance, real-camera evidence gating, and final release-doc consistency checks.
+- Refreshed Data Safety/privacy release guardrail docs with 2026-05-12 blocked-status notes and links to the current owner packet/tracker/checklist without changing legal claims.
+- Marked older automation-state notes as historical/superseded so future resumes do not follow stale 2026-05-08 next-action guidance.
 
 Verification results:
 - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.architecture.RoomAuthorityArchitectureTest" --tests "com.trainiq.data.repository.TrainIqRepositoryTest" --console=plain --no-configuration-cache`.
@@ -138,6 +148,16 @@ Verification results:
 - PARTIAL/PASS: 2026-05-11 360x640 emulator compact-font runtime; `Medium_Phone` booted as `emulator-5554` with physical size `360x640`, debug install passed, and evidence folder `TrainIQ-Project/.codex/device-qa/2026-05-11-360x640-emulator-fontscale-qa/` captured the initial issue plus after-fix reruns. Focused navigation/workout/settings tests and broad Gradle gate passed; after-fix launch returned `Status: ok`, Home/Settings dumps recorded `NAF=0`, crash slice was empty, font scale was restored to `1.0`, and Home body copy was scroll-reachable. Remaining risk: first-viewport richness at 360x640/font scale 1.5 is still limited, so broader per-screen compact design signoff remains open.
 - PASS/PARTIAL: 2026-05-11 360x640 Training and active-workout compact-font runtime; debug/profileable emulator evidence folders `TrainIQ-Project/.codex/device-qa/2026-05-11-360x640-training-fontscale-qa/`, `TrainIQ-Project/.codex/device-qa/2026-05-11-360x640-active-workout-fontscale-qa/`, and `TrainIQ-Project/.codex/device-qa/2026-05-11-360x640-active-workout-route-after-compact-set-type/` captured Training top/scrolled/routine-detail plus seeded active-workout top/scrolled states with `NAF=0`, empty TrainIQ crash slices, and restored font scale. Profileable seed made `Benchmark routine` and `Training starten` reachable. Pre-fix routine creation controls had clipped `NAF=1`; after adding explicit labels, focused `WorkoutInputValidationTest`, debug reinstall, broad Gradle gate, and rerun Training creation scrolls passed with `NAF=0`. Pre-fix active-workout route scrolled state had `NAF=1` on a clipped set-type chip; after condensing set-type selection on short screens, focused `WorkoutInputValidationTest`, profileable build, reinstall, and rerun passed with active-workout top/scrolled `NAF=0`.
 - PASS/PARTIAL: 2026-05-12 broader 360x640 top-level compact-font runtime; debug emulator evidence folder `TrainIQ-Project/.codex/device-qa/2026-05-12-360x640-top-level-fontscale-qa/` captured Start, Training, Voeding, Coach, Instellingen, and Settings-to-Voortgang top/scrolled states at font scale 1.5 with `NAF=0`; crash buffers were empty.
+- PASS/PARTIAL: 2026-05-12 scanner rotate/recreate runtime; focused `:app:testDebugUnitTest --tests "*Camera*"` passed, and disposable emulator evidence folder `TrainIQ-Project/.codex/device-qa/2026-05-12-scanner-rotate-recreate-qa/` captured the AI scanner permission gate through portrait, landscape, and restored portrait states with `NAF=0`, visible camera permission copy/actions, and empty crash buffer.
+- PASS/PARTIAL: 2026-05-12 Home lifecycle refresh focused verification; `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.home.HomeDashboardRefreshTest" --console=plain --no-configuration-cache` passed. The broad `--tests "*Home*"` filter is not stable here because it resolved to `ui-home.xml`.
+- PASS: 2026-05-12 owner handoff refresh; `TrainIQ-Project/docs/release/owner-decision-packet-2026-05-10.md` and `TrainIQ-Project/docs/release/owner-action-tracker.md` now include latest local evidence and explicit inputs needed before Codex can safely continue release evidence.
+- PASS: 2026-05-12 backlog sync; `docs/TrainIQ_Target_State_Backlog.md` now records the latest Health Connect safe-profile stop condition and release owner handoff evidence.
+- PASS: 2026-05-12 release risk register sync; `TrainIQ-Project/docs/release/final-release-risk-register.md` now matches the refreshed owner handoff and completion audit blockers.
+- PASS: 2026-05-12 owner packet filename note; `TrainIQ-Project/docs/release/owner-decision-packet-2026-05-10.md` now explains why the stable path remains dated 2026-05-10.
+- PASS: 2026-05-12 progress next-action sync; `docs/TrainIQ_Target_State_Progress.md` now prioritizes stopping until matching owner/manual/safe-device inputs exist.
+- PASS: 2026-05-12 Play Console owner checklist sync; `TrainIQ-Project/docs/release/play-console-owner-checklist.md` now points to the refreshed owner decision packet/tracker and records the release evidence gates owners must close before Play submission.
+- PASS: 2026-05-12 Data Safety/privacy guardrail sync; `TrainIQ-Project/docs/release/play-console-data-safety-worksheet.md`, `data-safety-decision-gates.md`, `data-safety-change-impact-matrix.md`, and `privacy-policy-draft.md` now show current blocked release status and point owners to the refreshed handoff docs.
+- PASS: 2026-05-12 historical automation-state sync; `.codex/automation-state/android-room-marker-readiness.md` and `.codex/automation-state/trainiq-target-polish.md` now point back to the current app-ready stop condition instead of stale standalone next actions.
 
 Known regressions:
 - None known from the focused verification pass.
@@ -148,6 +168,7 @@ Blockers:
 - Full physical-device performance certification: owner-approved thresholds, approved device matrix, broader repeated-flow memory evidence, and owner signoff.
 - Gemini-enabled debrief requires approved local credentials/network use.
 - Full Health Connect runtime matrix still needs safe provider/permission-state execution.
+- Real camera/barcode recognition and scanner preview/capture rotation require a safe camera test setup or explicit approval to use a connected device for capture evidence.
 
 Next safest action:
-- Continue nested compact/font-scale QA for camera recognition/capture, Health Connect edge states, or other deeper flows where safe.
+- Stop for owner/manual/safe-device inputs, then continue with the matching evidence path: Health Connect edge-state matrix on a disposable profile, real camera/barcode capture on an approved test setup, manual TalkBack/Switch Access signoff, performance owner certification, or Gemini-enabled debrief with approved credentials/network use.

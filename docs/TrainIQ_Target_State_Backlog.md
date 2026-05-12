@@ -1,6 +1,6 @@
 # TrainIQ Target-State Backlog
 
-Updated date: 2026-05-10
+Updated date: 2026-05-12
 
 ## Now
 
@@ -78,7 +78,7 @@ Updated date: 2026-05-10
   - Partial permissions sync granted metrics without clearing unrelated caches.
   - Settings exposes direct manage-access path.
 - verification: Device/emulator script with UI dumps and logcat; unit tests for permission-state mapping.
-- current evidence: 2026-05-10 partial SM-S931B evidence confirms launchable Settings/Health Connect status copy, app-owned rationale screen rendering, Health Connect controller package visibility, and empty crash buffers; focused `*HealthConnect*` unit tests and manifest/build/lint checks pass. 2026-05-11 added a repeatable non-mutating collector at `TrainIQ-Project/scripts/collect-health-connect-runtime-evidence.ps1`; latest output at `TrainIQ-Project/.codex/device-qa/2026-05-11-health-connect-scripted-baseline-debug-v4/` confirms cold main launch, rationale launch, system manage-access launch, all requested health permissions ungranted, and an empty crash slice. Provider-missing, partial-grant, revoke-while-open, and background-read runtime states still need safe-profile evidence.
+- current evidence: 2026-05-10 partial SM-S931B evidence confirms launchable Settings/Health Connect status copy, app-owned rationale screen rendering, Health Connect controller package visibility, and empty crash buffers; focused `*HealthConnect*` unit tests and manifest/build/lint checks pass. 2026-05-11 added a repeatable non-mutating collector at `TrainIQ-Project/scripts/collect-health-connect-runtime-evidence.ps1`; latest output at `TrainIQ-Project/.codex/device-qa/2026-05-11-health-connect-scripted-baseline-debug-v4/` confirms cold main launch, rationale launch, system manage-access launch, all requested health permissions ungranted, and an empty crash slice. Provider-missing, partial-grant, revoke-while-open, and background-read runtime states still need safe-profile evidence; 2026-05-12 completion audit and owner handoff explicitly stop local execution until a disposable Health Connect profile/device is available.
 - risks: Provider availability varies by device/API level.
 - dependencies: Emulator/device with Health Connect support.
 - decision needed: no
@@ -98,6 +98,7 @@ Updated date: 2026-05-10
   - Data Safety/privacy docs match final AI, telemetry, Health Connect, export, and logging behavior.
   - Versioning strategy is approved before upload.
 - verification: Release-doc review; `:app:checkReleaseSigningReadiness`; signed-release workflow dry run where possible.
+- current evidence: 2026-05-12 owner handoff in `TrainIQ-Project/docs/release/owner-decision-packet-2026-05-10.md`, `TrainIQ-Project/docs/release/owner-action-tracker.md`, and `docs/TrainIQ_App_Ready_Completion_Audit.md` records the latest local evidence and confirms release remains blocked until owner/manual/safe-device inputs are provided.
 - risks: High compliance risk if docs diverge from implementation.
 - dependencies: Product/legal/security/release owner decisions.
 - decision needed: yes

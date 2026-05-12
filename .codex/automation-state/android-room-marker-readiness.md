@@ -1,6 +1,8 @@
 # Android Room Marker Readiness
 
-Last updated: 2026-05-08
+Last updated: 2026-05-12
+
+Current app-ready context: this is a historical completed subtask note. The marker-readiness subtask remains done, but TrainIQ release/app-ready status is still `BLOCKED` in `.codex/automation-state/trainiq-app-ready-goal.md` pending owner/manual/safe-device gates.
 
 ## Current status
 
@@ -59,4 +61,4 @@ none known
 
 ## Next safe action
 
-none
+none for this marker-readiness subtask. For the active app-ready goal, follow `.codex/automation-state/trainiq-app-ready-goal.md`: stop until owner decisions, manual accessibility evidence, approved performance evidence, disposable Health Connect profile/device, safe camera setup, or approved Gemini credentials/network use are available.

@@ -1,8 +1,10 @@
 # Data Safety Decision Gates
 
-Last updated: 2026-05-08
+Last updated: 2026-05-12
 
 Status: release guardrail. These gates prevent local evidence from being treated as final Play Console or legal approval.
+
+Current release status: `BLOCKED`. Use these gates with `docs/release/owner-decision-packet-2026-05-10.md` (content refreshed on 2026-05-12), `docs/release/owner-action-tracker.md`, and `docs/release/play-console-owner-checklist.md`. Local engineering evidence does not close these gates without owner/legal approval.
 
 ## Gate DS-01: Production Telemetry
 

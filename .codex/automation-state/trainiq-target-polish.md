@@ -1,6 +1,8 @@
 # TrainIQ Target Polish Automation State
 
-Last updated: 2026-05-08
+Last updated: 2026-05-12
+
+Current app-ready context: this is historical target-polish state from earlier implementation passes. It is superseded for current release decisions by `.codex/automation-state/trainiq-app-ready-goal.md`, `.codex/automation-state/trainiq-cycle.md`, `docs/TrainIQ_App_Ready_Completion_Audit.md`, and `docs/TrainIQ_Target_State_Progress.md`. TrainIQ remains `not ready-to-use` until owner/manual/safe-device blockers are closed.
 
 ## Safety Rules
 
@@ -265,6 +267,12 @@ Current schema parity gaps:
 - Safety: no uninstall, no app-data clear, no emulator reset, no Gemini key exposure, no Room runtime read cutover, and no repo `trainiq-state.json` mutation.
 
 ## Next Safest Action
+
+Historical next actions below were superseded by later app-ready work and should not be used as the current release plan.
+
+Current next safest action: stop until at least one required owner/manual/safe-device input is available. Continue only with the matching evidence path: Health Connect edge-state matrix on a disposable profile, real camera/barcode capture on an approved test setup, manual TalkBack/Switch Access signoff, performance owner certification, release owner decisions, or Gemini-enabled debrief with approved credentials/network use.
+
+Superseded 2026-05-08 actions:
 
 1. Add a non-authoritative migration/import verification status provider into the Room readiness gate while keeping runtime Room reads disabled.
 2. Continue Health Connect hardening with per-metric isolation for incremental sync token/change failures and explicit background-safe scheduling policy.

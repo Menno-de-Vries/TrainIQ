@@ -1,8 +1,10 @@
 # Play Console Data Safety Worksheet
 
-Last updated: 2026-05-08
+Last updated: 2026-05-12
 
 Status: local evidence worksheet only. This is not a Play Console submission and is not legal advice.
+
+Current release status: `BLOCKED`. Use this worksheet with `docs/release/owner-decision-packet-2026-05-10.md` (content refreshed on 2026-05-12), `docs/release/owner-action-tracker.md`, and `docs/release/play-console-owner-checklist.md`. Do not submit Data Safety answers until `LEGAL-001` is approved with final production evidence.
 
 ## Local App Evidence Summary
 

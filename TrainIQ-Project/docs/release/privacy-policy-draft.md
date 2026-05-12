@@ -1,8 +1,10 @@
 # TrainIQ Privacy Policy Draft
 
-Last updated: 2026-05-08
+Last updated: 2026-05-12
 
 Status: draft for owner/legal review. Every legal claim requires `OWNER_CONFIRMATION_REQUIRED` before publication.
+
+Current release status: `BLOCKED`. Review this draft with `docs/release/owner-decision-packet-2026-05-10.md` (content refreshed on 2026-05-12), `docs/release/owner-action-tracker.md`, and `docs/release/play-console-owner-checklist.md`. Do not publish until production AI, telemetry, Health Connect, signing/versioning, and Data Safety decisions are final.
 
 ## Overview
 
@@ -62,4 +64,3 @@ OWNER_CONFIRMATION_REQUIRED: confirm whether account deletion is applicable. The
 ## Contact
 
 OWNER_CONFIRMATION_REQUIRED: add privacy contact email, postal address if required, and response process.
-

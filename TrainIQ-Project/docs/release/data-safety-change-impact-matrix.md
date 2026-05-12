@@ -1,8 +1,10 @@
 # Data Safety Change Impact Matrix
 
-Last updated: 2026-05-08
+Last updated: 2026-05-12
 
 Status: release guardrail. All rows require `RECHECK_BEFORE_PLAY_SUBMISSION`.
+
+Current release status: `BLOCKED`. Recheck this matrix after any production AI, telemetry, backend, analytics/crash reporting, account/auth, Health Connect background-read, signing/versioning, or release-scope decision.
 
 | Scenario | Data Safety impact | Likely answer changes | Privacy policy impact | Required evidence | Gate marker |
 |---|---|---|---|---|---|
@@ -22,4 +24,3 @@ If any row changes after this document is signed off, release must pause until:
 - `docs/release/play-console-data-safety-worksheet.md` is updated.
 - `docs/release/privacy-policy-draft.md` or published policy text is updated.
 - The Play Console owner confirms the final answers.
-

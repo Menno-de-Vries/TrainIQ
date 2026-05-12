@@ -1,6 +1,6 @@
 # Owner Action Tracker
 
-Last updated: 2026-05-11
+Last updated: 2026-05-12
 
 Release status: `BLOCKED`
 
@@ -18,6 +18,9 @@ Current owner handoff packet: `docs/release/owner-decision-packet-2026-05-10.md`
 ## Current Evidence Notes
 
 - PERF-001 has partial local evidence: `docs/qa/performance-evidence-2026-05-11-sm-s931b-profileable.md` records a SM-S931B profileable macrobenchmark run with 3 tests, 0 failures, 0 errors; a targeted deterministic active-workout logging run with 1 test, 0 failures, 0 errors; and profileable launch/memory/crash capture with empty crash/ANR slices. PERF-001 remains `OPEN` because thresholds, device matrix approval, broader repeated-flow memory evidence, and owner signoff are still missing.
+- A11Y-001 has expanded automated/runtime support evidence but remains `OPEN`: 360x640/font-scale UIAutomator evidence now covers top-level screens, progress, seeded active workout, scanner permission gates, Health Connect rationale, and Settings destructive dialogs with `NAF=0`; this does not replace human TalkBack/Switch Access signoff.
+- Health Connect runtime evidence remains partial: the scripted no-permission baseline and rationale/manage-access paths are recorded, but provider-missing, partial-grant, revoke-while-open, and background-read granted/unavailable cases still require a safe disposable test profile/device.
+- Scanner runtime evidence remains partial: camera permission gate and rotation evidence is recorded without granting camera access, but real barcode recognition and AI photo capture require an approved safe camera test setup.
 
 ## Status Rules
 
