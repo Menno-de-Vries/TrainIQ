@@ -523,11 +523,17 @@ fun SettingsScreen(
     ) {
         item { ScreenHeader(title = "Instellingen", subtitle = "Profiel, Health Connect en voorkeuren") }
         item {
-            SectionCard(title = "Snelle status") {
+            SectionCard(title = settingsOverflowSectionTitle()) {
+                Text(settingsOverflowSectionBody())
                 Text("Thema: ${themeMode.displayLabel()}")
                 Text("AI: ${if (aiPreferences.enabled && aiPreferences.apiKey.isNotBlank()) "Klaar voor expliciet gebruik" else "Alleen handmatig"}")
                 Text("Health Connect: ${healthStatusLabel(healthStatus)}")
-                Button(onClick = onOpenProgress, modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = onOpenProgress,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .settingsActionLabel(settingsOpenProgressActionLabel()),
+                ) {
                     Text("Voortgang openen")
                 }
             }
@@ -542,6 +548,7 @@ fun SettingsScreen(
                 Text("Themamodus")
                 ThemeMode.entries.forEach { mode ->
                     FilterChip(
+                        modifier = Modifier.settingsActionLabel(themeModeAccessibilityLabel(mode)),
                         selected = themeMode == mode,
                         onClick = { onThemeSelected(mode) },
                         label = { Text(mode.displayLabel()) },
@@ -963,6 +970,15 @@ internal fun geminiApiKeySourceUrl(): String = "https://aistudio.google.com/app/
 
 internal fun geminiApiKeySetupHelpText(): String =
     "Maak of bekijk je sleutel in Google AI Studio, plak hem hier en zet AI aan. Deel je sleutel niet en commit hem nooit."
+
+internal fun settingsOverflowSectionTitle(): String = "Meer"
+
+internal fun settingsOverflowSectionBody(): String =
+    "Compacte navigatie bundelt extra onderdelen hier. Open Voortgang voor trends, metingen en voortgangsgrafieken."
+
+internal fun settingsOpenProgressActionLabel(): String = "Voortgang openen vanuit Meer"
+
+internal fun themeModeAccessibilityLabel(mode: ThemeMode): String = "Themamodus: ${mode.displayLabel()}"
 
 private fun BiologicalSex.displayLabel(): String = when (this) {
     BiologicalSex.MALE -> "Man"

@@ -115,4 +115,22 @@ class SettingsUiStateTest {
         assertTrue(source.contains("Health Connect installeren of bijwerken"))
         assertTrue(source.contains("settingsActionLabel"))
     }
+
+    @Test
+    fun themeModeChipsExposeExplicitAccessibilityLabels() {
+        assertEquals("Themamodus: Systeem", themeModeAccessibilityLabel(ThemeMode.SYSTEM))
+        assertEquals("Themamodus: Licht", themeModeAccessibilityLabel(ThemeMode.LIGHT))
+        assertEquals("Themamodus: Donker", themeModeAccessibilityLabel(ThemeMode.DARK))
+
+        val source = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
+        assertTrue(source.contains("Modifier.settingsActionLabel(themeModeAccessibilityLabel(mode))"))
+    }
+
+    @Test
+    fun compactSettingsReadsAsOverflowAndExposesProgressNearTop() {
+        assertEquals("Meer", settingsOverflowSectionTitle())
+        assertTrue(settingsOverflowSectionBody().contains("Compacte navigatie"))
+        assertTrue(settingsOverflowSectionBody().contains("Voortgang"))
+        assertEquals("Voortgang openen vanuit Meer", settingsOpenProgressActionLabel())
+    }
 }
