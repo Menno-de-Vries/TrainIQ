@@ -1,0 +1,26 @@
+{
+  "name": "trainiq-flagship-phone-promo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "audio": "node scripts/generate-audio.mjs",
+    "still": "npx remotion still src/index.ts TrainIqFlagshipPromo evidence/still-frame-120.png --frame=120 --scale=0.35",
+    "render": "npx remotion render src/index.ts TrainIqFlagshipPromo trainiq-flagship-phone-promo-2026-05.mp4 --codec=h264 --audio-codec=aac",
+    "render:v2": "npx remotion render src/index.ts TrainIqFlagshipPromo trainiq-flagship-phone-promo-2026-05-v2.mp4 --codec=h264 --audio-codec=aac",
+    "render:v3": "npx remotion render src/index.ts TrainIqFlagshipPromo trainiq-flagship-phone-promo-2026-05-v3.mp4 --codec=h264 --audio-codec=aac",
+    "stills:qa": "node scripts/render-qa-stills.mjs",
+    "stills:qa:v3": "node scripts/render-qa-stills-v3.mjs",
+    "itch:cover": "npx remotion still src/index.ts ItchCover itch-upload-pack-v2/trainiq-itch-cover.png",
+    "itch:screenshots": "node scripts/render-itch-screenshots.mjs",
+    "preview": "npx remotion studio src/index.ts"
+  },
+  "dependencies": {
+    "@remotion/media": "4.0.460",
+    "remotion": "4.0.460",
+    "typescript": "^5.8.3"
+  },
+  "devDependencies": {
+    "@remotion/cli": "4.0.460",
+    "@types/node": "^22.15.17"
+  }
+}

@@ -1,0 +1,10 @@
+node_modules/
+.remotion/
+*.log
+
+# Rendered outputs and review artifacts
+*.mp4
+evidence/*.png
+evidence/*.xml
+evidence/qa-v*/
+itch-upload-pack-v*/
