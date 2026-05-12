@@ -72,6 +72,23 @@ class ProgressMeasurementValidationTest {
     }
 
     @Test
+    fun latestMeasurementHeroText_usesNewestRealMeasurementWithoutInventingData() {
+        val older = BodyMeasurement(id = 1L, date = 100L, weight = 80.0, bodyFat = 15.0, muscleMass = 40.0)
+        val newer = BodyMeasurement(id = 2L, date = 200L, weight = 81.2, bodyFat = 14.8, muscleMass = 40.5)
+
+        assertEquals("81.2 kg", latestBodyWeightText(listOf(older, newer)))
+        assertEquals("14.8%", latestBodyFatText(listOf(older, newer)))
+        assertEquals("40.5 kg", latestMuscleMassText(listOf(older, newer)))
+    }
+
+    @Test
+    fun latestMeasurementHeroText_usesEmptyPlaceholdersWhenNoMeasurementsExist() {
+        assertEquals("-- kg", latestBodyWeightText(emptyList()))
+        assertEquals("--%", latestBodyFatText(emptyList()))
+        assertEquals("-- kg", latestMuscleMassText(emptyList()))
+    }
+
+    @Test
     fun deleteMeasurementActionLabel_isCompactForNarrowRows() {
         assertEquals("Verwijderen", deleteMeasurementActionLabel())
     }

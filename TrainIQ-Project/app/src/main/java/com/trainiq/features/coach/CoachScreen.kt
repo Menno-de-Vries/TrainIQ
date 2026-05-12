@@ -41,6 +41,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.trainiq.core.theme.spacing
+import com.trainiq.core.theme.trainIqColors
 import com.trainiq.core.ui.AppCard
 import com.trainiq.core.ui.MessageCard
 import com.trainiq.core.ui.ScreenHeader
@@ -288,20 +289,19 @@ private fun GoalAdviceInput.toDeterministicGoalAdvice(): GoalAdvice {
 @Composable
 private fun WeekReportCard(report: WeeklyReportResult?, fallbackSummary: String) {
     Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Weekoverzicht", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            ) {
-                Text(
-                    report?.source?.label() ?: "Lokale analyse",
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
+        Text("AI-coach", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.amber, fontWeight = FontWeight.SemiBold)
+        Text("Weekoverzicht", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = MaterialTheme.trainIqColors.amber.copy(alpha = 0.16f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ) {
+            Text(
+                report?.source?.label() ?: "Lokale analyse",
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
         }
         AdviceSurface {
             compactSentences(report?.summary ?: fallbackSummary, maxSentences = 2).forEach {
@@ -498,7 +498,7 @@ fun CoachScreen(
                             }
                         }
                     } else item {
-                        AppCard(modifier = Modifier.fillMaxWidth()) {
+                        AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
                                 WeekReportCard(report = state.generatedReport, fallbackSummary = state.overview.weeklyReport)
                                 Button(
                                     onClick = {
@@ -506,6 +506,7 @@ fun CoachScreen(
                                         onGenerateWeeklyReport()
                                     },
                                     enabled = !state.isGeneratingReport,
+                                    modifier = Modifier.fillMaxWidth(),
                                 ) {
                                     Text(if (state.isGeneratingReport) "Rapport maken..." else "Weekrapport maken")
                                 }
@@ -520,8 +521,8 @@ fun CoachScreen(
                                 Surface(
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(24.dp),
-                                    color = MaterialTheme.colorScheme.secondaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    color = MaterialTheme.trainIqColors.amber.copy(alpha = 0.14f),
+                                    contentColor = MaterialTheme.colorScheme.onSurface,
                                 ) {
                                     Text(
                                         text = state.overview.nutritionCoachMessage,
@@ -532,8 +533,9 @@ fun CoachScreen(
                         }
                     }
                     item {
-                        AppCard(modifier = Modifier.fillMaxWidth()) {
-                                Text("Doeladvies", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                        AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
+                                Text("Doeladvies", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.amber, fontWeight = FontWeight.SemiBold)
+                                Text("Profiel en doelen", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
                                 OutlinedTextField(
                                     value = name,
                                     onValueChange = {
@@ -655,6 +657,7 @@ fun CoachScreen(
                                         }
                                     },
                                     enabled = !state.isGeneratingAdvice,
+                                    modifier = Modifier.fillMaxWidth(),
                                 ) {
                                     Text(if (state.isGeneratingAdvice) "Advies maken..." else "Advies maken")
                                 }
@@ -679,6 +682,7 @@ fun CoachScreen(
                                                 }
                                             }
                                         },
+                                        modifier = Modifier.fillMaxWidth(),
                                     ) {
                                         Text("Profiel en doelen opslaan")
                                     }
@@ -733,10 +737,10 @@ private fun GoalAdviceCard(advice: GoalAdvice, activityLevel: String) {
         AdviceSurface {
             Text("Calorieën", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-                MetricPill("BMR", "${advice.bmr} kcal")
-                MetricPill("Onderhoud", "${advice.maintenanceCalories} kcal")
-                MetricPill("Doel", "${advice.calorieTarget} kcal")
-                MetricPill(goalAdviceEnergyDifferenceLabel(difference), "${kotlin.math.abs(difference)} kcal")
+                MetricPill("BMR", "${advice.bmr} kcal", accent = MaterialTheme.trainIqColors.amber)
+                MetricPill("Onderhoud", "${advice.maintenanceCalories} kcal", accent = MaterialTheme.trainIqColors.amber)
+                MetricPill("Doel", "${advice.calorieTarget} kcal", accent = MaterialTheme.trainIqColors.amber)
+                MetricPill(goalAdviceEnergyDifferenceLabel(difference), "${kotlin.math.abs(difference)} kcal", accent = MaterialTheme.trainIqColors.amber)
             }
             compactSentences(advice.calorieAdvice.ifBlank { "Doelcalorieën zijn afgeleid van onderhoud en doel." }, maxSentences = 2).forEach {
                 Text(it, style = MaterialTheme.typography.bodyMedium)
@@ -745,9 +749,9 @@ private fun GoalAdviceCard(advice: GoalAdvice, activityLevel: String) {
         AdviceSurface {
             Text("Macro's", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-                MetricPill("Eiwit", "${advice.proteinTarget} g")
-                MetricPill("Koolhydraten", "${advice.carbsTarget} g")
-                MetricPill("Vet", "${advice.fatTarget} g")
+                MetricPill("Eiwit", "${advice.proteinTarget} g", accent = MaterialTheme.trainIqColors.amber)
+                MetricPill("Koolhydraten", "${advice.carbsTarget} g", accent = MaterialTheme.trainIqColors.amber)
+                MetricPill("Vet", "${advice.fatTarget} g", accent = MaterialTheme.trainIqColors.amber)
             }
             Text("Samen ongeveer $macroCalories kcal.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             compactSentences(advice.macroAdvice.ifBlank { "Koolhydraten vullen de resterende calorieën aan als trainingsbrandstof." }, maxSentences = 2).forEach {
@@ -756,7 +760,7 @@ private fun GoalAdviceCard(advice: GoalAdvice, activityLevel: String) {
         }
         AdviceSurface {
             Text("Activiteit", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            MetricPill(activityLevel.toDutchActivityLevelLabel(), "factor ${String.format(Locale.US, "%.3f", advice.activityMultiplier)}")
+            MetricPill(activityLevel.toDutchActivityLevelLabel(), "factor ${String.format(Locale.US, "%.3f", advice.activityMultiplier)}", accent = MaterialTheme.trainIqColors.amber)
             compactSentences(advice.activityExplanation.ifBlank { "Onderhoud = BMR x activiteitsfactor." }, maxSentences = 2).forEach {
                 Text(it, style = MaterialTheme.typography.bodyMedium)
             }
@@ -796,10 +800,14 @@ private fun AdviceSurface(content: @Composable ColumnScope.() -> Unit) {
 }
 
 @Composable
-private fun MetricPill(label: String, value: String) {
+private fun MetricPill(
+    label: String,
+    value: String,
+    accent: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.primary,
+) {
     Surface(
         shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+        color = accent.copy(alpha = 0.14f),
         contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
         Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {

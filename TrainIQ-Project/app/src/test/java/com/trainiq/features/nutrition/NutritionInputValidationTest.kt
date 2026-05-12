@@ -4,6 +4,7 @@ import com.trainiq.domain.repository.MealEntryRequest
 import com.trainiq.domain.repository.MealEntryType
 import com.trainiq.domain.model.EnergyBalanceSnapshot
 import com.trainiq.domain.model.MealType
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -156,6 +157,43 @@ class NutritionInputValidationTest {
             listOf("Vandaag", "Toevoegen", "AI-resultaat", "Recepten", "Producten", "Historie"),
             nutritionTabTitles(),
         )
+    }
+
+    @Test
+    fun nutritionSectionMenuCopy_keepsCompactMenuAccessible() {
+        assertEquals("Voeding secties openen", nutritionSectionMenuButtonDescription())
+        assertEquals("|||", nutritionSectionMenuButtonLabel())
+    }
+
+    @Test
+    fun mealEditAndSaveLabels_distinguishNewDraftsFromExistingMeals() {
+        assertEquals("Hoeveelheid wijzigen", mealEditActionLabel())
+        assertEquals("Maaltijd opslaan", mealDraftSaveLabel(isEditing = false))
+        assertEquals("Wijzigingen opslaan", mealDraftSaveLabel(isEditing = true))
+    }
+
+    @Test
+    fun nutritionScreen_usesSectionMenuInsteadOfPersistentTabRow() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+
+        assertFalse(source.contains("ScrollableTabRow"))
+        assertTrue(source.contains("showSectionMenu"))
+        assertTrue(source.contains("nutritionSectionMenuButtonDescription()"))
+        assertTrue(source.contains("nutritionSectionMenuButtonLabel()"))
+    }
+
+    @Test
+    fun nutritionScreen_keepsMealAddAndEditFlowsContextual() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val dailyAddBody = source.substringAfter("onAddToMeal = { type ->").substringBefore("onEditMeal = { meal ->")
+        val editBody = source.substringAfter("onEditMeal = { meal ->").substringBefore("onDeleteMeal =")
+
+        assertTrue(dailyAddBody.contains("showAddToMealActions = true"))
+        assertFalse(dailyAddBody.contains("selectedTab = 1"))
+        assertTrue(editBody.contains("editingMealId = meal.id"))
+        assertTrue(editBody.contains("mealDraft.clear()"))
+        assertTrue(editBody.contains("mealDraft.addAll"))
+        assertTrue(editBody.contains("selectedTab = 1"))
     }
 
     @Test

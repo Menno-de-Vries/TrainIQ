@@ -472,10 +472,8 @@ private fun SetupChecklistCard(
                 "Health Connect optioneel koppelen",
                 done = healthConnectStatus.state == HealthConnectState.CONNECTED || healthConnectStatus.state == HealthConnectState.NO_DATA,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-                PrimaryActionButton(onClick = onOpenCoach, modifier = Modifier.weight(1f)) { Text("Profiel invullen") }
-                SecondaryActionButton(onClick = onOpenTrain, modifier = Modifier.weight(1f)) { Text("Routine maken") }
-            }
+            PrimaryActionButton(onClick = onOpenCoach, modifier = Modifier.fillMaxWidth()) { Text("Profiel invullen") }
+            SecondaryActionButton(onClick = onOpenTrain, modifier = Modifier.fillMaxWidth()) { Text("Routine maken") }
             if (healthConnectStatus.state == HealthConnectState.PERMISSION_REQUIRED) {
                 SecondaryActionButton(onClick = onRequestHealthPermission, modifier = Modifier.fillMaxWidth()) {
                     Text("Health Connect koppelen")
@@ -500,12 +498,13 @@ private fun NextWorkoutCard(
     onOpenTrain: () -> Unit,
     onStartWorkout: (Long) -> Unit,
 ) {
-    AppCard(modifier = Modifier.fillMaxWidth()) {
+    AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
         Column(
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
-            Text("Volgende training", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+            Text("Volgende training", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.amber, fontWeight = FontWeight.SemiBold)
             if (dashboard.nextWorkout == null) {
+                Text("Geen sessie klaar", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
                 Text("Er staat nog geen actieve trainingsdag klaar. Ga naar Training om je eerste sessie in te stellen.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
                 SecondaryActionButton(onClick = onOpenTrain) { Text("Training openen") }
             } else {
@@ -513,7 +512,7 @@ private fun NextWorkoutCard(
                     dashboard.nextWorkout.exercises.joinToString { it.exercise.name }
                         .ifBlank { "Voeg oefeningen toe aan deze dag." }
                 }
-                Text(dashboard.nextWorkout.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
+                Text(dashboard.nextWorkout.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
                 Text(
                     exerciseSummary,
                     style = MaterialTheme.typography.bodyMedium,
@@ -526,7 +525,7 @@ private fun NextWorkoutCard(
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
-                PrimaryActionButton(onClick = { onStartWorkout(dashboard.nextWorkout.id) }) { Text("Training starten") }
+                PrimaryActionButton(onClick = { onStartWorkout(dashboard.nextWorkout.id) }, modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) { Text("Training starten") }
             }
         }
     }
@@ -553,7 +552,7 @@ private fun CoachInsightCard(
     insight: String,
     onOpenCoach: () -> Unit,
 ) {
-    AppCard(accent = MaterialTheme.colorScheme.primary) {
+    AppCard(accent = MaterialTheme.trainIqColors.amber) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -561,7 +560,7 @@ private fun CoachInsightCard(
                     Brush.linearGradient(
                         colors = listOf(
                             MaterialTheme.colorScheme.surface,
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+                            MaterialTheme.trainIqColors.amber.copy(alpha = 0.08f),
                             MaterialTheme.colorScheme.secondary.copy(alpha = 0.03f),
                         ),
                     ),
@@ -569,9 +568,10 @@ private fun CoachInsightCard(
                 .padding(MaterialTheme.spacing.medium),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
-            Text("AI-inzicht", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+            Text("AI-inzicht", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.amber, fontWeight = FontWeight.SemiBold)
+            Text("Coach vandaag", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
             Text(insight, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
-            SecondaryActionButton(onClick = onOpenCoach) { Text("Coach openen") }
+            SecondaryActionButton(onClick = onOpenCoach, modifier = Modifier.fillMaxWidth()) { Text("Coach openen") }
         }
     }
 }

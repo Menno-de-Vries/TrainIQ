@@ -1,6 +1,6 @@
 # TrainIQ Target-State Progress
 
-Updated date: 2026-05-12
+Updated date: 2026-05-13
 
 ## Alignment Score
 
@@ -21,6 +21,8 @@ Updated date: 2026-05-12
 - QA-2026-05-10-022 (P2): Training now prioritizes the existing active routine before routine creation, so `Routine inrichten` is fully visible in the first viewport when setup is the current next action.
 - 2026-05-10 Settings Gemini key help polish: Settings and the Android README now point users to Google AI Studio API Keys, explain the short paste/save/enable flow, and warn not to share or commit the key.
 - 2026-05-10 Training setup-to-completion polish: bodyweight/no-weight active logger drafts now default missing planned weight to `0`, persisted drafts fill missing fields from the planned set, and physical-device QA reached saved completion/debrief with local fallback.
+- 2026-05-12 Warm futuristic UI polish: shared theme/components, Home, Nutrition, Progress, Coach, and Active Workout now follow the conservative warm glass/amber mockup direction with source guards for moodboard colors, wrapping actions, progress hero metrics, and active-workout compact action layout.
+- 2026-05-13 Nutrition flow polish: Voeding now hides secondary sections behind a compact `|||` section menu, keeps meal-moment add actions contextual on Vandaag, and makes existing meal quantity editing explicit through the meal draft editor without data/schema changes.
 
 ## Partially Completed Findings
 
@@ -71,9 +73,11 @@ Updated date: 2026-05-12
 - No new webresearch was needed for the 2026-05-10 profile persistence polish; local Room DAO patterns and existing architecture guards were sufficient.
 - No new webresearch was needed for the 2026-05-10 routine-set edit persistence polish; local Room DAO patterns and existing architecture guards were sufficient.
 - 2026-05-10 active-workout runtime polish used official Compose state-hoisting/state guidance and Snackbar guidance to keep rest overrides in active UI state, preserve unidirectional state flow, and keep undo/relog feedback user-visible without changing logged history unexpectedly.
+- 2026-05-13 nutrition runtime install blocker used Microsoft Learn ADB0060 guidance for `INSTALL_FAILED_INSUFFICIENT_STORAGE`, confirming the emulator/device storage condition behind the failed debug install.
 
 ## Regression Checks Run
 
+- 2026-05-13 nutrition flow polish PASS: baseline targeted `NutritionInputValidationTest`; RED targeted helper/source guards; PASS targeted nutrition test after implementation; PASS `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin`; PASS `:app:test`; after emulator storage was increased, PASS `:app:installDebug`, cold launch, Voeding section menu UI dump, contextual `Toevoegen aan Ochtend` sheet UI dump, and empty AndroidRuntime crash buffer.
 - 2026-05-10 cycle verify-only PASS: `./gradlew.bat :app:assembleDebug :app:test :app:lintDebug --console=plain --no-configuration-cache`
 - 2026-05-10 migration-marker polish PASS: `./gradlew.bat :app:generateCiRoomMigrationChainVerificationMarkers --dry-run --console=plain --no-configuration-cache`.
 - 2026-05-10 migration-marker polish PASS: `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
@@ -98,6 +102,7 @@ Updated date: 2026-05-12
 - 2026-05-10 training first-viewport order polish PASS: RED/PASS targeted ordering guard, PASS full `WorkoutInputValidationTest`, PASS `:app:assembleDebug`, PASS install/device smoke on SM-S931B with `Actieve routine` and fully visible `Routine inrichten` before `Routine maken`, and empty crash buffer in `.codex/device-qa/2026-05-10-training-first-viewport-after-order-polish/`.
 - 2026-05-10 Settings Gemini key help polish PASS: baseline Settings test passed, RED/PASS targeted Gemini-key help guard, PASS full `SettingsUiStateTest`, PASS `:app:assembleDebug`, PASS install/device Settings smoke on SM-S931B showing Google AI Studio URL and no-commit warning with empty crash buffer.
 - 2026-05-10 Training setup-to-completion polish PASS: baseline workout test passed, RED/PASS targeted bodyweight active-logger draft tests, PASS full `WorkoutInputValidationTest`, PASS `:app:assembleDebug`, PASS `:app:installDebug`, PASS SM-S931B runtime from Training start to `Set loggen`, `Opslaan`, and `Voltooid` completion/debrief with empty crash buffer.
+- 2026-05-12 warm futuristic UI polish PASS/PARTIAL: baseline and after-change broad gates passed `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`; focused moodboard/shared UI, Workout, Progress, Home, Nutrition, Coach, Settings, and architecture tests passed; emulator reinstall/launch passed after clearing the old app install, `WaitTime: 5303`, Start/Training/Voeding/Coach/Meer/Voortgang traversed without crash, and font-scale `1.3` top-level smoke kept an empty crash buffer. Evidence: `TrainIQ-Project/.codex/device-qa/2026-05-12-warm-futuristic-ui-polish/`.
 - 2026-05-10 active-workout finish persistence polish PASS: moved active workout finish/completion from full-state JSON mirror import to a targeted Room transaction that writes completed session history, performed exercises, completed sets, local debrief fields, async Gemini debrief refresh fields, and active-runtime cleanup; PASS targeted `RoomAuthorityArchitectureTest`; PASS focused repository/workout unit tests; PASS `:app:assembleDebug`; PASS `:app:lintDebug`.
 - 2026-05-10 active-workout undo persistence polish PASS: moved active workout undo from full-state JSON mirror import to a targeted Room transaction that restores active sets, persists the pending undo event/snapshots, and updates the active session timestamp; PASS targeted `RoomAuthorityArchitectureTest` and `WorkoutLogEventTest`; PASS focused repository/workout unit tests; PASS `:app:assembleDebug`; PASS `:app:lintDebug`.
 - 2026-05-10 routine core persistence polish PASS: moved routine create/update/delete and exercise reorder from full-state JSON mirror import to targeted Room writes. Delete normalizes active routine selection after cascade delete, and reorder preserves omitted exercises by appending them in existing order. PASS targeted `RoomAuthorityArchitectureTest`; PASS focused repository/workout unit tests; PASS `:app:assembleDebug`; PASS `:app:lintDebug`.

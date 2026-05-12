@@ -23,11 +23,11 @@ import androidx.compose.ui.unit.dp
 import androidx.annotation.RequiresApi
 
 private val LightColors = lightColorScheme(
-    primary = Color(0xFF45DCAF),
+    primary = Color(0xFFFFB25C),
     onPrimary = Color(0xFF031A18),
-    secondary = Color(0xFF5B9DFF),
+    secondary = Color(0xFF6FABFF),
     onSecondary = Color(0xFF071527),
-    tertiary = Color(0xFFFFBE55),
+    tertiary = Color(0xFFFF7662),
     onTertiary = Color(0xFF261600),
     background = Color(0xFFF4F7F9),
     onBackground = Color(0xFF111820),
@@ -48,17 +48,17 @@ private val LightColors = lightColorScheme(
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFF64E1B5),
+    primary = Color(0xFFFFB25C),
     onPrimary = Color(0xFF061712),
-    secondary = Color(0xFF5FA2FF),
+    secondary = Color(0xFF6FABFF),
     onSecondary = Color(0xFF071322),
-    tertiary = Color(0xFFFFBE55),
+    tertiary = Color(0xFFFF7662),
     onTertiary = Color(0xFF201300),
-    background = Color(0xFF080D12),
+    background = Color(0xFF0A0D18),
     onBackground = Color(0xFFF2F6FA),
-    surface = Color(0xFF0B1016),
+    surface = Color(0xFF121623),
     onSurface = Color(0xFFF2F6FA),
-    surfaceVariant = Color(0xFF151C25),
+    surfaceVariant = Color(0xFF202334),
     onSurfaceVariant = Color(0xFFA8B2C0),
     primaryContainer = Color(0xFF203F3B),
     onPrimaryContainer = Color(0xFF8BF4CE),
@@ -149,19 +149,22 @@ data class TrainIqRadii(
 
 @Immutable
 data class TrainIqColors(
-    val appBackground: Color = Color(0xFF080D12),
-    val backgroundGlow: Color = Color(0xFF031E25),
-    val card: Color = Color(0xFF151C25),
-    val cardElevated: Color = Color(0xFF1B2430),
-    val cardBorder: Color = Color(0xFF3A4656),
+    val appBackground: Color = Color(0xFF0A0D18),
+    val backgroundGlow: Color = Color(0xFF3A211B),
+    val card: Color = Color(0xFF202334),
+    val cardElevated: Color = Color(0xFF292D40),
+    val cardBorder: Color = Color(0xFF3C4055),
     val mutedText: Color = Color(0xFFA8B2C0),
-    val track: Color = Color(0xFF313A46),
-    val mint: Color = Color(0xFF64E1B5),
-    val blue: Color = Color(0xFF5FA2FF),
-    val amber: Color = Color(0xFFFFBE55),
+    val track: Color = Color(0xFF373B4F),
+    val mint: Color = Color(0xFF5BE8B2),
+    val blue: Color = Color(0xFF6FABFF),
+    val amber: Color = Color(0xFFFFB25C),
+    val peach: Color = Color(0xFFFF7662),
     val purple: Color = Color(0xFFB978FF),
     val cyan: Color = Color(0xFF69D6FF),
 )
+
+internal fun warmMoodboardDarkTrainIqColors(): TrainIqColors = TrainIqColors()
 
 private val LocalSpacing = staticCompositionLocalOf { Spacing() }
 private val LocalRadii = staticCompositionLocalOf { TrainIqRadii() }
@@ -214,6 +217,7 @@ fun TrainIqTheme(
             mint = Color(0xFF12A982),
             blue = Color(0xFF2B7BEA),
             amber = Color(0xFFD98918),
+            peach = Color(0xFFD94F3D),
             purple = Color(0xFF8F51E8),
             cyan = Color(0xFF168CBF),
         )

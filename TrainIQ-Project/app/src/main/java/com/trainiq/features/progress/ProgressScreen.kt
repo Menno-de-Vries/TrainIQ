@@ -2,6 +2,8 @@ package com.trainiq.features.progress
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -299,10 +301,20 @@ fun ProgressScreen(
             return@LazyColumn
         }
         item {
-            AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.purple) {
+            AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
                 Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-                    Text("Lichaamssamenstelling", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                    Text("Lichaamssamenstelling", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.amber, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        latestBodyWeightText(overview.measurements),
+                        style = MaterialTheme.typography.displaySmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.trainIqColors.amber,
+                    )
                     Text("Vetpercentage, spiermassa en gewicht naast elkaar.", color = MaterialTheme.trainIqColors.mutedText)
+                    ProgressMetricRow(
+                        bodyFat = latestBodyFatText(overview.measurements),
+                        muscleMass = latestMuscleMassText(overview.measurements),
+                    )
                     MeasurementTextField(
                         value = weight,
                         onValueChange = {
@@ -337,7 +349,7 @@ fun ProgressScreen(
                         if (measurementValidation is ProgressMeasurementValidationResult.Valid) {
                             onAddMeasurement(weight, bodyFat, muscleMass)
                         }
-                    }, enabled = canSaveMeasurement, accent = MaterialTheme.trainIqColors.purple) { Text("Meting opslaan") }
+                    }, enabled = canSaveMeasurement, modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) { Text("Meting opslaan") }
                 }
             }
         }
@@ -375,14 +387,14 @@ fun ProgressScreen(
                 }
             }
             item {
-                AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.purple) {
+                AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
                     Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                         Text("Meetgeschiedenis", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                         val measurements = sortedMeasurementsForHistory(overview.measurements)
                         measurements.forEachIndexed { index, measurement ->
                             val previous = measurements.getOrNull(index + 1)
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Column(modifier = Modifier.weight(1f)) {
+                            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Column {
                                     Text(
                                         "${measurement.date.toReadableDate()}: ${measurement.weight} kg, ${measurement.bodyFat}% vet, ${measurement.muscleMass} kg spier",
                                         color = MaterialTheme.trainIqColors.mutedText,
@@ -395,7 +407,7 @@ fun ProgressScreen(
                                         )
                                     }
                                 }
-                                TextButton(onClick = { onDeleteMeasurement(measurement.id) }) { Text(deleteMeasurementActionLabel()) }
+                                TextButton(onClick = { onDeleteMeasurement(measurement.id) }, modifier = Modifier.fillMaxWidth()) { Text(deleteMeasurementActionLabel()) }
                             }
                         }
                     }
@@ -450,5 +462,30 @@ internal fun sortedMeasurementsForHistory(measurements: List<BodyMeasurement>): 
 
 internal fun deleteMeasurementActionLabel(): String = "Verwijderen"
 
+internal fun latestBodyWeightText(measurements: List<BodyMeasurement>): String =
+    sortedMeasurementsForHistory(measurements).firstOrNull()?.let { "${oneDecimal(it.weight)} kg" } ?: "-- kg"
+
+internal fun latestBodyFatText(measurements: List<BodyMeasurement>): String =
+    sortedMeasurementsForHistory(measurements).firstOrNull()?.let { "${oneDecimal(it.bodyFat)}%" } ?: "--%"
+
+internal fun latestMuscleMassText(measurements: List<BodyMeasurement>): String =
+    sortedMeasurementsForHistory(measurements).firstOrNull()?.let { "${oneDecimal(it.muscleMass)} kg" } ?: "-- kg"
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ProgressMetricRow(bodyFat: String, muscleMass: String) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+    ) {
+        AppChip(label = "Vet $bodyFat", accent = MaterialTheme.trainIqColors.amber)
+        AppChip(label = "Spier $muscleMass", accent = MaterialTheme.trainIqColors.amber)
+    }
+}
+
 private fun signedOneDecimal(value: Double): String =
     String.format(Locale.getDefault(), "%+.1f", value)
+
+private fun oneDecimal(value: Double): String =
+    String.format(Locale.US, "%.1f", value)

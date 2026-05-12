@@ -361,6 +361,7 @@ private val RoutineSetHorizontalPadding = 6.dp
 private val ActiveSetActionWidth = 104.dp
 private val ActiveSetLeadingWidth = 76.dp
 private val ActiveSetHeaderMinHeight = 56.dp
+private val ActiveSetStackedActionBreakpoint = 320.dp
 private val TopLevelBottomContentPadding = 132.dp
 private val ActiveWorkoutBottomContentPadding = 156.dp
 private val ExercisePickerHandleDismissThreshold = 96.dp
@@ -370,6 +371,11 @@ private const val SetEditorSurfaceMaxHeightFraction = 0.92f
 internal fun activeWorkoutBottomContentPaddingForFeedback() = ActiveWorkoutBottomContentPadding
 
 internal fun activeSetHeaderMinHeightForLabels() = ActiveSetHeaderMinHeight
+
+internal enum class ActiveSetActionLayout { Wrapped, Stacked }
+
+internal fun activeSetActionLayoutForWidth(width: Dp): ActiveSetActionLayout =
+    if (width < ActiveSetStackedActionBreakpoint) ActiveSetActionLayout.Stacked else ActiveSetActionLayout.Wrapped
 
 private data class RoutineGenerationRequest(
     val daysPerWeek: Int,
@@ -4952,10 +4958,6 @@ fun ActiveWorkoutScreen(
             ) {
             item(key = "active-workout-header") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ScreenHeader(
-                        title = if (uiState.debrief == null) "Actieve training" else "Training opgeslagen",
-                        subtitle = "${displayWorkoutDayName(uiState.workout?.name ?: "Workout")} - ${formatTimer(uiState.elapsedSeconds.toInt())}",
-                    )
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -4987,7 +4989,7 @@ fun ActiveWorkoutScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.trainIqColors.mutedText,
                     )
-                    ActiveWorkoutStickyStatus(uiState, restTimerSeconds)
+                    ActiveWorkoutSessionSummary(uiState, restTimerSeconds)
                 }
             }
             uiState.message?.let { message ->
@@ -5163,6 +5165,53 @@ fun ActiveWorkoutScreen(
             },
             dismissButton = { TextButton(onClick = { pendingActiveReplacement = null }) { Text("Annuleren") } },
         )
+    }
+}
+
+@Composable
+private fun ActiveWorkoutSessionSummary(uiState: ActiveWorkoutUiState, restTimerSeconds: Int) {
+    val progress = if (uiState.targetSets > 0) {
+        (uiState.completedSets / uiState.targetSets.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    AppCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                contentDescription = activeWorkoutStickyStatusContentDescription(uiState, restTimerSeconds)
+            },
+        accent = MaterialTheme.trainIqColors.amber,
+        elevated = true,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                if (uiState.debrief == null) "Actieve training" else "Training opgeslagen",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                displayWorkoutDayName(uiState.workout?.name ?: "Workout"),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                StatusMetric("Tijd", formatTimer(uiState.elapsedSeconds.toInt()))
+                StatusMetric("Oefeningen", uiState.workout?.exercises?.size?.toString() ?: "-")
+                StatusMetric("Sets", "${uiState.completedSets}/${uiState.targetSets}")
+                StatusMetric("Rust", activeWorkoutBottomBarStatusText(restTimerSeconds).removePrefix("Rust "))
+            }
+            AppLinearProgress(progress = progress, accent = MaterialTheme.trainIqColors.amber)
+        }
     }
 }
 
@@ -5640,44 +5689,87 @@ private fun ActiveExerciseCard(
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    maxItemsInEachRow = 3,
-                ) {
-                    SecondaryActionButton(
-                        onClick = onCopyLastSet,
-                        enabled = loggedSets.isNotEmpty(),
-                        modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 44.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-                    ) {
-                        Icon(Icons.Rounded.ContentCopy, contentDescription = copyPreviousSetContentDescription())
-                    }
-                    TextButton(
-                        onClick = onLogSameAgain,
-                        enabled = loggedSets.isNotEmpty() && !isLogPending,
-                        modifier = Modifier.defaultMinSize(minHeight = 48.dp),
-                    ) {
-                        Text("Zelfde opnieuw", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    PrimaryActionButton(
-                        onClick = onLogSet,
-                        enabled = !isLogPending,
-                        modifier = Modifier
-                            .weight(1f)
-                            .defaultMinSize(minHeight = 48.dp),
-                    ) {
-                        Text(
-                            activeSetLogButtonLabel(
-                                isLogPending = isLogPending,
-                                hasPendingCorrection = hasPendingCorrection,
-                                loggedSetCount = loggedSets.size,
-                                plannedSetCount = plannedSetCount,
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val primaryLabel = activeSetLogButtonLabel(
+                        isLogPending = isLogPending,
+                        hasPendingCorrection = hasPendingCorrection,
+                        loggedSetCount = loggedSets.size,
+                        plannedSetCount = plannedSetCount,
+                    )
+                    when (activeSetActionLayoutForWidth(maxWidth)) {
+                        ActiveSetActionLayout.Stacked -> {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    SecondaryActionButton(
+                                        onClick = onCopyLastSet,
+                                        enabled = loggedSets.isNotEmpty(),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .defaultMinSize(minHeight = 48.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                                    ) {
+                                        Icon(Icons.Rounded.ContentCopy, contentDescription = copyPreviousSetContentDescription())
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Vorige", maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                                    }
+                                    TextButton(
+                                        onClick = onLogSameAgain,
+                                        enabled = loggedSets.isNotEmpty() && !isLogPending,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .defaultMinSize(minHeight = 48.dp),
+                                    ) {
+                                        Text("Zelfde opnieuw", maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                                    }
+                                }
+                                PrimaryActionButton(
+                                    onClick = onLogSet,
+                                    enabled = !isLogPending,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .defaultMinSize(minHeight = 48.dp),
+                                ) {
+                                    Text(primaryLabel, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                                }
+                            }
+                        }
+                        ActiveSetActionLayout.Wrapped -> {
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                maxItemsInEachRow = 3,
+                            ) {
+                                SecondaryActionButton(
+                                    onClick = onCopyLastSet,
+                                    enabled = loggedSets.isNotEmpty(),
+                                    modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                                ) {
+                                    Icon(Icons.Rounded.ContentCopy, contentDescription = copyPreviousSetContentDescription())
+                                }
+                                TextButton(
+                                    onClick = onLogSameAgain,
+                                    enabled = loggedSets.isNotEmpty() && !isLogPending,
+                                    modifier = Modifier.defaultMinSize(minHeight = 48.dp),
+                                ) {
+                                    Text("Zelfde opnieuw", maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                                }
+                                PrimaryActionButton(
+                                    onClick = onLogSet,
+                                    enabled = !isLogPending,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .defaultMinSize(minHeight = 48.dp),
+                                ) {
+                                    Text(primaryLabel, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -5905,7 +5997,11 @@ private fun SetRow(
     onRelog: () -> Unit,
 ) {
     var showDeleteConfirm by remember(index, loggedSet) { mutableStateOf(false) }
-    val background = if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+    val background = if (isCurrent) {
+        MaterialTheme.trainIqColors.amber.copy(alpha = 0.18f)
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
+    }
     val rpeColor = loggedSet?.let { intensityContainerColor(it.rpe) } ?: background
     val metricCells = activeSetMetricCells(
         repRange = repRange,
@@ -5958,7 +6054,7 @@ private fun SetRow(
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             if (loggedSet != null) {

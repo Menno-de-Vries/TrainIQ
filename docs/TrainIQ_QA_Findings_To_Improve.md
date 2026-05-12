@@ -1016,3 +1016,47 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
 - Crash evidence: PASS, `.codex/device-qa/2026-05-10-training-setup-to-completion-polish/40-after-save-crash-buffer.txt` was empty.
 - External sources used: None. Local runtime evidence and existing app tests were sufficient.
 - Remaining risk: completion with Gemini-enabled debrief still needs API-key/network-path evidence; this pass verified local fallback completion.
+
+## 2026-05-12 Warm Futuristic UI Polish
+
+- Target-state link: Primary screens should feel modern, calm, readable, compact-safe, and aligned with the new warm futuristic mockups without changing core data, navigation, Health Connect, Gemini, or Room behavior.
+- Scope: conservative visual polish for shared theme/components, Home, Nutrition, Progress, Coach, and Active Workout using existing app state only. Settings received only shared component/theme effects.
+- Files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/core/theme/Theme.kt`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/core/ui/AppDesign.kt`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/home/HomeScreen.kt`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/progress/ProgressScreen.kt`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/coach/CoachScreen.kt`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt`
+  - focused UI/source regression tests under `TrainIQ-Project/app/src/test/java/com/trainiq/`
+- Fix: added warm moodboard tokens, warm-glass shared styling, pill/metric/action layout helpers, safer full-width or wrapping actions for long Dutch labels, stronger hierarchy on Home/Nutrition/Progress/Coach, and a clearer Active Workout summary/action layout.
+- Verification: baseline PASS, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+- Verification: RED/PASS, focused warm moodboard/shared UI tests and source guards.
+- Verification: PASS, `WorkoutInputValidationTest`, `ProgressMeasurementValidationTest`, Home/Nutrition/Coach/Settings/architecture targeted tests.
+- Verification: PASS, after-change broad gate `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+- Runtime QA: PASS on `emulator-5554` after reinstall. Fresh launch returned `Status: ok`, `WaitTime: 5303`; Start, Training, Voeding, Coach, Meer/Settings, and Voortgang opened without crash; crash buffers were empty.
+- Font-scale QA: PASS/PARTIAL at system font scale `1.3`; Start, Training, Voeding, Coach, and Meer/Settings rendered and crash buffer stayed empty. Active Workout seeded-flow font-scale proof remains covered by earlier targeted evidence and was not rerun in this pass.
+- Evidence folder: `TrainIQ-Project/.codex/device-qa/2026-05-12-warm-futuristic-ui-polish/`.
+- External sources used: None. Local mockups, blueprint criteria, source inspection, tests, and emulator evidence were sufficient.
+- Remaining risk: this pass did not certify manual TalkBack/Switch Access, physical-device performance, Gemini-enabled workout debrief, or deeper seeded active-workout runtime flows.
+
+## 2026-05-13 Nutrition Flow Polish
+
+- Target-state link: Nutrition logging should be calmer, direct from the selected meal moment, and editable without forcing users to search products or recipes again.
+- Files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/nutrition/NutritionInputValidationTest.kt`
+- Fix: replaced the persistent nutrition tab row with a compact `|||` section menu, kept meal-moment `Toevoegen` on the current screen with the contextual add-to-meal sheet, and made existing meal quantity editing explicit with `Hoeveelheid wijzigen` plus edit-mode save copy.
+- Regression coverage: added targeted nutrition helper tests and source guards for the section menu, contextual add flow, and existing-meal edit draft flow.
+- Verification: baseline PASS, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --console=plain --no-configuration-cache`.
+- Verification: RED, the targeted nutrition test failed on missing section-menu/edit helper functions before implementation.
+- Verification: PASS, targeted nutrition test after implementation.
+- Verification: PASS, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+- Verification: PASS, `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+- Runtime QA: PASS after emulator storage was increased. `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache` installed on `emulator-5554`; cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 6170`.
+- Runtime QA: PASS, UI dump showed `Voeding`, `|||`, and content description `Voeding secties openen`; tapping the section control opened `Voeding secties` with `Vandaag`, `Toevoegen`, `AI-resultaat`, `Recepten`, `Producten`, and `Historie`.
+- Runtime QA: PASS, tapping `Toevoegen` in the `Ochtend` section opened the contextual `Toevoegen aan Ochtend` sheet with manual product, saved product, saved recipe, AI context, and photo/AI actions.
+- Crash evidence: PASS, `adb logcat -d -t 2000 AndroidRuntime:E '*:S'` was empty after launch, section menu, and add-sheet checks.
+- External sources used: Microsoft Learn ADB0060 guidance was used only for the earlier install blocker; after storage increase, local runtime evidence was sufficient.
+- Remaining risk: existing-meal quantity edit runtime proof still needs seeded/created meal data; source guards and unit tests cover the edit draft path.

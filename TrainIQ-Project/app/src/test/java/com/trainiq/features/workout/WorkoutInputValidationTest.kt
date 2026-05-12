@@ -166,6 +166,33 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun `active workout summary keeps rest status and session name visible`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val summaryBody = workoutScreen.substringAfter("private fun ActiveWorkoutSessionSummary(")
+            .substringBefore("private fun ActiveWorkoutStickyStatus(")
+
+        assertTrue(summaryBody.contains("displayWorkoutDayName"))
+        assertTrue(summaryBody.contains("activeWorkoutBottomBarStatusText(restTimerSeconds)"))
+        assertTrue(summaryBody.contains("StatusMetric(\"Rust\""))
+        assertTrue(summaryBody.contains("AppLinearProgress(progress = progress"))
+    }
+
+    @Test
+    fun `active set action row stacks on compact widths to avoid clipped Dutch labels`() {
+        assertEquals(ActiveSetActionLayout.Stacked, activeSetActionLayoutForWidth(319.dp))
+        assertEquals(ActiveSetActionLayout.Wrapped, activeSetActionLayoutForWidth(320.dp))
+
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val activeExerciseBody = workoutScreen.substringAfter("if (showLogger) Column")
+            .substringBefore("private fun ActiveExerciseRestControl(")
+
+        assertTrue(activeExerciseBody.contains("BoxWithConstraints(modifier = Modifier.fillMaxWidth())"))
+        assertTrue(activeExerciseBody.contains("activeSetActionLayoutForWidth(maxWidth)"))
+        assertTrue(activeExerciseBody.contains("maxLines = 2"))
+        assertTrue(activeExerciseBody.contains("TextAlign.Center"))
+    }
+
+    @Test
     fun `active set title combines number and type in one readable label`() {
         assertEquals("Set 1 - Normaal", activeSetTitleText(1, SetType.NORMAL))
         assertEquals("Set 2", activeSetTitleText(2, null))

@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
@@ -88,6 +89,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.trainiq.core.theme.radii
 import com.trainiq.core.theme.spacing
@@ -414,11 +416,26 @@ fun AppBackgroundBrush(): Brush {
         colors = listOf(
             colors.appBackground,
             colors.appBackground,
-            colors.backgroundGlow.copy(alpha = 0.30f),
+            colors.backgroundGlow.copy(alpha = 0.42f),
+            colors.amber.copy(alpha = 0.10f),
         ),
         start = Offset.Zero,
         end = Offset(900f, 1800f),
     )
+}
+
+enum class ActionButtonLayout {
+    Inline,
+    Stacked,
+}
+
+internal fun actionButtonLayoutForWidth(widthDp: Int, labels: List<String>): ActionButtonLayout {
+    val longestLabel = labels.maxOfOrNull { it.length } ?: 0
+    return if (widthDp < 360 && longestLabel > 12) {
+        ActionButtonLayout.Stacked
+    } else {
+        ActionButtonLayout.Inline
+    }
 }
 
 @Composable
@@ -486,7 +503,7 @@ fun AppCard(
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(MaterialTheme.radii.card),
-        border = BorderStroke(1.dp, colors.cardBorder),
+        border = BorderStroke(1.dp, colors.cardBorder.copy(alpha = if (elevated) 0.86f else 0.72f)),
         colors = CardDefaults.cardColors(
             containerColor = if (elevated) colors.cardElevated else colors.card,
             contentColor = MaterialTheme.colorScheme.onSurface,
@@ -499,8 +516,9 @@ fun AppCard(
                 .background(
                     Brush.linearGradient(
                         listOf(
+                            colors.amber.copy(alpha = if (elevated) 0.10f else 0.045f),
                             Color.Transparent,
-                            accent.copy(alpha = if (elevated) 0.08f else 0.035f),
+                            accent.copy(alpha = if (elevated) 0.10f else 0.045f),
                         ),
                     ),
                 )
@@ -509,6 +527,22 @@ fun AppCard(
             content = content,
         )
     }
+}
+
+@Composable
+fun WarmGlassCard(
+    modifier: Modifier = Modifier,
+    accent: Color = MaterialTheme.trainIqColors.amber,
+    contentPadding: PaddingValues = PaddingValues(MaterialTheme.spacing.medium),
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    AppCard(
+        modifier = modifier,
+        accent = accent,
+        elevated = true,
+        contentPadding = contentPadding,
+        content = content,
+    )
 }
 
 @Composable
@@ -592,6 +626,132 @@ fun AppChip(
 }
 
 @Composable
+fun AppPill(
+    label: String,
+    modifier: Modifier = Modifier,
+    accent: Color = MaterialTheme.trainIqColors.amber,
+) {
+    Surface(
+        modifier = modifier.widthIn(min = 96.dp),
+        shape = RoundedCornerShape(MaterialTheme.radii.chip),
+        color = Color.White.copy(alpha = 0.96f),
+        contentColor = accent,
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            softWrap = true,
+        )
+    }
+}
+
+@Composable
+fun CompactMetricCard(
+    title: String,
+    value: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    accent: Color = MaterialTheme.trainIqColors.amber,
+) {
+    WarmGlassCard(modifier = modifier, accent = accent) {
+        Text(title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
+        Text(
+            text = value,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.ExtraBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            softWrap = true,
+        )
+        AppPill(label = subtitle, accent = accent)
+    }
+}
+
+@Composable
+fun MetricTile(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    accent: Color = MaterialTheme.trainIqColors.amber,
+    supportingText: String? = null,
+) {
+    WarmGlassCard(modifier = modifier, accent = accent, contentPadding = PaddingValues(14.dp)) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.ExtraBold,
+            color = accent,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        supportingText?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.trainIqColors.mutedText,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+fun ActionButtonRow(
+    labels: List<String>,
+    modifier: Modifier = Modifier,
+    horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(MaterialTheme.spacing.small),
+    verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(MaterialTheme.spacing.small),
+    content: @Composable () -> Unit,
+) {
+    val layout = actionButtonLayoutForWidth(LocalConfiguration.current.screenWidthDp, labels)
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = horizontalArrangement,
+        verticalArrangement = verticalArrangement,
+        maxItemsInEachRow = if (layout == ActionButtonLayout.Stacked) 1 else Int.MAX_VALUE,
+    ) {
+        Box(
+            modifier = if (layout == ActionButtonLayout.Stacked) {
+                Modifier.fillMaxWidth()
+            } else {
+                Modifier.widthIn(min = 96.dp)
+            },
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
+fun WrappingActionRow(
+    labels: List<String> = emptyList(),
+    modifier: Modifier = Modifier,
+    horizontalSpacing: Dp = MaterialTheme.spacing.small,
+    verticalSpacing: Dp = MaterialTheme.spacing.small,
+    content: @Composable () -> Unit,
+) {
+    ActionButtonRow(
+        labels = labels,
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(horizontalSpacing),
+        verticalArrangement = Arrangement.spacedBy(verticalSpacing),
+        content = content,
+    )
+}
+
+@Composable
 fun PrimaryActionButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -612,7 +772,13 @@ fun PrimaryActionButton(
             disabledContentColor = MaterialTheme.trainIqColors.mutedText,
         ),
         contentPadding = contentPadding,
-        content = content,
+        content = {
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+                content = content,
+            )
+        },
     )
 }
 
@@ -637,7 +803,13 @@ fun SecondaryActionButton(
             disabledContentColor = MaterialTheme.trainIqColors.mutedText,
         ),
         contentPadding = contentPadding,
-        content = content,
+        content = {
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+                content = content,
+            )
+        },
     )
 }
 
