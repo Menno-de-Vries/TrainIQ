@@ -4,11 +4,15 @@ import android.content.Context
 import androidx.room.Room
 import androidx.work.WorkManager
 import com.trainiq.BuildConfig
+import com.trainiq.ai.services.AiJsonGenerator
+import com.trainiq.ai.services.AiProviderRouter
 import com.trainiq.core.database.TrainIqDao
 import com.trainiq.core.database.TrainIqDatabase
 import com.trainiq.core.database.TrainIqMigrations
 import com.trainiq.core.security.AndroidKeystoreGeminiKeyStore
+import com.trainiq.core.security.AndroidKeystoreOpenAiKeyStore
 import com.trainiq.core.security.GeminiEncryptedKeyStore
+import com.trainiq.core.security.OpenAiEncryptedKeyStore
 import com.trainiq.data.migration.JsonRoomImportPlanner
 import com.trainiq.data.migration.JsonRoomImportSink
 import com.trainiq.data.migration.RoomJsonImportSink
@@ -16,6 +20,7 @@ import com.trainiq.data.migration.AssetRoomMigrationChainVerificationMarkerSourc
 import com.trainiq.data.migration.RoomMigrationChainVerificationMarkerSource
 import com.trainiq.data.migration.RoomRuntimeReadinessGate
 import com.trainiq.data.remote.GeminiApi
+import com.trainiq.data.remote.OpenAiApi
 import com.trainiq.data.repository.RoomCoachRepository
 import com.trainiq.data.repository.RoomHomeRepository
 import com.trainiq.data.repository.RoomNutritionRepository
@@ -33,6 +38,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
+import javax.inject.Qualifier
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -59,7 +65,8 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideRetrofit(client: OkHttpClient): Retrofit =
+    @GeminiRetrofit
+    fun provideGeminiRetrofit(client: OkHttpClient): Retrofit =
         Retrofit.Builder()
             .baseUrl(BuildConfig.GEMINI_BASE_URL)
             .client(client)
@@ -68,11 +75,33 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideGeminiApi(retrofit: Retrofit): GeminiApi = retrofit.create(GeminiApi::class.java)
+    @OpenAiRetrofit
+    fun provideOpenAiRetrofit(client: OkHttpClient): Retrofit =
+        Retrofit.Builder()
+            .baseUrl(BuildConfig.OPENAI_BASE_URL)
+            .client(client)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+
+    @Provides
+    @Singleton
+    fun provideGeminiApi(@GeminiRetrofit retrofit: Retrofit): GeminiApi = retrofit.create(GeminiApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideOpenAiApi(@OpenAiRetrofit retrofit: Retrofit): OpenAiApi = retrofit.create(OpenAiApi::class.java)
 
     @Provides
     @Singleton
     fun provideGeminiEncryptedKeyStore(store: AndroidKeystoreGeminiKeyStore): GeminiEncryptedKeyStore = store
+
+    @Provides
+    @Singleton
+    fun provideOpenAiEncryptedKeyStore(store: AndroidKeystoreOpenAiKeyStore): OpenAiEncryptedKeyStore = store
+
+    @Provides
+    @Singleton
+    fun provideAiJsonGenerator(router: AiProviderRouter): AiJsonGenerator = router
 
     @Provides
     @Singleton
@@ -108,6 +137,14 @@ object AppModule {
     @Provides
     fun provideJsonRoomImportSink(database: TrainIqDatabase): JsonRoomImportSink = RoomJsonImportSink(database)
 }
+
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class GeminiRetrofit
+
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class OpenAiRetrofit
 
 @Module
 @InstallIn(SingletonComponent::class)

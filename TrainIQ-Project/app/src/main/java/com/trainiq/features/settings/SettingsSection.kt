@@ -52,6 +52,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.trainiq.BuildConfig
+import com.trainiq.ai.services.AiProviderPreference
+import com.trainiq.ai.services.hasAnyReadyProvider
 import com.trainiq.ai.services.AiUsageGate
 import com.trainiq.ai.services.GoalAdvisorService
 import com.trainiq.core.datastore.AiPreferences
@@ -226,6 +228,30 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun saveOpenAiKey(apiKey: String) {
+        viewModelScope.launch {
+            if (apiKey.isBlank()) {
+                _message.value = "Voer eerst een OpenAI API-sleutel in."
+                return@launch
+            }
+            val encrypted = aiUsageGate.saveOpenAiApiKey(apiKey)
+            _message.value = if (encrypted) {
+                apiKeyRefreshes.update { it + 1 }
+                "OpenAI API-sleutel versleuteld opgeslagen."
+            } else {
+                "OpenAI API-sleutel opslaan mislukt. Bestaande sleutel blijft behouden."
+            }
+        }
+    }
+
+    fun setAiProviderPreference(preference: AiProviderPreference) {
+        viewModelScope.launch {
+            aiUsageGate.setProviderPreference(preference)
+            apiKeyRefreshes.update { it + 1 }
+            _message.value = "${preference.label} ingesteld voor AI-acties."
+        }
+    }
+
     fun clearGeminiKey() {
         viewModelScope.launch {
             aiUsageGate.clearEncryptedApiKey()
@@ -233,6 +259,16 @@ class SettingsViewModel @Inject constructor(
             preferencesRepository.setAiEnabled(false)
             apiKeyRefreshes.update { it + 1 }
             _message.value = "Gemini API-sleutel verwijderd en AI uitgeschakeld."
+        }
+    }
+
+    fun clearAllAiKeys() {
+        viewModelScope.launch {
+            aiUsageGate.clearAllAiKeys()
+            preferencesRepository.clearGeminiApiKey()
+            preferencesRepository.setAiEnabled(false)
+            apiKeyRefreshes.update { it + 1 }
+            _message.value = "AI-sleutels verwijderd en AI uitgeschakeld."
         }
     }
 
@@ -379,8 +415,10 @@ fun SettingsRoute(
                     onToggleTelemetry = viewModel::setTelemetryOptIn,
                     onToggleRestTimerSound = viewModel::setRestTimerSoundEnabled,
                     onToggleWorkoutHaptics = viewModel::setWorkoutHapticsEnabled,
+                    onProviderPreferenceSelected = viewModel::setAiProviderPreference,
                     onSaveApiKey = viewModel::saveGeminiKey,
-                    onClearApiKey = viewModel::clearGeminiKey,
+                    onSaveOpenAiKey = viewModel::saveOpenAiKey,
+                    onClearApiKey = viewModel::clearAllAiKeys,
                     onSaveProfile = viewModel::saveProfile,
                     onResetProfile = viewModel::resetProfile,
                     onClearAllData = viewModel::clearAllData,
@@ -469,7 +507,9 @@ fun SettingsScreen(
     onToggleTelemetry: (Boolean) -> Unit,
     onToggleRestTimerSound: (Boolean) -> Unit,
     onToggleWorkoutHaptics: (Boolean) -> Unit,
+    onProviderPreferenceSelected: (AiProviderPreference) -> Unit,
     onSaveApiKey: (String) -> Unit,
+    onSaveOpenAiKey: (String) -> Unit,
     onClearApiKey: () -> Unit,
     onSaveProfile: (String, String, BiologicalSex, String, String, String, String, String) -> Unit,
     onResetProfile: () -> Unit,
@@ -482,6 +522,7 @@ fun SettingsScreen(
     onOpenProgress: () -> Unit = {},
 ) {
     var apiKey by rememberSaveable { mutableStateOf("") }
+    var openAiKey by rememberSaveable { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf(profile?.name.orEmpty()) }
     var age by rememberSaveable { mutableStateOf(profile?.age?.toString() ?: "30") }
     var sex by rememberSaveable { mutableStateOf(profile?.sex ?: BiologicalSex.MALE) }
@@ -592,9 +633,9 @@ fun SettingsScreen(
             }
         }
         item {
-            SectionCard(title = "AI / Gemini") {
+            SectionCard(title = "AI / Providers") {
                 Text("AI wordt alleen gebruikt nadat jij het inschakelt. TrainIQ doet geen AI-aanvragen op de achtergrond.")
-                Text("Bij een expliciete AI-actie stuurt TrainIQ de benodigde prompt, context en eventueel gekozen foto naar Google Gemini met jouw lokaal opgeslagen API-sleutel.")
+                Text("Bij een expliciete AI-actie stuurt TrainIQ de benodigde prompt, context en eventueel gekozen foto naar je gekozen provider met jouw lokaal opgeslagen API-sleutel.")
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -604,9 +645,26 @@ fun SettingsScreen(
                         Text("AI-functies inschakelen", fontWeight = FontWeight.SemiBold)
                         Text("Alleen expliciete acties zoals maaltijdanalyse, doeladvies, AI-rapport en workoutterugblik kunnen verzoeken starten.")
                     }
-                    Switch(checked = aiPreferences.enabled, onCheckedChange = onToggleAi)
+                    Switch(
+                        checked = aiPreferences.enabled,
+                        onCheckedChange = onToggleAi,
+                        modifier = Modifier.settingsActionLabel("AI-functies inschakelen"),
+                    )
                 }
-                Text("Huidige sleutel: $maskedApiKey")
+                Text("Provider-volgorde", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
+                ) {
+                    AiProviderPreference.entries.forEach { preference ->
+                        FilterChip(
+                            selected = aiPreferences.preferredProvider == preference,
+                            onClick = { onProviderPreferenceSelected(preference) },
+                            label = { Text(preference.label) },
+                        )
+                    }
+                }
+                Text("Gemini sleutel: $maskedApiKey")
                 OutlinedTextField(
                     value = apiKey,
                     onValueChange = { apiKey = it },
@@ -631,11 +689,37 @@ fun SettingsScreen(
                         onSaveApiKey(apiKey)
                         apiKey = ""
                     }) { Text(if (aiPreferences.apiKey.isBlank()) "Sleutel opslaan" else "Sleutel bijwerken") }
-                    TextButton(onClick = { pendingDestructiveAction = PendingDestructiveSettingsAction.CLEAR_API_KEY }) { Text("Sleutel verwijderen") }
                 }
-                Text("Gemini kan API-kosten veroorzaken. Laat AI uitgeschakeld tenzij je het wilt gebruiken.")
+                Text("OpenAI sleutel: ${maskedSettingsApiKey(aiPreferences.openAiApiKey)}")
+                OutlinedTextField(
+                    value = openAiKey,
+                    onValueChange = { openAiKey = it },
+                    label = { Text("OpenAI API-sleutel") },
+                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                    visualTransformation = if (shouldMaskGeminiApiKeyInput()) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    singleLine = true,
+                )
+                Text(
+                    openAiApiKeySetupHelpText(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "${openAiApiKeySourceLabel()}: ${openAiApiKeySourceUrl()}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+                    Button(onClick = {
+                        onSaveOpenAiKey(openAiKey)
+                        openAiKey = ""
+                    }) { Text(if (aiPreferences.openAiApiKey.isBlank()) "OpenAI opslaan" else "OpenAI bijwerken") }
+                    TextButton(onClick = { pendingDestructiveAction = PendingDestructiveSettingsAction.CLEAR_API_KEY }) { Text("AI-sleutels verwijderen") }
+                }
+                Text("Gemini en OpenAI kunnen API-kosten veroorzaken. Laat AI uitgeschakeld tenzij je het wilt gebruiken.")
                 Text("Gebruikt door: maaltijdanalyse, workoutterugblik, wekelijks AI-rapport en doeladviseur.")
-                Text("Status: ${if (aiPreferences.enabled && aiPreferences.apiKey.isNotBlank()) "Ingeschakeld en klaar" else if (aiPreferences.apiKey.isBlank()) "Geen sleutel ingesteld" else "Uitgeschakeld"}")
+                Text("Status: ${aiProviderStatusLabel(aiPreferences)}")
             }
         }
         item {
@@ -894,7 +978,7 @@ internal fun destructiveSettingsActionTitle(action: PendingDestructiveSettingsAc
 internal fun destructiveSettingsActionBody(action: PendingDestructiveSettingsAction): String =
     when (action) {
         PendingDestructiveSettingsAction.CLEAR_API_KEY ->
-            "Je Gemini API-sleutel wordt verwijderd en AI wordt uitgeschakeld. Deze actie kan niet automatisch ongedaan worden gemaakt."
+            "Je Gemini en OpenAI API-sleutels worden verwijderd en AI wordt uitgeschakeld. Deze actie kan niet automatisch ongedaan worden gemaakt."
         PendingDestructiveSettingsAction.RESET_PROFILE ->
             "Je profiel en dashboarddoelen worden verwijderd. Trainingen en voeding blijven staan. Deze actie kan niet automatisch ongedaan worden gemaakt."
         PendingDestructiveSettingsAction.CLEAR_ALL_DATA ->
@@ -970,6 +1054,22 @@ internal fun geminiApiKeySourceUrl(): String = "https://aistudio.google.com/app/
 
 internal fun geminiApiKeySetupHelpText(): String =
     "Maak of bekijk je sleutel in Google AI Studio, plak hem hier en zet AI aan. Deel je sleutel niet en commit hem nooit."
+
+internal fun openAiApiKeySourceLabel(): String = "OpenAI API Keys"
+
+internal fun openAiApiKeySourceUrl(): String = "https://platform.openai.com/api-keys"
+
+internal fun openAiApiKeySetupHelpText(): String =
+    "Maak of bekijk je sleutel in het OpenAI Platform, plak hem hier en zet AI aan. Deel je sleutel niet en commit hem nooit."
+
+internal fun aiProviderStatusLabel(aiPreferences: AiPreferences): String = when {
+    !aiPreferences.enabled -> "Uitgeschakeld"
+    aiPreferences.hasAnyReadyProvider() -> buildString {
+        append("Klaar: ${aiPreferences.preferredProvider.label}")
+        if (aiPreferences.geminiApiKey.isNotBlank() && aiPreferences.openAiApiKey.isNotBlank()) append(", fallbackprovider klaar")
+    }
+    else -> "Geen AI-sleutel ingesteld"
+}
 
 internal fun settingsOverflowSectionTitle(): String = "Meer"
 

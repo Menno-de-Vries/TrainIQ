@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.trainiq.ai.services.AiProviderPreference
 import com.trainiq.core.theme.ThemeMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -19,6 +20,9 @@ private val Context.dataStore by preferencesDataStore(name = "trainiq_preference
 data class AiPreferences(
     val enabled: Boolean,
     val apiKey: String,
+    val preferredProvider: AiProviderPreference = AiProviderPreference.GEMINI_FIRST,
+    val geminiApiKey: String = apiKey,
+    val openAiApiKey: String = "",
 )
 
 data class WorkoutFeedbackPreferences(
@@ -40,6 +44,7 @@ class UserPreferencesRepository @Inject constructor(
     private val streakKey = intPreferencesKey("streak_count")
     private val themeModeKey = stringPreferencesKey("theme_mode")
     private val aiEnabledKey = booleanPreferencesKey("ai_enabled")
+    private val aiProviderPreferenceKey = stringPreferencesKey("ai_provider_preference")
     private val geminiApiKey = stringPreferencesKey("gemini_api_key")
     private val telemetryOptInKey = booleanPreferencesKey("telemetry_opt_in")
     private val restTimerSoundEnabledKey = booleanPreferencesKey("rest_timer_sound_enabled")
@@ -57,6 +62,9 @@ class UserPreferencesRepository @Inject constructor(
         AiPreferences(
             enabled = preferences[aiEnabledKey] ?: false,
             apiKey = preferences[geminiApiKey].orEmpty(),
+            preferredProvider = preferences[aiProviderPreferenceKey]
+                ?.let(AiProviderPreference::fromStorageValue)
+                ?: AiProviderPreference.GEMINI_FIRST,
         )
     }
     val telemetryOptIn: Flow<Boolean> = context.dataStore.data.map { preferences ->
@@ -79,6 +87,10 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun setAiEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences -> preferences[aiEnabledKey] = enabled }
+    }
+
+    suspend fun setAiProviderPreference(preference: AiProviderPreference) {
+        context.dataStore.edit { preferences -> preferences[aiProviderPreferenceKey] = preference.storageValue }
     }
 
     suspend fun clearGeminiApiKey() {

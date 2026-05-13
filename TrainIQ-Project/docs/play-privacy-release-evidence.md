@@ -13,7 +13,7 @@ This file is a local evidence pack. It does not claim Play Console submission, l
 | Nutrition, foods, recipes, meal logs | Room entities and nutrition screens | Meal logging, macros, reusable products/recipes | Local only except user-triggered Gemini meal scan request |
 | Progress measurements | Room entities and progress screen | Body metrics and trend display | Local only |
 | Health Connect cache and sync tokens | DataStore via `UserPreferencesRepository` | Incremental sync, recent health metrics, token validity | Local only |
-| Gemini API key | Android Keystore-backed encrypted SharedPreferences via `AndroidKeystoreGeminiKeyStore` | BYOK AI calls | Stored locally; sent only as `x-goog-api-key` header to Gemini when user-triggered AI is enabled |
+| Gemini/OpenAI API keys | Android Keystore-backed encrypted SharedPreferences via provider-specific key stores | BYOK AI calls | Stored locally; Gemini sent only as `x-goog-api-key`, OpenAI sent only as `Authorization` header, and only when user-triggered AI is enabled |
 | Telemetry preference | DataStore | Opt-in state | Default off |
 | Technical telemetry queue | In-memory queue in `TelemetryExport.kt` | Privacy-safe diagnostics when enabled | Upload disabled by default; no static API token in `BuildConfig` |
 
@@ -48,7 +48,7 @@ Local defaults and evidence:
 
 - No account system is implemented locally.
 - No advertising identifier usage was found in local app code.
-- AI is opt-in and requires a user-provided Gemini API key.
+- AI is opt-in and requires a user-provided Gemini or OpenAI API key.
 - Telemetry is opt-in and disabled by default.
 - Health data is read from Health Connect only after rationale and system permission flow.
 - Local destructive actions are disclosed in Settings and clear local app data without claiming Android Health Connect access revocation.
@@ -66,7 +66,7 @@ A published policy should cover:
 
 - Health Connect data types requested and why.
 - Local-only storage for profile, workouts, nutrition, progress, and Health Connect cache.
-- User-triggered Gemini requests and BYOK behavior.
+- User-triggered Gemini/OpenAI requests and BYOK behavior.
 - API keys stored locally with Android Keystore-backed encryption.
 - Telemetry opt-in, categories, endpoint owner, retention, and opt-out.
 - Local data deletion behavior and Health Connect permission revocation path through Android settings.
@@ -77,10 +77,10 @@ A published policy should cover:
 Local client state:
 
 - Stable model ID: `gemini-2.5-flash` in `app/src/main/java/com/trainiq/ai/services/AiSupport.kt`.
-- Header auth: `x-goog-api-key` in `app/src/main/java/com/trainiq/data/remote/GeminiApi.kt`.
+- Header auth: `x-goog-api-key` in `app/src/main/java/com/trainiq/data/remote/GeminiApi.kt`; `Authorization` in `app/src/main/java/com/trainiq/data/remote/OpenAiApi.kt`.
 - Structured JSON schemas: `app/src/main/java/com/trainiq/ai/services/GeminiJsonSchemas.kt`.
 - Shared bounded retry: `app/src/main/java/com/trainiq/ai/services/AiSupport.kt`.
-- BYOK migration and storage: `app/src/main/java/com/trainiq/core/security/GeminiKeyMigration.kt` and `AndroidKeystoreGeminiKeyStore.kt`.
+- BYOK migration and storage: `app/src/main/java/com/trainiq/core/security/GeminiKeyMigration.kt`, `AndroidKeystoreGeminiKeyStore.kt`, and `AndroidKeystoreOpenAiKeyStore.kt`.
 
 Production blocker:
 
@@ -93,4 +93,3 @@ Production blocker:
 - Full TalkBack pass for active workout, scanner permission/result states, Health Connect rationale, AI routine generation, and Settings destructive actions.
 - Switch Access pass for the same flows.
 - Physical-device profileable/release performance pass with p50/p95 thresholds for startup, top-level navigation, settings scroll, and active workout logging.
-

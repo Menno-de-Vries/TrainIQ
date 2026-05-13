@@ -267,6 +267,7 @@ data class GeneratedRoutine(
 
 enum class GeneratedRoutineSource {
     GEMINI_2_5_FLASH,
+    OPENAI,
     LOCAL_FALLBACK,
 }
 
@@ -386,6 +387,8 @@ data class MealScanItem(
 
 enum class MealAnalysisSource {
     API,
+    GEMINI_2_5_FLASH,
+    OPENAI,
     LOCAL_FALLBACK,
 }
 
@@ -409,6 +412,7 @@ data class WeeklyReportResult(
 
 enum class WeeklyReportSource {
     GEMINI_2_5_FLASH,
+    OPENAI,
     LOCAL_FALLBACK,
 }
 
@@ -494,6 +498,7 @@ data class GoalAdvice(
 
 enum class GoalAdviceSource {
     GEMINI_2_5_FLASH,
+    OPENAI,
     LOCAL_CALCULATION,
 }
 
@@ -513,6 +518,7 @@ data class WorkoutDebrief(
 
 enum class WorkoutDebriefSource {
     GEMINI_2_5_FLASH,
+    OPENAI,
     LOCAL_FALLBACK,
 }
 

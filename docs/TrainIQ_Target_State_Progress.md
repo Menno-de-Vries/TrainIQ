@@ -23,6 +23,7 @@ Updated date: 2026-05-13
 - 2026-05-10 Training setup-to-completion polish: bodyweight/no-weight active logger drafts now default missing planned weight to `0`, persisted drafts fill missing fields from the planned set, and physical-device QA reached saved completion/debrief with local fallback.
 - 2026-05-12 Warm futuristic UI polish: shared theme/components, Home, Nutrition, Progress, Coach, and Active Workout now follow the conservative warm glass/amber mockup direction with source guards for moodboard colors, wrapping actions, progress hero metrics, and active-workout compact action layout.
 - 2026-05-13 Nutrition flow polish: Voeding now hides secondary sections behind a compact `|||` section menu, keeps meal-moment add actions contextual on Vandaag, and makes existing meal quantity editing explicit through the meal draft editor without data/schema changes.
+- 2026-05-13 multi-provider AI BYOK: OpenAI Responses API support now sits next to Gemini 2.5 Flash for meal scan, workout debrief, goal advice, weekly report, and routine generation through a central provider router. Settings stores separate Gemini/OpenAI keys via Android Keystore-backed stores, lets users choose Gemini-first or OpenAI-first, and preserves local fallback when no provider is ready. Production AI boundary `AI-001` remains an owner/security/legal release gate.
 
 ## Partially Completed Findings
 

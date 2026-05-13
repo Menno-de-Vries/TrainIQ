@@ -233,6 +233,7 @@ fun GeneratedRoutinePreviewDialog(
 
 private fun GeneratedRoutineSource.label(): String = when (this) {
     GeneratedRoutineSource.GEMINI_2_5_FLASH -> "Gemini 2.5 Flash"
+    GeneratedRoutineSource.OPENAI -> "OpenAI"
     GeneratedRoutineSource.LOCAL_FALLBACK -> "Lokale analyse"
 }
 

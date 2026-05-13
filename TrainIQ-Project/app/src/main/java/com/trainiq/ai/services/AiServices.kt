@@ -5,7 +5,6 @@ import android.graphics.BitmapFactory
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.trainiq.ai.prompts.GeminiPrompts
-import com.trainiq.data.model.GeminiRequest
 import com.trainiq.data.remote.GeminiApi
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.GoalAdvice
@@ -24,7 +23,6 @@ import java.io.ByteArrayOutputStream
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Base64
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -39,27 +37,33 @@ class MealAnalysisUnavailableException(
 
 @Singleton
 class MealAnalysisService internal constructor(
-    private val api: GeminiApi,
+    private val aiJsonGenerator: AiJsonGenerator,
     private val isAiReady: suspend () -> Boolean,
-    private val apiKeyProvider: suspend () -> String?,
 ) {
     internal constructor(
         api: GeminiApi,
         apiKeyProvider: suspend () -> String?,
     ) : this(
-        api = api,
+        aiJsonGenerator = GeminiOnlyJsonGenerator(api, apiKeyProvider),
         isAiReady = { apiKeyProvider() != null },
-        apiKeyProvider = apiKeyProvider,
+    )
+
+    internal constructor(
+        api: GeminiApi,
+        isAiReady: suspend () -> Boolean,
+        apiKeyProvider: suspend () -> String?,
+    ) : this(
+        aiJsonGenerator = GeminiOnlyJsonGenerator(api, apiKeyProvider),
+        isAiReady = isAiReady,
     )
 
     @Inject
     constructor(
-        api: GeminiApi,
+        aiProviderRouter: AiProviderRouter,
         aiUsageGate: AiUsageGate,
     ) : this(
-        api = api,
+        aiJsonGenerator = aiProviderRouter,
         isAiReady = { aiUsageGate.isAiReady() },
-        apiKeyProvider = { aiUsageGate.currentApiKeyOrNull() },
     )
 
     private val gson = Gson()
@@ -67,7 +71,6 @@ class MealAnalysisService internal constructor(
 
     suspend fun analyzeMealImage(path: String, userContext: String, capturedAtMillis: Long): MealAnalysisResult {
         if (!isAiReady()) return fallbackMealScan()
-        val apiKey = apiKeyProvider() ?: return fallbackMealScan()
         val file = File(path)
         val suggestedMealType = suggestMealType(capturedAtMillis)
         val captureTime = Instant.ofEpochMilli(capturedAtMillis)
@@ -79,45 +82,25 @@ class MealAnalysisService internal constructor(
             append(userContext.ifBlank { "Herken de voeding, schat porties en geef exacte macro's terug." })
         }
         val imageBytes = prepareMealScanImageBytes(file) ?: return fallbackMealScan()
-        val response = runCatching {
-            callGeminiWithBoundedRetry(feature = AiFeature.MEAL_SCAN) {
-                api.generateContent(
-                model = GEMINI_FLASH_MODEL,
-                apiKey = apiKey,
-                request = GeminiRequest(
-                    contents = listOf(
-                        GeminiRequest.Content(
-                            parts = listOf(
-                                GeminiRequest.Part(text = GeminiPrompts.mealScanner(scanContext)),
-                                GeminiRequest.Part(
-                                    inlineData = GeminiRequest.InlineData(
-                                        mimeType = "image/jpeg",
-                                        data = Base64.getEncoder().encodeToString(imageBytes),
-                                    ),
-                                ),
-                            ),
-                        ),
-                    ),
-                    generationConfig = GeminiRequest.GenerationConfig(
-                        responseMimeType = "application/json",
-                        responseJsonSchema = GeminiJsonSchemas.mealScan,
-                        thinkingConfig = GeminiRequest.ThinkingConfig(
-                            includeThoughts = false,
-                            thinkingBudget = 0,
-                        ),
-                    ),
+        val routed = runCatching {
+            aiJsonGenerator.generateJson(
+                AiRouteRequest(
+                    feature = AiFeature.MEAL_SCAN,
+                    prompt = GeminiPrompts.mealScanner(scanContext),
+                    schemaName = "meal_scan",
+                    responseJsonSchema = GeminiJsonSchemas.mealScan,
+                    thinkingBudget = 0,
+                    imageJpegBytes = imageBytes,
                 ),
-                )
-            }
+            )
         }.getOrElse { error ->
             if (error is CancellationException) throw error
             return fallbackMealScan()
         }
-        val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
-        return parseMealScan(text, suggestedMealType)
+        return parseMealScan(routed.rawJson, suggestedMealType, routed.providerUsed)
     }
 
-    private fun parseMealScan(text: String, fallbackMealType: MealType): MealAnalysisResult {
+    private fun parseMealScan(text: String, fallbackMealType: MealType, provider: AiProvider): MealAnalysisResult {
         if (text.isBlank()) throw MealAnalysisUnavailableException()
         return runCatching {
             val root = JsonParser.parseString(text).asJsonObject
@@ -158,6 +141,7 @@ class MealAnalysisService internal constructor(
                     ?: fallbackMealType,
                 notes = root.get("notes")?.asString,
                 rawResponse = text,
+                source = provider.toMealAnalysisSource(),
             )
         }.getOrElse { error ->
             throw MealAnalysisUnavailableException(cause = error)
@@ -231,18 +215,20 @@ private fun com.google.gson.JsonObject.safeNumber(
 
 @Singleton
 class WorkoutDebriefService internal constructor(
-    private val api: GeminiApi,
-    private val apiKeyProvider: suspend () -> String?,
+    private val aiJsonGenerator: AiJsonGenerator,
 ) {
+    internal constructor(
+        api: GeminiApi,
+        apiKeyProvider: suspend () -> String?,
+    ) : this(
+        aiJsonGenerator = GeminiOnlyJsonGenerator(api, apiKeyProvider),
+    )
+
     @Inject
     constructor(
-        api: GeminiApi,
-        aiUsageGate: AiUsageGate,
+        aiProviderRouter: AiProviderRouter,
     ) : this(
-        api = api,
-        apiKeyProvider = {
-            if (aiUsageGate.isAiReady()) aiUsageGate.currentApiKeyOrNull() else null
-        },
+        aiJsonGenerator = aiProviderRouter,
     )
 
     suspend fun generateWorkoutDebrief(
@@ -259,17 +245,13 @@ class WorkoutDebriefService internal constructor(
         weeklyFrequency: Int,
     ): WorkoutDebrief =
         runCatching {
-            val apiKey = apiKeyProvider() ?: return fallbackWorkoutDebriefResult(totalVolume, progression)
-            val response = callGeminiWithBoundedRetry(feature = AiFeature.WORKOUT_DEBRIEF) {
-                api.generateContent(
-                model = GEMINI_FLASH_MODEL,
-                apiKey = apiKey,
-                request = GeminiRequest(
-                    contents = listOf(
-                        GeminiRequest.Content(
-                            parts = listOf(
-                                GeminiRequest.Part(
-                                    text = GeminiPrompts.workoutDebrief(
+            val routed = aiJsonGenerator.generateJson(
+                AiRouteRequest(
+                    feature = AiFeature.WORKOUT_DEBRIEF,
+                    schemaName = "workout_debrief",
+                    responseJsonSchema = GeminiJsonSchemas.workoutDebrief,
+                    thinkingBudget = 1000,
+                    prompt = GeminiPrompts.workoutDebrief(
                                         totalVolume = totalVolume,
                                         progression = progression,
                                         comparisonSummary = comparisonSummary,
@@ -278,23 +260,9 @@ class WorkoutDebriefService internal constructor(
                                         topExercises = topExercises,
                                         weeklyFrequency = weeklyFrequency,
                                     ),
-                                ),
-                            ),
-                        ),
-                    ),
-                    generationConfig = GeminiRequest.GenerationConfig(
-                        responseMimeType = "application/json",
-                        responseJsonSchema = GeminiJsonSchemas.workoutDebrief,
-                        thinkingConfig = GeminiRequest.ThinkingConfig(
-                            includeThoughts = false,
-                            thinkingBudget = 1000,
-                        ),
-                    ),
                 ),
-                )
-            }
-            val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
-            parseWorkoutDebriefResponse(text, totalVolume, progression)
+            )
+            parseWorkoutDebriefResponse(routed.rawJson, totalVolume, progression, routed.providerUsed)
         }.getOrElse { error ->
             if (error is CancellationException) throw error
             fallbackWorkoutDebriefResult(totalVolume, progression)
@@ -303,19 +271,25 @@ class WorkoutDebriefService internal constructor(
 
 @Singleton
 class GoalAdvisorService internal constructor(
-    private val api: GeminiApi,
+    private val aiJsonGenerator: AiJsonGenerator,
     private val isAiReady: suspend () -> Boolean,
-    private val apiKeyProvider: suspend () -> String?,
 ) {
+    internal constructor(
+        api: GeminiApi,
+        isAiReady: suspend () -> Boolean,
+        apiKeyProvider: suspend () -> String?,
+    ) : this(
+        aiJsonGenerator = GeminiOnlyJsonGenerator(api, apiKeyProvider),
+        isAiReady = isAiReady,
+    )
 
     @Inject
     constructor(
-        api: GeminiApi,
+        aiProviderRouter: AiProviderRouter,
         aiUsageGate: AiUsageGate,
     ) : this(
-        api = api,
+        aiJsonGenerator = aiProviderRouter,
         isAiReady = { aiUsageGate.isAiReady() },
-        apiKeyProvider = { aiUsageGate.currentApiKeyOrNull() },
     )
     suspend fun generateGoalAdvice(
         height: Double,
@@ -337,17 +311,13 @@ class GoalAdvisorService internal constructor(
                 goal = goal,
             )
             if (!isAiReady()) return baseline
-            val apiKey = apiKeyProvider() ?: return baseline
-            val response = callGeminiWithBoundedRetry(feature = AiFeature.GOAL_ADVICE) {
-                api.generateContent(
-                model = GEMINI_FLASH_MODEL,
-                apiKey = apiKey,
-                request = GeminiRequest(
-                    contents = listOf(
-                        GeminiRequest.Content(
-                            parts = listOf(
-                                GeminiRequest.Part(
-                                    text = GeminiPrompts.goalAdvisor(
+            val routed = aiJsonGenerator.generateJson(
+                AiRouteRequest(
+                    feature = AiFeature.GOAL_ADVICE,
+                    schemaName = "goal_advice",
+                    responseJsonSchema = GeminiJsonSchemas.goalAdvice,
+                    thinkingBudget = 1000,
+                    prompt = GeminiPrompts.goalAdvisor(
                                         height = height,
                                         weight = weight,
                                         bodyFat = bodyFat,
@@ -357,23 +327,9 @@ class GoalAdvisorService internal constructor(
                                         goal = goal,
                                         baseline = baseline,
                                     ),
-                                ),
-                            ),
-                        ),
-                    ),
-                    generationConfig = GeminiRequest.GenerationConfig(
-                        responseMimeType = "application/json",
-                        responseJsonSchema = GeminiJsonSchemas.goalAdvice,
-                        thinkingConfig = GeminiRequest.ThinkingConfig(
-                            includeThoughts = false,
-                            thinkingBudget = 1000,
-                        ),
-                    ),
                 ),
-                )
-            }
-            val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
-            parseGoalAdvice(text, baseline)
+            )
+            parseGoalAdvice(routed.rawJson, baseline, routed.providerUsed)
         }.getOrElse { error ->
             if (error is CancellationException) throw error
             deterministicGoalAdvice(
@@ -387,7 +343,7 @@ class GoalAdvisorService internal constructor(
             )
         }
 
-    private fun parseGoalAdvice(text: String, baseline: GoalAdvice): GoalAdvice =
+    private fun parseGoalAdvice(text: String, baseline: GoalAdvice, provider: AiProvider): GoalAdvice =
         runCatching {
             val root = JsonParser.parseString(text).asJsonObject
             val textFields = listOf(
@@ -412,7 +368,7 @@ class GoalAdvisorService internal constructor(
                     .ifEmpty { baseline.attentionPoints },
                 advice = root.get("advies")?.asString ?: baseline.advice,
                 dataQuality = root.get("dataKwaliteit")?.asString ?: baseline.dataQuality,
-                source = GoalAdviceSource.GEMINI_2_5_FLASH,
+                source = provider.toGoalAdviceSource(),
                 rawResponse = text,
             )
         }.getOrElse { baseline }
@@ -488,36 +444,22 @@ class GoalAdvisorService internal constructor(
 
 @Singleton
 class WeeklyReportService @Inject constructor(
-    private val api: GeminiApi,
+    private val aiJsonGenerator: AiJsonGenerator,
     private val aiUsageGate: AiUsageGate,
 ) {
     suspend fun generateWeeklyReport(volume: Double, weightTrend: Double, adherence: Int): WeeklyReportResult =
         runCatching {
             if (!aiUsageGate.isAiReady()) return fallbackWeeklyReport(adherence)
-            val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return fallbackWeeklyReport(adherence)
-            val response = callGeminiWithBoundedRetry(feature = AiFeature.WEEKLY_REPORT) {
-                api.generateContent(
-                model = GEMINI_FLASH_MODEL,
-                apiKey = apiKey,
-                request = GeminiRequest(
-                    contents = listOf(
-                        GeminiRequest.Content(
-                            parts = listOf(GeminiRequest.Part(text = GeminiPrompts.weeklyReport(volume, weightTrend, adherence))),
-                        ),
-                    ),
-                    generationConfig = GeminiRequest.GenerationConfig(
-                        responseMimeType = "application/json",
-                        responseJsonSchema = GeminiJsonSchemas.weeklyReport,
-                        thinkingConfig = GeminiRequest.ThinkingConfig(
-                            includeThoughts = false,
-                            thinkingBudget = 1000,
-                        ),
-                    ),
+            val routed = aiJsonGenerator.generateJson(
+                AiRouteRequest(
+                    feature = AiFeature.WEEKLY_REPORT,
+                    prompt = GeminiPrompts.weeklyReport(volume, weightTrend, adherence),
+                    schemaName = "weekly_report",
+                    responseJsonSchema = GeminiJsonSchemas.weeklyReport,
+                    thinkingBudget = 1000,
                 ),
-                )
-            }
-            val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
-            parseWeeklyReportResponse(text, adherence)
+            )
+            parseWeeklyReportResponse(routed.rawJson, adherence, routed.providerUsed)
         }.getOrElse { error ->
             if (error is CancellationException) throw error
             fallbackWeeklyReport(adherence)
@@ -526,6 +468,9 @@ class WeeklyReportService @Inject constructor(
 }
 
 internal fun parseWeeklyReportResponse(text: String, adherence: Int): WeeklyReportResult =
+    parseWeeklyReportResponse(text, adherence, AiProvider.GEMINI)
+
+internal fun parseWeeklyReportResponse(text: String, adherence: Int, provider: AiProvider): WeeklyReportResult =
     runCatching {
         val root = JsonParser.parseString(text).asJsonObject
         val summary = root.get("summary")?.asString?.trim().orEmpty()
@@ -546,7 +491,7 @@ internal fun parseWeeklyReportResponse(text: String, adherence: Int): WeeklyRepo
             risks = risks,
             nextWeekFocus = nextWeekFocus,
             rationaleBullets = rationaleBullets,
-            source = WeeklyReportSource.GEMINI_2_5_FLASH,
+            source = provider.toWeeklyReportSource(),
             rawResponse = text,
         )
     }.getOrElse { fallbackWeeklyReport(adherence) }
@@ -566,6 +511,14 @@ internal fun parseWorkoutDebriefResponse(
     text: String,
     totalVolume: Double,
     progression: Double?,
+): WorkoutDebrief =
+    parseWorkoutDebriefResponse(text, totalVolume, progression, AiProvider.GEMINI)
+
+internal fun parseWorkoutDebriefResponse(
+    text: String,
+    totalVolume: Double,
+    progression: Double?,
+    provider: AiProvider,
 ): WorkoutDebrief = runCatching {
     val root = JsonParser.parseString(text).asJsonObject
     val summary = root.get("summary")?.asString ?: "Training opgeslagen."
@@ -599,9 +552,41 @@ internal fun parseWorkoutDebriefResponse(
         risks = risks,
         nextLoadTarget = nextLoadTarget,
         recoveryAdvice = recoveryAdvice,
-        source = WorkoutDebriefSource.GEMINI_2_5_FLASH,
+        source = provider.toWorkoutDebriefSource(),
     )
 }.getOrElse { fallbackWorkoutDebriefResult(totalVolume, progression) }
+
+private fun AiProvider.toMealAnalysisSource(): MealAnalysisSource = when (this) {
+    AiProvider.GEMINI -> MealAnalysisSource.API
+    AiProvider.OPENAI -> MealAnalysisSource.OPENAI
+}
+
+private fun AiProvider.toWeeklyReportSource(): WeeklyReportSource = when (this) {
+    AiProvider.GEMINI -> WeeklyReportSource.GEMINI_2_5_FLASH
+    AiProvider.OPENAI -> WeeklyReportSource.OPENAI
+}
+
+private fun AiProvider.toGoalAdviceSource(): GoalAdviceSource = when (this) {
+    AiProvider.GEMINI -> GoalAdviceSource.GEMINI_2_5_FLASH
+    AiProvider.OPENAI -> GoalAdviceSource.OPENAI
+}
+
+private fun AiProvider.toWorkoutDebriefSource(): WorkoutDebriefSource = when (this) {
+    AiProvider.GEMINI -> WorkoutDebriefSource.GEMINI_2_5_FLASH
+    AiProvider.OPENAI -> WorkoutDebriefSource.OPENAI
+}
+
+private class GeminiOnlyJsonGenerator(
+    private val api: GeminiApi,
+    private val apiKeyProvider: suspend () -> String?,
+) : AiJsonGenerator {
+    override suspend fun generateJson(request: AiRouteRequest): AiRouteResult {
+        val apiKey = apiKeyProvider() ?: throw AiProviderUnavailableException(emptyList())
+        return callGeminiWithBoundedRetry(feature = request.feature) {
+            GeminiModelClient(api).generateJson(apiKey, request)
+        }
+    }
+}
 
 internal fun fallbackWorkoutDebriefResult(totalVolume: Double, progression: Double?) = WorkoutDebrief(
     summary = "Lokale samenvatting: volume ${totalVolume.toInt()} kg.",

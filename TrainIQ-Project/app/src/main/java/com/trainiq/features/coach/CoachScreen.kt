@@ -341,6 +341,7 @@ private fun BulletText(point: String) {
 
 private fun WeeklyReportSource.label(): String = when (this) {
     WeeklyReportSource.GEMINI_2_5_FLASH -> "Gemini 2.5 Flash"
+    WeeklyReportSource.OPENAI -> "OpenAI"
     WeeklyReportSource.LOCAL_FALLBACK -> "Lokale analyse"
 }
 
@@ -819,6 +820,7 @@ private fun MetricPill(
 
 private fun GoalAdviceSource.label(): String = when (this) {
     GoalAdviceSource.GEMINI_2_5_FLASH -> "Gemini 2.5 Flash"
+    GoalAdviceSource.OPENAI -> "OpenAI"
     GoalAdviceSource.LOCAL_CALCULATION -> "Lokale berekening"
 }
 

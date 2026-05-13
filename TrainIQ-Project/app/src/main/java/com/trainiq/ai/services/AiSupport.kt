@@ -6,8 +6,6 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.TimeoutCancellationException
 import retrofit2.HttpException
 
-internal const val GEMINI_FLASH_MODEL = "gemini-2.5-flash"
-
 internal class AiRateLimitException : RuntimeException("AI-limiet bereikt, probeer later opnieuw.")
 internal class AiFeatureThrottledException(
     feature: AiFeature,
@@ -18,7 +16,7 @@ internal class AiTimeoutException(
     feature: AiFeature,
 ) : RuntimeException("AI-aanroep voor ${feature.label} duurde te lang. Lokale fallback is gebruikt.")
 
-internal enum class AiFeature(
+enum class AiFeature(
     val label: String,
     val timeoutMillis: Long,
     val throttleCooldownMillis: Long,
@@ -63,6 +61,17 @@ internal fun Throwable.toAiUserMessage(defaultMessage: String): String = when (v
 }
 
 internal suspend fun <T> callGeminiWithBoundedRetry(
+    feature: AiFeature,
+    timeoutMillis: Long = feature.timeoutMillis,
+    maxAttempts: Int = 2,
+    initialBackoffMillis: Long = 350L,
+    throttle: AiFeatureThrottle = SharedAiFeatureThrottle,
+    block: suspend () -> T,
+): T {
+    return callAiWithBoundedRetry(feature, timeoutMillis, maxAttempts, initialBackoffMillis, throttle, block)
+}
+
+internal suspend fun <T> callAiWithBoundedRetry(
     feature: AiFeature,
     timeoutMillis: Long = feature.timeoutMillis,
     maxAttempts: Int = 2,

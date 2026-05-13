@@ -2,11 +2,11 @@
 
 TrainIQ is een native Android health coaching app die passieve gezondheidsdata omzet in concrete acties voor training, voeding, herstel en voortgang.
 
-De app combineert lokale workout- en voedingsregistratie met Health Connect en expliciete Gemini 2.5 Flash-coachingflows. Het doel is een rustige, bijna onzichtbare coachervaring: data wordt veilig verzameld, verwerkt in de app en vertaald naar persoonlijke inzichten.
+De app combineert lokale workout- en voedingsregistratie met Health Connect en expliciete AI-coachingflows via Gemini 2.5 Flash of OpenAI. Het doel is een rustige, bijna onzichtbare coachervaring: data wordt veilig verzameld, verwerkt in de app en vertaald naar persoonlijke inzichten.
 
 ```text
 Health Connect -> Room -> Domain UseCases -> Compose Material 3 UI
-                         -> Gemini 2.5 Flash coaching
+                         -> Gemini/OpenAI coaching
 ```
 
 ## Wat zit er in de app
@@ -14,9 +14,9 @@ Health Connect -> Room -> Domain UseCases -> Compose Material 3 UI
 - Home-dashboard met training, herstel, voeding en voortgangssamenvatting.
 - Trainingstab met routines, actieve workout logging, setregistratie en workout-samenvattingen.
 - Voedingstab met producten, barcode/camera flows en AI-ondersteunde analyse.
-- Coach-tab met Gemini-advies, weekrapporten en routinegeneratie.
+- Coach-tab met AI-advies, weekrapporten en routinegeneratie.
 - Voortgangstab met metingen, grafieken en progressie-inzichten.
-- Instellingen voor Health Connect, Gemini API-key, thema en appbeheer.
+- Instellingen voor Health Connect, Gemini/OpenAI API-keys, thema en appbeheer.
 - Health Connect-integratie met permission rationale, provider checks en incrementele sync.
 - Room als runtime source of truth, met migratieschema's en import/export-compatibiliteit.
 - Performance, diagnostics, accessibility en release readiness documentatie.
@@ -30,7 +30,7 @@ Health Connect -> Room -> Domain UseCases -> Compose Material 3 UI
 - Navigation Compose met type-safe routepatronen
 - Health Connect
 - CameraX, ML Kit Barcode Scanning en Coil
-- Retrofit, OkHttp en Gson voor Gemini API-calls
+- Retrofit, OkHttp en Gson voor Gemini/OpenAI API-calls
 - JUnit, Turbine, AndroidX Test en Macrobenchmark
 
 ## Repository structuur
@@ -98,16 +98,18 @@ Performance validatie:
 
 Gebruik voor betrouwbare macrobenchmark-cijfers bij voorkeur een fysiek device.
 
-## Gemini setup
+## AI setup
 
-Gemini is standaard uitgeschakeld totdat de gebruiker AI inschakelt en lokaal een API-key opslaat via Instellingen.
+AI is standaard uitgeschakeld totdat de gebruiker AI inschakelt en lokaal minimaal een Gemini- of OpenAI API-key opslaat via Instellingen.
 
-- Model: `gemini-2.5-flash`
+- Gemini model: `gemini-2.5-flash`
+- OpenAI model: `gpt-4.1-mini`
 - Output: JSON
 - MIME type: `application/json`
 - Fast scan/classification flows: thinking budget `0`
 - Coaching, rapportage en routinegeneratie: thinking budget rond `1000`
 - API-keys worden lokaal via Android Keystore beheerd
+- Provider-routing probeert de gekozen voorkeursprovider eerst, daarna de andere ingestelde provider bij tijdelijke fouten, en eindigt met lokale fallback.
 
 Commit nooit API-keys, keystores of production secrets.
 

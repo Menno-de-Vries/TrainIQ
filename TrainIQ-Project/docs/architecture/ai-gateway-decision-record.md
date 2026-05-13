@@ -6,19 +6,22 @@ Status: decision package. No production gateway decision has been made locally.
 
 ## Context
 
-TrainIQ currently supports local/dev Bring Your Own Key Gemini usage from the Android client. The target blueprint allows client-side BYOK for local/dev MVP only and recommends a production server-side Gemini boundary or OAuth-backed access controls.
+TrainIQ currently supports local/dev Bring Your Own Key AI usage from the Android client for Gemini and OpenAI. The target blueprint allows client-side BYOK for local/dev MVP only and recommends a production server-side AI boundary or OAuth-backed access controls.
 
 Local implementation evidence:
 
-- Stable model: `gemini-2.5-flash` in `AiSupport.kt`.
+- Stable Gemini model: `gemini-2.5-flash`.
+- Stable OpenAI model: `gpt-4.1-mini` via `BuildConfig.OPENAI_MODEL`.
+- Provider routing: `AiProviderRouter` tries the selected preferred provider first and can fall back to the other configured provider on transient failures before local fallback.
 - API key header: `x-goog-api-key` in `GeminiApi.kt`.
-- Key storage: Android Keystore-backed encrypted SharedPreferences in `AndroidKeystoreGeminiKeyStore.kt`.
+- OpenAI auth header: `Authorization: Bearer ...` in `OpenAiApi.kt`.
+- Key storage: Android Keystore-backed encrypted SharedPreferences in `AndroidKeystoreGeminiKeyStore.kt` and `AndroidKeystoreOpenAiKeyStore.kt`.
 - Missing-key graceful fallback: `AiUsageGate.kt`, `AiServices.kt`, `RoutineGeneratorService.kt`.
-- No hardcoded production Gemini secret found in app code scan.
+- No hardcoded production Gemini/OpenAI secret found in app code scan.
 
 ## Option 1: Local BYOK Only
 
-Description: Users provide their own Gemini API key, stored locally. Client calls Gemini directly.
+Description: Users provide their own Gemini and/or OpenAI API key, stored locally. Client calls the selected provider directly.
 
 Benefits:
 
@@ -31,7 +34,7 @@ Risks:
 - User manages billing/key lifecycle.
 - Harder to enforce product quotas or abuse controls.
 - Not ideal for production UX.
-- Privacy/Data Safety wording must clearly disclose third-party Gemini sharing.
+- Privacy/Data Safety wording must clearly disclose third-party AI provider sharing.
 
 Required work:
 
@@ -121,4 +124,3 @@ Required work:
 Use local BYOK only for internal/local/dev builds until product decides whether TrainIQ will have accounts and a backend. For production consumer release, prefer server-side or OAuth-mediated gateway if AI is a core feature.
 
 PRODUCT_CONFIRMATION_REQUIRED: choose production AI boundary, account model, billing/quota model, data retention, and deletion behavior.
-

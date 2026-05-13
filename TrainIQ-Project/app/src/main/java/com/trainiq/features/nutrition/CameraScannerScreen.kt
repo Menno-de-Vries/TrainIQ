@@ -75,6 +75,7 @@ import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import com.trainiq.ai.services.AiUsageGate
+import com.trainiq.ai.services.hasAnyReadyProvider
 import com.trainiq.core.datastore.AiPreferences
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.theme.spacing
@@ -174,10 +175,10 @@ class CameraScannerViewModel @Inject constructor(
         when (temp.phase) {
             Phase.Preview -> CameraScannerUiState.Preview(
                 contextHint = temp.contextHint,
-                isEnabled = ai.enabled && ai.apiKey.isNotBlank(),
+                isEnabled = ai.hasAnyReadyProvider(),
                 message = temp.message ?: when {
                     !ai.enabled -> "AI staat uit in Instellingen. Zet AI aan voordat je scant."
-                    ai.apiKey.isBlank() -> "Voeg eerst een Gemini API-sleutel toe in Instellingen."
+                    !ai.hasAnyReadyProvider() -> "Voeg eerst een Gemini of OpenAI API-sleutel toe in Instellingen."
                     else -> null
                 },
             )
@@ -192,7 +193,7 @@ class CameraScannerViewModel @Inject constructor(
             )
             Phase.NoConfig -> CameraScannerUiState.NoConfig(
                 contextHint = temp.contextHint,
-                message = temp.message ?: "AI-scan niet ingesteld. Zet AI aan en voeg een Gemini API-sleutel toe in Instellingen.",
+                message = temp.message ?: "AI-scan niet ingesteld. Zet AI aan en voeg een Gemini of OpenAI API-sleutel toe in Instellingen.",
             )
             Phase.LocalFallback -> CameraScannerUiState.LocalFallback(
                 contextHint = temp.contextHint,
@@ -213,11 +214,11 @@ class CameraScannerViewModel @Inject constructor(
         val capturedAtMillis = System.currentTimeMillis()
         val contextHint = ephemeral.value.contextHint
         val ai = aiPreferences.value
-        if (!ai.enabled || ai.apiKey.isBlank()) {
+        if (!ai.hasAnyReadyProvider()) {
             ephemeral.update {
                 it.copy(
                     phase = Phase.NoConfig,
-                    message = "AI-scan niet ingesteld. Zet AI aan en voeg een Gemini API-sleutel toe in Instellingen.",
+                    message = "AI-scan niet ingesteld. Zet AI aan en voeg een Gemini of OpenAI API-sleutel toe in Instellingen.",
                 )
             }
             return
@@ -790,7 +791,7 @@ internal fun scannerCompletedMessage(itemCount: Int, suggestedMealType: MealType
 internal fun scannerProcessingTitle(): String = "Scannen..."
 
 internal fun scannerProcessingMessage(): String =
-    "Gemini Flash herkent producten, schat porties en berekent macro's."
+    "Gemini Flash of OpenAI herkent producten, schat porties en berekent macro's."
 
 internal fun scannerCompletedTitle(): String = "Scan voltooid"
 

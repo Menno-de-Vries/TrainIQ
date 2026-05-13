@@ -64,6 +64,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.trainiq.ai.services.AiUsageGate
+import com.trainiq.ai.services.hasAnyReadyProvider
 import com.trainiq.core.datastore.AiPreferences
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.theme.spacing
@@ -186,8 +187,8 @@ class NutritionViewModel @Inject constructor(
                 ephemeral.update { it.copy(message = "AI staat uit in Instellingen. Voeding werkt nog steeds volledig met handmatige invoer.") }
                 return@launch
             }
-            if (ai.apiKey.isBlank()) {
-                ephemeral.update { it.copy(message = "Er is geen Gemini API-sleutel ingesteld. Voeg er een toe in Instellingen of blijf handmatig werken.") }
+            if (!ai.hasAnyReadyProvider()) {
+                ephemeral.update { it.copy(message = "Er is geen Gemini of OpenAI API-sleutel ingesteld. Voeg er een toe in Instellingen of blijf handmatig werken.") }
                 return@launch
             }
             ephemeral.update { it.copy(isAnalyzing = true, message = null) }
@@ -941,7 +942,7 @@ fun NutritionScreen(
                                     draft = recipeDraft.toList(),
                                     foods = overview?.foods.orEmpty(),
                                     recipeAiContext = recipeAiContext,
-                                    aiEnabled = aiPreferences.enabled && aiPreferences.apiKey.isNotBlank(),
+                                    aiEnabled = aiPreferences.hasAnyReadyProvider(),
                                     quickIngredientName = quickIngredientName,
                                     quickIngredientBarcode = quickIngredientBarcode,
                                     quickIngredientKcal = quickIngredientKcal,
@@ -1189,7 +1190,7 @@ fun NutritionScreen(
             sheetState = recipeActionSheetState,
         ) {
             RecipeActionBottomSheet(
-                aiEnabled = aiPreferences.enabled && aiPreferences.apiKey.isNotBlank(),
+                aiEnabled = aiPreferences.hasAnyReadyProvider(),
                 onDismiss = { showRecipeActions = false },
                 onManualRecipe = { showRecipeActions = false },
                 onBarcodeIngredient = {
@@ -1241,7 +1242,7 @@ fun NutritionScreen(
                 hasSavedFoods = overview?.foods?.isNotEmpty() == true,
                 hasSavedRecipes = overview?.recipes?.isNotEmpty() == true,
                 hasDraft = mealDraft.isNotEmpty(),
-                aiEnabled = aiPreferences.enabled && aiPreferences.apiKey.isNotBlank(),
+                aiEnabled = aiPreferences.hasAnyReadyProvider(),
                 onDismiss = { showAddToMealActions = false },
                 onManualFood = {
                     showAddToMealActions = false
@@ -2213,13 +2214,13 @@ private fun AiMealAnalysisCard(
             Text(
                 when {
                     !aiPreferences.enabled -> "AI staat uit in Instellingen. Handmatig voeding loggen blijft werken."
-                    aiPreferences.apiKey.isBlank() -> "Voeg een Gemini API-sleutel toe in Instellingen om maaltijdanalyse te gebruiken."
+                    !aiPreferences.hasAnyReadyProvider() -> "Voeg een Gemini of OpenAI API-sleutel toe in Instellingen om maaltijdanalyse te gebruiken."
                     else -> "Open de scanner op volledig scherm, fotografeer de maaltijd en controleer elk gevonden item voordat je opslaat."
                 },
                 style = MaterialTheme.typography.bodyMedium,
             )
             NutritionTextField(value = aiContext, onValueChange = onContextChange, label = "Optionele context", modifier = Modifier.fillMaxWidth())
-            Button(onClick = onOpenCamera, enabled = aiPreferences.enabled && aiPreferences.apiKey.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = onOpenCamera, enabled = aiPreferences.hasAnyReadyProvider(), modifier = Modifier.fillMaxWidth()) {
                 Text("Scanner openen")
             }
             if (isAnalyzing) {

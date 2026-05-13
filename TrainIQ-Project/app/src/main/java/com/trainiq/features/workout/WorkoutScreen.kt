@@ -4682,11 +4682,13 @@ private fun CompletionSmartSummary(summary: WorkoutCompletionSummary) {
 
 private fun WorkoutDebriefSource.shortLabel(): String = when (this) {
     WorkoutDebriefSource.GEMINI_2_5_FLASH -> "Gemini 2.5 Flash"
+    WorkoutDebriefSource.OPENAI -> "OpenAI"
     WorkoutDebriefSource.LOCAL_FALLBACK -> "Lokale analyse"
 }
 
 internal fun workoutDebriefSourceChipLabel(source: WorkoutDebriefSource): String = when (source) {
     WorkoutDebriefSource.GEMINI_2_5_FLASH -> source.shortLabel()
+    WorkoutDebriefSource.OPENAI -> source.shortLabel()
     WorkoutDebriefSource.LOCAL_FALLBACK -> "Lokale fallback"
 }
 

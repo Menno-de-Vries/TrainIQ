@@ -1772,6 +1772,7 @@ internal fun buildWorkoutCompletionSummary(
         debrief = debrief,
         sourceLabel = when (debrief.source) {
             WorkoutDebriefSource.GEMINI_2_5_FLASH -> "Samenvatting gemaakt met Gemini 2.5 Flash"
+            WorkoutDebriefSource.OPENAI -> "Samenvatting gemaakt met OpenAI"
             WorkoutDebriefSource.LOCAL_FALLBACK -> "Samenvatting gemaakt op basis van je trainingsdata"
         },
         recommendationLabel = when (debrief.intensitySignal.uppercase(Locale.US)) {
@@ -2500,6 +2501,7 @@ private fun com.trainiq.ai.services.GeneratedRoutine.toDomainGeneratedRoutine() 
     estimatedDurationMinutes = estimatedDurationMinutes,
     source = when (source) {
         com.trainiq.ai.services.GeneratedRoutineSource.GEMINI_2_5_FLASH -> com.trainiq.domain.model.GeneratedRoutineSource.GEMINI_2_5_FLASH
+        com.trainiq.ai.services.GeneratedRoutineSource.OPENAI -> com.trainiq.domain.model.GeneratedRoutineSource.OPENAI
         com.trainiq.ai.services.GeneratedRoutineSource.LOCAL_FALLBACK -> com.trainiq.domain.model.GeneratedRoutineSource.LOCAL_FALLBACK
     },
     days = days.map { day ->
