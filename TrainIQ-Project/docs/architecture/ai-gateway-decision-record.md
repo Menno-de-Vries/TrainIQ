@@ -11,7 +11,7 @@ TrainIQ currently supports local/dev Bring Your Own Key AI usage from the Androi
 Local implementation evidence:
 
 - Stable Gemini model: `gemini-2.5-flash`.
-- Stable OpenAI model: `gpt-4.1-mini` via `BuildConfig.OPENAI_MODEL`.
+- Stable OpenAI model: `gpt-5.4-mini` via `BuildConfig.OPENAI_MODEL`.
 - Provider routing: `AiProviderRouter` tries the selected preferred provider first and can fall back to the other configured provider on transient failures before local fallback.
 - API key header: `x-goog-api-key` in `GeminiApi.kt`.
 - OpenAI auth header: `Authorization: Bearer ...` in `OpenAiApi.kt`.

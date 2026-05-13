@@ -36,7 +36,7 @@ android {
             "\"https://generativelanguage.googleapis.com/\""
         )
         buildConfigField("String", "OPENAI_BASE_URL", "\"https://api.openai.com/\"")
-        buildConfigField("String", "OPENAI_MODEL", "\"gpt-5-mini\"")
+        buildConfigField("String", "OPENAI_MODEL", "\"gpt-5.4-mini\"")
         buildConfigField("Boolean", "TELEMETRY_ENABLED", "false")
         buildConfigField("String", "TELEMETRY_ENDPOINT_URL", "\"\"")
         buildConfigField("Double", "TELEMETRY_SAMPLE_RATE", "0.0")
