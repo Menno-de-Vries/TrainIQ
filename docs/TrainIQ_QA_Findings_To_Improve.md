@@ -1060,3 +1060,71 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
 - Crash evidence: PASS, `adb logcat -d -t 2000 AndroidRuntime:E '*:S'` was empty after launch, section menu, and add-sheet checks.
 - External sources used: Microsoft Learn ADB0060 guidance was used only for the earlier install blocker; after storage increase, local runtime evidence was sufficient.
 - Remaining risk: existing-meal quantity edit runtime proof still needs seeded/created meal data; source guards and unit tests cover the edit draft path.
+
+## 2026-05-13 Nutrition Plus And AI Routine Layout Polish
+
+- Target-state link: Nutrition logging should respond immediately, meal-moment add actions should be direct and compact, and AI routine creation/preview should remain readable and actionable on compact screens.
+- Parallel-agent execution:
+  - Nutrition worker owned `NutritionScreen.kt` and `NutritionInputValidationTest.kt`.
+  - AI routine worker owned `WorkoutScreen.kt`, `RoutineDialogs.kt`, `WorkoutInputValidationTest.kt`, and `WorkoutDialogPresentationPolicyTest.kt`.
+- Files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/RoutineDialogs.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/nutrition/NutritionInputValidationTest.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/workout/WorkoutInputValidationTest.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/workout/WorkoutDialogPresentationPolicyTest.kt`
+- Fix: removed the focus-clearing pointer interceptor from normal Nutrition browsing lists, replaced meal-section `Toevoegen` text buttons with accessible plus icon actions, preserved the selected meal moment through saved-food/saved-recipe/AI/photo/reuse add flows, wrapped AI routine suggestion and experience controls, localized generator labels, and moved generated-routine preview actions into a persistent full-width bottom action area.
+- Regression coverage: added focused Nutrition source/helper guards for plus actions, immediate browsing scroll policy, contextual meal targets, and draft routing; added Workout source guards for Dutch generator labels, wrapped chip/choice controls, deload semantics, and generated-routine preview action placement.
+- Verification: baseline PASS, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --tests "com.trainiq.features.workout.WorkoutDialogPresentationPolicyTest" --console=plain --no-configuration-cache`.
+- Verification: after-change PASS, same targeted Gradle command.
+- Verification: after-change PASS, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+- Verification: after-change PASS, `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+- Verification: PASS, `git diff --check` reported only CRLF conversion warnings.
+- Runtime QA: PASS on `emulator-5554`, installed debug APK, cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 5979`; evidence folder `TrainIQ-Project/.codex/device-qa/2026-05-13-nutrition-ai-routine-polish/`.
+- Runtime QA: PASS, immediately after opening `Voeding` an input swipe produced a scrolled Nutrition dump with `Voedingsdag`, meal sections, `Toevoegen aan Ochtend/Middag/Avond` plus-button content descriptions, and no visible meal-section `Toevoegen` text.
+- Runtime QA: PASS, tapping the Ochtend plus action opened `Toevoegen aan Ochtend` with manual product, saved product, saved recipe, AI-context, and photo AI actions.
+- Runtime QA: PASS/PARTIAL, Training opened the AI routine dialog with Dutch labels (`Dagen per week`, `Beschikbaar materiaal`, `Ervaringsniveau`, `Sessieduur`) and wrapped suggestion/experience controls; AndroidRuntime crash buffers stayed empty.
+- Runtime QA: NOT RUN for generated-routine preview after-change runtime proof: tapping `Genereren` kept the dialog in loading during the smoke window on this emulator, likely because no usable AI provider/key path was available. Source guards and compile/unit checks cover the persistent preview action area; runtime proof should be rerun with a configured AI provider or deterministic local-fallback path.
+- External sources used: None. Local source, tests, existing target-state evidence, and emulator smoke were sufficient.
+- Remaining risk: generated-routine preview bottom actions still need fresh runtime proof after generation completes; saved-food/saved-recipe add-to-draft behavior is source/unit guarded but needs seeded nutrition data for a full end-to-end runtime proof.
+
+## 2026-05-13 Nutrition Scroll Regression Follow-Up
+
+- Target-state link: Nutrition logging should respond immediately and add-source sheets should not consume initial drag gestures.
+- Files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/nutrition/NutritionInputValidationTest.kt`
+- Fix: removed the remaining `clearFocusOnScrollOrDrag()` usage from Nutrition add sheets. `RecipeActionBottomSheet` no longer uses a focus-clearing gesture modifier, and `AddToMealActionSheet` uses tap-outside focus clearing instead of drag/scroll focus clearing.
+- Regression coverage: added a focused Nutrition source guard that the browsing list and Nutrition action sheets do not use the scroll/drag focus-clear interceptor while the meal add sheet still has tap-outside focus behavior.
+- Verification: baseline PASS, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --console=plain --no-configuration-cache`.
+- Verification: after-change PASS, same targeted Nutrition test.
+- Verification: after-change PASS, targeted no-regression command for `NutritionInputValidationTest`, `WorkoutInputValidationTest`, and `WorkoutDialogPresentationPolicyTest`.
+- Verification: after-change PASS, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+- Verification: after-change PASS, `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+- Runtime QA: PASS on `emulator-5554`, `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 5356`.
+- Runtime QA: PASS, after opening `Voeding`, a fast immediate vertical swipe moved the visible meal sections from top-of-day `Ochtend/Middag/Avond` to scrolled `Middag/Avond/Snacks`, confirming the main Nutrition list responds immediately. Evidence: `TrainIQ-Project/.codex/device-qa/2026-05-13-nutrition-scroll-regression/11-nutrition-tab-before.xml`, `12-nutrition-tab-after-fast-swipe.xml`, and `13-nutrition-tab-after-late-swipe.xml`.
+- Runtime QA: PASS, tapping the visible meal plus action opened `Toevoegen aan Middag` with manual product, saved product, saved recipe, `AI-context voor foto`, `Foto / AI-inschatting`, and `Sluiten`. Evidence: `TrainIQ-Project/.codex/device-qa/2026-05-13-nutrition-scroll-regression/24-add-sheet-open-midday.xml`.
+- Crash evidence: PASS, AndroidRuntime crash buffers captured during the Nutrition scroll/add-sheet smokes were empty.
+- External sources used: None. Local source, tests, and emulator evidence were sufficient.
+- Remaining risk: add-sheet runtime scroll was opened and inspected, but on the large emulator the sheet content fit without requiring a scroll range; the source guard covers the removed drag-interceptor regression, and compact/font-scale sheet scroll proof can be rerun on a smaller viewport if needed.
+
+## 2026-05-13 Voeding Initial Scroll Stability Polish
+
+- Target-state link: Nutrition should be calm and responsive immediately when the user opens the tab, without a first loading surface that resets input before the loaded content appears.
+- Files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/nutrition/NutritionInputValidationTest.kt`
+- Fix: removed the full `AnimatedContent` replacement between `NutritionUiState.Loading` and `Success`. The Voeding header and `nutritionListState`-backed `LazyColumn` now stay mounted from first composition, and loading/error/success render as items inside that stable scroll surface.
+- Regression coverage: added a focused source guard that Voeding uses one stable browsing `LazyColumn`, no longer wraps the body in `AnimatedContent`, and renders `NutritionUiState.Loading` inside the stable list with enough shimmer items to accept immediate scroll.
+- Verification: baseline PASS, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --console=plain --no-configuration-cache`.
+- Verification: after-change PASS, same targeted Nutrition test.
+- Verification: after-change PASS, targeted no-regression command for `NutritionInputValidationTest`, `WorkoutInputValidationTest`, and `WorkoutDialogPresentationPolicyTest`.
+- Verification: after-change PASS, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+- Verification: after-change PASS, `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+- Runtime QA: PASS on `emulator-5554`, `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 5595`.
+- Runtime QA: PASS, after opening `Voeding`, the UI dump showed the stable `Voeding` header and one scrollable content node; an immediate vertical swipe produced the scrolled nutrition dump while plus-button content descriptions remained present. Evidence: `TrainIQ-Project/.codex/device-qa/2026-05-13-voeding-initial-scroll-stable/02-voeding-before-immediate.xml`, `03-voeding-after-immediate-swipe.xml`, and `04-voeding-settled.xml`.
+- Runtime QA: PASS, tapping a visible meal plus action opened `Toevoegen aan Avond` with manual product, saved product, saved recipe, `AI-context voor foto`, `Foto / AI-inschatting`, and `Sluiten`. Evidence: `TrainIQ-Project/.codex/device-qa/2026-05-13-voeding-initial-scroll-stable/05-voeding-add-sheet.xml`.
+- Crash evidence: PASS, AndroidRuntime crash buffer captured during the initial-scroll smoke was empty.
+- External sources used: None. Local source, tests, and emulator evidence were sufficient.
+- Remaining risk: the emulator's local nutrition overview settled very quickly, so runtime evidence mainly proves the stable loaded scroll and source guards prove the initial loading path. A slower seeded startup profile can further prove placeholder-scroll behavior if needed.

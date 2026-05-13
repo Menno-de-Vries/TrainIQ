@@ -2,11 +2,6 @@
 
 package com.trainiq.features.nutrition
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -26,6 +21,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -33,6 +30,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -75,7 +74,7 @@ import com.trainiq.core.ui.AppCard
 import com.trainiq.core.ui.AppChip
 import com.trainiq.core.ui.AppLinearProgress
 import com.trainiq.core.ui.bringIntoViewOnFocus
-import com.trainiq.core.ui.clearFocusOnScrollOrDrag
+import com.trainiq.core.ui.clearFocusOnTapOutside
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.domain.model.FoodItem
 import com.trainiq.domain.model.FoodSourceType
@@ -458,6 +457,8 @@ fun NutritionScreen(
     var showSectionMenu by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<PendingNutritionDelete?>(null) }
     var addToMealType by remember { mutableStateOf(MealType.BREAKFAST) }
+    var hasAddToMealTarget by remember { mutableStateOf(false) }
+    var pendingAiMealType by remember { mutableStateOf<MealType?>(null) }
     var selectedFoodId by remember { mutableStateOf<Long?>(null) }
     var selectedRecipeId by remember { mutableStateOf<Long?>(null) }
     val selectedFood = overview?.foods?.firstOrNull { it.id == selectedFoodId }
@@ -503,6 +504,22 @@ fun NutritionScreen(
     var aiItemErrors by remember { mutableStateOf<Map<Int, AiItemFieldErrors>>(emptyMap()) }
     var aiSaveProgress by remember { mutableStateOf(startAiBatchSaveProgress(0)) }
     val isAiSaving = !aiSaveProgress.isFinished || isAiBatchPending
+
+    fun selectMealDraftTarget(type: MealType) {
+        editingMealId = null
+        mealType = type
+        mealName = type.dutchLabel
+        mealErrors = MealFieldErrors()
+        addToMealType = type
+        hasAddToMealTarget = true
+    }
+
+    fun preserveContextualMealTarget() {
+        if (hasAddToMealTarget) {
+            mealType = addToMealType
+            mealName = addToMealType.dutchLabel
+        }
+    }
 
     fun finishAiBatchItem(item: EditableAiItem, success: Boolean, onAllSucceeded: () -> Unit) {
         val next = aiSaveProgress.finishOne(success)
@@ -613,7 +630,7 @@ fun NutritionScreen(
         editableAiItems.clear()
         scanResult?.items?.forEach { editableAiItems += EditableAiItem.from(it) }
         if (!aiScanForRecipe) {
-            scanResult?.suggestedMealType?.let {
+            (pendingAiMealType ?: scanResult?.suggestedMealType)?.let {
                 mealType = it
                 if (mealName in listOf("Breakfast", "Lunch", "Dinner", "Snack", "Ochtend", "Middag", "Avond", "Snacks")) {
                     mealName = it.dutchLabel
@@ -627,100 +644,68 @@ fun NutritionScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        AnimatedContent(
-            targetState = uiState,
-            transitionSpec = { fadeIn(animationSpec = tween(240)) togetherWith fadeOut(animationSpec = tween(180)) },
-            label = "nutrition-ui-state",
-        ) { state ->
-            if (state is NutritionUiState.Loading) {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clearFocusOnScrollOrDrag()
-                        .navigationBarsPadding()
-                        .imePadding(),
-                    contentPadding = PaddingValues(
-                        start = MaterialTheme.spacing.medium,
-                        top = MaterialTheme.spacing.medium,
-                        end = MaterialTheme.spacing.medium,
-                        bottom = 132.dp,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
-                ) {
-                    item { ShimmerCardPlaceholder(lineCount = 3) }
-                    item { ShimmerCardPlaceholder(lineCount = 5) }
-                    item { ShimmerCardPlaceholder(lineCount = 4) }
+    Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.padding(
+                horizontal = MaterialTheme.spacing.medium,
+                vertical = MaterialTheme.spacing.small,
+            ),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    ScreenHeader(title = "Voeding", subtitle = "Voeding loggen zonder gedoe")
                 }
-                return@AnimatedContent
-            }
-            if (state is NutritionUiState.Error) {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clearFocusOnScrollOrDrag(),
-                    contentPadding = PaddingValues(MaterialTheme.spacing.medium),
+                TextButton(
+                    onClick = { showSectionMenu = true },
+                    modifier = Modifier.semantics {
+                        contentDescription = nutritionSectionMenuButtonDescription()
+                    },
                 ) {
-                    item { MessageCard(message = state.message) }
+                    Text(
+                        nutritionSectionMenuButtonLabel(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
                 }
-                return@AnimatedContent
             }
-            Column(modifier = Modifier.fillMaxSize()) {
-                Column(
-                    modifier = Modifier.padding(
-                        horizontal = MaterialTheme.spacing.medium,
-                        vertical = MaterialTheme.spacing.small,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.Top,
-                        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-                    ) {
-                        Box(modifier = Modifier.weight(1f)) {
-                            ScreenHeader(title = "Voeding", subtitle = "Voeding loggen zonder gedoe")
-                        }
-                        TextButton(
-                            onClick = { showSectionMenu = true },
-                            modifier = Modifier.semantics {
-                                contentDescription = nutritionSectionMenuButtonDescription()
-                            },
-                        ) {
-                            Text(
-                                nutritionSectionMenuButtonLabel(),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
+            message?.let { MessageCard(message = it, onDismiss = onDismissMessage) }
+        }
+        LazyColumn(
+            state = nutritionListState,
+            modifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
+                .imePadding(),
+            contentPadding = PaddingValues(
+                start = MaterialTheme.spacing.medium,
+                top = MaterialTheme.spacing.medium,
+                end = MaterialTheme.spacing.medium,
+                bottom = 132.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
+        ) {
+            when (uiState) {
+                NutritionUiState.Loading -> {
+                    items(8) { index ->
+                        ShimmerCardPlaceholder(lineCount = if (index == 0) 3 else 5)
                     }
-                    message?.let { MessageCard(message = it, onDismiss = onDismissMessage) }
                 }
-                LazyColumn(
-                    state = nutritionListState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clearFocusOnScrollOrDrag()
-                        .navigationBarsPadding()
-                        .imePadding(),
-                    contentPadding = PaddingValues(
-                        start = MaterialTheme.spacing.medium,
-                        top = MaterialTheme.spacing.medium,
-                        end = MaterialTheme.spacing.medium,
-                        bottom = 132.dp,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
-                ) {
+                is NutritionUiState.Error -> {
+                    item { MessageCard(message = uiState.message) }
+                }
+                is NutritionUiState.Success -> {
                     when (selectedTab) {
                         0 -> {
                             item {
                                 DailyMealsDashboard(
                                     overview = overview,
                                     onAddToMeal = { type ->
-                                        editingMealId = null
-                                        mealType = type
-                                        mealName = type.dutchLabel
-                                        addToMealType = type
+                                        selectMealDraftTarget(type)
                                         showAddToMealActions = true
                                     },
                                     onEditMeal = { meal ->
@@ -834,7 +819,11 @@ fun NutritionScreen(
                                             onSavedItem = { saved, grams ->
                                                 mealDraft += MealEntryRequest(MealEntryType.FOOD, saved.id, grams)
                                             },
-                                            onAllSucceeded = { onSetScanResult(null) },
+                                            onAllSucceeded = {
+                                                pendingAiMealType = null
+                                                selectedTab = 1
+                                                onSetScanResult(null)
+                                            },
                                         )
                                     },
                                 )
@@ -924,6 +913,7 @@ fun NutritionScreen(
                                                 },
                                                 onAllSucceeded = {
                                                     aiScanForRecipe = false
+                                                    pendingAiMealType = null
                                                     selectedTab = 1
                                                     onSetScanResult(null)
                                                 },
@@ -1061,8 +1051,10 @@ fun NutritionScreen(
                                         if (errors.hasErrors || isMealSaving) return@SavedRecipesCard
                                         val grams = mealRecipeGrams.toNutritionNumberOrNull(max = 100_000.0)
                                         if (grams != null && grams > 0.0) {
+                                            preserveContextualMealTarget()
                                             mealDraft += MealEntryRequest(MealEntryType.RECIPE, recipe.id, grams)
                                             mealErrors = MealFieldErrors()
+                                            hasAddToMealTarget = false
                                             selectedTab = 1
                                         }
                                     },
@@ -1145,8 +1137,10 @@ fun NutritionScreen(
                                         if (errors.hasErrors || isMealSaving) return@SavedFoodsCard
                                         val grams = mealFoodGrams.toNutritionNumberOrNull(max = 100_000.0)
                                         if (grams != null && grams > 0.0) {
+                                            preserveContextualMealTarget()
                                             mealDraft += MealEntryRequest(MealEntryType.FOOD, food.id, grams)
                                             mealErrors = MealFieldErrors()
+                                            hasAddToMealTarget = false
                                             selectedTab = 1
                                         }
                                     },
@@ -1226,6 +1220,7 @@ fun NutritionScreen(
                 selectedTab = selectedTab,
                 onSelectTab = { index ->
                     selectedTab = index
+                    hasAddToMealTarget = false
                     showSectionMenu = false
                 },
                 onDismiss = { showSectionMenu = false },
@@ -1245,25 +1240,36 @@ fun NutritionScreen(
                 aiEnabled = aiPreferences.hasAnyReadyProvider(),
                 onDismiss = { showAddToMealActions = false },
                 onManualFood = {
+                    mealType = addToMealType
+                    mealName = addToMealType.dutchLabel
                     showAddToMealActions = false
                     selectedTab = 4
                 },
                 onSavedFood = {
+                    mealType = addToMealType
+                    mealName = addToMealType.dutchLabel
                     showAddToMealActions = false
                     selectedTab = 4
                 },
                 onRecipe = {
+                    mealType = addToMealType
+                    mealName = addToMealType.dutchLabel
                     showAddToMealActions = false
                     selectedTab = 3
                 },
                 aiContext = aiContext,
                 onAiContextChange = { aiContext = it },
                 onPhotoAi = {
+                    mealType = addToMealType
+                    mealName = addToMealType.dutchLabel
+                    pendingAiMealType = addToMealType
                     showAddToMealActions = false
                     aiScanForRecipe = false
                     onOpenAiScanner(aiContext)
                 },
                 onOpenMealDraft = {
+                    mealType = addToMealType
+                    mealName = addToMealType.dutchLabel
                     showAddToMealActions = false
                     selectedTab = 1
                 },
@@ -1450,7 +1456,19 @@ private fun MealSectionCard(
         ),
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(mealType.dutchLabel, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(mealType.dutchLabel, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                IconButton(onClick = onAdd) {
+                    Icon(
+                        Icons.Rounded.Add,
+                        contentDescription = mealSectionAddContentDescription(mealType),
+                    )
+                }
+            }
             Text(
                 "${formatNumber(total.calories)} kcal",
                 style = MaterialTheme.typography.headlineSmall,
@@ -1462,7 +1480,6 @@ private fun MealSectionCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.trainIqColors.mutedText,
             )
-            TextButton(onClick = onAdd, modifier = Modifier.fillMaxWidth()) { Text("Toevoegen") }
             if (meals.isEmpty()) {
                 Text(mealSectionEmptyText(mealType), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.trainIqColors.mutedText)
             } else {
@@ -1564,7 +1581,6 @@ private fun RecipeActionBottomSheet(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clearFocusOnScrollOrDrag()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = MaterialTheme.spacing.large, vertical = MaterialTheme.spacing.medium),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -1599,7 +1615,7 @@ private fun AddToMealActionSheet(
         modifier = Modifier
             .fillMaxWidth()
             .imePadding()
-            .clearFocusOnScrollOrDrag()
+            .clearFocusOnTapOutside()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = MaterialTheme.spacing.large, vertical = MaterialTheme.spacing.medium),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -2375,7 +2391,10 @@ internal fun nutritionMacroSummary(protein: Double, carbs: Double, fat: Double):
     "Eiwit ${formatNumber(protein)} g - Kh ${formatNumber(carbs)} g - Vet ${formatNumber(fat)} g"
 
 internal fun mealSectionEmptyText(mealType: MealType): String =
-    "Nog niets gelogd voor ${mealType.dutchLabel.lowercase()}. Tik op Toevoegen om iets te loggen."
+    "Nog niets gelogd voor ${mealType.dutchLabel.lowercase()}. Gebruik de plusknop om iets te loggen."
+
+internal fun mealSectionAddContentDescription(mealType: MealType): String =
+    "Toevoegen aan ${mealType.dutchLabel}"
 
 internal fun aiMealAnalyzingLabel(): String = "Maaltijd analyseren..."
 
