@@ -60,6 +60,41 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun `AI routine dialog keeps Dutch labels for generator controls`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val dialogBody = workoutScreen.substringAfter("private fun RoutineGeneratorDialog(")
+            .substringBefore("private fun RoutineDetailHeader(")
+
+        assertTrue(dialogBody.contains("Text(\"Dagen per week\")"))
+        assertTrue(dialogBody.contains("Text(\"Beschikbaar materiaal\")"))
+        assertTrue(dialogBody.contains("Text(\"Ervaringsniveau\""))
+        assertTrue(dialogBody.contains("Text(\"Sessieduur:"))
+        assertTrue(dialogBody.contains("Text(\"Deload-richtlijn opnemen\""))
+        assertTrue(dialogBody.contains("Text(\"Voegt hersteladvies toe voor lichtere weken.\""))
+        assertFalse(dialogBody.contains("Days per week"))
+        assertFalse(dialogBody.contains("Available equipment"))
+        assertFalse(dialogBody.contains("Experience level"))
+        assertFalse(dialogBody.contains("Session duration"))
+        assertFalse(dialogBody.contains("Include deload guidance"))
+    }
+
+    @Test
+    fun `AI routine dialog wraps compact chip and choice controls`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val dialogBody = workoutScreen.substringAfter("private fun RoutineGeneratorDialog(")
+            .substringBefore("private fun ExperienceLevelSelector(")
+        val levelBody = workoutScreen.substringAfter("private fun ExperienceLevelSelector(")
+            .substringBefore("private fun SessionDurationSlider(")
+
+        assertTrue(dialogBody.contains("FlowRow("))
+        assertFalse(dialogBody.contains("maxLines = 1"))
+        assertTrue(levelBody.contains("FlowRow("))
+        assertTrue(levelBody.contains("FilterChip("))
+        assertFalse(levelBody.contains("SingleChoiceSegmentedButtonRow"))
+        assertFalse(levelBody.contains("SegmentedButton("))
+    }
+
+    @Test
     fun `AI routine deload switch keeps accessibility label at large font scale`() {
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
         val deloadBody = workoutScreen.substringAfter("private fun IncludeDeloadRow(")
@@ -67,6 +102,8 @@ class WorkoutInputValidationTest {
 
         assertTrue(deloadBody.contains("Text(\"Deload-richtlijn opnemen\""))
         assertTrue(deloadBody.contains("contentDescription = \"Deload-richtlijn opnemen\""))
+        assertTrue(deloadBody.contains("Column("))
+        assertTrue(deloadBody.contains("modifier = Modifier.fillMaxWidth()"))
     }
 
     @Test

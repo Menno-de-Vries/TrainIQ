@@ -8,6 +8,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 class NutritionInputValidationTest {
     @Test
@@ -188,9 +189,78 @@ class NutritionInputValidationTest {
     @Test
     fun mealSectionEmptyText_namesMealAndAction() {
         assertEquals(
-            "Nog niets gelogd voor ochtend. Tik op Toevoegen om iets te loggen.",
+            "Nog niets gelogd voor ochtend. Gebruik de plusknop om iets te loggen.",
             mealSectionEmptyText(MealType.BREAKFAST),
         )
+    }
+
+    @Test
+    fun mealSectionAddAction_usesCompactAccessiblePlusButton() {
+        assertEquals("Toevoegen aan Ochtend", mealSectionAddContentDescription(MealType.BREAKFAST))
+
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val mealSection = source.substringAfter("private fun MealSectionCard(").substringBefore("private fun MealEntryRow")
+
+        assertTrue(mealSection.contains("IconButton(onClick = onAdd"))
+        assertTrue(mealSection.contains("Icons.Rounded.Add"))
+        assertTrue(mealSection.contains("mealSectionAddContentDescription(mealType)"))
+        assertFalse(mealSection.contains("Text(\"Toevoegen\")"))
+    }
+
+    @Test
+    fun nutritionBrowsingList_doesNotClearFocusOnInitialDrag() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val browsingList = source.substringAfter("state = nutritionListState,").substringBefore("contentPadding = PaddingValues(")
+
+        assertFalse(browsingList.contains("clearFocusOnScrollOrDrag()"))
+    }
+
+    @Test
+    fun nutritionInitialLoading_usesStableBrowsingListInsteadOfScreenSwap() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val screenBody = source.substringAfter("fun NutritionScreen(\n    uiState: NutritionUiState,").substringBefore("if (showRecipeActions)")
+        val browsingListCount = Regex("LazyColumn\\(\\s*\\n\\s*state = nutritionListState,").findAll(screenBody).count()
+
+        assertEquals(1, browsingListCount)
+        assertFalse(screenBody.contains("AnimatedContent("))
+        assertTrue(screenBody.contains("when (uiState)"))
+        assertTrue(screenBody.contains("NutritionUiState.Loading ->"))
+        assertTrue(screenBody.contains("items(8)"))
+    }
+
+    @Test
+    fun nutritionActionSheets_doNotClearFocusOnScrollDrag() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val recipeSheet = source.substringAfter("private fun RecipeActionBottomSheet(").substringBefore("@Composable\nprivate fun AddToMealActionSheet")
+        val addToMealSheet = source.substringAfter("private fun AddToMealActionSheet(").substringBefore("@Composable\nprivate fun AddFoodForm")
+
+        assertFalse(recipeSheet.contains("clearFocusOnScrollOrDrag()"))
+        assertFalse(addToMealSheet.contains("clearFocusOnScrollOrDrag()"))
+        assertTrue(addToMealSheet.contains("clearFocusOnTapOutside()"))
+    }
+
+    @Test
+    fun contextualAddActions_preserveOriginMealTypeAndOpenDraftAfterMutation() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val addSheet = source.substringAfter("AddToMealActionSheet(").substringBefore("pendingDelete?.let")
+        val contextualTargetHelper = source.substringAfter("fun preserveContextualMealTarget()").substringBefore("fun finishAiBatchItem")
+        val aiMealSave = source.substringAfter("onSaveToDraft = {").substringBefore("},\n                                )")
+        val photoMealSave = source.substringAfter("onAddToMeal = {").substringAfter("startAiFoodBatchSave(").substringBefore("},\n                                    )")
+        val savedRecipeAdd = source.substringAfter("onUseInMeal = { recipe ->").substringBefore("onDelete = { pendingDelete = PendingNutritionDelete.Recipe")
+        val savedFoodAdd = source.substringAfter("onQuickAdd = { food ->").substringBefore("onDelete = { pendingDelete = PendingNutritionDelete.Food")
+        val reuseMeal = source.substringAfter("onReuseMeal = { meal ->").substringBefore("onDeleteMeal = { pendingDelete = PendingNutritionDelete.Meal")
+
+        assertTrue(addSheet.contains("mealType = addToMealType"))
+        assertTrue(addSheet.contains("pendingAiMealType = addToMealType"))
+        assertTrue(contextualTargetHelper.contains("mealType = addToMealType"))
+        assertTrue(aiMealSave.contains("selectedTab = 1"))
+        assertTrue(photoMealSave.contains("selectedTab = 1"))
+        assertTrue(savedRecipeAdd.contains("preserveContextualMealTarget()"))
+        assertTrue(savedRecipeAdd.contains("selectedTab = 1"))
+        assertTrue(savedFoodAdd.contains("preserveContextualMealTarget()"))
+        assertTrue(savedFoodAdd.contains("selectedTab = 1"))
+        assertTrue(reuseMeal.contains("mealType = meal.mealType"))
+        assertTrue(reuseMeal.contains("selectedTab = 1"))
     }
 
     @Test

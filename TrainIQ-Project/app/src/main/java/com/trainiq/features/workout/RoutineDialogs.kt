@@ -5,8 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -108,6 +108,7 @@ fun GeneratedRoutinePreviewDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .fillMaxHeight(0.92f)
                 .navigationBarsPadding()
                 .imePadding()
                 .padding(horizontal = 24.dp, vertical = 12.dp),
@@ -124,7 +125,7 @@ fun GeneratedRoutinePreviewDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 520.dp)
+                    .weight(1f, fill = false)
                     .clearFocusOnScrollOrDrag()
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -211,20 +212,18 @@ fun GeneratedRoutinePreviewDialog(
                     }
                 }
             }
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Button(onClick = onSave, enabled = !isSaving, modifier = Modifier.fillMaxWidth()) {
                     Text(if (isSaving) "Opslaan..." else "Opslaan")
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    TextButton(onClick = onRetry, modifier = Modifier.weight(1f)) {
-                        Text("Opnieuw proberen")
-                    }
-                    TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
-                        Text("Annuleren")
-                    }
+                TextButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
+                    Text("Opnieuw proberen")
+                }
+                TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                    Text("Annuleren")
                 }
             }
         }

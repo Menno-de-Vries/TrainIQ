@@ -83,8 +83,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -1857,7 +1855,7 @@ private fun RoutineGeneratorDialog(
                     focusSuggestions.forEach { suggestion ->
                         SuggestionChip(
                             onClick = { focus = suggestion },
-                            label = { Text(suggestion, maxLines = 1) },
+                            label = { Text(suggestion) },
                         )
                     }
                 }
@@ -1903,15 +1901,17 @@ private fun RoutineGeneratorDialog(
 private fun ExperienceLevelSelector(experienceLevel: String, onSelected: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("Ervaringsniveau", style = MaterialTheme.typography.labelMedium)
-        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-            listOf("beginner", "intermediate", "advanced").forEachIndexed { index, option ->
-                SegmentedButton(
-                    shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(index = index, count = 3),
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            listOf("beginner", "intermediate", "advanced").forEach { option ->
+                FilterChip(
                     onClick = { onSelected(option) },
                     selected = option == experienceLevel,
-                ) {
-                    Text(option.toDutchExperienceLabel())
-                }
+                    label = { Text(option.toDutchExperienceLabel()) },
+                )
             }
         }
     }
@@ -1927,12 +1927,11 @@ private fun SessionDurationSlider(durationMinutes: Int, onValueChange: (Float) -
 
 @Composable
 private fun IncludeDeloadRow(enabled: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Deload-richtlijn opnemen", style = MaterialTheme.typography.labelMedium)
             Text("Voegt hersteladvies toe voor lichtere weken.", style = MaterialTheme.typography.bodySmall)
         }

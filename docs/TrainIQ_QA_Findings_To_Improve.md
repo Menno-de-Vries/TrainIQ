@@ -1016,3 +1016,24 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
 - Crash evidence: PASS, `.codex/device-qa/2026-05-10-training-setup-to-completion-polish/40-after-save-crash-buffer.txt` was empty.
 - External sources used: None. Local runtime evidence and existing app tests were sufficient.
 - Remaining risk: completion with Gemini-enabled debrief still needs API-key/network-path evidence; this pass verified local fallback completion.
+
+## 2026-05-13 Base-Free-Model Nutrition And AI Routine Polish
+
+- Target-state link: the Gemini-only base model should keep the same polished Nutrition and AI routine UX as the paid branch without changing AI provider/API, Room, repository, use case, domain model, or navigation contracts.
+- Files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/RoutineDialogs.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/nutrition/NutritionInputValidationTest.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/workout/WorkoutInputValidationTest.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/workout/WorkoutDialogPresentationPolicyTest.kt`
+- Fix: Nutrition now renders loading, error, and success inside one stable `LazyColumn` surface, removes scroll-drag focus clearing from browsing/action-sheet surfaces, keeps accessible per-meal plus actions, and preserves the originating meal type when routing add flows into the draft tab.
+- Fix: AI routine generation now uses wrapping compact controls with Dutch labels, and generated routine preview policy is guarded so bottom actions stay outside weighted scroll content.
+- Gemini-only safety: PASS, changed app files contain no OpenAI provider routing or `hasAnyReadyProvider` dependency; Nutrition AI enablement remains `aiPreferences.enabled && aiPreferences.apiKey.isNotBlank()`.
+- Verification: baseline targeted source/unit guards PASS before the port.
+- Verification: after-change targeted guards PASS, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --tests "com.trainiq.features.workout.WorkoutDialogPresentationPolicyTest" --console=plain --no-configuration-cache`.
+- Verification: broad Gradle gate PASS, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+- Verification: full test lifecycle PASS, `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+- Emulator evidence: PASS on `emulator-5554`, debug install and cold launch passed with `Status: ok`, `LaunchState: COLD`, `WaitTime: 3117`. `03-voeding-immediate-before-swipe.xml` shows the stable scrollable Voeding list with Ochtend/Middag/Avond and plus action descriptions; `04-voeding-after-immediate-swipe.xml` shows immediate scroll movement to Middag/Avond/Snacks; `06-nutrition-add-sheet.xml` shows `Toevoegen aan Snacks` and expected source actions; `09-ai-routine-dialog.xml`/`11-ai-routine-dialog-scrolled.xml` show Dutch AI routine labels, wrapping experience chips, visible bottom actions, and the deload content description.
+- Crash evidence: PASS, `.codex/device-qa/2026-05-13-base-free-nutrition-routine-polish/10-androidruntime.txt` was empty.
+- Remaining risk: generated-routine preview runtime was NOT RUN in this pass because it requires completing the AI generation path; source guards and broad tests verify the bottom-action layout policy.
