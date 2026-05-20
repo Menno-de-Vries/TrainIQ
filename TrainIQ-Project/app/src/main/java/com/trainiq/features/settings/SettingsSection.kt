@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -69,8 +68,6 @@ import com.trainiq.core.ui.bringIntoViewOnFocus
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.theme.ThemeMode
-import com.trainiq.features.profile.DefaultProfileActivityLevel
-import com.trainiq.features.profile.ProfileActivityLevels
 import com.trainiq.features.profile.ProfileInputField
 import com.trainiq.features.profile.ProfileInputValidationError
 import com.trainiq.features.profile.ProfileInputValidationResult
@@ -523,30 +520,7 @@ fun SettingsScreen(
 ) {
     var apiKey by rememberSaveable { mutableStateOf("") }
     var openAiKey by rememberSaveable { mutableStateOf("") }
-    var name by rememberSaveable { mutableStateOf(profile?.name.orEmpty()) }
-    var age by rememberSaveable { mutableStateOf(profile?.age?.toString() ?: "30") }
-    var sex by rememberSaveable { mutableStateOf(profile?.sex ?: BiologicalSex.MALE) }
-    var height by rememberSaveable { mutableStateOf(profile?.height?.toString().orEmpty()) }
-    var weight by rememberSaveable { mutableStateOf(profile?.weight?.toString().orEmpty()) }
-    var bodyFat by rememberSaveable { mutableStateOf(profile?.bodyFat?.toString().orEmpty()) }
-    var activityLevel by rememberSaveable {
-        mutableStateOf(profile?.activityLevel?.takeIf { it in ProfileActivityLevels } ?: DefaultProfileActivityLevel)
-    }
-    var goal by rememberSaveable { mutableStateOf(profile?.goal.orEmpty()) }
-    var profileInputError by remember { mutableStateOf<ProfileInputValidationError?>(null) }
     var pendingDestructiveAction by rememberSaveable { mutableStateOf<PendingDestructiveSettingsAction?>(null) }
-
-    LaunchedEffect(profile) {
-        name = profile?.name.orEmpty()
-        age = profile?.age?.toString() ?: "30"
-        sex = profile?.sex ?: BiologicalSex.MALE
-        height = profile?.height?.toString().orEmpty()
-        weight = profile?.weight?.toString().orEmpty()
-        bodyFat = profile?.bodyFat?.toString().orEmpty()
-        activityLevel = profile?.activityLevel?.takeIf { it in ProfileActivityLevels } ?: DefaultProfileActivityLevel
-        goal = profile?.goal.orEmpty()
-        profileInputError = null
-    }
 
     LazyColumn(
         modifier = Modifier
@@ -562,7 +536,7 @@ fun SettingsScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.large),
     ) {
-        item { ScreenHeader(title = "Instellingen", subtitle = "Profiel, Health Connect en voorkeuren") }
+        item { ScreenHeader(title = "Instellingen", subtitle = "Health Connect, AI en voorkeuren") }
         item {
             SectionCard(title = settingsOverflowSectionTitle()) {
                 Text(settingsOverflowSectionBody())
@@ -579,7 +553,7 @@ fun SettingsScreen(
                 }
             }
         }
-        if (profileInputError == null) message?.let {
+        message?.let {
             item {
                 MessageCard(message = it, onDismiss = onDismissMessage)
             }
@@ -774,138 +748,6 @@ fun SettingsScreen(
                         modifier = Modifier.settingsActionLabel("Health Connect-status vernieuwen"),
                         onClick = onRefreshHealth,
                     ) { Text("Vernieuwen") }
-                }
-            }
-        }
-        item {
-            SectionCard(title = "Profiel & doelen") {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = {
-                        name = it
-                        profileInputError = null
-                    },
-                    label = { Text("Naam") },
-                    isError = profileInputError.isFor(ProfileInputField.Name),
-                    supportingText = profileInputError.supportingTextFor(ProfileInputField.Name),
-                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
-                )
-                OutlinedTextField(
-                    value = age,
-                    onValueChange = {
-                        age = it
-                        profileInputError = null
-                    },
-                    label = { Text("Leeftijd") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    isError = profileInputError.isFor(ProfileInputField.Age),
-                    supportingText = profileInputError.supportingTextFor(ProfileInputField.Age),
-                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
-                )
-                Text("Biologische sekse", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-                    BiologicalSex.entries.forEach { option ->
-                        FilterChip(
-                            selected = sex == option,
-                            onClick = {
-                                sex = option
-                                profileInputError = null
-                            },
-                            label = { Text(option.displayLabel()) },
-                        )
-                    }
-                }
-                OutlinedTextField(
-                    value = height,
-                    onValueChange = {
-                        height = it
-                        profileInputError = null
-                    },
-                    label = { Text("Lengte (cm)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    isError = profileInputError.isFor(ProfileInputField.Height),
-                    supportingText = profileInputError.supportingTextFor(ProfileInputField.Height),
-                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
-                )
-                OutlinedTextField(
-                    value = weight,
-                    onValueChange = {
-                        weight = it
-                        profileInputError = null
-                    },
-                    label = { Text("Gewicht (kg)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    isError = profileInputError.isFor(ProfileInputField.Weight),
-                    supportingText = profileInputError.supportingTextFor(ProfileInputField.Weight),
-                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
-                )
-                OutlinedTextField(
-                    value = bodyFat,
-                    onValueChange = {
-                        bodyFat = it
-                        profileInputError = null
-                    },
-                    label = { Text("Vetpercentage %") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    isError = profileInputError.isFor(ProfileInputField.BodyFat),
-                    supportingText = profileInputError.supportingTextFor(ProfileInputField.BodyFat),
-                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
-                )
-                Text("Activiteitsniveau", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-                ) {
-                    ProfileActivityLevels.forEach { option ->
-                        FilterChip(
-                            selected = activityLevel == option,
-                            onClick = {
-                                activityLevel = option
-                                profileInputError = null
-                            },
-                            label = { Text(option) },
-                        )
-                    }
-                }
-                profileInputError.takeIf { it.isFor(ProfileInputField.ActivityLevel) }?.let { error ->
-                    Text(error.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                }
-                OutlinedTextField(
-                    value = goal,
-                    onValueChange = {
-                        goal = it
-                        profileInputError = null
-                    },
-                    label = { Text("Hoofddoel") },
-                    isError = profileInputError.isFor(ProfileInputField.Goal),
-                    supportingText = profileInputError.supportingTextFor(ProfileInputField.Goal),
-                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
-                )
-                Button(
-                    onClick = {
-                        when (
-                            val result = validateProfileInput(name, height, weight, bodyFat, age, sex, activityLevel, goal)
-                        ) {
-                            is ProfileInputValidationResult.Valid -> {
-                                profileInputError = null
-                                onSaveProfile(name, age, sex, height, weight, bodyFat, activityLevel, goal)
-                            }
-                            is ProfileInputValidationResult.Invalid -> {
-                                profileInputError = result.error
-                                onDismissMessage()
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("Profiel opslaan") }
-                TextButton(
-                    onClick = { pendingDestructiveAction = PendingDestructiveSettingsAction.RESET_PROFILE },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("Profiel resetten") }
-                profile?.let {
-                    Text("Huidige dashboarddoelen: ${it.calorieTarget} kcal en ${it.proteinTarget} g eiwit.")
                 }
             }
         }

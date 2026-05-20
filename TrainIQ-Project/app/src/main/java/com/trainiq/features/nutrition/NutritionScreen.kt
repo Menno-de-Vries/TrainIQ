@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -23,6 +24,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -406,7 +408,7 @@ class NutritionViewModel @Inject constructor(
                         barcode = cleanBarcode,
                     ),
                     message = if (product == null) {
-                        "Barcode gevonden, maar geen betrouwbare productdata. Vul kcal en macro's handmatig in."
+                        "Barcode gevonden. Productdata ontbreekt; vul kcal en macro's handmatig in."
                     } else {
                         "${product.name} gevonden via barcode."
                     },
@@ -491,13 +493,14 @@ fun NutritionScreen(
     val isAiBatchPending = NutritionSubmitKey.AiItems in pendingSubmits
     val haptics = LocalHapticFeedback.current
     val tabs = nutritionTabTitles()
-    val nutritionListStates = List(tabs.size) { rememberLazyListState() }
+    val sectionTabs = nutritionSectionTabs()
+    val nutritionListStates = List(nutritionInternalTabCount()) { rememberLazyListState() }
     val coroutineScope = rememberCoroutineScope()
     val recipeActionSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val addToMealSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val sectionMenuSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedTab by rememberSaveable { mutableStateOf(0) }
-    val nutritionListState = nutritionListStates[selectedTab.coerceIn(tabs.indices)]
+    val nutritionListState = nutritionListStates[selectedTab.coerceIn(nutritionListStates.indices)]
     var aiScanForRecipe by remember { mutableStateOf(false) }
     var showAddToMealActions by remember { mutableStateOf(false) }
     var showSectionMenu by remember { mutableStateOf(false) }
@@ -739,21 +742,25 @@ fun NutritionScreen(
                 }
                 Surface(
                     onClick = { showSectionMenu = true },
-                    modifier = Modifier.semantics {
-                        contentDescription = nutritionSectionMenuButtonDescription()
-                    },
-                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier
+                        .size(44.dp)
+                        .semantics {
+                            contentDescription = nutritionSectionMenuButtonDescription()
+                        },
+                    shape = RoundedCornerShape(14.dp),
                     color = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 ) {
-                    Text(
-                        nutritionSectionMenuButtonLabel(),
-                        modifier = Modifier
-                            .heightIn(min = 40.dp)
-                            .padding(horizontal = MaterialTheme.spacing.compact, vertical = 6.dp),
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Menu,
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
                 }
             }
             message?.let { MessageCard(message = it, onDismiss = onDismissMessage) }
@@ -1306,10 +1313,10 @@ fun NutritionScreen(
             sheetState = sectionMenuSheetState,
         ) {
             NutritionSectionMenuSheet(
-                tabs = tabs,
+                tabs = sectionTabs,
                 selectedTab = selectedTab,
-                onSelectTab = { index ->
-                    selectedTab = index
+                onSelectTab = { tab ->
+                    selectedTab = tab.index
                     hasAddToMealTarget = false
                     showSectionMenu = false
                 },
@@ -1386,9 +1393,9 @@ fun NutritionScreen(
 
 @Composable
 private fun NutritionSectionMenuSheet(
-    tabs: List<String>,
+    tabs: List<NutritionSectionTab>,
     selectedTab: Int,
-    onSelectTab: (Int) -> Unit,
+    onSelectTab: (NutritionSectionTab) -> Unit,
     onDismiss: () -> Unit,
 ) {
     Column(
@@ -1399,24 +1406,24 @@ private fun NutritionSectionMenuSheet(
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
     ) {
         BottomSheetHeader(title = "Voeding secties")
-        tabs.forEachIndexed { index, title ->
-            val selected = selectedTab == index
+        tabs.forEach { tab ->
+            val selected = selectedTab == tab.index
             if (selected) {
                 Button(
-                    onClick = { onSelectTab(index) },
+                    onClick = { onSelectTab(tab) },
                     modifier = Modifier.fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = MaterialTheme.spacing.medium, vertical = MaterialTheme.spacing.small),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.secondaryContainer,
                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     ),
-                ) { Text(title) }
+                ) { Text(tab.title) }
             } else {
                 OutlinedButton(
-                    onClick = { onSelectTab(index) },
+                    onClick = { onSelectTab(tab) },
                     modifier = Modifier.fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = MaterialTheme.spacing.medium, vertical = MaterialTheme.spacing.small),
-                ) { Text(title) }
+                ) { Text(tab.title) }
             }
         }
         TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Sluiten") }
@@ -1896,7 +1903,7 @@ private fun FoodEditorCard(
                 TextButton(onClick = onCancelEdit, modifier = Modifier.fillMaxWidth()) { Text("Annuleren en nieuw product") }
             }
             Text(
-                "Barcode scannen vult productnaam, kcal en macro's automatisch in als Open Food Facts het product kent.",
+                "Barcode scannen vult productnaam, kcal en macro's in als Open Food Facts het product kent.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.trainIqColors.mutedText,
             )
@@ -2497,11 +2504,24 @@ internal fun mealSectionAddContentDescription(mealType: MealType): String =
 internal fun aiMealAnalyzingLabel(): String = "Maaltijd analyseren..."
 
 internal fun nutritionTabTitles(): List<String> =
-    listOf("Vandaag", "Toevoegen", "AI-resultaat", "Recepten", "Producten", "Historie")
+    listOf("Vandaag", "AI-resultaat", "Recepten", "Producten", "Historie")
+
+private data class NutritionSectionTab(val title: String, val index: Int)
+
+private fun nutritionSectionTabs(): List<NutritionSectionTab> =
+    listOf(
+        NutritionSectionTab("Vandaag", 0),
+        NutritionSectionTab("AI-resultaat", 2),
+        NutritionSectionTab("Recepten", 3),
+        NutritionSectionTab("Producten", 4),
+        NutritionSectionTab("Historie", 5),
+    )
+
+private fun nutritionInternalTabCount(): Int = 6
 
 internal fun nutritionSectionMenuButtonDescription(): String = "Voeding secties openen"
 
-internal fun nutritionSectionMenuButtonLabel(): String = "|||"
+internal fun nutritionSectionMenuButtonLabel(): String = "Secties"
 
 internal fun mealEditActionLabel(): String = "Hoeveelheid wijzigen"
 

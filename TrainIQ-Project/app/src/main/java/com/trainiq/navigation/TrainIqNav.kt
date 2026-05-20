@@ -241,7 +241,7 @@ fun TrainIqApp(
                             .fillMaxWidth()
                             .offset(y = navOffset)
                             .padding(
-                                horizontal = if (useCompactShortBottomBar) 8.dp else 10.dp,
+                                horizontal = 0.dp,
                                 vertical = 0.dp,
                             )
                             .navigationBarsPadding(),
@@ -249,10 +249,10 @@ fun TrainIqApp(
                         tonalElevation = 0.dp,
                         shadowElevation = 0.dp,
                         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.trainIqColors.cardBorder),
-                        shape = RoundedCornerShape(22.dp),
+                        shape = RoundedCornerShape(2.dp),
                     ) {
                         NavigationBar(
-                            modifier = Modifier.height(if (useCompactShortBottomBar) 48.dp else 58.dp),
+                            modifier = Modifier.height(if (useCompactShortBottomBar) 50.dp else 62.dp),
                             tonalElevation = 0.dp,
                             containerColor = androidx.compose.ui.graphics.Color.Transparent,
                         ) {

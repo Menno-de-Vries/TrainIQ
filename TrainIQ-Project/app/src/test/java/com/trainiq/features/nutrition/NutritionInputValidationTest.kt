@@ -154,7 +154,7 @@ class NutritionInputValidationTest {
     @Test
     fun nutritionTabTitles_keepOverviewEntryAndAiResultSeparated() {
         assertEquals(
-            listOf("Vandaag", "Toevoegen", "AI-resultaat", "Recepten", "Producten", "Historie"),
+            listOf("Vandaag", "AI-resultaat", "Recepten", "Producten", "Historie"),
             nutritionTabTitles(),
         )
     }
@@ -162,7 +162,7 @@ class NutritionInputValidationTest {
     @Test
     fun nutritionSectionMenuCopy_keepsCompactMenuAccessible() {
         assertEquals("Voeding secties openen", nutritionSectionMenuButtonDescription())
-        assertEquals("|||", nutritionSectionMenuButtonLabel())
+        assertEquals("Secties", nutritionSectionMenuButtonLabel())
     }
 
     @Test
@@ -179,7 +179,10 @@ class NutritionInputValidationTest {
         assertFalse(source.contains("ScrollableTabRow"))
         assertTrue(source.contains("showSectionMenu"))
         assertTrue(source.contains("nutritionSectionMenuButtonDescription()"))
-        assertTrue(source.contains("nutritionSectionMenuButtonLabel()"))
+        assertTrue(source.contains("Icons.Rounded.Menu"))
+        assertTrue(source.contains("NutritionSectionTab(\"AI-resultaat\", 2)"))
+        assertTrue(source.contains("NutritionSectionTab(\"Recepten\", 3)"))
+        assertFalse(source.contains("\"Toevoegen\", 1"))
     }
 
     @Test
