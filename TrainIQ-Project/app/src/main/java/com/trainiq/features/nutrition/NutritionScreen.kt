@@ -78,6 +78,7 @@ import com.trainiq.core.ui.bringIntoViewOnFocus
 import com.trainiq.core.ui.clearFocusOnTapOutside
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.domain.model.FoodItem
+import com.trainiq.domain.model.BarcodeProductLookupResult
 import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.model.EnergyBalanceSnapshot
 import com.trainiq.domain.model.LoggedMeal
@@ -95,6 +96,7 @@ import com.trainiq.domain.usecase.ClearLastScanResultUseCase
 import com.trainiq.domain.usecase.DeleteFoodUseCase
 import com.trainiq.domain.usecase.DeleteMealUseCase
 import com.trainiq.domain.usecase.DeleteRecipeUseCase
+import com.trainiq.domain.usecase.LookupBarcodeProductUseCase
 import com.trainiq.domain.usecase.ObserveNutritionUseCase
 import com.trainiq.domain.usecase.SaveFoodItemUseCase
 import com.trainiq.domain.usecase.SaveMealUseCase
@@ -116,6 +118,14 @@ import kotlinx.coroutines.launch
 
 enum class ScanTarget { FOOD_EDITOR, RECIPE_DRAFT }
 
+enum class BarcodeLookupTarget { FOOD_EDITOR, RECIPE_DRAFT }
+
+data class BarcodeLookupUiResult(
+    val target: BarcodeLookupTarget,
+    val product: BarcodeProductLookupResult?,
+    val barcode: String,
+)
+
 private sealed interface PendingNutritionDelete {
     data class Meal(val id: Long) : PendingNutritionDelete
     data class Food(val id: Long) : PendingNutritionDelete
@@ -131,6 +141,7 @@ sealed interface NutritionUiState {
         val message: String? = null,
         val isAnalyzing: Boolean = false,
         val scanTarget: ScanTarget = ScanTarget.FOOD_EDITOR,
+        val barcodeLookupResult: BarcodeLookupUiResult? = null,
         val pendingSubmits: Set<NutritionSubmitKey> = emptySet(),
     ) : NutritionUiState
     data class Error(val message: String) : NutritionUiState
@@ -148,6 +159,7 @@ class NutritionViewModel @Inject constructor(
     private val deleteMealUseCase: DeleteMealUseCase,
     private val deleteFoodUseCase: DeleteFoodUseCase,
     private val deleteRecipeUseCase: DeleteRecipeUseCase,
+    private val lookupBarcodeProductUseCase: LookupBarcodeProductUseCase,
     private val clearLastScanResultUseCase: ClearLastScanResultUseCase,
 ) : ViewModel() {
     private data class NutritionEphemeralState(
@@ -155,6 +167,7 @@ class NutritionViewModel @Inject constructor(
         val message: String? = null,
         val isAnalyzing: Boolean = false,
         val scanTarget: ScanTarget = ScanTarget.FOOD_EDITOR,
+        val barcodeLookupResult: BarcodeLookupUiResult? = null,
         val pendingSubmits: Set<NutritionSubmitKey> = emptySet(),
     )
 
@@ -175,6 +188,7 @@ class NutritionViewModel @Inject constructor(
                 message = temp.message,
                 isAnalyzing = temp.isAnalyzing,
                 scanTarget = temp.scanTarget,
+                barcodeLookupResult = temp.barcodeLookupResult,
                 pendingSubmits = temp.pendingSubmits,
             )
         }
@@ -378,6 +392,32 @@ class NutritionViewModel @Inject constructor(
     fun setScanTarget(target: ScanTarget) {
         ephemeral.update { it.copy(scanTarget = target) }
     }
+
+    fun lookupBarcodeProduct(barcode: String, target: BarcodeLookupTarget) {
+        val cleanBarcode = barcode.filter(Char::isDigit)
+        if (cleanBarcode.isBlank()) return
+        viewModelScope.launch {
+            val product = runCatching { lookupBarcodeProductUseCase(cleanBarcode) }.getOrNull()
+            ephemeral.update {
+                it.copy(
+                    barcodeLookupResult = BarcodeLookupUiResult(
+                        target = target,
+                        product = product,
+                        barcode = cleanBarcode,
+                    ),
+                    message = if (product == null) {
+                        "Barcode gevonden, maar geen betrouwbare productdata. Vul kcal en macro's handmatig in."
+                    } else {
+                        "${product.name} gevonden via barcode."
+                    },
+                )
+            }
+        }
+    }
+
+    fun clearBarcodeLookupResult() {
+        ephemeral.update { it.copy(barcodeLookupResult = null) }
+    }
 }
 
 @Composable
@@ -402,6 +442,8 @@ fun NutritionRoute(
         onFinishAiBatchSave = viewModel::finishAiBatchSave,
         onSetScanResult = viewModel::setScanResult,
         onSetScanTarget = viewModel::setScanTarget,
+        onLookupBarcodeProduct = viewModel::lookupBarcodeProduct,
+        onClearBarcodeLookupResult = viewModel::clearBarcodeLookupResult,
         onSetMessage = viewModel::setMessage,
         onDismissMessage = { viewModel.setMessage(null) },
         onOpenAiScanner = onOpenAiScanner,
@@ -425,6 +467,8 @@ fun NutritionScreen(
     onFinishAiBatchSave: () -> Unit,
     onSetScanResult: (MealAnalysisResult?) -> Unit,
     onSetScanTarget: (ScanTarget) -> Unit = {},
+    onLookupBarcodeProduct: (String, BarcodeLookupTarget) -> Unit = { _, _ -> },
+    onClearBarcodeLookupResult: () -> Unit = {},
     onSetMessage: (String?) -> Unit,
     onDismissMessage: () -> Unit,
     onOpenAiScanner: (String) -> Unit,
@@ -434,6 +478,7 @@ fun NutritionScreen(
 ) {
     val successState = uiState as? NutritionUiState.Success
     val overview = successState?.overview
+    val barcodeLookupResult = successState?.barcodeLookupResult
     val aiPreferences = successState?.aiPreferences ?: AiPreferences(false, "")
     val scanResult = successState?.scanResult
     val message = successState?.message
@@ -597,13 +642,44 @@ fun NutritionScreen(
                 selectedTab = 3
                 onDismissMessage()
                 quickIngredientName = quickIngredientName.ifBlank { "Gescand product" }
+                onLookupBarcodeProduct(pendingBarcode, BarcodeLookupTarget.RECIPE_DRAFT)
             } else {
                 barcode = pendingBarcode
                 selectedTab = 4
+                onLookupBarcodeProduct(pendingBarcode, BarcodeLookupTarget.FOOD_EDITOR)
             }
             onSetScanTarget(ScanTarget.FOOD_EDITOR)
             onBarcodeClear()
         }
+    }
+
+    LaunchedEffect(barcodeLookupResult) {
+        val result = barcodeLookupResult ?: return@LaunchedEffect
+        result.product?.let { product ->
+            when (result.target) {
+                BarcodeLookupTarget.FOOD_EDITOR -> {
+                    barcode = product.barcode
+                    foodName = product.name
+                    calories = formatNumber(product.caloriesPer100g)
+                    protein = formatNumber(product.proteinPer100g)
+                    carbs = formatNumber(product.carbsPer100g)
+                    fat = formatNumber(product.fatPer100g)
+                    foodErrors = FoodFieldErrors()
+                    selectedTab = 4
+                }
+                BarcodeLookupTarget.RECIPE_DRAFT -> {
+                    quickIngredientBarcode = product.barcode
+                    quickIngredientName = product.name
+                    quickIngredientKcal = formatNumber(product.caloriesPer100g)
+                    quickIngredientProtein = formatNumber(product.proteinPer100g)
+                    quickIngredientCarbs = formatNumber(product.carbsPer100g)
+                    quickIngredientFat = formatNumber(product.fatPer100g)
+                    quickIngredientErrors = FoodFieldErrors()
+                    selectedTab = 3
+                }
+            }
+        }
+        onClearBarcodeLookupResult()
     }
 
     LaunchedEffect(selectedFood?.id) {
@@ -1820,7 +1896,7 @@ private fun FoodEditorCard(
                 TextButton(onClick = onCancelEdit, modifier = Modifier.fillMaxWidth()) { Text("Annuleren en nieuw product") }
             }
             Text(
-                "Barcode scannen vult alleen de herkenningscode in. Vul voedingswaarden handmatig in; automatische productdata is nog niet gekoppeld.",
+                "Barcode scannen vult productnaam, kcal en macro's automatisch in als Open Food Facts het product kent.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.trainIqColors.mutedText,
             )

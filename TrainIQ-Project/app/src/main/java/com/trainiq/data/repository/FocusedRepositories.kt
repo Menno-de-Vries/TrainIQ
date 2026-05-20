@@ -119,6 +119,7 @@ class RoomNutritionRepository @Inject constructor(
     override fun observeNutritionOverview(): Flow<NutritionOverview> = delegate.observeNutritionOverview()
     override suspend fun analyzeMealPhoto(path: String, context: String, capturedAtMillis: Long): MealAnalysisResult =
         delegate.analyzeMealPhoto(path, context, capturedAtMillis)
+    override suspend fun lookupBarcodeProduct(barcode: String) = delegate.lookupBarcodeProduct(barcode)
     override fun clearLastScanResult() = delegate.clearLastScanResult()
     override suspend fun saveFoodItem(id: Long?, name: String, barcode: String?, caloriesPer100g: Double, proteinPer100g: Double, carbsPer100g: Double, fatPer100g: Double, sourceType: FoodSourceType): FoodItem =
         delegate.saveFoodItem(id, name, barcode, caloriesPer100g, proteinPer100g, carbsPer100g, fatPer100g, sourceType)

@@ -34,11 +34,13 @@ import com.trainiq.data.local.TrainIqStorageState
 import com.trainiq.data.local.WorkoutLogEventStorage
 import com.trainiq.data.mapper.parseSetType
 import com.trainiq.data.mapper.toDomain
+import com.trainiq.data.remote.BarcodeProductLookupService
 import com.trainiq.domain.model.BodyMeasurement
 import com.trainiq.domain.model.BodyMeasurementPhotoResult
 import com.trainiq.domain.model.ActiveWorkoutSession
 import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.ActiveWorkoutSetEntry
+import com.trainiq.domain.model.BarcodeProductLookupResult
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.ChartPoint
 import com.trainiq.domain.model.CoachOverview
@@ -124,6 +126,7 @@ class TrainIqDataCoordinator @Inject constructor(
     private val healthConnectDataSource: HealthConnectDataSource,
     private val analyticsEngine: AnalyticsEngine,
     private val mealAnalysisService: MealAnalysisService,
+    private val barcodeProductLookupService: BarcodeProductLookupService,
     private val bodyMeasurementPhotoService: BodyMeasurementPhotoService,
     private val workoutDebriefService: WorkoutDebriefService,
     private val goalAdvisorService: GoalAdvisorService,
@@ -1006,6 +1009,22 @@ class TrainIqDataCoordinator @Inject constructor(
             scannedMealResult.value = null
             throw error
         }
+    }
+
+    suspend fun lookupBarcodeProduct(barcode: String): BarcodeProductLookupResult? {
+        val cleanBarcode = barcode.filter(Char::isDigit)
+        if (cleanBarcode.isBlank()) return null
+        snapshotState.value.foods.firstOrNull { it.barcode == cleanBarcode }?.let { food ->
+            return BarcodeProductLookupResult(
+                barcode = cleanBarcode,
+                name = food.name,
+                caloriesPer100g = food.caloriesPer100g,
+                proteinPer100g = food.proteinPer100g,
+                carbsPer100g = food.carbsPer100g,
+                fatPer100g = food.fatPer100g,
+            )
+        }
+        return barcodeProductLookupService.lookup(cleanBarcode)
     }
 
     fun clearLastScanResult() {

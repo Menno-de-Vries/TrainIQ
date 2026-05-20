@@ -352,6 +352,10 @@ class AnalyzeMealUseCase @Inject constructor(private val repository: NutritionRe
         repository.analyzeMealPhoto(path, context, capturedAtMillis)
 }
 
+class LookupBarcodeProductUseCase @Inject constructor(private val repository: NutritionRepository) {
+    suspend operator fun invoke(barcode: String) = repository.lookupBarcodeProduct(barcode)
+}
+
 class SaveFoodItemUseCase @Inject constructor(private val repository: NutritionRepository) {
     suspend operator fun invoke(
         id: Long?,

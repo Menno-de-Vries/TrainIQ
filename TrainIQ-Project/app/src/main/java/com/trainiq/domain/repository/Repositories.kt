@@ -5,6 +5,7 @@ import com.trainiq.domain.model.ActiveWorkoutSession
 import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.BodyMeasurementPhotoResult
+import com.trainiq.domain.model.BarcodeProductLookupResult
 import com.trainiq.domain.model.Exercise
 import com.trainiq.domain.model.ExerciseHistory
 import com.trainiq.domain.model.FoodItem
@@ -126,6 +127,7 @@ interface WorkoutRepository {
 interface NutritionRepository {
     fun observeNutritionOverview(): Flow<NutritionOverview>
     suspend fun analyzeMealPhoto(path: String, context: String, capturedAtMillis: Long): MealAnalysisResult
+    suspend fun lookupBarcodeProduct(barcode: String): BarcodeProductLookupResult?
     fun clearLastScanResult()
     suspend fun saveFoodItem(
         id: Long?,

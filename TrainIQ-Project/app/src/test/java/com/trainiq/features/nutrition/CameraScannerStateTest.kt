@@ -59,6 +59,7 @@ class CameraScannerStateTest {
         assertTrue(fieldBody.contains(".semantics(mergeDescendants = true) { contentDescription = label }"))
         assertTrue(source.contains("label = \"Productnaam\""))
         assertTrue(source.contains("label = \"Barcode (optioneel)\""))
+        assertTrue(source.contains("Open Food Facts"))
         assertTrue(source.contains("label = \"kcal / 100g\""))
         assertTrue(source.contains("label = \"Eiwit / 100g\""))
     }
