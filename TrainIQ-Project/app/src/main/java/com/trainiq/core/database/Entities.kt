@@ -350,6 +350,7 @@ data class MealItemEntity(
     @ColumnInfo(name = "reference_id") val referenceId: Long,
     val name: String,
     @ColumnInfo(name = "grams_used") val gramsUsed: Double,
+    @ColumnInfo(name = "serving_count", defaultValue = "1") val servingCount: Int = 1,
     val calories: Double,
     val protein: Double,
     val carbs: Double,

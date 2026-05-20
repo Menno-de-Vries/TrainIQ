@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -23,6 +24,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -36,6 +38,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -75,6 +78,7 @@ import com.trainiq.core.ui.AppLinearProgress
 import com.trainiq.core.ui.bringIntoViewOnFocus
 import com.trainiq.core.ui.clearFocusOnTapOutside
 import com.trainiq.core.theme.trainIqColors
+import com.trainiq.domain.model.BarcodeProductLookupResult
 import com.trainiq.domain.model.FoodItem
 import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.model.EnergyBalanceSnapshot
@@ -93,6 +97,7 @@ import com.trainiq.domain.usecase.ClearLastScanResultUseCase
 import com.trainiq.domain.usecase.DeleteFoodUseCase
 import com.trainiq.domain.usecase.DeleteMealUseCase
 import com.trainiq.domain.usecase.DeleteRecipeUseCase
+import com.trainiq.domain.usecase.LookupBarcodeProductUseCase
 import com.trainiq.domain.usecase.ObserveNutritionUseCase
 import com.trainiq.domain.usecase.SaveFoodItemUseCase
 import com.trainiq.domain.usecase.SaveMealUseCase
@@ -114,6 +119,14 @@ import kotlinx.coroutines.launch
 
 enum class ScanTarget { FOOD_EDITOR, RECIPE_DRAFT }
 
+enum class BarcodeLookupTarget { FOOD_EDITOR, RECIPE_DRAFT }
+
+data class BarcodeLookupUiResult(
+    val target: BarcodeLookupTarget,
+    val product: BarcodeProductLookupResult?,
+    val barcode: String,
+)
+
 private sealed interface PendingNutritionDelete {
     data class Meal(val id: Long) : PendingNutritionDelete
     data class Food(val id: Long) : PendingNutritionDelete
@@ -129,6 +142,7 @@ sealed interface NutritionUiState {
         val message: String? = null,
         val isAnalyzing: Boolean = false,
         val scanTarget: ScanTarget = ScanTarget.FOOD_EDITOR,
+        val barcodeLookupResult: BarcodeLookupUiResult? = null,
         val pendingSubmits: Set<NutritionSubmitKey> = emptySet(),
     ) : NutritionUiState
     data class Error(val message: String) : NutritionUiState
@@ -146,6 +160,7 @@ class NutritionViewModel @Inject constructor(
     private val deleteMealUseCase: DeleteMealUseCase,
     private val deleteFoodUseCase: DeleteFoodUseCase,
     private val deleteRecipeUseCase: DeleteRecipeUseCase,
+    private val lookupBarcodeProductUseCase: LookupBarcodeProductUseCase,
     private val clearLastScanResultUseCase: ClearLastScanResultUseCase,
 ) : ViewModel() {
     private data class NutritionEphemeralState(
@@ -153,6 +168,7 @@ class NutritionViewModel @Inject constructor(
         val message: String? = null,
         val isAnalyzing: Boolean = false,
         val scanTarget: ScanTarget = ScanTarget.FOOD_EDITOR,
+        val barcodeLookupResult: BarcodeLookupUiResult? = null,
         val pendingSubmits: Set<NutritionSubmitKey> = emptySet(),
     )
 
@@ -173,6 +189,7 @@ class NutritionViewModel @Inject constructor(
                 message = temp.message,
                 isAnalyzing = temp.isAnalyzing,
                 scanTarget = temp.scanTarget,
+                barcodeLookupResult = temp.barcodeLookupResult,
                 pendingSubmits = temp.pendingSubmits,
             )
         }
@@ -376,6 +393,32 @@ class NutritionViewModel @Inject constructor(
     fun setScanTarget(target: ScanTarget) {
         ephemeral.update { it.copy(scanTarget = target) }
     }
+
+    fun lookupBarcodeProduct(barcode: String, target: BarcodeLookupTarget) {
+        val cleanBarcode = barcode.filter(Char::isDigit)
+        if (cleanBarcode.isBlank()) return
+        viewModelScope.launch {
+            val product = runCatching { lookupBarcodeProductUseCase(cleanBarcode) }.getOrNull()
+            ephemeral.update {
+                it.copy(
+                    barcodeLookupResult = BarcodeLookupUiResult(
+                        target = target,
+                        product = product,
+                        barcode = cleanBarcode,
+                    ),
+                    message = if (product == null) {
+                        "Barcode gevonden. Productdata ontbreekt; vul kcal en macro's handmatig in."
+                    } else {
+                        "${product.name} gevonden via barcode."
+                    },
+                )
+            }
+        }
+    }
+
+    fun clearBarcodeLookupResult() {
+        ephemeral.update { it.copy(barcodeLookupResult = null) }
+    }
 }
 
 @Composable
@@ -400,6 +443,8 @@ fun NutritionRoute(
         onFinishAiBatchSave = viewModel::finishAiBatchSave,
         onSetScanResult = viewModel::setScanResult,
         onSetScanTarget = viewModel::setScanTarget,
+        onLookupBarcodeProduct = viewModel::lookupBarcodeProduct,
+        onClearBarcodeLookupResult = viewModel::clearBarcodeLookupResult,
         onSetMessage = viewModel::setMessage,
         onDismissMessage = { viewModel.setMessage(null) },
         onOpenAiScanner = onOpenAiScanner,
@@ -423,6 +468,8 @@ fun NutritionScreen(
     onFinishAiBatchSave: () -> Unit,
     onSetScanResult: (MealAnalysisResult?) -> Unit,
     onSetScanTarget: (ScanTarget) -> Unit = {},
+    onLookupBarcodeProduct: (String, BarcodeLookupTarget) -> Unit = { _, _ -> },
+    onClearBarcodeLookupResult: () -> Unit = {},
     onSetMessage: (String?) -> Unit,
     onDismissMessage: () -> Unit,
     onOpenAiScanner: (String) -> Unit,
@@ -432,6 +479,7 @@ fun NutritionScreen(
 ) {
     val successState = uiState as? NutritionUiState.Success
     val overview = successState?.overview
+    val barcodeLookupResult = successState?.barcodeLookupResult
     val aiPreferences = successState?.aiPreferences ?: AiPreferences(false, "")
     val scanResult = successState?.scanResult
     val message = successState?.message
@@ -444,13 +492,14 @@ fun NutritionScreen(
     val isAiBatchPending = NutritionSubmitKey.AiItems in pendingSubmits
     val haptics = LocalHapticFeedback.current
     val tabs = nutritionTabTitles()
-    val nutritionListStates = List(tabs.size) { rememberLazyListState() }
+    val sectionTabs = nutritionSectionTabs()
+    val nutritionListStates = List(nutritionInternalTabCount()) { rememberLazyListState() }
     val coroutineScope = rememberCoroutineScope()
     val recipeActionSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val addToMealSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val sectionMenuSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedTab by rememberSaveable { mutableStateOf(0) }
-    val nutritionListState = nutritionListStates[selectedTab.coerceIn(tabs.indices)]
+    val nutritionListState = nutritionListStates[selectedTab.coerceIn(nutritionListStates.indices)]
     var aiScanForRecipe by remember { mutableStateOf(false) }
     var showAddToMealActions by remember { mutableStateOf(false) }
     var showSectionMenu by remember { mutableStateOf(false) }
@@ -595,13 +644,44 @@ fun NutritionScreen(
                 selectedTab = 3
                 onDismissMessage()
                 quickIngredientName = quickIngredientName.ifBlank { "Gescand product" }
+                onLookupBarcodeProduct(pendingBarcode, BarcodeLookupTarget.RECIPE_DRAFT)
             } else {
                 barcode = pendingBarcode
                 selectedTab = 4
+                onLookupBarcodeProduct(pendingBarcode, BarcodeLookupTarget.FOOD_EDITOR)
             }
             onSetScanTarget(ScanTarget.FOOD_EDITOR)
             onBarcodeClear()
         }
+    }
+
+    LaunchedEffect(barcodeLookupResult) {
+        val result = barcodeLookupResult ?: return@LaunchedEffect
+        result.product?.let { product ->
+            when (result.target) {
+                BarcodeLookupTarget.FOOD_EDITOR -> {
+                    barcode = product.barcode
+                    foodName = product.name
+                    calories = formatNumber(product.caloriesPer100g)
+                    protein = formatNumber(product.proteinPer100g)
+                    carbs = formatNumber(product.carbsPer100g)
+                    fat = formatNumber(product.fatPer100g)
+                    foodErrors = FoodFieldErrors()
+                    selectedTab = 4
+                }
+                BarcodeLookupTarget.RECIPE_DRAFT -> {
+                    quickIngredientBarcode = product.barcode
+                    quickIngredientName = product.name
+                    quickIngredientKcal = formatNumber(product.caloriesPer100g)
+                    quickIngredientProtein = formatNumber(product.proteinPer100g)
+                    quickIngredientCarbs = formatNumber(product.carbsPer100g)
+                    quickIngredientFat = formatNumber(product.fatPer100g)
+                    quickIngredientErrors = FoodFieldErrors()
+                    selectedTab = 3
+                }
+            }
+        }
+        onClearBarcodeLookupResult()
     }
 
     LaunchedEffect(selectedFood?.id) {
@@ -659,17 +739,27 @@ fun NutritionScreen(
                 Box(modifier = Modifier.weight(1f)) {
                     ScreenHeader(title = "Voeding", subtitle = "Voeding loggen zonder gedoe")
                 }
-                TextButton(
+                Surface(
                     onClick = { showSectionMenu = true },
-                    modifier = Modifier.semantics {
-                        contentDescription = nutritionSectionMenuButtonDescription()
-                    },
+                    modifier = Modifier
+                        .size(44.dp)
+                        .semantics {
+                            contentDescription = nutritionSectionMenuButtonDescription()
+                        },
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 ) {
-                    Text(
-                        nutritionSectionMenuButtonLabel(),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Menu,
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
                 }
             }
             message?.let { MessageCard(message = it, onDismiss = onDismissMessage) }
@@ -1215,10 +1305,10 @@ fun NutritionScreen(
             sheetState = sectionMenuSheetState,
         ) {
             NutritionSectionMenuSheet(
-                tabs = tabs,
+                tabs = sectionTabs,
                 selectedTab = selectedTab,
-                onSelectTab = { index ->
-                    selectedTab = index
+                onSelectTab = { tab ->
+                    selectedTab = tab.index
                     hasAddToMealTarget = false
                     showSectionMenu = false
                 },
@@ -1295,9 +1385,9 @@ fun NutritionScreen(
 
 @Composable
 private fun NutritionSectionMenuSheet(
-    tabs: List<String>,
+    tabs: List<NutritionSectionTab>,
     selectedTab: Int,
-    onSelectTab: (Int) -> Unit,
+    onSelectTab: (NutritionSectionTab) -> Unit,
     onDismiss: () -> Unit,
 ) {
     Column(
@@ -1308,18 +1398,18 @@ private fun NutritionSectionMenuSheet(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         BottomSheetHeader(title = "Voeding secties")
-        tabs.forEachIndexed { index, title ->
-            val selected = selectedTab == index
+        tabs.forEach { tab ->
+            val selected = selectedTab == tab.index
             if (selected) {
                 Button(
-                    onClick = { onSelectTab(index) },
+                    onClick = { onSelectTab(tab) },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text(title) }
+                ) { Text(tab.title) }
             } else {
                 OutlinedButton(
-                    onClick = { onSelectTab(index) },
+                    onClick = { onSelectTab(tab) },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text(title) }
+                ) { Text(tab.title) }
             }
         }
         TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Sluiten") }
@@ -2398,11 +2488,24 @@ internal fun mealSectionAddContentDescription(mealType: MealType): String =
 internal fun aiMealAnalyzingLabel(): String = "Maaltijd analyseren..."
 
 internal fun nutritionTabTitles(): List<String> =
-    listOf("Vandaag", "Toevoegen", "AI-resultaat", "Recepten", "Producten", "Historie")
+    listOf("Vandaag", "AI-resultaat", "Recepten", "Producten", "Historie")
+
+private data class NutritionSectionTab(val title: String, val index: Int)
+
+private fun nutritionSectionTabs(): List<NutritionSectionTab> =
+    listOf(
+        NutritionSectionTab("Vandaag", 0),
+        NutritionSectionTab("AI-resultaat", 2),
+        NutritionSectionTab("Recepten", 3),
+        NutritionSectionTab("Producten", 4),
+        NutritionSectionTab("Historie", 5),
+    )
+
+private fun nutritionInternalTabCount(): Int = 6
 
 internal fun nutritionSectionMenuButtonDescription(): String = "Voeding secties openen"
 
-internal fun nutritionSectionMenuButtonLabel(): String = "|||"
+internal fun nutritionSectionMenuButtonLabel(): String = "Secties"
 
 internal fun mealEditActionLabel(): String = "Hoeveelheid wijzigen"
 

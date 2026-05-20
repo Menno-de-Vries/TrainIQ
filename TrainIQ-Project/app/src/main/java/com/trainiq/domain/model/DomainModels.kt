@@ -324,6 +324,15 @@ data class FoodItem(
     val updatedAt: Long,
 )
 
+data class BarcodeProductLookupResult(
+    val barcode: String,
+    val name: String,
+    val caloriesPer100g: Double,
+    val proteinPer100g: Double,
+    val carbsPer100g: Double,
+    val fatPer100g: Double,
+)
+
 data class FoodPortion(
     val foodId: Long,
     val grams: Double,
