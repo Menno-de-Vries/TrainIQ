@@ -405,6 +405,11 @@ class ObserveProgressUseCase @Inject constructor(private val repository: Progres
     operator fun invoke() = repository.observeProgressOverview()
 }
 
+class AnalyzeBodyMeasurementPhotoUseCase @Inject constructor(private val repository: ProgressRepository) {
+    suspend operator fun invoke(path: String, context: String) =
+        repository.analyzeBodyMeasurementPhoto(path, context)
+}
+
 class AddMeasurementUseCase @Inject constructor(private val repository: ProgressRepository) {
     suspend operator fun invoke(weight: Double, bodyFat: Double, muscleMass: Double) =
         repository.addMeasurement(weight, bodyFat, muscleMass)

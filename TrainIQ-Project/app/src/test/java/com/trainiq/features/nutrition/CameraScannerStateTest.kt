@@ -100,6 +100,8 @@ class CameraScannerStateTest {
     fun scannerManualFallbackLabel_matchesScannerMode() {
         assertEquals("Handmatig toevoegen", scannerManualFallbackLabel(ScannerMode.AI_MEAL))
         assertEquals("Code handmatig invoeren", scannerManualFallbackLabel(ScannerMode.BARCODE))
+        assertEquals("Handmatig invoeren", scannerManualFallbackLabel(ScannerMode.AI_SCALE))
+        assertEquals("Foto importeren", scalePhotoImportLabel())
     }
 
     @Test

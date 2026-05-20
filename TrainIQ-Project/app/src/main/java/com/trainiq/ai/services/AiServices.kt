@@ -7,6 +7,8 @@ import com.google.gson.JsonParser
 import com.trainiq.ai.prompts.GeminiPrompts
 import com.trainiq.data.remote.GeminiApi
 import com.trainiq.domain.model.BiologicalSex
+import com.trainiq.domain.model.BodyMeasurementPhotoResult
+import com.trainiq.domain.model.BodyMeasurementPhotoSource
 import com.trainiq.domain.model.GoalAdvice
 import com.trainiq.domain.model.GoalAdviceSource
 import com.trainiq.domain.model.MealAnalysisResult
@@ -76,10 +78,12 @@ class MealAnalysisService internal constructor(
         val captureTime = Instant.ofEpochMilli(capturedAtMillis)
             .atZone(ZoneId.systemDefault())
             .format(captureTimeFormatter)
+        val sanitizedUserContext = userContext.trim().take(MaxMealScanContextChars)
+        val contextOverrides = parseMealContextOverrides(sanitizedUserContext)
         val scanContext = buildString {
             append("De gebruiker nam deze foto om $captureTime. ")
             append("Voorgesteld maaltijdtype: ${suggestedMealType.promptLabel()}. ")
-            append(userContext.ifBlank { "Herken de voeding, schat porties en geef exacte macro's terug." })
+            append(sanitizedUserContext.ifBlank { "Herken de voeding, schat porties en geef exacte macro's terug." })
         }
         val imageBytes = prepareMealScanImageBytes(file) ?: return fallbackMealScan()
         val routed = runCatching {
@@ -97,10 +101,15 @@ class MealAnalysisService internal constructor(
             if (error is CancellationException) throw error
             return fallbackMealScan()
         }
-        return parseMealScan(routed.rawJson, suggestedMealType, routed.providerUsed)
+        return parseMealScan(routed.rawJson, suggestedMealType, routed.providerUsed, contextOverrides)
     }
 
-    private fun parseMealScan(text: String, fallbackMealType: MealType, provider: AiProvider): MealAnalysisResult {
+    private fun parseMealScan(
+        text: String,
+        fallbackMealType: MealType,
+        provider: AiProvider,
+        contextOverrides: MealContextOverrides = MealContextOverrides(),
+    ): MealAnalysisResult {
         if (text.isBlank()) throw MealAnalysisUnavailableException()
         return runCatching {
             val root = JsonParser.parseString(text).asJsonObject
@@ -131,8 +140,9 @@ class MealAnalysisService internal constructor(
                     notes = obj.get("notes")?.asString,
                 )
             }.orEmpty()
+            val normalizedItems = applyMealContextOverrides(items, contextOverrides)
             MealAnalysisResult(
-                items = items,
+                items = normalizedItems,
                 suggestedMealType = root.get("suggestedMealType")
                     ?.asString
                     ?.trim()
@@ -155,6 +165,197 @@ class MealAnalysisService internal constructor(
     )
 }
 
+@Singleton
+class BodyMeasurementPhotoService @Inject constructor(
+    private val aiJsonGenerator: AiJsonGenerator,
+    private val aiUsageGate: AiUsageGate,
+) {
+    suspend fun analyzeScaleImage(path: String, userContext: String): BodyMeasurementPhotoResult {
+        if (!aiUsageGate.isAiReady()) return fallbackBodyMeasurementPhoto()
+        val sanitizedContext = userContext.trim().take(MaxBodyMeasurementContextChars)
+        val contextOverrides = parseBodyMeasurementContextOverrides(sanitizedContext)
+        val imageBytes = prepareMealScanImageBytes(File(path)) ?: return fallbackBodyMeasurementPhoto(
+            notes = "Foto kon niet worden gelezen. Vul de meting handmatig in.",
+        )
+        return runCatching {
+            val routed = aiJsonGenerator.generateJson(
+                AiRouteRequest(
+                    feature = AiFeature.BODY_MEASUREMENT_PHOTO,
+                    prompt = GeminiPrompts.bodyMeasurementPhoto(sanitizedContext),
+                    schemaName = "body_measurement_photo",
+                    responseJsonSchema = GeminiJsonSchemas.bodyMeasurementPhoto,
+                    thinkingBudget = 0,
+                    imageJpegBytes = imageBytes,
+                ),
+            )
+            parseBodyMeasurementPhoto(routed.rawJson, routed.providerUsed, contextOverrides)
+        }.getOrElse { error ->
+            if (error is CancellationException) throw error
+            fallbackBodyMeasurementPhoto()
+        }
+    }
+
+    private fun parseBodyMeasurementPhoto(
+        text: String,
+        provider: AiProvider,
+        contextOverrides: BodyMeasurementContextOverrides = BodyMeasurementContextOverrides(),
+    ): BodyMeasurementPhotoResult {
+        val root = JsonParser.parseString(text).asJsonObject
+        val weight = contextOverrides.weight
+            ?: root.safeNumber("weight", default = 0.0, min = 30.0, max = 300.0)
+            ?: 0.0
+        val bodyFat = contextOverrides.bodyFat
+            ?: root.safeNumber("bodyFat", default = 0.0, min = 0.0, max = 100.0)
+            ?: 0.0
+        val muscleMass = contextOverrides.muscleMass
+            ?: root.safeNumber("muscleMass", default = 0.0, min = 1.0, max = 200.0)
+            ?: 0.0
+        val source = provider.toBodyMeasurementPhotoSource()
+        if (weight <= 0.0) {
+            return fallbackBodyMeasurementPhoto(
+                notes = root.get("notes")?.asString ?: "AI kon het gewicht niet betrouwbaar uitlezen. Voeg het gewicht als context toe of vul het handmatig in.",
+                rawResponse = text,
+                source = source,
+            )
+        }
+        return BodyMeasurementPhotoResult(
+            weight = weight,
+            bodyFat = bodyFat,
+            muscleMass = muscleMass,
+            confidence = root.get("confidence")?.asString,
+            notes = buildBodyMeasurementNotes(root.get("notes")?.asString, contextOverrides),
+            rawResponse = text,
+            source = source,
+        )
+    }
+}
+
+internal data class MealContextOverrides(
+    val totalGrams: Double? = null,
+    val itemGramsByName: Map<String, Double> = emptyMap(),
+)
+
+internal data class BodyMeasurementContextOverrides(
+    val weight: Double? = null,
+    val bodyFat: Double? = null,
+    val muscleMass: Double? = null,
+)
+
+internal fun parseMealContextOverrides(context: String): MealContextOverrides {
+    if (context.isBlank()) return MealContextOverrides()
+    val total = Regex("""(?i)\b(?:totaal|total)\s*[:=]?\s*(\d+(?:[,.]\d+)?)\s*(?:g|gram|grams)\b""")
+        .find(context)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.toAiDoubleOrNull()
+        ?.takeIf { it in 1.0..MaxMealScanGrams }
+    val itemOverrides = Regex("""(?i)\b([a-zA-ZÀ-ÿ][a-zA-ZÀ-ÿ0-9 '\-]{1,40}?)\s*[:=]?\s*(\d+(?:[,.]\d+)?)\s*(?:g|gram|grams|ml|milliliter|milliliters)\b""")
+        .findAll(context)
+        .mapNotNull { match ->
+            val name = match.groupValues.getOrNull(1)?.trim().orEmpty()
+            val grams = match.groupValues.getOrNull(2)?.toAiDoubleOrNull()
+            val normalized = normalizeAiContextName(name)
+            if (
+                normalized.isNotBlank() &&
+                normalized !in setOf("totaal", "total") &&
+                grams != null &&
+                grams in 1.0..MaxMealScanGrams
+            ) {
+                normalized to grams
+            } else {
+                null
+            }
+        }
+        .toMap()
+    return MealContextOverrides(totalGrams = total, itemGramsByName = itemOverrides)
+}
+
+internal fun parseBodyMeasurementContextOverrides(context: String): BodyMeasurementContextOverrides {
+    if (context.isBlank()) return BodyMeasurementContextOverrides()
+    fun firstNumber(pattern: String, range: ClosedFloatingPointRange<Double>): Double? =
+        Regex(pattern)
+            .find(context)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toAiDoubleOrNull()
+            ?.takeIf { it in range }
+
+    return BodyMeasurementContextOverrides(
+        weight = firstNumber("""(?i)\b(?:gewicht|weight)\s*[:=]?\s*(\d+(?:[,.]\d+)?)\s*(?:kg)?\b""", 30.0..300.0)
+            ?: firstNumber("""(?i)\b(\d+(?:[,.]\d+)?)\s*kg\b""", 30.0..300.0),
+        bodyFat = firstNumber("""(?i)\b(?:vet|vetpercentage|body\s*fat|fat)\s*[:=]?\s*(\d+(?:[,.]\d+)?)\s*%?\b""", 0.0..100.0),
+        muscleMass = firstNumber("""(?i)\b(?:spier|spiermassa|muscle|muscle\s*mass)\s*[:=]?\s*(\d+(?:[,.]\d+)?)\s*(?:kg)?\b""", 1.0..200.0),
+    )
+}
+
+private fun applyMealContextOverrides(
+    items: List<MealScanItem>,
+    overrides: MealContextOverrides,
+): List<MealScanItem> {
+    if (items.isEmpty()) return items
+    return items.map { item ->
+        val itemOverride = overrides.itemGramsByName.entries.firstOrNull { (name, _) ->
+            val normalizedItem = normalizeAiContextName(item.name)
+            normalizedItem == name || normalizedItem.contains(name) || name.contains(normalizedItem)
+        }?.value
+        val targetGrams = itemOverride ?: overrides.totalGrams?.takeIf { items.size == 1 } ?: return@map item
+        item.copy(
+            estimatedGrams = targetGrams,
+            nutrition = scaleNutritionToGrams(item.nutrition, item.estimatedGrams, targetGrams),
+            notes = listOfNotNull(item.notes, "Gebruikerscontext gebruikte ${formatAiOneDecimal(targetGrams)} g als vaste hoeveelheid.")
+                .joinToString(" ")
+                .ifBlank { null },
+        )
+    }
+}
+
+private fun scaleNutritionToGrams(nutrition: NutritionFacts, sourceGrams: Double, targetGrams: Double): NutritionFacts {
+    if (sourceGrams <= 0.0 || !sourceGrams.isFinite()) return nutrition
+    val ratio = targetGrams / sourceGrams
+    return NutritionFacts(
+        calories = nutrition.calories * ratio,
+        protein = nutrition.protein * ratio,
+        carbs = nutrition.carbs * ratio,
+        fat = nutrition.fat * ratio,
+    )
+}
+
+private fun buildBodyMeasurementNotes(baseNotes: String?, overrides: BodyMeasurementContextOverrides): String? {
+    val overrideLabels = buildList {
+        if (overrides.weight != null) add("gewicht")
+        if (overrides.bodyFat != null) add("vetpercentage")
+        if (overrides.muscleMass != null) add("spiermassa")
+    }
+    val overrideNote = overrideLabels.takeIf { it.isNotEmpty() }
+        ?.joinToString(prefix = "Gebruikerscontext gebruikt als vaste waarde voor ", separator = ", ", postfix = ".")
+    return listOfNotNull(baseNotes, overrideNote).joinToString(" ").ifBlank { null }
+}
+
+private fun normalizeAiContextName(value: String): String =
+    value.lowercase(Locale.ROOT)
+        .replace(Regex("""[^a-z0-9à-ÿ ]"""), " ")
+        .replace(Regex("""\s+"""), " ")
+        .trim()
+
+private fun String.toAiDoubleOrNull(): Double? =
+    trim().replace(',', '.').toDoubleOrNull()?.takeIf { it.isFinite() }
+
+private fun formatAiOneDecimal(value: Double): String =
+    String.format(Locale.US, "%.1f", value)
+
+private fun fallbackBodyMeasurementPhoto(
+    notes: String = "AI-weegfotoanalyse is nu niet beschikbaar. Vul de meting handmatig in.",
+    rawResponse: String? = null,
+    source: BodyMeasurementPhotoSource = BodyMeasurementPhotoSource.LOCAL_FALLBACK,
+) = BodyMeasurementPhotoResult(
+    weight = 0.0,
+    bodyFat = 0.0,
+    muscleMass = 0.0,
+    notes = notes,
+    rawResponse = rawResponse,
+    source = source,
+)
+
 private fun MealType.promptLabel(): String = when (this) {
     MealType.BREAKFAST -> "Ochtend"
     MealType.LUNCH -> "Middag"
@@ -165,6 +366,8 @@ private fun MealType.promptLabel(): String = when (this) {
 private const val MaxMealScanGrams = 100_000.0
 private const val MaxMealScanCalories = 100_000.0
 private const val MaxMealScanMacro = 100_000.0
+private const val MaxMealScanContextChars = 2_000
+private const val MaxBodyMeasurementContextChars = 1_000
 private const val MaxMealImageSourceBytes = 6L * 1024L * 1024L
 private const val MaxMealImageUploadBytes = 1_500_000
 private const val MaxMealImageDimensionPx = 1_280
@@ -559,6 +762,11 @@ internal fun parseWorkoutDebriefResponse(
 private fun AiProvider.toMealAnalysisSource(): MealAnalysisSource = when (this) {
     AiProvider.GEMINI -> MealAnalysisSource.API
     AiProvider.OPENAI -> MealAnalysisSource.OPENAI
+}
+
+private fun AiProvider.toBodyMeasurementPhotoSource(): BodyMeasurementPhotoSource = when (this) {
+    AiProvider.GEMINI -> BodyMeasurementPhotoSource.GEMINI_2_5_FLASH
+    AiProvider.OPENAI -> BodyMeasurementPhotoSource.OPENAI
 }
 
 private fun AiProvider.toWeeklyReportSource(): WeeklyReportSource = when (this) {

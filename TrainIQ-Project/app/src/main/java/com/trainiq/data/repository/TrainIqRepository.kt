@@ -1,5 +1,6 @@
 package com.trainiq.data.repository
 
+import com.trainiq.ai.services.BodyMeasurementPhotoService
 import com.trainiq.ai.services.GoalAdvisorService
 import com.trainiq.ai.services.MealAnalysisService
 import com.trainiq.ai.services.RoutineGeneratorService
@@ -34,6 +35,7 @@ import com.trainiq.data.local.WorkoutLogEventStorage
 import com.trainiq.data.mapper.parseSetType
 import com.trainiq.data.mapper.toDomain
 import com.trainiq.domain.model.BodyMeasurement
+import com.trainiq.domain.model.BodyMeasurementPhotoResult
 import com.trainiq.domain.model.ActiveWorkoutSession
 import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.ActiveWorkoutSetEntry
@@ -122,6 +124,7 @@ class TrainIqDataCoordinator @Inject constructor(
     private val healthConnectDataSource: HealthConnectDataSource,
     private val analyticsEngine: AnalyticsEngine,
     private val mealAnalysisService: MealAnalysisService,
+    private val bodyMeasurementPhotoService: BodyMeasurementPhotoService,
     private val workoutDebriefService: WorkoutDebriefService,
     private val goalAdvisorService: GoalAdvisorService,
     private val weeklyReportService: WeeklyReportService,
@@ -1125,6 +1128,9 @@ class TrainIqDataCoordinator @Inject constructor(
 
     fun observeProgressOverview(): Flow<ProgressOverview> = snapshotState.map(::buildProgressOverview)
 
+    suspend fun analyzeBodyMeasurementPhoto(path: String, context: String): BodyMeasurementPhotoResult =
+        bodyMeasurementPhotoService.analyzeScaleImage(path = path, userContext = context)
+
     suspend fun addMeasurement(weight: Double, bodyFat: Double, muscleMass: Double) {
         val measurementId = (runtimeStore.state.value.measurements.maxOfOrNull { it.id } ?: 0L) + 1L
         runtimeStore.addMeasurement(
@@ -1571,6 +1577,7 @@ class TrainIqDataCoordinator @Inject constructor(
                     referenceId = item.referenceId,
                     name = item.name,
                     gramsUsed = item.gramsUsed,
+                    servingCount = item.servingCount.coerceAtLeast(1),
                     nutritionSnapshot = NutritionFacts(item.calories, item.protein, item.carbs, item.fat).rounded(),
                     notes = item.notes,
                 )
@@ -2368,7 +2375,15 @@ internal fun buildMealItemSnapshots(
         when (request.itemType) {
             MealEntryType.FOOD -> {
                 val food = foodsById[request.referenceId] ?: error("Deze maaltijd bevat een verwijderd product of recept.")
-                val nutrition = food.nutritionForGrams(request.gramsUsed)
+                val servingCount = request.servingCount.coerceAtLeast(1)
+                val nutrition = food.nutritionForGrams(request.gramsUsed).let { base ->
+                    NutritionFacts(
+                        calories = base.calories * servingCount,
+                        protein = base.protein * servingCount,
+                        carbs = base.carbs * servingCount,
+                        fat = base.fat * servingCount,
+                    ).rounded()
+                }
                 LoggedMealItemStorage(
                     id = nextItemId++,
                     mealId = mealId,
@@ -2376,6 +2391,7 @@ internal fun buildMealItemSnapshots(
                     referenceId = food.id,
                     name = food.name,
                     gramsUsed = request.gramsUsed,
+                    servingCount = servingCount,
                     calories = nutrition.calories,
                     protein = nutrition.protein,
                     carbs = nutrition.carbs,
@@ -2388,12 +2404,13 @@ internal fun buildMealItemSnapshots(
                 val recipe = recipesById[request.referenceId] ?: error("Deze maaltijd bevat een verwijderd product of recept.")
                 val baseGrams = recipe.totalCookedGrams ?: recipe.ingredients.sumOf { it.gramsUsed }
                 if (baseGrams <= 0.0 || !baseGrams.isFinite()) error("Deze maaltijd bevat een verwijderd product of recept.")
+                val servingCount = request.servingCount.coerceAtLeast(1)
                 val ratio = request.gramsUsed / baseGrams
                 val nutrition = NutritionFacts(
-                    calories = recipe.totalNutrition.calories * ratio,
-                    protein = recipe.totalNutrition.protein * ratio,
-                    carbs = recipe.totalNutrition.carbs * ratio,
-                    fat = recipe.totalNutrition.fat * ratio,
+                    calories = recipe.totalNutrition.calories * ratio * servingCount,
+                    protein = recipe.totalNutrition.protein * ratio * servingCount,
+                    carbs = recipe.totalNutrition.carbs * ratio * servingCount,
+                    fat = recipe.totalNutrition.fat * ratio * servingCount,
                 ).rounded()
                 LoggedMealItemStorage(
                     id = nextItemId++,
@@ -2402,6 +2419,7 @@ internal fun buildMealItemSnapshots(
                     referenceId = recipe.id,
                     name = recipe.name,
                     gramsUsed = request.gramsUsed,
+                    servingCount = servingCount,
                     calories = nutrition.calories,
                     protein = nutrition.protein,
                     carbs = nutrition.carbs,

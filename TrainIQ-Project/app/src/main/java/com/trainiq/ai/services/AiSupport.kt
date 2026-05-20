@@ -22,6 +22,7 @@ enum class AiFeature(
     val throttleCooldownMillis: Long,
 ) {
     MEAL_SCAN(label = "maaltijdscan", timeoutMillis = 20_000L, throttleCooldownMillis = 30_000L),
+    BODY_MEASUREMENT_PHOTO(label = "weegfoto", timeoutMillis = 20_000L, throttleCooldownMillis = 30_000L),
     WORKOUT_DEBRIEF(label = "workoutanalyse", timeoutMillis = 15_000L, throttleCooldownMillis = 45_000L),
     GOAL_ADVICE(label = "doeladvies", timeoutMillis = 20_000L, throttleCooldownMillis = 45_000L),
     WEEKLY_REPORT(label = "weekrapport", timeoutMillis = 20_000L, throttleCooldownMillis = 60_000L),

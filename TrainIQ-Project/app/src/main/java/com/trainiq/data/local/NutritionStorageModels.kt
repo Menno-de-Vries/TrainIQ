@@ -48,6 +48,7 @@ data class LoggedMealItemStorage(
     val referenceId: Long = 0L,
     val name: String = "",
     val gramsUsed: Double = 0.0,
+    val servingCount: Int = 1,
     val calories: Double = 0.0,
     val protein: Double = 0.0,
     val carbs: Double = 0.0,

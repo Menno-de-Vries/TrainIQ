@@ -10,9 +10,9 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.FlowRowScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -27,15 +27,16 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -660,15 +661,21 @@ fun NutritionScreen(
                 Box(modifier = Modifier.weight(1f)) {
                     ScreenHeader(title = "Voeding", subtitle = "Voeding loggen zonder gedoe")
                 }
-                TextButton(
+                Surface(
                     onClick = { showSectionMenu = true },
                     modifier = Modifier.semantics {
                         contentDescription = nutritionSectionMenuButtonDescription()
                     },
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 ) {
                     Text(
                         nutritionSectionMenuButtonLabel(),
-                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier
+                            .heightIn(min = 40.dp)
+                            .padding(horizontal = MaterialTheme.spacing.compact, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
                     )
                 }
@@ -719,6 +726,7 @@ fun NutritionScreen(
                                                 itemType = if (it.itemType.name == "FOOD") MealEntryType.FOOD else MealEntryType.RECIPE,
                                                 referenceId = it.referenceId,
                                                 gramsUsed = it.gramsUsed,
+                                                servingCount = it.servingCount,
                                                 notes = it.notes,
                                             )
                                         })
@@ -762,6 +770,10 @@ fun NutritionScreen(
                                             mealDraft[index] = current.copy(gramsUsed = parsed)
                                         }
                                     },
+                                    onUpdateDraftItemServingCount = { index, count ->
+                                        val current = mealDraft[index]
+                                        mealDraft[index] = current.copy(servingCount = count.coerceAtLeast(1))
+                                    },
                                     onRemoveDraftItem = { index -> mealDraft.removeAt(index) },
                                     onSave = {
                                         val errors = validateMealInput(mealName, mealDraft.toList())
@@ -774,6 +786,7 @@ fun NutritionScreen(
                                             mealDraft.clear()
                                             mealErrors = MealFieldErrors()
                                             onSetScanResult(null)
+                                            selectedTab = 0
                                         }
                                     },
                                 )
@@ -1164,6 +1177,7 @@ fun NutritionScreen(
                                                 itemType = if (it.itemType.name == "FOOD") MealEntryType.FOOD else MealEntryType.RECIPE,
                                                 referenceId = it.referenceId,
                                                 gramsUsed = it.gramsUsed,
+                                                servingCount = it.servingCount,
                                                 notes = it.notes,
                                             )
                                         })
@@ -1305,8 +1319,8 @@ private fun NutritionSectionMenuSheet(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = MaterialTheme.spacing.large, vertical = MaterialTheme.spacing.medium),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(horizontal = MaterialTheme.spacing.medium, vertical = MaterialTheme.spacing.small),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
     ) {
         BottomSheetHeader(title = "Voeding secties")
         tabs.forEachIndexed { index, title ->
@@ -1315,11 +1329,17 @@ private fun NutritionSectionMenuSheet(
                 Button(
                     onClick = { onSelectTab(index) },
                     modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = MaterialTheme.spacing.medium, vertical = MaterialTheme.spacing.small),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    ),
                 ) { Text(title) }
             } else {
                 OutlinedButton(
                     onClick = { onSelectTab(index) },
                     modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = MaterialTheme.spacing.medium, vertical = MaterialTheme.spacing.small),
                 ) { Text(title) }
             }
         }
@@ -1455,7 +1475,7 @@ private fun MealSectionCard(
             },
         ),
     ) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1471,7 +1491,7 @@ private fun MealSectionCard(
             }
             Text(
                 "${formatNumber(total.calories)} kcal",
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.ExtraBold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -1507,7 +1527,7 @@ private fun MealEntryRow(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         onClick = { showActions = true },
     ) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(meal.name, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("${formatNumber(meal.totalNutrition.calories)} kcal", color = MaterialTheme.colorScheme.primary)
@@ -1518,7 +1538,13 @@ private fun MealEntryRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             meal.items.forEach { item ->
-                Text("${item.name} · ${formatNumber(item.gramsUsed)}g", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.trainIqColors.mutedText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    "${item.name} · ${formatNumber(item.gramsUsed)}g x${item.servingCount.coerceAtLeast(1)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.trainIqColors.mutedText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
@@ -2104,6 +2130,7 @@ private fun MealDraftReviewCard(
     onMealNameChange: (String) -> Unit,
     onMealNotesChange: (String) -> Unit,
     onUpdateDraftItemGrams: (Int, String) -> Unit,
+    onUpdateDraftItemServingCount: (Int, Int) -> Unit,
     onRemoveDraftItem: (Int) -> Unit,
     onSave: () -> Unit,
 ) {
@@ -2132,7 +2159,12 @@ private fun MealDraftReviewCard(
                 }
             }
         } ?: NutritionFacts.Zero
-        acc + itemNutrition
+        acc + NutritionFacts(
+            calories = itemNutrition.calories * entry.servingCount.coerceAtLeast(1),
+            protein = itemNutrition.protein * entry.servingCount.coerceAtLeast(1),
+            carbs = itemNutrition.carbs * entry.servingCount.coerceAtLeast(1),
+            fat = itemNutrition.fat * entry.servingCount.coerceAtLeast(1),
+        )
     }.rounded()
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -2146,26 +2178,7 @@ private fun MealDraftReviewCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.trainIqColors.mutedText,
             )
-            MealType.entries.chunked(2).forEach { rowOptions ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    rowOptions.forEach { option ->
-                        FilterChip(
-                            selected = mealType == option,
-                            onClick = {
-                                onMealTypeChange(option)
-                                if (mealName in listOf("Breakfast", "Lunch", "Dinner", "Snack", "Ochtend", "Middag", "Avond", "Snacks")) {
-                                    onMealNameChange(option.dutchLabel)
-                                }
-                            },
-                            label = { Text(option.dutchLabel) },
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    if (rowOptions.size == 1) {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
-                }
-            }
+            Text("Wordt automatisch gelogd onder ${mealType.dutchLabel}.", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             NutritionTextField(value = mealName, onValueChange = onMealNameChange, label = "Maaltijdnaam", modifier = Modifier.fillMaxWidth(), error = errors.name)
             NutritionTextField(value = mealNotes, onValueChange = onMealNotesChange, label = "Notities", modifier = Modifier.fillMaxWidth(), singleLine = false)
             errors.items?.let {
@@ -2189,15 +2202,24 @@ private fun MealDraftReviewCard(
                             NutritionNumberField(
                                 value = formatNumber(entry.gramsUsed),
                                 onValueChange = { onUpdateDraftItemGrams(index, it) },
-                                label = "Gram",
+                                label = "Gram per portie",
                                 modifier = Modifier.fillMaxWidth(),
                             )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedButton(onClick = { onUpdateDraftItemServingCount(index, entry.servingCount - 1) }, enabled = entry.servingCount > 1) {
+                                    Text("-")
+                                }
+                                Text("${entry.servingCount.coerceAtLeast(1)}x", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                OutlinedButton(onClick = { onUpdateDraftItemServingCount(index, entry.servingCount + 1) }) {
+                                    Text("+")
+                                }
+                            }
                         }
                         TextButton(onClick = { onRemoveDraftItem(index) }) { Text("Verwijderen") }
                     }
                 }
             }
-            RecipeTotalsCard(title = "Maaltijdtotalen", totalNutrition = draftTotals, totalGrams = mealDraft.sumOf { it.gramsUsed })
+            RecipeTotalsCard(title = "Maaltijdtotalen", totalNutrition = draftTotals, totalGrams = mealDraft.sumOf { it.gramsUsed * it.servingCount.coerceAtLeast(1) })
             Button(onClick = onSave, enabled = mealDraft.isNotEmpty() && !isSaving, modifier = Modifier.fillMaxWidth()) {
                 Text(if (isSaving) "Opslaan..." else mealDraftSaveLabel(isEditing))
             }
@@ -2317,7 +2339,7 @@ private fun MealHistoryCard(
                                     "FOOD" -> foods.firstOrNull { it.id == item.referenceId }?.name
                                     else -> recipes.firstOrNull { it.id == item.referenceId }?.name
                                 } ?: item.name
-                                Text("$liveName • ${formatNumber(item.gramsUsed)}g", maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text("$liveName • ${formatNumber(item.gramsUsed)}g x${item.servingCount.coerceAtLeast(1)}", maxLines = 2, overflow = TextOverflow.Ellipsis)
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                                 Button(onClick = { onReuseMeal(meal) }, modifier = Modifier.weight(1f)) { Text("Opnieuw gebruiken") }

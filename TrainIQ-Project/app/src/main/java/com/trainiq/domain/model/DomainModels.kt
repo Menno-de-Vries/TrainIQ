@@ -363,6 +363,7 @@ data class LoggedMealItem(
     val referenceId: Long,
     val name: String,
     val gramsUsed: Double,
+    val servingCount: Int = 1,
     val nutritionSnapshot: NutritionFacts,
     val notes: String? = null,
 )
@@ -439,6 +440,22 @@ data class BodyMeasurement(
     val bodyFat: Double,
     val muscleMass: Double,
 )
+
+data class BodyMeasurementPhotoResult(
+    val weight: Double,
+    val bodyFat: Double,
+    val muscleMass: Double,
+    val confidence: String? = null,
+    val notes: String? = null,
+    val rawResponse: String? = null,
+    val source: BodyMeasurementPhotoSource = BodyMeasurementPhotoSource.GEMINI_2_5_FLASH,
+)
+
+enum class BodyMeasurementPhotoSource {
+    GEMINI_2_5_FLASH,
+    OPENAI,
+    LOCAL_FALLBACK,
+}
 
 data class HomeDashboard(
     val profile: UserProfile?,

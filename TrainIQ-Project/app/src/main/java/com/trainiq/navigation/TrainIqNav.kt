@@ -241,8 +241,8 @@ fun TrainIqApp(
                             .fillMaxWidth()
                             .offset(y = navOffset)
                             .padding(
-                                horizontal = 10.dp,
-                                vertical = if (useCompactShortBottomBar) 4.dp else 10.dp,
+                                horizontal = if (useCompactShortBottomBar) 8.dp else 10.dp,
+                                vertical = if (useCompactShortBottomBar) 2.dp else 8.dp,
                             )
                             .navigationBarsPadding(),
                         color = MaterialTheme.trainIqColors.card,
@@ -252,7 +252,7 @@ fun TrainIqApp(
                         shape = RoundedCornerShape(MaterialTheme.radii.nav),
                     ) {
                         NavigationBar(
-                            modifier = Modifier.height(if (useCompactShortBottomBar) 58.dp else 82.dp),
+                            modifier = Modifier.height(if (useCompactShortBottomBar) 54.dp else 74.dp),
                             tonalElevation = 0.dp,
                             containerColor = androidx.compose.ui.graphics.Color.Transparent,
                         ) {
@@ -371,11 +371,7 @@ private fun bottomNavigationDestinations(
     items: List<TopLevelDestination>,
     windowWidthClass: TrainIqWindowWidthClass,
 ): List<TopLevelDestination> =
-    if (windowWidthClass == TrainIqWindowWidthClass.Compact) {
-        items.filterNot { it.routeClass == Progress::class }
-    } else {
-        items
-    }
+    items
 
 internal fun compactBottomNavigationRouteClasses(): List<KClass<*>> =
     bottomNavigationDestinations(
@@ -501,7 +497,29 @@ private fun TrainIqNavHost(
                 windowWidthClass = windowWidthClass,
             )
         }
-        composable<Progress> { ProgressRoute(windowWidthClass = windowWidthClass) }
+        composable<Progress> { entry ->
+            val pendingScaleWeight by entry.savedStateHandle
+                .getStateFlow(ScaleWeightResultKey, "")
+                .collectAsStateWithLifecycle()
+            val pendingScaleBodyFat by entry.savedStateHandle
+                .getStateFlow(ScaleBodyFatResultKey, "")
+                .collectAsStateWithLifecycle()
+            val pendingScaleMuscleMass by entry.savedStateHandle
+                .getStateFlow(ScaleMuscleMassResultKey, "")
+                .collectAsStateWithLifecycle()
+            val pendingScaleNotes by entry.savedStateHandle
+                .getStateFlow(ScaleNotesResultKey, "")
+                .collectAsStateWithLifecycle()
+            ProgressRoute(
+                windowWidthClass = windowWidthClass,
+                pendingScaleWeight = pendingScaleWeight.takeIf { it.isNotBlank() },
+                pendingScaleBodyFat = pendingScaleBodyFat.takeIf { it.isNotBlank() },
+                pendingScaleMuscleMass = pendingScaleMuscleMass.takeIf { it.isNotBlank() },
+                pendingScaleNotes = pendingScaleNotes.takeIf { it.isNotBlank() },
+                onScaleResultConsumed = { entry.clearScaleMeasurementResult() },
+                onOpenScaleScanner = { navController.navigate(CameraScanner(contextHint = "Lees gewicht, vetpercentage en spiermassa uit van de smart-weegschaal.", scannerMode = ScannerMode.AI_SCALE)) },
+            )
+        }
         composable<Coach> { CoachRoute(windowWidthClass = windowWidthClass) }
         composable<Settings> {
             SettingsRoute(
@@ -518,6 +536,9 @@ private fun TrainIqNavHost(
                 onBarcodeScanned = { barcode ->
                     navController.previousBackStackEntry?.setBarcodeScanResult(barcode)
                     navController.popBackStack()
+                },
+                onScaleMeasurementScanned = { result ->
+                    navController.previousBackStackEntry?.setScaleMeasurementResult(result)
                 },
             )
         }
@@ -579,6 +600,10 @@ private fun TrainIqNavHost(
 }
 
 internal const val BarcodeScanResultKey = "scanned_barcode"
+internal const val ScaleWeightResultKey = "scale_weight"
+internal const val ScaleBodyFatResultKey = "scale_body_fat"
+internal const val ScaleMuscleMassResultKey = "scale_muscle_mass"
+internal const val ScaleNotesResultKey = "scale_notes"
 
 internal fun NavBackStackEntry.setBarcodeScanResult(barcode: String) {
     savedStateHandle[BarcodeScanResultKey] = barcode
@@ -586,4 +611,18 @@ internal fun NavBackStackEntry.setBarcodeScanResult(barcode: String) {
 
 internal fun NavBackStackEntry.clearBarcodeScanResult() {
     savedStateHandle.remove<String>(BarcodeScanResultKey)
+}
+
+internal fun NavBackStackEntry.setScaleMeasurementResult(result: com.trainiq.domain.model.BodyMeasurementPhotoResult) {
+    savedStateHandle[ScaleWeightResultKey] = result.weight.takeIf { it > 0.0 }?.toString().orEmpty()
+    savedStateHandle[ScaleBodyFatResultKey] = result.bodyFat.takeIf { it > 0.0 }?.toString().orEmpty()
+    savedStateHandle[ScaleMuscleMassResultKey] = result.muscleMass.takeIf { it > 0.0 }?.toString().orEmpty()
+    savedStateHandle[ScaleNotesResultKey] = result.notes.orEmpty()
+}
+
+internal fun NavBackStackEntry.clearScaleMeasurementResult() {
+    savedStateHandle.remove<String>(ScaleWeightResultKey)
+    savedStateHandle.remove<String>(ScaleBodyFatResultKey)
+    savedStateHandle.remove<String>(ScaleMuscleMassResultKey)
+    savedStateHandle.remove<String>(ScaleNotesResultKey)
 }

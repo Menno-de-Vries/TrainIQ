@@ -68,6 +68,10 @@ object GeminiPrompts {
         Antwoord altijd in het Nederlands volgens locale nl-NL.
         Analyseer de maaltijd-foto en schat zichtbare voeding conservatief.
         Gebruikerscontext: ${userContext.ifBlank { "Niet opgegeven." }}
+        Regels voor context:
+        - Als de gebruikerscontext een gewicht noemt, behandel dat gewicht als waarheid.
+        - Herbereken of overschrijf opgegeven gewichten niet.
+        - Schat alleen hoeveelheden waar de gebruiker geen gewicht voor noemt.
         Return JSON only in this shape:
         {
           "suggestedMealType": "BREAKFAST|LUNCH|DINNER|SNACK",
@@ -86,6 +90,32 @@ object GeminiPrompts {
           "notes": "korte Nederlandse totaalinschatting"
         }
         Wees conservatief bij onzekerheid. Gebruik geen markdown fences.
+    """.trimIndent()
+
+    fun bodyMeasurementPhoto(userContext: String) = """
+        Je bent een nauwkeurige data-assistent voor TrainIQ.
+        Lees een foto of screenshot van een smart-weegschaal of smart-scale app uit.
+        Gebruikerscontext: ${userContext.ifBlank { "Niet opgegeven." }}
+
+        Regels:
+        - Antwoord altijd als JSON only, zonder markdown.
+        - Als de gebruikerscontext gewicht, vetpercentage of spiermassa noemt, behandel die waarde als waarheid.
+        - Herbereken of overschrijf opgegeven contextwaarden niet.
+        - Gebruik kg voor gewicht en spiermassa.
+        - bodyFat is een percentage, bijvoorbeeld 18.4.
+        - muscleMass is skeletspiermassa of spiermassa in kg. Als alleen percentage zichtbaar is, schat niet; geef dan 0.
+        - Als een waarde niet betrouwbaar zichtbaar is, geef 0 en confidence "low".
+        - notes is een korte Nederlandse toelichting.
+
+        Return JSON only:
+        {
+          "weight": 82.4,
+          "bodyFat": 18.2,
+          "muscleMass": 38.5,
+          "unit": "kg",
+          "confidence": "high|medium|low",
+          "notes": "string"
+        }
     """.trimIndent()
 
     fun goalAdvisor(

@@ -230,6 +230,46 @@ class AiServicesTest {
     }
 
     @Test
+    fun analyzeMealImage_withExplicitContextWeight_keepsUserWeightAsTruth() = runTest {
+        val api = FakeGeminiApi(
+            response = mealScanResponse(
+                """
+                    {
+                      "items": [
+                        {
+                          "name": "Kip",
+                          "estimatedGrams": 120,
+                          "calories": 198,
+                          "protein": 36,
+                          "carbs": 0,
+                          "fat": 4
+                        }
+                      ],
+                      "suggestedMealType": "DINNER"
+                    }
+                """.trimIndent(),
+            ),
+        )
+        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+
+        val result = service.analyzeMealImage(tempImagePath(), "kip 200g", 72_000_000L)
+
+        val item = result.items.single()
+        assertEquals(200.0, item.estimatedGrams, 0.0)
+        assertEquals(330.0, item.nutrition.calories, 0.01)
+        assertTrue(item.notes.orEmpty().contains("Gebruikerscontext"))
+    }
+
+    @Test
+    fun parseBodyMeasurementContextOverrides_acceptsPartialScaleContext() {
+        val overrides = parseBodyMeasurementContextOverrides("weegschaal toont 82.4 kg, vet 18,1%, spier 63.0 kg")
+
+        assertEquals(82.4, overrides.weight ?: 0.0, 0.0)
+        assertEquals(18.1, overrides.bodyFat ?: 0.0, 0.0)
+        assertEquals(63.0, overrides.muscleMass ?: 0.0, 0.0)
+    }
+
+    @Test
     fun analyzeMealImage_withStructuredEmptyItems_returnsApiEmptyResult() = runTest {
         val api = FakeGeminiApi(response = mealScanResponse("""{"items":[],"suggestedMealType":"LUNCH"}"""))
         val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })

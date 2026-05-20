@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -213,6 +214,12 @@ class ProgressViewModel @Inject constructor(
 @Composable
 fun ProgressRoute(
     windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
+    pendingScaleWeight: String? = null,
+    pendingScaleBodyFat: String? = null,
+    pendingScaleMuscleMass: String? = null,
+    pendingScaleNotes: String? = null,
+    onScaleResultConsumed: () -> Unit = {},
+    onOpenScaleScanner: () -> Unit = {},
     viewModel: ProgressViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -221,6 +228,12 @@ fun ProgressRoute(
         onAddMeasurement = viewModel::addMeasurement,
         onDeleteMeasurement = viewModel::deleteMeasurement,
         onDismissMessage = viewModel::clearMessage,
+        pendingScaleWeight = pendingScaleWeight,
+        pendingScaleBodyFat = pendingScaleBodyFat,
+        pendingScaleMuscleMass = pendingScaleMuscleMass,
+        pendingScaleNotes = pendingScaleNotes,
+        onScaleResultConsumed = onScaleResultConsumed,
+        onOpenScaleScanner = onOpenScaleScanner,
     )
 }
 
@@ -230,6 +243,12 @@ fun ProgressScreen(
     onAddMeasurement: (String, String, String) -> Unit,
     onDeleteMeasurement: (Long) -> Unit,
     onDismissMessage: () -> Unit,
+    pendingScaleWeight: String? = null,
+    pendingScaleBodyFat: String? = null,
+    pendingScaleMuscleMass: String? = null,
+    pendingScaleNotes: String? = null,
+    onScaleResultConsumed: () -> Unit = {},
+    onOpenScaleScanner: () -> Unit = {},
 ) {
     var weight by rememberSaveable { mutableStateOf("") }
     var bodyFat by rememberSaveable { mutableStateOf("") }
@@ -237,6 +256,7 @@ fun ProgressScreen(
     var weightTouched by rememberSaveable { mutableStateOf(false) }
     var bodyFatTouched by rememberSaveable { mutableStateOf(false) }
     var muscleMassTouched by rememberSaveable { mutableStateOf(false) }
+    var scalePhotoNote by rememberSaveable { mutableStateOf<String?>(null) }
 
     val weightError = validateProgressMeasurementField(weight, weightSpec).takeIf { weightTouched }
     val bodyFatError = validateProgressMeasurementField(bodyFat, bodyFatSpec).takeIf { bodyFatTouched }
@@ -255,6 +275,25 @@ fun ProgressScreen(
             weightTouched = false
             bodyFatTouched = false
             muscleMassTouched = false
+        }
+    }
+
+    LaunchedEffect(pendingScaleWeight, pendingScaleBodyFat, pendingScaleMuscleMass) {
+        if (pendingScaleWeight != null || pendingScaleBodyFat != null || pendingScaleMuscleMass != null) {
+            pendingScaleWeight?.let {
+                weight = it
+                weightTouched = true
+            }
+            pendingScaleBodyFat?.let {
+                bodyFat = it
+                bodyFatTouched = true
+            }
+            pendingScaleMuscleMass?.let {
+                muscleMass = it
+                muscleMassTouched = true
+            }
+            scalePhotoNote = pendingScaleNotes
+            onScaleResultConsumed()
         }
     }
 
@@ -311,10 +350,16 @@ fun ProgressScreen(
                         color = MaterialTheme.trainIqColors.amber,
                     )
                     Text("Vetpercentage, spiermassa en gewicht naast elkaar.", color = MaterialTheme.trainIqColors.mutedText)
+                    scalePhotoNote?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, color = MaterialTheme.trainIqColors.mutedText, style = MaterialTheme.typography.bodySmall)
+                    }
                     ProgressMetricRow(
                         bodyFat = latestBodyFatText(overview.measurements),
                         muscleMass = latestMuscleMassText(overview.measurements),
                     )
+                    OutlinedButton(onClick = onOpenScaleScanner, modifier = Modifier.fillMaxWidth()) {
+                        Text("Smart-weegschaal foto maken of importeren")
+                    }
                     MeasurementTextField(
                         value = weight,
                         onValueChange = {

@@ -129,6 +129,7 @@ internal fun validateMealInput(name: String, items: List<MealEntryRequest>): Mea
     items = when {
         items.isEmpty() -> "Voeg minimaal een product of recept toe."
         items.any { it.gramsUsed <= 0.0 || !it.gramsUsed.isFinite() } -> "Vul voor elk item een positief aantal gram in."
+        items.any { it.servingCount < 1 } -> "Vul voor elk item minimaal 1 portie in."
         else -> null
     },
 )

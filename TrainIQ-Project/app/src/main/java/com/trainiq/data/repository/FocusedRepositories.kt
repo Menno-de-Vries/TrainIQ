@@ -3,6 +3,7 @@ package com.trainiq.data.repository
 import com.trainiq.domain.model.ActiveWorkoutSession
 import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.BiologicalSex
+import com.trainiq.domain.model.BodyMeasurementPhotoResult
 import com.trainiq.domain.model.Exercise
 import com.trainiq.domain.model.ExerciseHistory
 import com.trainiq.domain.model.FoodItem
@@ -135,6 +136,8 @@ class RoomProgressRepository @Inject constructor(
     private val delegate: TrainIqDataCoordinator,
 ) : ProgressRepository {
     override fun observeProgressOverview(): Flow<ProgressOverview> = delegate.observeProgressOverview()
+    override suspend fun analyzeBodyMeasurementPhoto(path: String, context: String): BodyMeasurementPhotoResult =
+        delegate.analyzeBodyMeasurementPhoto(path, context)
     override suspend fun addMeasurement(weight: Double, bodyFat: Double, muscleMass: Double) = delegate.addMeasurement(weight, bodyFat, muscleMass)
     override suspend fun deleteMeasurement(measurementId: Long) = delegate.deleteMeasurement(measurementId)
 }

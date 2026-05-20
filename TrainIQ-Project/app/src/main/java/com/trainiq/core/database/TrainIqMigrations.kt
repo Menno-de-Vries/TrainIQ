@@ -678,6 +678,12 @@ object TrainIqMigrations {
         }
     }
 
+    val Migration12To13 = object : Migration(12, 13) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.addColumnIfMissing("meal_items", "serving_count", "INTEGER NOT NULL DEFAULT 1")
+        }
+    }
+
     val All = arrayOf(
         Migration2To3,
         Migration3To4,
@@ -689,6 +695,7 @@ object TrainIqMigrations {
         Migration9To10,
         Migration10To11,
         Migration11To12,
+        Migration12To13,
     )
 
     private fun SupportSQLiteDatabase.recreateTable(

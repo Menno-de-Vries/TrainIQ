@@ -69,6 +69,18 @@ object GeminiJsonSchemas {
         required = listOf("summary", "nextWeekFocus"),
     )
 
+    val bodyMeasurementPhoto: Map<String, Any?> = objectSchema(
+        properties = listOf(
+            "weight" to numberSchema(),
+            "bodyFat" to numberSchema(),
+            "muscleMass" to numberSchema(),
+            "unit" to stringSchema(enum = listOf("kg")),
+            "confidence" to stringSchema(enum = listOf("high", "medium", "low")),
+            "notes" to stringSchema(),
+        ),
+        required = listOf("weight", "bodyFat", "muscleMass", "unit", "confidence"),
+    )
+
     val routineGenerator: Map<String, Any?> = objectSchema(
         properties = listOf(
             "routineName" to stringSchema(),

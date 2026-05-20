@@ -4,6 +4,7 @@ import com.trainiq.domain.model.CoachOverview
 import com.trainiq.domain.model.ActiveWorkoutSession
 import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.BiologicalSex
+import com.trainiq.domain.model.BodyMeasurementPhotoResult
 import com.trainiq.domain.model.Exercise
 import com.trainiq.domain.model.ExerciseHistory
 import com.trainiq.domain.model.FoodItem
@@ -159,6 +160,7 @@ data class MealEntryRequest(
     val itemType: MealEntryType,
     val referenceId: Long,
     val gramsUsed: Double,
+    val servingCount: Int = 1,
     val notes: String? = null,
 )
 
@@ -169,6 +171,7 @@ enum class MealEntryType {
 
 interface ProgressRepository {
     fun observeProgressOverview(): Flow<ProgressOverview>
+    suspend fun analyzeBodyMeasurementPhoto(path: String, context: String): BodyMeasurementPhotoResult
     suspend fun addMeasurement(weight: Double, bodyFat: Double, muscleMass: Double)
     suspend fun deleteMeasurement(measurementId: Long)
 }

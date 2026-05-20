@@ -88,6 +88,7 @@ class JsonRoomImportPlanner(
                     referenceId = item.referenceId,
                     name = stringOrDefault(item.name),
                     gramsUsed = item.gramsUsed,
+                    servingCount = item.servingCount.coerceAtLeast(1),
                     calories = item.calories,
                     protein = item.protein,
                     carbs = item.carbs,
@@ -435,7 +436,7 @@ fun JsonRoomImportPlan.importedRowCount(): Int =
         workoutLogEventSets.size +
         measurements.size
 
-private const val TrainIqDatabaseVersion = 12
+private const val TrainIqDatabaseVersion = 13
 
 sealed interface JsonRoomImportOutcome {
     val roomTrusted: Boolean
