@@ -241,18 +241,18 @@ fun TrainIqApp(
                             .fillMaxWidth()
                             .offset(y = navOffset)
                             .padding(
-                                horizontal = 10.dp,
-                                vertical = if (useCompactShortBottomBar) 4.dp else 10.dp,
+                                horizontal = 0.dp,
+                                vertical = 0.dp,
                             )
                             .navigationBarsPadding(),
                         color = MaterialTheme.trainIqColors.card,
                         tonalElevation = 0.dp,
                         shadowElevation = 0.dp,
                         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.trainIqColors.cardBorder),
-                        shape = RoundedCornerShape(MaterialTheme.radii.nav),
+                        shape = RoundedCornerShape(2.dp),
                     ) {
                         NavigationBar(
-                            modifier = Modifier.height(if (useCompactShortBottomBar) 58.dp else 82.dp),
+                            modifier = Modifier.height(if (useCompactShortBottomBar) 50.dp else 62.dp),
                             tonalElevation = 0.dp,
                             containerColor = androidx.compose.ui.graphics.Color.Transparent,
                         ) {
@@ -271,7 +271,7 @@ fun TrainIqApp(
                                     icon = {
                                         Box(
                                             modifier = Modifier
-                                                .size(width = 44.dp, height = 34.dp)
+                                                .size(width = 42.dp, height = if (useCompactShortBottomBar) 30.dp else 28.dp)
                                                 .background(
                                                     color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f) else Color.Transparent,
                                                     shape = CircleShape,

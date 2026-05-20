@@ -154,9 +154,15 @@ class NutritionInputValidationTest {
     @Test
     fun nutritionTabTitles_keepOverviewEntryAndAiResultSeparated() {
         assertEquals(
-            listOf("Vandaag", "Toevoegen", "AI-resultaat", "Recepten", "Producten", "Historie"),
+            listOf("Vandaag", "AI-resultaat", "Recepten", "Producten", "Historie"),
             nutritionTabTitles(),
         )
+    }
+
+    @Test
+    fun nutritionSectionMenu_usesReadableLabelInsteadOfGlyphs() {
+        assertEquals("Voeding secties openen", nutritionSectionMenuButtonDescription())
+        assertEquals("Secties", nutritionSectionMenuButtonLabel())
     }
 
     @Test

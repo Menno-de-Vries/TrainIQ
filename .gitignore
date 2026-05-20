@@ -15,6 +15,7 @@ local.properties
 
 # Android generated outputs
 captures/
+artifacts/
 **/.externalNativeBuild/
 **/.cxx/
 

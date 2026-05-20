@@ -27,6 +27,7 @@ import com.trainiq.domain.repository.WorkoutRepository
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.diagnostics.PerformanceSessionStore
 import com.trainiq.ai.services.AiUsageGate
+import com.trainiq.data.remote.BarcodeProductLookupService
 import com.trainiq.data.repository.RoomTrainIqRuntimeStore
 import javax.inject.Inject
 
@@ -350,6 +351,12 @@ class ObserveNutritionUseCase @Inject constructor(private val repository: Nutrit
 class AnalyzeMealUseCase @Inject constructor(private val repository: NutritionRepository) {
     suspend operator fun invoke(path: String, context: String, capturedAtMillis: Long) =
         repository.analyzeMealPhoto(path, context, capturedAtMillis)
+}
+
+class LookupBarcodeProductUseCase @Inject constructor(
+    private val service: BarcodeProductLookupService,
+) {
+    suspend operator fun invoke(barcode: String) = service.lookup(barcode)
 }
 
 class SaveFoodItemUseCase @Inject constructor(private val repository: NutritionRepository) {

@@ -32,6 +32,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -40,11 +41,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.trainiq.core.theme.spacing
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
+import kotlinx.coroutines.delay
 
 @Composable
 fun ScreenHeader(
@@ -65,13 +68,25 @@ fun ScreenHeader(
 
 @Composable
 fun MessageCard(message: String, onDismiss: (() -> Unit)? = null) {
+    LaunchedEffect(message, onDismiss) {
+        if (onDismiss != null) {
+            delay(2_000L)
+            onDismiss()
+        }
+    }
     AppCard(accent = MaterialTheme.colorScheme.tertiary) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(message, modifier = Modifier.weight(1f), color = MaterialTheme.trainIqColors.mutedText)
+            Text(
+                message,
+                modifier = Modifier.weight(1f),
+                color = MaterialTheme.trainIqColors.mutedText,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
             if (onDismiss != null) {
                 TextButton(onClick = onDismiss) { Text("Sluiten") }
             }
