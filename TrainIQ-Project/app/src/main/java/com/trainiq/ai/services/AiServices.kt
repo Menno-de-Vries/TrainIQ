@@ -141,6 +141,11 @@ class MealAnalysisService internal constructor(
                 )
             }.orEmpty()
             val normalizedItems = applyMealContextOverrides(items, contextOverrides)
+            val reviewNotes = buildMealScanReviewNotes(
+                originalItems = items,
+                normalizedItems = normalizedItems,
+                overrides = contextOverrides,
+            )
             MealAnalysisResult(
                 items = normalizedItems,
                 suggestedMealType = root.get("suggestedMealType")
@@ -149,7 +154,9 @@ class MealAnalysisService internal constructor(
                     ?.uppercase()
                     ?.let { raw -> MealType.entries.firstOrNull { it.name == raw } }
                     ?: fallbackMealType,
-                notes = root.get("notes")?.asString,
+                notes = listOfNotNull(root.get("notes")?.asString, reviewNotes)
+                    .joinToString(" ")
+                    .ifBlank { null },
                 rawResponse = text,
                 source = provider.toMealAnalysisSource(),
             )
@@ -233,6 +240,13 @@ class BodyMeasurementPhotoService @Inject constructor(
 internal data class MealContextOverrides(
     val totalGrams: Double? = null,
     val itemGramsByName: Map<String, Double> = emptyMap(),
+    val itemDisplayNamesByName: Map<String, String> = emptyMap(),
+)
+
+private data class MealContextItemOverride(
+    val normalized: String,
+    val displayName: String,
+    val grams: Double,
 )
 
 internal data class BodyMeasurementContextOverrides(
@@ -261,15 +275,18 @@ internal fun parseMealContextOverrides(context: String): MealContextOverrides {
                 grams != null &&
                 grams in 1.0..MaxMealScanGrams
             ) {
-                normalized to grams
+                MealContextItemOverride(normalized = normalized, displayName = name, grams = grams)
             } else {
                 null
             }
         }
-        .toMap()
-    return MealContextOverrides(totalGrams = total, itemGramsByName = itemOverrides)
+        .toList()
+    return MealContextOverrides(
+        totalGrams = total,
+        itemGramsByName = itemOverrides.associate { it.normalized to it.grams },
+        itemDisplayNamesByName = itemOverrides.associate { it.normalized to it.displayName },
+    )
 }
-
 internal fun parseBodyMeasurementContextOverrides(context: String): BodyMeasurementContextOverrides {
     if (context.isBlank()) return BodyMeasurementContextOverrides()
     fun firstNumber(pattern: String, range: ClosedFloatingPointRange<Double>): Double? =
@@ -293,6 +310,9 @@ private fun applyMealContextOverrides(
     overrides: MealContextOverrides,
 ): List<MealScanItem> {
     if (items.isEmpty()) return items
+    if (overrides.itemGramsByName.size > 1) {
+        return applyLockedMealContextItems(items, overrides)
+    }
     return items.map { item ->
         val itemOverride = overrides.itemGramsByName.entries.firstOrNull { (name, _) ->
             val normalizedItem = normalizeAiContextName(item.name)
@@ -307,6 +327,81 @@ private fun applyMealContextOverrides(
                 .ifBlank { null },
         )
     }
+}
+
+private fun applyLockedMealContextItems(
+    items: List<MealScanItem>,
+    overrides: MealContextOverrides,
+): List<MealScanItem> {
+    val remaining = items.toMutableList()
+    return overrides.itemGramsByName.entries.mapIndexed { index, (contextName, grams) ->
+        val matchedIndex = remaining.indexOfFirst { item ->
+            val normalizedItem = normalizeAiContextName(item.name)
+            normalizedItem == contextName || normalizedItem.contains(contextName) || contextName.contains(normalizedItem)
+        }.takeIf { it >= 0 } ?: index.takeIf { it in remaining.indices }
+        val matched = matchedIndex?.let { remaining.removeAt(it) }
+        val displayName = overrides.itemDisplayNamesByName[contextName] ?: contextName
+        val base = matched ?: MealScanItem(
+            name = displayName,
+            estimatedGrams = grams,
+            nutrition = NutritionFacts.Zero,
+            confidence = "low",
+            notes = "Gebruikerscontext genoemd; AI leverde geen apart betrouwbaar component terug.",
+        )
+        base.copy(
+            name = displayName,
+            estimatedGrams = grams,
+            nutrition = scaleNutritionToGrams(base.nutrition, base.estimatedGrams, grams),
+            confidence = base.confidence ?: if (matched == null) "low" else null,
+            notes = listOfNotNull(
+                base.notes,
+                "Gebruikerscontext vergrendelde dit component op ${formatAiOneDecimal(grams)} g.",
+            ).joinToString(" ").ifBlank { null },
+        )
+    }
+}
+
+private fun buildMealScanReviewNotes(
+    originalItems: List<MealScanItem>,
+    normalizedItems: List<MealScanItem>,
+    overrides: MealContextOverrides,
+): String? {
+    val notes = buildList {
+        if (hasSuspiciousMealScanDuplicates(originalItems)) {
+            add("Controleer deze scan: meerdere onderdelen lijken samengevoegd of overschreven.")
+        }
+        val missingContextNames = overrides.itemGramsByName.keys
+            .filterNot { contextName -> normalizedItems.any { normalizeAiContextName(it.name) == contextName } }
+        if (missingContextNames.isNotEmpty()) {
+            add("Controleer deze scan: niet alle contextproducten kwamen betrouwbaar uit de AI-output.")
+        }
+        if (overrides.itemGramsByName.size > 1) {
+            add("Expliciete gebruikerscontext is als vaste componentlijst gebruikt.")
+        }
+    }
+    return notes.joinToString(" ").ifBlank { null }
+}
+
+private fun hasSuspiciousMealScanDuplicates(items: List<MealScanItem>): Boolean {
+    if (items.size < 3) return false
+    val duplicateNames = items
+        .groupingBy { normalizeAiContextName(it.name) }
+        .eachCount()
+        .values
+        .any { it >= 3 }
+    val duplicateMacroSets = items
+        .groupingBy { item ->
+            listOf(
+                item.nutrition.calories,
+                item.nutrition.protein,
+                item.nutrition.carbs,
+                item.nutrition.fat,
+            ).joinToString("|") { formatAiOneDecimal(it) }
+        }
+        .eachCount()
+        .values
+        .any { it >= 3 }
+    return duplicateNames || duplicateMacroSets
 }
 
 private fun scaleNutritionToGrams(nutrition: NutritionFacts, sourceGrams: Double, targetGrams: Double): NutritionFacts {

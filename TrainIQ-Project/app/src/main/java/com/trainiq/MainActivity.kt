@@ -11,9 +11,6 @@ import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.trainiq.core.diagnostics.DiagnosticsTracker
@@ -41,7 +38,6 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        hideNavigationBarUntilSwipe()
         setContent {
             val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
             val telemetryOptIn by viewModel.telemetryOptIn.collectAsStateWithLifecycle()
@@ -66,13 +62,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        hideNavigationBarUntilSwipe()
         performanceSessionMonitor.setEnabled(true)
-    }
-
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) hideNavigationBarUntilSwipe()
     }
 
     override fun onPause() {
@@ -88,13 +78,6 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         performanceSessionMonitor.stop()
         super.onDestroy()
-    }
-}
-
-private fun ComponentActivity.hideNavigationBarUntilSwipe() {
-    WindowCompat.getInsetsController(window, window.decorView).apply {
-        systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        hide(WindowInsetsCompat.Type.navigationBars())
     }
 }
 

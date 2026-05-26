@@ -1,0 +1,18 @@
+{
+  "name": "trainiq-full-app-qa",
+  "version": "0.1.0",
+  "description": "Project-local TrainIQ full-app QA plugin for Android tab, feature, backend/data, AI, accessibility, performance, privacy, and release-readiness audits.",
+  "author": {
+    "name": "Local developer"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "TrainIQ Full App QA",
+    "shortDescription": "Run full TrainIQ Android QA across every tab and underlying flow.",
+    "longDescription": "Provides a project-local skill and helper script for complete TrainIQ Android QA cycles, including frontend, backend/data, AI/fallbacks, Health Connect, design, accessibility, performance, privacy/security, release readiness, findings, and evidence tracking.",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Use trainiq-full-app-qa to run a complete TrainIQ Android QA cycle across all tabs and underlying flows."
+  }
+}

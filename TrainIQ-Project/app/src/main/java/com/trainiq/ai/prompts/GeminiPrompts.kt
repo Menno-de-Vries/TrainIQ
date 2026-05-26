@@ -71,6 +71,9 @@ object GeminiPrompts {
         Regels voor context:
         - Als de gebruikerscontext een gewicht noemt, behandel dat gewicht als waarheid.
         - Herbereken of overschrijf opgegeven gewichten niet.
+        - Als de gebruikerscontext meerdere losse componenten noemt, behoud precies die componentgrenzen en namen.
+        - Gebruik de foto alleen om ontbrekende hoeveelheden en macro's aan te vullen.
+        - Maak verschillende contextcomponenten nooit hetzelfde item; markeer onzekerheid met confidence "low" en notes.
         - Schat alleen hoeveelheden waar de gebruiker geen gewicht voor noemt.
         Return JSON only in this shape:
         {

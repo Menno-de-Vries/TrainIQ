@@ -261,6 +261,113 @@ class AiServicesTest {
     }
 
     @Test
+    fun analyzeMealImage_withKipRolladeAndKaasContext_keepsSeparateItemIdentity() = runTest {
+        val api = FakeGeminiApi(
+            response = mealScanResponse(
+                """
+                    {
+                      "items": [
+                        {
+                          "name": "Kaas",
+                          "estimatedGrams": 30,
+                          "calories": 110,
+                          "protein": 7,
+                          "carbs": 0,
+                          "fat": 9
+                        },
+                        {
+                          "name": "Kaas",
+                          "estimatedGrams": 30,
+                          "calories": 110,
+                          "protein": 7,
+                          "carbs": 0,
+                          "fat": 9
+                        }
+                      ],
+                      "suggestedMealType": "LUNCH",
+                      "notes": "Foto lijkt op lunch."
+                    }
+                """.trimIndent(),
+            ),
+        )
+        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+
+        val result = service.analyzeMealImage(
+            tempImagePath(),
+            "kip rollade 80g, kaas 30g",
+            43_200_000L,
+        )
+
+        assertEquals(listOf("kip rollade", "kaas"), result.items.map { it.name })
+        assertEquals(80.0, result.items[0].estimatedGrams, 0.0)
+        assertEquals(30.0, result.items[1].estimatedGrams, 0.0)
+        assertTrue(result.notes.orEmpty().contains("Expliciete gebruikerscontext"))
+    }
+
+    @Test
+    fun analyzeMealImage_withFiveContextComponents_preservesFiveComponents() = runTest {
+        val api = FakeGeminiApi(
+            response = mealScanResponse(
+                """
+                    {
+                      "items": [
+                        {"name":"Kiprollade","estimatedGrams":100,"calories":150,"protein":22,"carbs":1,"fat":6},
+                        {"name":"Kaas","estimatedGrams":50,"calories":180,"protein":12,"carbs":1,"fat":15},
+                        {"name":"Wrap","estimatedGrams":80,"calories":240,"protein":7,"carbs":42,"fat":5},
+                        {"name":"Kaas","estimatedGrams":50,"calories":180,"protein":12,"carbs":1,"fat":15},
+                        {"name":"Kaas","estimatedGrams":50,"calories":180,"protein":12,"carbs":1,"fat":15}
+                      ],
+                      "suggestedMealType": "LUNCH"
+                    }
+                """.trimIndent(),
+            ),
+        )
+        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+
+        val result = service.analyzeMealImage(
+            tempImagePath(),
+            "kip rollade 80g, kaas 30g, wrap 60g, saus 15g, sla 20g",
+            43_200_000L,
+        )
+
+        assertEquals(
+            listOf("kip rollade", "kaas", "wrap", "saus", "sla"),
+            result.items.map { it.name },
+        )
+        assertEquals(5, result.items.size)
+        assertTrue(result.notes.orEmpty().contains("meerdere onderdelen lijken samengevoegd"))
+        assertTrue(result.items[3].notes.orEmpty().contains("Gebruikerscontext"))
+        assertTrue(result.items[4].notes.orEmpty().contains("Gebruikerscontext"))
+    }
+
+    @Test
+    fun analyzeMealImage_whenContextItemMissing_addsLowConfidenceReviewItem() = runTest {
+        val api = FakeGeminiApi(
+            response = mealScanResponse(
+                """
+                    {
+                      "items": [
+                        {"name":"Kaas","estimatedGrams":30,"calories":110,"protein":7,"carbs":0,"fat":9}
+                      ],
+                      "suggestedMealType": "LUNCH"
+                    }
+                """.trimIndent(),
+            ),
+        )
+        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+
+        val result = service.analyzeMealImage(
+            tempImagePath(),
+            "kip rollade 80g, kaas 30g",
+            43_200_000L,
+        )
+
+        assertEquals(listOf("kip rollade", "kaas"), result.items.map { it.name })
+        assertEquals("low", result.items[1].confidence)
+        assertTrue(result.items[1].notes.orEmpty().contains("AI leverde geen apart betrouwbaar component terug"))
+    }
+
+    @Test
     fun parseBodyMeasurementContextOverrides_acceptsPartialScaleContext() {
         val overrides = parseBodyMeasurementContextOverrides("weegschaal toont 82.4 kg, vet 18,1%, spier 63.0 kg")
 

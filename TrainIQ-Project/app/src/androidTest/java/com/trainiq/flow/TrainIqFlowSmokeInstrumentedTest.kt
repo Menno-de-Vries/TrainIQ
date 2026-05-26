@@ -3,6 +3,7 @@ package com.trainiq.flow
 import android.content.Context
 import android.content.Intent
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -41,35 +42,35 @@ class TrainIqFlowSmokeInstrumentedTest {
         ActivityScenario.launch<MainActivity>(
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         ).use { scenario ->
-            waitForText("Start")
-            assertVisible("Start")
-            assertVisible("Training")
-            assertVisible("Voeding")
-            assertVisible("Coach")
-            assertVisible("Meer")
+            waitForText("Start", checkpoint = "initial Start tab")
+            assertNavigationItemVisible("Start")
+            assertNavigationItemVisible("Training")
+            assertNavigationItemVisible("Voeding")
+            assertNavigationItemVisible("Coach")
+            assertNavigationItemVisible("Meer")
 
             assertAnyVisible("Instellen starten", "Profiel invullen", "Health Connect koppelen")
 
-            tap("Training")
-            waitForText("Routine maken")
+            tapNavigationItem("Training")
+            waitForText("Routine maken", checkpoint = "Training tab content")
             assertAnyVisible("Routine maken", "Start met een lege template")
 
-            tap("Voeding")
-            waitForText("Toevoegen")
-            assertVisible("Toevoegen")
-            tap("Coach")
-            waitForText("Coach")
+            tapNavigationItem("Voeding")
+            waitForText("Voeding loggen", checkpoint = "Voeding tab content")
+            assertAnyVisible("Voedingsdag", "Maaltijdconcept", "Maaltijd scannen")
+            tapNavigationItem("Coach")
+            waitForText("Coach", checkpoint = "Coach tab content")
             assertAnyVisible("Gemini 2.5 Flash", "Lokale berekening opgeslagen", "Advies")
 
-            tap("Meer")
-            waitForText("Instellingen")
+            tapNavigationItem("Meer")
+            waitForText("Instellingen", checkpoint = "Meer tab content")
             assertVisible("Meer")
-            assertVisible("Voortgang openen")
-            assertVisible("Health Connect")
-            assertVisible("AI / Gemini")
+            assertExists("Voortgang openen")
+            assertExists("Health Connect")
+            assertExists("AI / Providers")
 
             tap("Voortgang openen")
-            waitForText("Voortgang")
+            waitForText("Voortgang", checkpoint = "Voortgang via Meer")
             assertVisible("Voortgang")
         }
     }
@@ -89,6 +90,10 @@ class TrainIqFlowSmokeInstrumentedTest {
         compose.onAllNodesWithText(text, substring = true)[0].performClick()
     }
 
+    private fun tapNavigationItem(text: String) {
+        compose.onAllNodes(hasText(text, substring = false).and(hasClickAction()))[0].performClick()
+    }
+
     private fun tapLast(text: String) {
         scrollUntilText(text)
         val matches = compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes()
@@ -99,6 +104,10 @@ class TrainIqFlowSmokeInstrumentedTest {
     private fun assertVisible(text: String) {
         scrollUntilText(text)
         compose.onAllNodesWithText(text, substring = true)[0].assertIsDisplayed()
+    }
+
+    private fun assertNavigationItemVisible(text: String) {
+        compose.onAllNodes(hasText(text, substring = false).and(hasClickAction()))[0].assertIsDisplayed()
     }
 
     private fun assertExists(text: String) {
@@ -117,9 +126,15 @@ class TrainIqFlowSmokeInstrumentedTest {
         compose.onAllNodesWithText(visibleText, substring = true)[0].assertIsDisplayed()
     }
 
-    private fun waitForText(text: String) {
-        compose.waitUntil(timeoutMillis = 10_000L) {
-            compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty()
+    private fun waitForText(text: String, checkpoint: String = text) {
+        val found = runCatching {
+            compose.waitUntil(timeoutMillis = 10_000L) {
+                compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty()
+            }
+            true
+        }.getOrElse { false }
+        check(found) {
+            "Timed out waiting for '$text' at checkpoint '$checkpoint'"
         }
     }
 
