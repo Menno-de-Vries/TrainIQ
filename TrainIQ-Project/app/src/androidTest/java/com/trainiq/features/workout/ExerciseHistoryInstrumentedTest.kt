@@ -7,7 +7,6 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.room.Room
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -16,14 +15,13 @@ import com.trainiq.core.database.ExerciseEntity
 import com.trainiq.core.database.PerformedExerciseEntity
 import com.trainiq.core.database.RoutineSetEntity
 import com.trainiq.core.database.TrainIqDatabase
-import com.trainiq.core.database.TrainIqMigrations
 import com.trainiq.core.database.WorkoutDayEntity
 import com.trainiq.core.database.WorkoutExerciseEntity
 import com.trainiq.core.database.WorkoutRoutineEntity
 import com.trainiq.core.database.WorkoutSessionEntity
 import com.trainiq.core.database.WorkoutSetEntity
+import com.trainiq.testing.resetTrainIqAndroidTestDatabase
 import kotlinx.coroutines.runBlocking
-import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -40,10 +38,7 @@ class ExerciseHistoryInstrumentedTest {
     @Before
     fun seedExerciseHistory() = runBlocking {
         context = ApplicationProvider.getApplicationContext()
-        context.deleteDatabase("trainiq.db")
-        database = Room.databaseBuilder(context, TrainIqDatabase::class.java, "trainiq.db")
-            .addMigrations(*TrainIqMigrations.All)
-            .build()
+        database = resetTrainIqAndroidTestDatabase(context)
         val dao = database.dao()
         val now = System.currentTimeMillis()
         val firstSessionStart = now - 172_800_000L
@@ -111,14 +106,6 @@ class ExerciseHistoryInstrumentedTest {
                 WorkoutSetEntity(id = 32L, sessionId = 13L, exerciseId = 3L, performedExerciseId = 22L, weight = 90.0, reps = 6, rpe = 8.5, setType = "WORKING", restSeconds = 150, orderIndex = 0, completed = true, loggedAt = secondSessionStart + 120_000L, completedAt = secondSessionStart + 120_000L),
             ),
         )
-        database.close()
-    }
-
-    @After
-    fun closeDatabase() {
-        if (::database.isInitialized && database.isOpen) {
-            database.close()
-        }
     }
 
     @Test

@@ -684,6 +684,51 @@ object TrainIqMigrations {
         }
     }
 
+    val Migration13To14 = object : Migration(13, 14) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("PRAGMA foreign_keys=OFF")
+            db.recreateTable(
+                table = "active_workout_drafts",
+                columns = """
+                    session_id, exercise_id, weight, reps, rpe, set_type
+                """.trimIndent(),
+                createSql = """
+                    CREATE TABLE active_workout_drafts (
+                        session_id INTEGER NOT NULL,
+                        exercise_id INTEGER NOT NULL,
+                        weight TEXT NOT NULL,
+                        reps TEXT NOT NULL,
+                        rpe TEXT NOT NULL,
+                        set_type TEXT NOT NULL,
+                        PRIMARY KEY(session_id, exercise_id),
+                        FOREIGN KEY(session_id) REFERENCES active_workout_sessions(sessionId) ON DELETE CASCADE
+                    )
+                """.trimIndent(),
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_active_workout_drafts_session_id ON active_workout_drafts(session_id)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_active_workout_drafts_exercise_id ON active_workout_drafts(exercise_id)")
+
+            db.recreateTable(
+                table = "active_workout_collapsed_exercises",
+                columns = """
+                    session_id, exercise_id
+                """.trimIndent(),
+                createSql = """
+                    CREATE TABLE active_workout_collapsed_exercises (
+                        session_id INTEGER NOT NULL,
+                        exercise_id INTEGER NOT NULL,
+                        PRIMARY KEY(session_id, exercise_id),
+                        FOREIGN KEY(session_id) REFERENCES active_workout_sessions(sessionId) ON DELETE CASCADE
+                    )
+                """.trimIndent(),
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_active_workout_collapsed_exercises_session_id ON active_workout_collapsed_exercises(session_id)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_active_workout_collapsed_exercises_exercise_id ON active_workout_collapsed_exercises(exercise_id)")
+            db.execSQL("PRAGMA foreign_keys=ON")
+            db.assertNoForeignKeyViolations()
+        }
+    }
+
     val All = arrayOf(
         Migration2To3,
         Migration3To4,
@@ -696,6 +741,7 @@ object TrainIqMigrations {
         Migration10To11,
         Migration11To12,
         Migration12To13,
+        Migration13To14,
     )
 
     private fun SupportSQLiteDatabase.recreateTable(

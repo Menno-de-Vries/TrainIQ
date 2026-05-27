@@ -8,10 +8,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
-import androidx.room.Room
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -22,14 +20,14 @@ import com.trainiq.core.database.ExerciseEntity
 import com.trainiq.core.database.PerformedExerciseEntity
 import com.trainiq.core.database.RoutineSetEntity
 import com.trainiq.core.database.TrainIqDatabase
-import com.trainiq.core.database.TrainIqMigrations
 import com.trainiq.core.database.WorkoutDayEntity
 import com.trainiq.core.database.WorkoutExerciseEntity
 import com.trainiq.core.database.WorkoutRoutineEntity
 import com.trainiq.core.database.WorkoutSessionEntity
+import com.trainiq.testing.resetTrainIqAndroidTestDatabase
+import com.trainiq.testing.trainIqAndroidTestDatabase
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Rule
@@ -47,10 +45,7 @@ class ActiveWorkoutSetActionsInstrumentedTest {
     @Before
     fun seedActiveWorkout() = runBlocking {
         context = ApplicationProvider.getApplicationContext()
-        context.deleteDatabase("trainiq.db")
-        database = Room.databaseBuilder(context, TrainIqDatabase::class.java, "trainiq.db")
-            .addMigrations(*TrainIqMigrations.All)
-            .build()
+        database = resetTrainIqAndroidTestDatabase(context)
         val dao = database.dao()
         val now = System.currentTimeMillis()
         dao.insertRoutines(listOf(WorkoutRoutineEntity(id = 1L, name = "QA Upper", description = "Seeded set action QA", active = true)))
@@ -113,14 +108,6 @@ class ActiveWorkoutSetActionsInstrumentedTest {
                 ),
             ),
         )
-        database.close()
-    }
-
-    @After
-    fun closeDatabase() {
-        if (::database.isInitialized && database.isOpen) {
-            database.close()
-        }
     }
 
     @Test
@@ -132,7 +119,7 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             compose.onNodeWithText("Training starten").performClick()
             compose.waitForText("Actieve training")
 
-            compose.onNodeWithText("Set 1 - Normaal", substring = true)
+            compose.onNodeWithContentDescription("Set 1 type Normaal, wijzig naar Warm-up")
                 .performScrollTo()
                 .performClick()
             compose.waitForText("Set 1 - Warm-up")
@@ -178,13 +165,6 @@ class ActiveWorkoutSetActionsInstrumentedTest {
     }
 
     private fun readActiveWorkoutSet() = runBlocking {
-        val db = Room.databaseBuilder(context, TrainIqDatabase::class.java, "trainiq.db")
-            .addMigrations(*TrainIqMigrations.All)
-            .build()
-        try {
-            db.dao().observeActiveWorkoutSets().first().single()
-        } finally {
-            db.close()
-        }
+        trainIqAndroidTestDatabase(context).dao().observeActiveWorkoutSets().first().single()
     }
 }

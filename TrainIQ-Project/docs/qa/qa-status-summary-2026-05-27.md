@@ -6,17 +6,22 @@ Release-ready by full DoD: `NO`
 
 ## What is green
 
-- Automated baseline passed after the touch-target fix:
+- Automated baseline passed after the active-workout active-key schema fix:
   - `assembleDebug`
   - `testDebugUnitTest`
   - `lintDebug`
   - `connectedDebugAndroidTest`
 - Current-build emulator smoke passed with no TrainIQ crash/ANR match.
 - No open P0/P1/P2 bugs are known from executed checks.
-- Four executed-loop findings were fixed and verified:
+- Eight executed-loop findings were fixed and verified:
   - `QA-2026-05-27-001`: local data clear missed OpenAI encrypted key storage.
   - `QA-2026-05-27-002`: saved recipe delete could trigger ANR.
-  - `QA-2026-05-27-003`: Room migration marker generation drifted behind v13.`r`n  - `QA-2026-05-27-004`: Coach/Settings controls hardened to explicit 48dp touch height.
+  - `QA-2026-05-27-003`: Room migration marker generation drifted behind v13.
+  - `QA-2026-05-27-004`: Coach/Settings controls hardened to explicit 48dp touch height.
+  - `QA-2026-05-27-005`: Settings feedback/telemetry switches gained stateful accessibility labels.
+  - `QA-2026-05-27-006`: Settings feedback touch-target/clipping issue was fixed.
+  - `QA-2026-05-27-007`: Settings large-font text clipping issue was fixed.
+  - `QA-2026-05-27-008`: active-workout logged-set correction crashed when the Room draft active key was a workout-exercise id.
 - Runtime coverage exists for major paths including first-run Home, Settings/Health Connect rationale, Nutrition recipe create/use/edit/delete, Progress add/invalid/delete, Coach local goal advice, active workout log/finish/completion and cross-tab/lifecycle smoke.
 - Source/unit/contract coverage was refreshed for AI, scanner/barcode, Health Connect policy, accessibility semantics, dynamic color, adaptive layout and performance tooling buildability. Physical-device assistive-tech state was captured on `SM-S931B`; accessibility services are disabled, so TalkBack/Switch traversal remains open.
 
@@ -24,7 +29,6 @@ Release-ready by full DoD: `NO`
 
 The remaining gaps require runtime or owner evidence that was intentionally not produced in the safe run; the physical-device macrobenchmark gate is now closed as PASS:
 
-- Physical-device macrobenchmark timing trace.
 - TalkBack/Switch Access traversal; physical device currently has accessibility disabled (`accessibility_enabled=0`, `enabled_accessibility_services=null`).
 - Health Connect partial grant, revoke-while-open and background-read runtime matrix.
 - Privacy/security real-key save/readback/signoff.
@@ -36,7 +40,7 @@ The remaining gaps require runtime or owner evidence that was intentionally not 
 
 Recommended decision: `DEFER RELEASE READINESS`
 
-Rationale: the executed QA loops found and fixed P0/P1 issues and the automated baseline is green after the post-touch-target rerun, but the full Definition of Done explicitly requires runtime/owner gates that remain `NOT RUN` without owner-approved defer.
+Rationale: the executed QA loops found and fixed P0/P1 issues and the automated baseline is green after the active-workout active-key schema fix, but the full Definition of Done explicitly requires runtime/owner gates that remain `NOT RUN` without owner-approved defer.
 
 ## Reviewer map
 

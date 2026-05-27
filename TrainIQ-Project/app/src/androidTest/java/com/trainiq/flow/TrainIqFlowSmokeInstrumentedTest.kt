@@ -16,6 +16,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.trainiq.MainActivity
+import com.trainiq.testing.resetTrainIqAndroidTestDatabase
 import java.io.File
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -33,7 +34,7 @@ class TrainIqFlowSmokeInstrumentedTest {
     @Before
     fun resetSafeLocalState() {
         context = ApplicationProvider.getApplicationContext()
-        context.deleteDatabase("trainiq.db")
+        resetTrainIqAndroidTestDatabase(context)
         deleteAppLocalFile("datastore/trainiq_preferences.preferences_pb")
     }
 

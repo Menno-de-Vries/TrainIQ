@@ -16,9 +16,9 @@ class RoomMigrationChainVerificationProviderTest {
 
         assertEquals(RoomMigrationChainVerification.NOT_RUN, report.status)
         assertEquals(RoomMigrationChainVerificationReason.NO_TRUSTED_MARKER, report.reason)
-        assertEquals(13, report.currentRoomVersion)
+        assertEquals(14, report.currentRoomVersion)
         assertEquals(2, report.requiredStartVersion)
-        assertEquals(13, report.requiredEndVersion)
+        assertEquals(14, report.requiredEndVersion)
         assertNull(report.coveredStartVersion)
         assertNull(report.coveredEndVersion)
         assertFalse(report.freshEnough)
@@ -114,11 +114,11 @@ class RoomMigrationChainVerificationProviderTest {
         marker: String = RoomMigrationChainVerificationProvider.expectedMarker(),
         buildVariant: String = "debug",
         testTask: String = "connectedDebugAndroidTest",
-        currentRoomVersion: Int = 13,
+        currentRoomVersion: Int = 14,
         requiredStartVersion: Int = 2,
-        requiredEndVersion: Int = 13,
+        requiredEndVersion: Int = 14,
         coveredStartVersion: Int = 2,
-        coveredEndVersion: Int = 13,
+        coveredEndVersion: Int = 14,
         verifiedAtMillis: Long = Now - 1_000L,
         migrationCount: Int = 10,
         includePayloadHash: Boolean = true,

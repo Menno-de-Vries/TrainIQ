@@ -399,12 +399,6 @@ data class ActiveWorkoutSessionEntity(
             childColumns = ["session_id"],
             onDelete = ForeignKey.CASCADE,
         ),
-        ForeignKey(
-            entity = ExerciseEntity::class,
-            parentColumns = ["id"],
-            childColumns = ["exercise_id"],
-            onDelete = ForeignKey.RESTRICT,
-        ),
     ],
     primaryKeys = ["session_id", "exercise_id"],
     indices = [
@@ -429,12 +423,6 @@ data class ActiveWorkoutDraftEntity(
             parentColumns = ["sessionId"],
             childColumns = ["session_id"],
             onDelete = ForeignKey.CASCADE,
-        ),
-        ForeignKey(
-            entity = ExerciseEntity::class,
-            parentColumns = ["id"],
-            childColumns = ["exercise_id"],
-            onDelete = ForeignKey.RESTRICT,
         ),
     ],
     primaryKeys = ["session_id", "exercise_id"],

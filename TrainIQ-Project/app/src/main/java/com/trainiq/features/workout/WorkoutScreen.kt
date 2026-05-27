@@ -6051,7 +6051,22 @@ private fun SetRow(
                 text = activeSetTitleText(index, loggedSet?.setType ?: plannedSet?.setType),
                 modifier = Modifier
                     .weight(1f)
-                    .clickable(enabled = loggedSet != null, onClick = onCycleType),
+                    .semantics {
+                        if (loggedSet != null) {
+                            contentDescription = activeSetTypeCycleContentDescription(
+                                index = index,
+                                currentType = loggedSet.setType,
+                            )
+                        }
+                    }
+                    .clickable(
+                        enabled = loggedSet != null,
+                        role = Role.Button,
+                        onClickLabel = loggedSet?.setType?.next()?.let { nextType ->
+                            "Wijzig settype naar ${nextType.label()}"
+                        },
+                        onClick = onCycleType,
+                    ),
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -6514,6 +6529,9 @@ internal val ActiveWorkoutUiState.visibleLoggedSetCount: Int
 
 internal fun activeSetTitleText(index: Int, setType: SetType?): String =
     setType?.let { "Set $index - ${it.label()}" } ?: "Set $index"
+
+internal fun activeSetTypeCycleContentDescription(index: Int, currentType: SetType): String =
+    "Set $index type ${currentType.label()}, wijzig naar ${currentType.next().label()}"
 
 internal fun WorkoutRoutine.firstStartableDay(): WorkoutDay? =
     days.firstOrNull { it.exercises.isNotEmpty() }

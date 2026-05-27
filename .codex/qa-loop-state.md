@@ -1,37 +1,98 @@
 # QA Loop State
 
-- updated: 2026-05-27 13:40
+- updated: 2026-05-27 15:15
 - mcp_used: no — not requested by user
 - last_checked_areas:
   - current-build smoke + crash/ANR baseline: assembleDebug passed; testDebugUnitTest passed; emulator install/launch produced no TrainIQ crash/ANR logcat matches.
+  - Health Connect no-permission/status refresh runtime smoke: emulator install/clear/launch passed; Home and Settings expose Health Connect as optional/`Toegang vereist`; logcat scan returned `NO_MATCHES`.
+  - QA metadata consistency: refreshed DoD open-gaps snapshot from the full ledger; current ledger has 16 `NOT RUN` rows; machine-readable QA status now matches the ledger and lists all seven fixed findings.
+  - QA packet link integrity: checked 461 unique local `docs/qa` references across the packet/status/ledger/index/snapshot documents; missing references: 0.
+  - Contract-only regression rescan: AI/Coach/Routine, scanner/barcode/nutrition, Health Connect policy and accessibility contract test groups all passed.
+  - Baseline refresh: `:app:assembleDebug`, `:app:testDebugUnitTest` and `:app:lintDebug` passed with fresh evidence.
+  - Connected baseline refresh: full `:app:connectedDebugAndroidTest` passed after fixing active-workout set type semantics, connected test DB isolation, and the active-key Room schema mismatch.
+  - Final install/start smoke: `installDebug` passed; cold launch returned `Status: ok`; logcat crash/ANR scan returned `NO_MATCHES`.
 - remaining_risks:
   - Owner/manual gates from `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`: TalkBack/Switch Access traversal, Health Connect partial/revoke/background-read runtime matrix, privacy/security real-key signoff, live AI/provider flows, real camera/scanner return, manual deep-runtime UX audits.
-  - Physical-device macrobenchmark status is conflicting in the summary text; verify against the full ledger before using it as a target.
+  - Physical-device macrobenchmark is closed as PASS in the current summary/ledger; remaining performance certification still depends on owner-approved thresholds and broader device-lab evidence.
 - previous_failing_checks:
-  - none reproduced in this loop
+  - Full connected baseline initially reproduced active-workout restore, set-actions, Exercise History and first-run smoke failures; targeted reruns isolated suite-order DB state and a real active-workout draft FK crash. All reproduced connected failures passed after the fixes.
 - next_suggested_loop_target:
-  - Health Connect no-permission/status refresh runtime smoke on emulator, avoiding system permission mutation unless explicitly approved.
-- no_op_count: 1
+  - Owner-approved Health Connect runtime mutation matrix, TalkBack/Switch Access traversal, or another safe non-mutating runtime smoke if owner gates remain unavailable.
+- no_op_count: 6
 - blocked_count: 0
 - absent_terms_recorded:
   - not checked this loop
 
 ## Latest Loop
 
-- target: current-build smoke + crash/ANR baseline
-- priority: P0
+- target: connected baseline refresh and active-workout active-key crash fix
+- priority: P1
+- result: fixed
+- commands:
+  - `.\gradlew.bat :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin --console=plain`
+  - `.\gradlew.bat :app:connectedDebugAndroidTest --console=plain "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.features.workout.ActiveWorkoutSetActionsInstrumentedTest,com.trainiq.features.workout.ActiveWorkoutRestoreInstrumentedTest,com.trainiq.features.workout.ExerciseHistoryInstrumentedTest,com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest"`
+  - `.\gradlew.bat :app:connectedDebugAndroidTest --console=plain`
+  - `.\gradlew.bat :app:installDebug --console=plain`; `adb shell pm clear com.trainiq`; `adb shell am start -W -n com.trainiq/.MainActivity`; `adb logcat -d -t 1000`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/compile-after-active-key-schema-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/failing-classes-rerun-after-active-key-schema-fix-quoted.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/unit-and-lint-after-room-v14-marker-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/connectedDebugAndroidTest-final-after-room-v14-marker-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/launch-final-smoke.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/logcat-final-room-v14-crash-matches.txt`
+- files_changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/core/database/Entities.kt`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/core/database/TrainIqDatabase.kt`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/core/database/TrainIqMigrations.kt`
+  - `TrainIQ-Project/app/schemas/com.trainiq.core.database.TrainIqDatabase/14.json`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/testing/TrainIqAndroidTestDatabase.kt`
+  - `TrainIQ-Project/app/src/debug/java/com/trainiq/core/testing/TrainIqDebugDatabaseEntryPoint.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/features/workout/ActiveWorkoutSetActionsInstrumentedTest.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/features/workout/ActiveWorkoutRestoreInstrumentedTest.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/features/workout/ExerciseHistoryInstrumentedTest.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/fixed-findings-index-2026-05-27.md`
+- webresearch_used: no
+- next: owner-approved Health Connect partial/revoke/background-read runtime matrix, TalkBack/Switch Access traversal, or another safe non-mutating runtime smoke if owner gates remain unavailable.
+
+## Previous Loop
+
+- target: safe Gradle baseline refresh
+- priority: P1
 - result: no-op
 - commands:
-  - `rg "Open P0/P1/P2|NOT RUN|BLOCKED|Remaining|Current status" TrainIQ-Project/docs/qa`
   - `.\gradlew.bat :app:assembleDebug --console=plain`
   - `.\gradlew.bat :app:testDebugUnitTest --console=plain`
-  - `adb -s emulator-5554 install -r app\build\outputs\apk\debug\app-debug.apk; monkey launch; filtered logcat crash/ANR scan`
+  - `.\gradlew.bat :app:lintDebug --console=plain`
 - evidence:
-  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`: bootstrap source; no open P0/P1/P2 known from executed checks.
-  - Gradle output: `assembleDebug` exited 0, build successful.
-  - Gradle output: `testDebugUnitTest` exited 0, build successful.
-  - Emulator runtime: install succeeded, launcher monkey event injected, filtered logcat returned no `FATAL EXCEPTION`, `ANR in com.trainiq`, or TrainIQ `AndroidRuntime` matches.
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-baseline-refresh-loop/summary.txt`: assembleDebug, testDebugUnitTest and lintDebug passed.
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-baseline-refresh-loop/assembleDebug.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-baseline-refresh-loop/testDebugUnitTest.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-baseline-refresh-loop/lintDebug.txt`
 - files_changed:
   - `.codex/qa-loop-state.md`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-dod-open-gaps-audit/not-run-snapshot.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-qa-metadata-refresh-loop/not-run-count-consistency.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-qa-metadata-refresh-loop/qa-status-consistency-validation.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-qa-packet-link-refresh-loop/local-linkcheck.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-contract-rescan-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-contract-rescan-refresh-loop/ai-coach-routine-contract-tests.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-contract-rescan-refresh-loop/scanner-barcode-nutrition-contract-tests.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-contract-rescan-refresh-loop/healthconnect-policy-contract-tests.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-contract-rescan-refresh-loop/accessibility-contract-tests.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-baseline-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-baseline-refresh-loop/assembleDebug.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-baseline-refresh-loop/testDebugUnitTest.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-baseline-refresh-loop/lintDebug.txt`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
 - webresearch_used: no
-- next: Health Connect no-permission/status refresh runtime smoke on emulator.
+- next: owner-approved Health Connect partial/revoke/background-read runtime matrix, TalkBack/Switch Access traversal, or another safe non-mutating runtime smoke if owner gates remain unavailable.
+

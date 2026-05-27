@@ -4,7 +4,7 @@
     "schema":  "docs/qa/qa-status-schema-2026-05-27.json",
     "status":  "PARTIAL",
     "releaseReadyByFullDefinitionOfDone":  false,
-    "notRunRows":  25,
+    "notRunRows":  16,
     "notRunSnapshot":  "docs/qa/evidence/2026-05-27-dod-open-gaps-audit/not-run-snapshot.txt",
     "knownOpenP0P1P2FromExecutedChecks":  0,
     "fixedFindings":  [
@@ -31,31 +31,55 @@
                               "priority":  "P2",
                               "area":  "Accessibility - Coach/Settings touch-target hardening",
                               "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-27-005",
+                              "priority":  "P2",
+                              "area":  "Meer/Instellingen - accessibility/design - feedback and telemetry switches",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-27-006",
+                              "priority":  "P2",
+                              "area":  "Meer/Instellingen - accessibility/design - touch targets and clipping",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-27-007",
+                              "priority":  "P2",
+                              "area":  "Meer/Instellingen - large font - text clipping",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-27-008",
+                              "priority":  "P1",
+                              "area":  "Training - active workout edit/delete - active-key Room FK crash",
+                              "status":  "fixed"
                           }
                       ],
     "latestAutomatedBaseline":  {
                                     "assembleDebug":  {
                                                           "status":  "PASS",
-                                                          "evidence":  "docs/qa/evidence/2026-05-27-post-touch-target-baseline/assembleDebug.txt"
+                                                          "evidence":  "docs/qa/evidence/2026-05-27-baseline-refresh-loop/assembleDebug.txt"
                                                       },
                                     "testDebugUnitTest":  {
                                                               "status":  "PASS",
-                                                              "evidence":  "docs/qa/evidence/2026-05-27-post-touch-target-baseline/testDebugUnitTest-rerun2.txt"
+                                                              "evidence":  "docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/unit-and-lint-after-room-v14-marker-fix.txt"
                                                           },
                                     "lintDebug":  {
                                                       "status":  "PASS",
-                                                      "evidence":  "docs/qa/evidence/2026-05-27-post-touch-target-baseline/lintDebug.txt"
+                                                      "evidence":  "docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/unit-and-lint-after-room-v14-marker-fix.txt"
                                                   },
                                     "connectedDebugAndroidTest":  {
                                                                       "status":  "PASS",
-                                                                      "evidence":  "docs/qa/evidence/2026-05-27-post-touch-target-baseline/connectedDebugAndroidTest.txt"
+                                                                      "evidence":  "docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/connectedDebugAndroidTest-final-after-room-v14-marker-fix.txt"
                                                                   }
                                 },
     "latestRuntimeSmoke":  {
                                "status":  "PASS",
-                               "uiDump":  "docs/qa/evidence/2026-05-27-final-smoke-loop/trainiq-final-smoke.xml",
-                               "logcat":  "docs/qa/evidence/2026-05-27-final-smoke-loop/logcat-final-smoke.txt",
-                               "crashAnrScan":  "docs/qa/evidence/2026-05-27-final-smoke-loop/logcat-crash-matches.txt"
+                               "uiDump":  "docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/trainiq-final-room-v14-smoke.xml",
+                               "logcat":  "docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/logcat-final-room-v14-smoke.txt",
+                               "crashAnrScan":  "docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/logcat-final-room-v14-crash-matches.txt"
                            },
     "openReleaseGates":  [
                              "TalkBack/Switch Access traversal",
