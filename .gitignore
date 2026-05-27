@@ -30,3 +30,6 @@ qa-cycle-runtime/training-after-fix.png
 /TrainIQ-Project/.codex/device-qa
 /artifacts/
 /TrainIQ-Project/.kotlin/errors
+/TrainIQ-Project/docs/qa/evidence/2026-05-27-emulator-nutrition-longform-ime-loop
+/TrainIQ-Project/docs/qa/evidence/2026-05-27-emulator-modal-focus-loop
+/TrainIQ-Project/docs/qa
