@@ -95,6 +95,73 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun `AI routine preview save and cancel keep pending state explicit`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val savePendingBody = workoutScreen.substringAfter("fun savePendingGeneratedRoutine()")
+            .substringBefore("fun dismissPendingGeneratedRoutine()")
+        val dismissPendingBody = workoutScreen.substringAfter("fun dismissPendingGeneratedRoutine()")
+            .substringBefore("fun retryGeneratedRoutine()")
+        val previewDialogCall = workoutScreen.substringAfter("GeneratedRoutinePreviewDialog(")
+            .substringBefore("if (showCreateDialog)")
+        val generatorDialogCall = workoutScreen.substringAfter("RoutineGeneratorDialog(")
+            .substringBefore("TrainingWithoutOverscroll")
+        val dialogBody = workoutScreen.substringAfter("private fun RoutineGeneratorDialog(")
+            .substringBefore("private fun ExperienceLevelSelector(")
+
+        assertTrue(savePendingBody.contains("if (_isSavingGeneratedRoutine.value) return"))
+        assertTrue(savePendingBody.contains("val routine = _pendingGeneratedRoutine.value ?: return"))
+        assertTrue(savePendingBody.contains("_isSavingGeneratedRoutine.value = true"))
+        assertTrue(savePendingBody.contains("saveGeneratedRoutineUseCase(routine)"))
+        assertTrue(savePendingBody.contains("_pendingGeneratedRoutine.value = null"))
+        assertTrue(savePendingBody.contains("_message.value = \"Routine opgeslagen.\""))
+        assertTrue(savePendingBody.contains("_isSavingGeneratedRoutine.value = false"))
+        assertTrue(dismissPendingBody.contains("_pendingGeneratedRoutine.value = null"))
+        assertTrue(previewDialogCall.contains("onSave = onSaveGeneratedRoutine"))
+        assertTrue(previewDialogCall.contains("onDismiss = onDismissGeneratedRoutine"))
+        assertTrue(generatorDialogCall.contains("onDismiss = { if (!isGenerating) showAiDialog = false }"))
+        assertTrue(dialogBody.contains("dismissButton = { TextButton(onClick = onDismiss, enabled = !isLoading) { Text(\"Annuleren\") } }"))
+    }
+
+    @Test
+    fun `active workout logged set actions wire edit delete type change and undo`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val updateTypeBody = workoutScreen.substringAfter("fun updateLoggedSetType(")
+            .substringBefore("fun editLoggedSet(")
+        val editSetBody = workoutScreen.substringAfter("fun editLoggedSet(")
+            .substringBefore("fun deleteLoggedSet(")
+        val deleteSetBody = workoutScreen.substringAfter("fun deleteLoggedSet(")
+            .substringBefore("fun relogSet(")
+        val undoBody = workoutScreen.substringAfter("fun undoWorkoutLogEvent(")
+            .substringBefore("fun logSameAgain(")
+        val eventCollector = workoutScreen.substringAfter("is WorkoutUiEvent.SetLogged ->")
+            .substringBefore("is WorkoutUiEvent.WorkoutCompleted")
+        val activeRouteCall = workoutScreen.substringAfter("ActiveWorkoutScreen(")
+            .substringBefore("onFinishWorkout =")
+        val setRowsBody = workoutScreen.substringAfter("repeat(visibleSetRows) { index ->")
+            .substringBefore("if (collapsed) return@Column")
+
+        assertTrue(updateTypeBody.contains("updateActiveWorkoutSetTypeUseCase(setId, setType)"))
+        assertTrue(editSetBody.contains("_pendingCorrectionSetIds.value"))
+        assertTrue(editSetBody.contains("set.toDraft()"))
+        assertTrue(editSetBody.contains("Set staat klaar voor correctie"))
+        assertTrue(deleteSetBody.contains("_pendingCorrectionSetIds.value = _pendingCorrectionSetIds.value.filterValues { it != setId }"))
+        assertTrue(deleteSetBody.contains("deleteActiveWorkoutSetUseCase(setId)"))
+        assertTrue(deleteSetBody.contains("_message.value = \"Set verwijderd.\""))
+        assertTrue(undoBody.contains("undoWorkoutLogEventUseCase(eventId)"))
+        assertTrue(undoBody.contains("_message.value = \"Laatste set hersteld.\""))
+        assertTrue(eventCollector.contains("actionLabel = event.undoEventId?.let { \"Ongedaan maken\" }"))
+        assertTrue(eventCollector.contains("event.undoEventId?.let(viewModel::undoWorkoutLogEvent)"))
+        assertTrue(activeRouteCall.contains("onSetTypeChange = viewModel::updateLoggedSetType"))
+        assertTrue(activeRouteCall.contains("onEditSet = viewModel::editLoggedSet"))
+        assertTrue(activeRouteCall.contains("onDeleteSet = { setId -> viewModel.deleteLoggedSet(setId) }"))
+        assertTrue(activeRouteCall.contains("onRelogSet = viewModel::relogSet"))
+        assertTrue(setRowsBody.contains("onSetTypeChange(set.id, set.setType.next())"))
+        assertTrue(setRowsBody.contains("onEdit = { loggedSets.getOrNull(index)?.let { onEditSet(it.id) } }"))
+        assertTrue(setRowsBody.contains("onDelete = { loggedSets.getOrNull(index)?.let { onDeleteSet(it.id) } }"))
+        assertTrue(setRowsBody.contains("onRelog = { loggedSets.getOrNull(index)?.let { onRelogSet(it.id) } }"))
+    }
+
+    @Test
     fun `AI routine deload switch keeps accessibility label at large font scale`() {
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
         val deloadBody = workoutScreen.substringAfter("private fun IncludeDeloadRow(")

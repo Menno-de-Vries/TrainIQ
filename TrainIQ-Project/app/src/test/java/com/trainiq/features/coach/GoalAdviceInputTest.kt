@@ -1,9 +1,11 @@
 package com.trainiq.features.coach
 
 import com.trainiq.domain.model.BiologicalSex
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GoalAdviceInputTest {
@@ -174,5 +176,30 @@ class GoalAdviceInputTest {
     fun cleanAdviceBulletText_removesRawMarkdownMarkers() {
         assertEquals("Houd eiwit hoog.", cleanAdviceBulletText("- Houd eiwit hoog."))
         assertEquals("Plan je volgende sessie.", cleanAdviceBulletText("* Plan je volgende sessie."))
+    }
+
+    @Test
+    fun coachScreen_keepsWeeklyTrainingAndNutritionSectionsVisibleBehindProfileGate() {
+        val source = File("src/main/java/com/trainiq/features/coach/CoachScreen.kt").readText()
+        val profileReadyBody = source.substringAfter("} else item {").substringBefore("item {\n                        GoalAdviceInputCard")
+        val weekReportCard = source.substringAfter("private fun WeekReportCard(").substringBefore("@Composable\nprivate fun BulletAdviceSurface")
+        val weeklySourceLabels = source.substringAfter("private fun WeeklyReportSource.label()").substringBefore("internal data class GoalAdviceInput")
+
+        assertTrue(profileReadyBody.contains("WeekReportCard(report = state.generatedReport, fallbackSummary = state.overview.weeklyReport)"))
+        assertTrue(profileReadyBody.contains("onGenerateWeeklyReport()"))
+        assertTrue(profileReadyBody.contains("if (state.isGeneratingReport) \"Rapport maken...\" else \"Weekrapport maken\""))
+        assertTrue(profileReadyBody.contains("Text(\"Trainingsinzichten\""))
+        assertTrue(profileReadyBody.contains("state.overview.trainingInsights.ifEmpty"))
+        assertTrue(profileReadyBody.contains("Text(\"Voedingscoach\""))
+        assertTrue(profileReadyBody.contains("text = state.overview.nutritionCoachMessage"))
+        assertTrue(weekReportCard.contains("Text(\"Weekoverzicht\""))
+        assertTrue(weekReportCard.contains("report?.source?.label() ?: \"Lokale analyse\""))
+        assertTrue(weekReportCard.contains("BulletAdviceSurface(\"Hoogtepunten\", it.wins)"))
+        assertTrue(weekReportCard.contains("BulletAdviceSurface(\"Aandachtspunten\", it.risks)"))
+        assertTrue(weekReportCard.contains("Text(\"Volgende stap\""))
+        assertTrue(weekReportCard.contains("BulletAdviceSurface(\"Onderbouwing\", it.rationaleBullets.take(3))"))
+        assertTrue(weeklySourceLabels.contains("WeeklyReportSource.GEMINI_2_5_FLASH -> \"Gemini 2.5 Flash\""))
+        assertTrue(weeklySourceLabels.contains("WeeklyReportSource.OPENAI -> \"OpenAI\""))
+        assertTrue(weeklySourceLabels.contains("WeeklyReportSource.LOCAL_FALLBACK -> \"Lokale analyse\""))
     }
 }

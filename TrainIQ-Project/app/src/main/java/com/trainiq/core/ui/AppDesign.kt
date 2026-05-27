@@ -84,6 +84,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
@@ -1039,6 +1040,9 @@ fun AppDialog(
     dismissLabel: String = "Annuleren",
 ) {
     AlertDialog(
+        modifier = Modifier.semantics {
+            paneTitle = appDialogPaneTitle(title)
+        },
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.trainIqColors.card,
         titleContentColor = MaterialTheme.colorScheme.onSurface,
@@ -1050,6 +1054,9 @@ fun AppDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text(dismissLabel) } },
     )
 }
+
+internal fun appDialogPaneTitle(title: String): String =
+    title.trim().ifBlank { "TrainIQ dialoog" }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

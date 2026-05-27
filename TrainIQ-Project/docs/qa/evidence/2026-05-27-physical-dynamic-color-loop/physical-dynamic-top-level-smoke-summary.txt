@@ -1,0 +1,7 @@
+Start.xml.contains.Start=True
+Training.xml.contains.Training=True
+Voeding.xml.contains.Voeding=True
+Coach.xml.contains.Coach=True
+Meer.xml.contains.Meer=True
+Voortgang.xml.contains.Voortgang=True
+crashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES

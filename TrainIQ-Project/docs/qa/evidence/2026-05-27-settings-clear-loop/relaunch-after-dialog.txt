@@ -1,0 +1,4 @@
+Starting: Intent { cmp=com.trainiq/.MainActivity }
+Error type 3
+Error: Activity class {com.trainiq/com.trainiq.MainActivity} does not exist.
+

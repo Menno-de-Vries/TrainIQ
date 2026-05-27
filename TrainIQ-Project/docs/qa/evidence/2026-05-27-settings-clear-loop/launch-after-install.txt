@@ -1,0 +1,8 @@
+Starting: Intent { cmp=com.trainiq/.MainActivity }
+Status: ok
+LaunchState: COLD
+Activity: com.trainiq/.MainActivity
+TotalTime: 5209
+WaitTime: 5221
+Complete
+

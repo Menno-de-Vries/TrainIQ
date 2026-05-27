@@ -1,0 +1,12 @@
+QA_PACKET_LINKCHECK_PASS
+Checked files:
+docs\qa\qa-packet-2026-05-27.md
+docs\qa\qa-status-summary-2026-05-27.md
+docs\qa\qa-status-2026-05-27.json
+docs\qa\qa-status-schema-2026-05-27.json
+docs\qa\full-app-qa-run-2026-05-27.md
+docs\qa\release-gate-owner-checklist-2026-05-27.md
+docs\qa\owner-approved-defer-template-2026-05-27.md
+docs\qa\next-run-command-sheet-2026-05-27.md
+docs\qa\fixed-findings-index-2026-05-27.md
+docs\qa\evidence-index-2026-05-27.md

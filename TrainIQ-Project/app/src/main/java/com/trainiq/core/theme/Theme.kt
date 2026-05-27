@@ -1,5 +1,6 @@
 package com.trainiq.core.theme
 
+import android.annotation.SuppressLint
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
@@ -191,6 +192,7 @@ val MaterialTheme.trainIqColors: TrainIqColors
     get() = LocalTrainIqColors.current
 
 @Composable
+@SuppressLint("NewApi")
 fun TrainIqTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     dynamicColor: Boolean = true,
@@ -202,7 +204,7 @@ fun TrainIqTheme(
         ThemeMode.DARK -> true
     }
     val context = LocalContext.current
-    val useDynamicColor = dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val useDynamicColor = shouldUseDynamicColor(dynamicColor, Build.VERSION.SDK_INT)
     val colorScheme = when {
         useDynamicColor && darkTheme ->
             dynamicTrainIqColorScheme(darkTheme = true, context = context)

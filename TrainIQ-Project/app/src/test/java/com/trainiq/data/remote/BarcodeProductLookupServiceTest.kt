@@ -1,7 +1,9 @@
 package com.trainiq.data.remote
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BarcodeProductLookupServiceTest {
@@ -52,5 +54,43 @@ class BarcodeProductLookupServiceTest {
         )
 
         assertNull(product)
+    }
+
+    @Test
+    fun parseOpenFoodFactsProduct_withNotFoundMalformedOrUnsafeValues_returnsNull() {
+        assertNull(parseOpenFoodFactsProduct("00000000000000", """{"status":0}"""))
+        assertNull(parseOpenFoodFactsProduct("8712345678901", "{not-json"))
+        assertNull(
+            parseOpenFoodFactsProduct(
+                barcode = "8712345678901",
+                json = """
+                    {
+                      "status": 1,
+                      "product": {
+                        "product_name": "Onveilige macro",
+                        "nutriments": {
+                          "energy-kcal_100g": 56,
+                          "proteins_100g": "NaN",
+                          "carbohydrates_100g": 4.0,
+                          "fat_100g": 0.2
+                        }
+                      }
+                    }
+                """.trimIndent(),
+            ),
+        )
+    }
+
+    @Test
+    fun barcodeLookupService_usesBoundedTimeoutsAndNullOnNetworkFailures() {
+        val source = File("src/main/java/com/trainiq/data/remote/BarcodeProductLookupService.kt").readText()
+        val lookupBody = source.substringAfter("suspend fun lookup(").substringBefore("internal fun parseOpenFoodFactsProduct")
+
+        assertTrue(lookupBody.contains("barcode.filter(Char::isDigit)"))
+        assertTrue(lookupBody.contains("it.length in 8..14"))
+        assertTrue(lookupBody.contains("runCatching"))
+        assertTrue(lookupBody.contains("connectTimeout = 5_000"))
+        assertTrue(lookupBody.contains("readTimeout = 5_000"))
+        assertTrue(lookupBody.contains("getOrNull()"))
     }
 }

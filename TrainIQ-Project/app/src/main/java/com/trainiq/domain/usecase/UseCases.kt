@@ -465,7 +465,7 @@ class ClearAppDataUseCase @Inject constructor(
 ) {
     suspend operator fun invoke() {
         runtimeStore.clearAll()
-        aiUsageGate.clearEncryptedApiKey()
+        aiUsageGate.clearAllAiKeys()
         preferencesRepository.clearLocalPrivateData()
         performanceSessionStore.clearAll()
     }

@@ -1,0 +1,6 @@
+densityDpi=480
+min48dpPx=144
+filesAudited=2
+clickableOrFocusableNodes=23
+under48dpNodes=2
+under48dpDetails=see touch-target-centered-after-fix-under-48dp.txt

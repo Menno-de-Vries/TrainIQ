@@ -1,0 +1,15 @@
+QA_STATUS_JSON_VALID
+status=
+PARTIAL
+releaseReadyByFullDefinitionOfDone=
+False
+notRunRows=
+26
+schema=
+docs/qa/qa-status-schema-2026-05-27.json
+fixedFindings=
+3
+openReleaseGates=
+6
+ownerApprovedDeferTemplate=
+docs/qa/owner-approved-defer-template-2026-05-27.md

@@ -1,0 +1,9 @@
+status=PARTIAL
+releaseReadyByFullDefinitionOfDone=False
+jsonNotRunRows=25
+snapshotNotRunRows=25
+hasFinding004=True
+baselineUsesPostTouchTarget=True
+ledgerHasAssistiveTechEvidence=True
+snapshotHasAssistiveTechEvidence=True
+indexHasAssistiveTechEvidence=True

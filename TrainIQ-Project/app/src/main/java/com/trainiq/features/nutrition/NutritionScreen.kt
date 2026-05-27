@@ -1379,12 +1379,12 @@ fun NutritionScreen(
             isDeleting = isDeletePending,
             onConfirm = {
                 if (isDeletePending) return@ConfirmNutritionDeleteDialog
+                pendingDelete = null
                 when (delete) {
                     is PendingNutritionDelete.Meal -> onDeleteMeal(delete.id)
                     is PendingNutritionDelete.Food -> onDeleteFood(delete.id)
                     is PendingNutritionDelete.Recipe -> onDeleteRecipe(delete.id)
                 }
-                pendingDelete = null
             },
             onDismiss = { pendingDelete = null },
         )
@@ -1457,10 +1457,7 @@ private fun ConfirmNutritionDeleteDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            Text(
-                body,
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-            )
+            Text(body)
         },
         confirmButton = { Button(onClick = onConfirm, enabled = !isDeleting) { Text(if (isDeleting) "Verwijderen..." else "Verwijderen") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annuleren") } },

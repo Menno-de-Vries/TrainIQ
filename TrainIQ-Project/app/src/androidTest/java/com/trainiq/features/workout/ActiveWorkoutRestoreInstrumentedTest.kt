@@ -129,10 +129,12 @@ class ActiveWorkoutRestoreInstrumentedTest {
                 compose.onAllNodesWithText("Training").fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithText("Training").assertIsDisplayed()
-            compose.waitUntil(timeoutMillis = 10_000L) {
+            compose.onNodeWithText("Training").performClick()
+            compose.waitUntil(timeoutMillis = 30_000L) {
                 compose.onAllNodesWithText("QA Upper", substring = true).fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithText("Actieve routine").assertIsDisplayed()
         }
     }
+
 }

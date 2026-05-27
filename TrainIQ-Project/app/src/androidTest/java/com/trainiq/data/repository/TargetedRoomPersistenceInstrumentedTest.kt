@@ -561,6 +561,141 @@ class TargetedRoomPersistenceInstrumentedTest {
     }
 
     @Test
+    fun targetedMealItemSnapshotsDoNotChangeAfterProductAndRecipeEdits() = runTest {
+        val dao = database.dao()
+
+        dao.insertFoodItems(
+            listOf(
+                FoodItemEntity(
+                    id = 90L,
+                    name = "Kip rollade",
+                    caloriesPer100g = 140.0,
+                    proteinPer100g = 22.0,
+                    carbsPer100g = 1.0,
+                    fatPer100g = 5.0,
+                    sourceType = "MANUAL",
+                    createdAt = 1L,
+                    updatedAt = 1L,
+                ),
+                FoodItemEntity(
+                    id = 91L,
+                    name = "Kaas",
+                    caloriesPer100g = 350.0,
+                    proteinPer100g = 25.0,
+                    carbsPer100g = 2.0,
+                    fatPer100g = 29.0,
+                    sourceType = "MANUAL",
+                    createdAt = 1L,
+                    updatedAt = 1L,
+                ),
+            ),
+        )
+        dao.saveRecipe(
+            recipe = RecipeEntity(id = 80L, name = "Wrap kip kaas", createdAt = 1L, updatedAt = 1L),
+            ingredients = listOf(
+                RecipeIngredientEntity(id = 100L, recipeId = 80L, foodItemId = 90L, gramsUsed = 80.0, orderIndex = 0),
+                RecipeIngredientEntity(id = 101L, recipeId = 80L, foodItemId = 91L, gramsUsed = 30.0, orderIndex = 1),
+            ),
+        )
+        dao.saveMeal(
+            meal = MealEntity(
+                id = 120L,
+                date = 1_000L,
+                mealType = "LUNCH",
+                name = "Lunch snapshot",
+                calories = 217,
+                protein = 25,
+                carbs = 2,
+                fat = 13,
+            ),
+            items = listOf(
+                MealItemEntity(
+                    id = 121L,
+                    mealId = 120L,
+                    itemType = "FOOD",
+                    referenceId = 90L,
+                    name = "Kip rollade",
+                    gramsUsed = 80.0,
+                    calories = 112.0,
+                    protein = 17.6,
+                    carbs = 0.8,
+                    fat = 4.0,
+                    orderIndex = 0,
+                ),
+                MealItemEntity(
+                    id = 122L,
+                    mealId = 120L,
+                    itemType = "FOOD",
+                    referenceId = 91L,
+                    name = "Kaas",
+                    gramsUsed = 30.0,
+                    calories = 105.0,
+                    protein = 7.5,
+                    carbs = 0.6,
+                    fat = 8.7,
+                    orderIndex = 1,
+                ),
+                MealItemEntity(
+                    id = 123L,
+                    mealId = 120L,
+                    itemType = "RECIPE",
+                    referenceId = 80L,
+                    name = "Wrap kip kaas",
+                    gramsUsed = 110.0,
+                    calories = 217.0,
+                    protein = 25.1,
+                    carbs = 1.4,
+                    fat = 12.7,
+                    orderIndex = 2,
+                ),
+            ),
+        )
+
+        dao.insertFoodItems(
+            listOf(
+                FoodItemEntity(
+                    id = 90L,
+                    name = "Kip rollade aangepast",
+                    caloriesPer100g = 999.0,
+                    proteinPer100g = 1.0,
+                    carbsPer100g = 99.0,
+                    fatPer100g = 99.0,
+                    sourceType = "MANUAL",
+                    createdAt = 1L,
+                    updatedAt = 2L,
+                ),
+                FoodItemEntity(
+                    id = 91L,
+                    name = "Kaas aangepast",
+                    caloriesPer100g = 111.0,
+                    proteinPer100g = 2.0,
+                    carbsPer100g = 3.0,
+                    fatPer100g = 4.0,
+                    sourceType = "MANUAL",
+                    createdAt = 1L,
+                    updatedAt = 2L,
+                ),
+            ),
+        )
+        dao.saveRecipe(
+            recipe = RecipeEntity(id = 80L, name = "Wrap aangepast", createdAt = 1L, updatedAt = 2L),
+            ingredients = listOf(RecipeIngredientEntity(id = 102L, recipeId = 80L, foodItemId = 91L, gramsUsed = 200.0)),
+        )
+
+        database.close()
+        database = openDatabase()
+        val reopened = database.dao()
+        val snapshots = reopened.observeMealItems().first().sortedBy { it.orderIndex }
+
+        assertEquals(listOf("Kip rollade", "Kaas", "Wrap kip kaas"), snapshots.map { it.name })
+        assertEquals(listOf(112.0, 105.0, 217.0), snapshots.map { it.calories })
+        assertEquals(listOf(17.6, 7.5, 25.1), snapshots.map { it.protein })
+        assertEquals(listOf(90L, 91L, 80L), snapshots.map { it.referenceId })
+        assertEquals("Kip rollade aangepast", reopened.observeFoodItems().first().single { it.id == 90L }.name)
+        assertEquals("Wrap aangepast", reopened.observeRecipes().first().single { it.id == 80L }.name)
+    }
+
+    @Test
     fun targetedActiveWorkoutStartSurvivesDatabaseReopen() = runTest {
         val dao = database.dao()
 

@@ -1,0 +1,4 @@
+centeredAvondVisible=False
+centeredAvondHasShortBounds=False
+centeredSuspectTextNodes=0
+crashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES

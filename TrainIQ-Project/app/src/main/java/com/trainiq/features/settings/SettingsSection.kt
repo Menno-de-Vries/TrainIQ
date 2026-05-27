@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -563,7 +564,7 @@ fun SettingsScreen(
                 Text("Themamodus")
                 ThemeMode.entries.forEach { mode ->
                     FilterChip(
-                        modifier = Modifier.settingsActionLabel(themeModeAccessibilityLabel(mode)),
+                        modifier = Modifier.settingsActionLabel(themeModeAccessibilityLabel(mode)).height(48.dp),
                         selected = themeMode == mode,
                         onClick = { onThemeSelected(mode) },
                         label = { Text(mode.displayLabel()) },
@@ -843,7 +844,11 @@ private fun FeedbackToggleRow(
             Text(title, fontWeight = FontWeight.SemiBold)
             Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            modifier = Modifier.height(48.dp),
+        )
     }
 }
 

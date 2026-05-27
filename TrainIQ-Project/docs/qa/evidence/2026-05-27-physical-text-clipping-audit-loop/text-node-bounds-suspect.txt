@@ -1,0 +1,7 @@
+
+file                                                                text  widthPx heightPx bounds               reason             
+----                                                                ----  ------- -------- ------               ------             
+docs\qa\evidence\2026-05-27-physical-dynamic-color-loop\Voeding.xml Avond     140       12 [126,1854][266,1866] veryShortTextBounds
+
+
+

@@ -1,0 +1,7 @@
+metadataRefreshLinked=True
+json.notRunRows=25
+snapshot.NOT_RUN.rows=25
+status=PARTIAL
+releaseReadyByFullDefinitionOfDone=False
+SCHEMA_LIGHT_OK required status keys present
+LINKCHECK_OK local docs/qa references exist; wildcard references skipped

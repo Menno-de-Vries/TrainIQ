@@ -1,0 +1,14 @@
+device=SM-S931B
+
+android=16
+
+initialHealthPermissionsGranted=False
+rationaleScreenVisible=True
+rationaleMetricsVisible=Hartslag,Slaap,Actieve calorieen,Gewicht,Workouts
+connectCtaVisible=True
+systemPermissionPromptReached=False
+reasonSystemPromptNotReached=CTA was visible at bottom edge but coordinate taps did not activate it in this run; no grant/deny action was executed.
+backNavigationReturnedSafely=True
+healthPermissionsMutated=False
+crashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES
+

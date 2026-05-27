@@ -1,0 +1,6 @@
+densityDpi=480
+min48dpPx=144
+filesAudited=10
+clickableOrFocusableNodes=76
+under48dpNodes=6
+under48dpDetails=see touch-target-under-48dp.txt

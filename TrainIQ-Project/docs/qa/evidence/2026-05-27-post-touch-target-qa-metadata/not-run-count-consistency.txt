@@ -1,0 +1,4 @@
+json.notRunRows=25
+snapshot.NOT_RUN.rows=25
+status=PARTIAL
+releaseReadyByFullDefinitionOfDone=False

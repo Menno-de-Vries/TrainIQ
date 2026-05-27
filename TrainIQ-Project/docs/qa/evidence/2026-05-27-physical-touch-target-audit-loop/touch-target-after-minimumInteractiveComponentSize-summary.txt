@@ -1,0 +1,8 @@
+densityDpi=480
+min48dpPx=144
+filesAudited=2
+clickableOrFocusableNodes=20
+under48dpNodes=3
+coachSexChipUnder48dpAfterFix=True
+settingsThemeOrSwitchUnder48dpAfterFix=True
+crashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES

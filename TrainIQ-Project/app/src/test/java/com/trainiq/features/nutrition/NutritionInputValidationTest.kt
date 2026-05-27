@@ -304,6 +304,65 @@ class NutritionInputValidationTest {
     }
 
     @Test
+    fun mealHistoryReuse_restoresSnapshotItemsIntoEditableDraft() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val reuseMeal = source.substringAfter("onReuseMeal = { meal ->").substringBefore("onDeleteMeal = { pendingDelete = PendingNutritionDelete.Meal")
+        val mealHistoryCard = source.substringAfter("private fun MealHistoryCard(").substringBefore("@Composable\nprivate fun EditableAiItemCard")
+
+        assertTrue(reuseMeal.contains("mealType = meal.mealType"))
+        assertTrue(reuseMeal.contains("mealName = meal.name"))
+        assertTrue(reuseMeal.contains("mealNotes = meal.notes.orEmpty()"))
+        assertTrue(reuseMeal.contains("mealDraft.clear()"))
+        assertTrue(reuseMeal.contains("mealDraft.addAll(meal.items.map"))
+        assertTrue(reuseMeal.contains("itemType = if (it.itemType.name == \"FOOD\") MealEntryType.FOOD else MealEntryType.RECIPE"))
+        assertTrue(reuseMeal.contains("referenceId = it.referenceId"))
+        assertTrue(reuseMeal.contains("gramsUsed = it.gramsUsed"))
+        assertTrue(reuseMeal.contains("servingCount = it.servingCount"))
+        assertTrue(reuseMeal.contains("notes = it.notes"))
+        assertTrue(reuseMeal.contains("selectedTab = 1"))
+        assertTrue(mealHistoryCard.contains("Opnieuw gebruiken"))
+        assertTrue(mealHistoryCard.contains("voedingssnapshots"))
+    }
+
+    @Test
+    fun pendingBarcodeResult_populatesCorrectNutritionTargetAndClearsNavigationResult() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val pendingBarcodeEffect = source.substringAfter("LaunchedEffect(pendingBarcode) {").substringBefore("LaunchedEffect(barcodeLookupResult)")
+
+        assertTrue(pendingBarcodeEffect.contains("if (pendingBarcode != null)"))
+        assertTrue(pendingBarcodeEffect.contains("successState?.scanTarget == ScanTarget.RECIPE_DRAFT"))
+        assertTrue(pendingBarcodeEffect.contains("quickIngredientBarcode = pendingBarcode"))
+        assertTrue(pendingBarcodeEffect.contains("selectedTab = 3"))
+        assertTrue(pendingBarcodeEffect.contains("quickIngredientName = quickIngredientName.ifBlank { \"Gescand product\" }"))
+        assertTrue(pendingBarcodeEffect.contains("onLookupBarcodeProduct(pendingBarcode, BarcodeLookupTarget.RECIPE_DRAFT)"))
+        assertTrue(pendingBarcodeEffect.contains("barcode = pendingBarcode"))
+        assertTrue(pendingBarcodeEffect.contains("selectedTab = 4"))
+        assertTrue(pendingBarcodeEffect.contains("onLookupBarcodeProduct(pendingBarcode, BarcodeLookupTarget.FOOD_EDITOR)"))
+        assertTrue(pendingBarcodeEffect.contains("onSetScanTarget(ScanTarget.FOOD_EDITOR)"))
+        assertTrue(pendingBarcodeEffect.contains("onBarcodeClear()"))
+    }
+
+    @Test
+    fun savedRecipeEditFlow_reusesSelectedRecipeIdAndShowsEditSaveCopy() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val selectedRecipeEffect = source.substringAfter("LaunchedEffect(selectedRecipe?.id) {").substringBefore("LaunchedEffect(scanResult)")
+        val recipeEditor = source.substringAfter("RecipeEditorCard(").substringBefore("onScanBarcodeForRecipe =")
+        val savedRecipesCard = source.substringAfter("SavedRecipesCard(").substringBefore("onUseInMeal = { recipe ->")
+        val savedRecipesBody = source.substringAfter("private fun SavedRecipesCard(").substringBefore("@Composable\nprivate fun MealDraftReviewCard")
+        val recipeEditorBody = source.substringAfter("private fun RecipeEditorCard(").substringBefore("@Composable\nprivate fun RecipeTotalsCard")
+
+        assertTrue(selectedRecipeEffect.contains("recipeName = it.name"))
+        assertTrue(selectedRecipeEffect.contains("recipeDraft.clear()"))
+        assertTrue(selectedRecipeEffect.contains("recipeDraft.addAll"))
+        assertTrue(recipeEditor.contains("isEditing = selectedRecipeId != null"))
+        assertTrue(recipeEditor.contains("onSaveRecipe(selectedRecipeId, recipeName, recipeNotes, recipeCookedGrams, recipeDraft.toList())"))
+        assertTrue(recipeEditor.contains("selectedRecipeId = null"))
+        assertTrue(savedRecipesCard.contains("onSelect = { selectedRecipeId = it }"))
+        assertTrue(savedRecipesBody.contains("Text(if (selectedRecipeId == recipe.id) \"Bewerken\" else \"Bewerk\")"))
+        assertTrue(recipeEditorBody.contains("if (isEditing) \"Wijzigingen opslaan\" else \"Recept opslaan\""))
+    }
+
+    @Test
     fun nutritionEnergyBalanceCopy_namesDeficitAndBreakdownUnits() {
         val balance = EnergyBalanceSnapshot(
             caloriesIn = 1_400,

@@ -1,5 +1,6 @@
 package com.trainiq.data.migration
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -93,6 +94,17 @@ class RoomMigrationChainVerificationProviderTest {
     @Test
     fun missingProviderReportMapsToMissingStatus() {
         assertEquals(RoomMigrationChainVerification.MISSING, null.toMigrationChainVerification())
+    }
+
+    @Test
+    fun gradleMarkerGeneratorMatchesProviderVersionContract() {
+        val buildScript = File("build.gradle.kts").readText()
+        val expectedEndVersion = RoomMigrationChainVerificationProvider.CurrentRoomVersion
+
+        assertTrue(buildScript.contains("trainiq-room-migration-chain-v2-to-v$expectedEndVersion"))
+        assertTrue(buildScript.contains("val currentRoomVersion = $expectedEndVersion"))
+        assertTrue(buildScript.contains("val requiredEndVersion = $expectedEndVersion"))
+        assertTrue(buildScript.contains("val coveredEndVersion = $expectedEndVersion"))
     }
 
     private fun providerWith(marker: RoomMigrationChainVerificationMarker) =

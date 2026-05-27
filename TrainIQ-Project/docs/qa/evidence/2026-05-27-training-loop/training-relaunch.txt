@@ -1,0 +1,9 @@
+Starting: Intent { cmp=com.trainiq/.MainActivity }
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+Status: ok
+LaunchState: UNKNOWN (0)
+Activity: com.trainiq/.MainActivity
+TotalTime: 0
+WaitTime: 6
+Complete
+

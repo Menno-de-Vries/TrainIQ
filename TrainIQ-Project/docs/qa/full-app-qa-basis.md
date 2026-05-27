@@ -10,6 +10,18 @@ Validate the complete TrainIQ Android app across frontend, backend/data, feature
 
 Every check must be recorded as `PASS`, `FAIL`, or `NOT RUN` with a reason. Every `FAIL` must produce a finding with repro steps, expected behavior, actual behavior, evidence, severity, recommended fix, regression risk, and minimal verification.
 
+## Short QA Fix Loop
+
+Use this loop when iterating quickly toward a bug-free full-tab matrix:
+
+1. `QA short pass`: open Start, Training, Voeding, Voortgang, Coach and Meer; open the most important subsections; test visible screen, primary CTA, one safe save/edit flow, empty/error state, back/navigation and logcat crashcheck.
+2. `Findings`: record every reproducible bug in the active run file with priority, area, tab/flow, evidence, expected, actual, repro, recommended fix and minimal verification. Store screenshots, UI dumps and logcat slices under `docs/qa/evidence/`.
+3. `Small fix batch`: fix only reproducible findings, grouped by area such as navigation, nutrition, workout or settings. Avoid broad refactors unless required for the bug.
+4. `Targeted verification`: run the smallest proof for the fix. Use adb launch, screenshot/UI dump and logcat for UI/runtime bugs; use unit tests for data, AI, service, use case and repository bugs.
+5. `Regression pass`: rerun connected smoke and relevant targeted tests, then reopen the same tab/flow. If a new bug appears, create a new finding and repeat the loop.
+
+Run Gradle checks sequentially, not in parallel, to avoid Kotlin/Hilt cache collisions. Do not close a finding without minimal verification. Do not claim release readiness from emulator performance evidence only.
+
 ## Required Skills And Workflows
 
 - Use `test-android-apps` for Android build/test/emulator/device QA, adb/logcat, lifecycle, permissions, accessibility, performance, crash checks, and smoke screenshots.
@@ -124,3 +136,23 @@ Do not mark QA complete unless:
 - All P0/P1 findings have evidence and fix direction.
 - Accessibility, performance, Health Connect, privacy/security, and Play release gates have owner signoff or remain explicitly open.
 - No release-readiness claim is made from emulator-only performance evidence.
+
+## Definition Of Done For QA Fix Loop
+
+The short QA/fix loop is done only when:
+
+- All tabs and agreed underlying flows are `PASS`, or `NOT RUN` with an owner-approved reason.
+- No open P0/P1/P2 bugs remain from the loop.
+- Every fixed bug has repro, expected/actual, evidence, fix, targeted verification and regression result.
+- The final full regression pass finds no new P0/P1/P2 issues.
+- `assembleDebug`, `testDebugUnitTest`, `lintDebug` and `connectedDebugAndroidTest` pass.
+- Logcat contains no app crash or ANR after smoke and high-risk manual flows.
+- Open release gates remain explicit: physical-device macrobenchmark, TalkBack/Switch Access, complete Health Connect matrix and privacy/security signoff.
+
+Assumptions:
+
+- Start each loop from the existing `trainiq-full-app-qa` plugin and run template.
+- Fix bugs in small batches.
+- P0/P1 issues block polish work.
+- P2 accessibility/design issues must be fixed or owner-approved deferred.
+- P3 polish may remain open only when explicitly marked non-release-blocking.

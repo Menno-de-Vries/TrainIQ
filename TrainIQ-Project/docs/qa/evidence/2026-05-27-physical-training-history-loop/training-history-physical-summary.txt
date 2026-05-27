@@ -1,0 +1,6 @@
+trainingTopVisible=True
+scrolledCaptured=True
+exerciseOrLibraryVisible=True
+historyDetailOpened=False
+reason=No visible exercise history entry in current empty Training state without seeded completed workout data
+crashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES

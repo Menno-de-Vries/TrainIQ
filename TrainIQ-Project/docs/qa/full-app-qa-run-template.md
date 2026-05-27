@@ -15,6 +15,18 @@ AI provider/key state:
 
 Status values: `PASS`, `FAIL`, `NOT RUN`.
 
+## Short QA Fix Loop
+
+Use this run file as the loop ledger:
+
+1. `QA short pass`: open Start, Training, Voeding, Voortgang, Coach and Meer; open key subsections; test visible screen, primary CTA, one safe save/edit flow, empty/error state, back/navigation and logcat crashcheck.
+2. `Findings`: record every reproducible bug below and store screenshots, UI dumps or logcat under `docs/qa/evidence/`.
+3. `Small fix batch`: fix only reproducible findings, grouped by area. Avoid broad refactors unless required for the bug.
+4. `Targeted verification`: record the smallest proof that the fix works.
+5. `Regression pass`: rerun connected smoke and relevant targeted tests; reopen the same flow. New bug means a new finding and another loop.
+
+Definition of done: all tabs/flows are `PASS` or owner-approved `NOT RUN`; no open P0/P1/P2 bugs remain; every fixed bug has repro, expected/actual, evidence, fix, targeted verification and regression result; final regression finds no new P0/P1/P2 issues; baseline Gradle checks pass; logcat has no app crash/ANR; open release gates are explicitly listed.
+
 ## Automated Baseline
 
 | Check | Command | Status | Evidence/notes |
@@ -178,3 +190,13 @@ Highest-risk open issues:
 Release gates still open:
 
 Next safest action:
+
+Definition of done audit:
+
+- All tabs/flows `PASS` or owner-approved `NOT RUN`:
+- No open P0/P1/P2 bugs:
+- Every fixed bug has repro, expected/actual, evidence, fix, targeted verification and regression result:
+- Final full regression found no new P0/P1/P2 issues:
+- `assembleDebug`, `testDebugUnitTest`, `lintDebug`, `connectedDebugAndroidTest` passed:
+- Logcat contains no app crash/ANR after smoke and high-risk flows:
+- Open release gates explicitly listed:

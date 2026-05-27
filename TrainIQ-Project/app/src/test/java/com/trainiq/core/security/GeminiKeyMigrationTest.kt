@@ -74,6 +74,30 @@ class GeminiKeyMigrationTest {
         assertEquals("existing-key", store.readKey())
     }
 
+    @Test
+    fun openAiSaveKey_usesEncryptedStoreAndVerifiesReadback() = runTest {
+        val store = FakeOpenAiEncryptedKeyStore()
+        val openAiKeyStore = OpenAiKeyStore(store)
+
+        assertTrue(openAiKeyStore.saveKey(" sk-test-openai "))
+        assertEquals("sk-test-openai", openAiKeyStore.currentKey())
+
+        openAiKeyStore.clearEncryptedKey()
+
+        assertNull(openAiKeyStore.currentKey())
+        assertTrue(store.clearCalled)
+    }
+
+    @Test
+    fun openAiFailedSaveDoesNotOverwriteExistingEncryptedKey() = runTest {
+        val store = FakeOpenAiEncryptedKeyStore(initialKey = "existing-openai-key", writeSucceeds = false)
+        val openAiKeyStore = OpenAiKeyStore(store)
+
+        assertFalse(openAiKeyStore.saveKey("new-openai-key"))
+
+        assertEquals("existing-openai-key", openAiKeyStore.currentKey())
+    }
+
     private class FakeGeminiEncryptedKeyStore(
         initialKey: String? = null,
         private val writeSucceeds: Boolean = true,
@@ -88,6 +112,28 @@ class GeminiKeyMigrationTest {
 
         override suspend fun writeKey(apiKey: String): Boolean {
             writeCount += 1
+            if (!writeSucceeds) return false
+            key = apiKey
+            return true
+        }
+
+        override suspend fun clearKey() {
+            clearCalled = true
+            key = null
+        }
+    }
+
+    private class FakeOpenAiEncryptedKeyStore(
+        initialKey: String? = null,
+        private val writeSucceeds: Boolean = true,
+    ) : OpenAiEncryptedKeyStore {
+        private var key: String? = initialKey
+        var clearCalled = false
+            private set
+
+        override suspend fun readKey(): String? = key
+
+        override suspend fun writeKey(apiKey: String): Boolean {
             if (!writeSucceeds) return false
             key = apiKey
             return true

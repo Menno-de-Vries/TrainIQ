@@ -1,0 +1,7 @@
+D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-progress-loop\logcat-after-progress-save.txt:16:05-27 01:09:41.010 17317 17317 I ImeTracker: com.trainiq:8b7d4d9f: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-progress-loop\logcat-after-progress-save.txt:75:05-27 01:09:42.839 17997 17997 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-progress-loop\logcat-after-progress-save.txt:76:05-27 01:09:42.846 17997 17997 I AndroidRuntime: Using default boot image
+D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-progress-loop\logcat-after-progress-save.txt:77:05-27 01:09:42.846 17997 17997 I AndroidRuntime: Leaving lock profiling enabled
+D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-progress-loop\logcat-after-progress-save.txt:90:05-27 01:09:43.058 17997 17997 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-progress-loop\logcat-after-progress-save.txt:293:05-27 01:09:43.090 17997 17997 E FeatureFlagsImplExport: android.os.flagging.AconfigStorageReadException: ERROR_PACKAGE_NOT_FOUND: package android.xr cannot be found on the device
+D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-progress-loop\logcat-after-progress-save.txt:488:05-27 01:09:44.246 17997 17997 D AndroidRuntime: Shutting down VM

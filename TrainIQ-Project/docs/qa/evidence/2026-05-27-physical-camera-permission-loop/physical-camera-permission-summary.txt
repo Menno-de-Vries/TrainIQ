@@ -1,0 +1,4 @@
+cameraGrantCommandExitCaptured=True
+nutritionSheetVisible=True
+scannerEntryVisible=False
+crashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES

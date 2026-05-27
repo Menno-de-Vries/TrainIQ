@@ -1,0 +1,5 @@
+json.notRunRows=25
+snapshot.NOT_RUN.rows=25
+coachEvidenceLinked=True
+secretLikeTextVisible=False
+crashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES

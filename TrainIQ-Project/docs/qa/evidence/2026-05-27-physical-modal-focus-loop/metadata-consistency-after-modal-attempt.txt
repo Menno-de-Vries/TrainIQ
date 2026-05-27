@@ -1,0 +1,6 @@
+status=PARTIAL
+releaseReadyByFullDefinitionOfDone=False
+jsonNotRunRows=25
+snapshotNotRunRows=25
+ledgerHasModalEvidence=True
+indexHasModalEvidence=True

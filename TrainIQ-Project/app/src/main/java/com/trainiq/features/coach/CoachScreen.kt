@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -564,6 +565,7 @@ fun CoachScreen(
                                 Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                                     BiologicalSex.entries.forEach { option ->
                                         FilterChip(
+                                            modifier = Modifier.height(48.dp),
                                             selected = sex == option,
                                             onClick = {
                                                 sex = option
@@ -618,6 +620,7 @@ fun CoachScreen(
                                 ) {
                                     ProfileActivityLevels.forEach { option ->
                                         FilterChip(
+                                            modifier = Modifier.height(48.dp),
                                             selected = activityLevel == option,
                                             onClick = {
                                                 activityLevel = option

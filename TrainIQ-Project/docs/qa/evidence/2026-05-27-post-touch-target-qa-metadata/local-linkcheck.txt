@@ -1,0 +1,1 @@
+LINKCHECK_OK local docs/qa references exist; wildcard references skipped
