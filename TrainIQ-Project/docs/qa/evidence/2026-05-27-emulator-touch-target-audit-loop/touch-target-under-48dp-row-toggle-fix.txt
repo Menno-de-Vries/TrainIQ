@@ -1,0 +1,7 @@
+
+file                        class             text desc width height bounds             
+----                        -----             ---- ---- ----- ------ ------             
+settings-row-toggle-fix.xml android.view.View             912     47 [84,2127][996,2174]
+
+
+

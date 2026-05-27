@@ -13,10 +13,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
@@ -39,6 +42,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -531,11 +536,11 @@ fun SettingsScreen(
             .imePadding(),
         contentPadding = PaddingValues(
             start = MaterialTheme.spacing.medium,
-            top = MaterialTheme.spacing.medium,
+            top = MaterialTheme.spacing.small,
             end = MaterialTheme.spacing.medium,
             bottom = 132.dp,
         ),
-        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.large),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
     ) {
         item { ScreenHeader(title = "Instellingen", subtitle = "Health Connect, AI en voorkeuren") }
         item {
@@ -836,7 +841,15 @@ private fun FeedbackToggleRow(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .toggleable(
+                value = checked,
+                onValueChange = onCheckedChange,
+                role = Role.Switch,
+            )
+            .settingsActionLabel(settingsToggleAccessibilityLabel(title, checked)),
         horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -846,11 +859,16 @@ private fun FeedbackToggleRow(
         }
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
-            modifier = Modifier.height(48.dp),
+            onCheckedChange = null,
+            modifier = Modifier
+                .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                .clearAndSetSemantics { },
         )
     }
 }
+
+internal fun settingsToggleAccessibilityLabel(title: String, checked: Boolean): String =
+    "$title: ${if (checked) "ingeschakeld" else "uitgeschakeld"}"
 
 private fun healthStatusLabel(status: HealthConnectStatus): String = when (status.state) {
     HealthConnectState.UNSUPPORTED -> "Niet ondersteund"
@@ -921,7 +939,7 @@ internal fun aiProviderStatusLabel(aiPreferences: AiPreferences): String = when 
 internal fun settingsOverflowSectionTitle(): String = "Meer"
 
 internal fun settingsOverflowSectionBody(): String =
-    "Compacte navigatie bundelt extra onderdelen hier. Open Voortgang voor trends, metingen en voortgangsgrafieken."
+    "Compacte navigatie: extra onderdelen staan hier. Open Voortgang voor trends en grafieken."
 
 internal fun settingsOpenProgressActionLabel(): String = "Voortgang openen vanuit Meer"
 

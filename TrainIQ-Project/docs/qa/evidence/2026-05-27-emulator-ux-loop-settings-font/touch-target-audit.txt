@@ -1,0 +1,9 @@
+Total focusable/clickable: 12
+Under 48dp-ish candidates (<144 px width or height): 7
+w=912 h=35 text='' desc='' class=android.view.View bounds=[84,0][996,35]
+w=307 h=126 text='' desc='' class=android.view.View bounds=[84,397][391,523]
+w=211 h=126 text='' desc='' class=android.view.View bounds=[84,544][295,670]
+w=266 h=126 text='' desc='' class=android.view.View bounds=[84,691][350,817]
+w=137 h=126 text='' desc='' class=android.view.View bounds=[859,1119][996,1245]
+w=137 h=126 text='' desc='' class=android.view.View bounds=[859,1400][996,1526]
+w=137 h=124 text='' desc='' class=android.view.View bounds=[859,2050][996,2174]

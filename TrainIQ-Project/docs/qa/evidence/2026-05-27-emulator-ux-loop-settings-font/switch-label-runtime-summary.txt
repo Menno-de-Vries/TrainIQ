@@ -1,0 +1,5 @@
+NAF count: 0
+Rusttimer-geluid: ingeschakeld: True
+Workouttrillingen: ingeschakeld: True
+Technische telemetrie delen: uitgeschakeld: False
+Crash/ANR terms: none

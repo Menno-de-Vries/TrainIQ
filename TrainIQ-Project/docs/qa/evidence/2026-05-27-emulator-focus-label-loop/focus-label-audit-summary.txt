@@ -1,0 +1,2 @@
+Focusable/clickable nodes inspected: 52
+Unlabeled focusable/clickable node candidates: 50

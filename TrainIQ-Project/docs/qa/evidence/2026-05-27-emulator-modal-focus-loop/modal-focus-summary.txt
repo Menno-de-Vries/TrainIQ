@@ -1,0 +1,7 @@
+Dialog title visible: True
+Dialog body visible: True
+Cancel visible: True
+Confirm visible: True
+Focusable/clickable nodes in dialog dump: 2
+Focusable/clickable labels: <unlabeled>, <unlabeled>
+UIAutomator dump root bounds: [120,763][960,1636]

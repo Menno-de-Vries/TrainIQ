@@ -1,0 +1,3 @@
+Density dpi: 420
+48dp px threshold: 126
+Under-threshold nodes: 1

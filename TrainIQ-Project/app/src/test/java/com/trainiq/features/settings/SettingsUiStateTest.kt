@@ -127,6 +127,20 @@ class SettingsUiStateTest {
     }
 
     @Test
+    fun feedbackAndTelemetrySwitchesExposeStatefulAccessibilityLabels() {
+        assertEquals("Rusttimer-geluid: ingeschakeld", settingsToggleAccessibilityLabel("Rusttimer-geluid", true))
+        assertEquals("Workouttrillingen: uitgeschakeld", settingsToggleAccessibilityLabel("Workouttrillingen", false))
+        assertEquals("Technische telemetrie delen: ingeschakeld", settingsToggleAccessibilityLabel("Technische telemetrie delen", true))
+
+        val source = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
+        assertTrue(source.contains(".heightIn(min = 48.dp)"))
+        assertTrue(source.contains("role = Role.Switch"))
+        assertTrue(source.contains("onCheckedChange = null"))
+        assertTrue(source.contains(".sizeIn(minWidth = 48.dp, minHeight = 48.dp)"))
+        assertTrue(source.contains("settingsActionLabel(settingsToggleAccessibilityLabel(title, checked))"))
+    }
+
+    @Test
     fun compactSettingsReadsAsOverflowAndExposesProgressNearTop() {
         assertEquals("Meer", settingsOverflowSectionTitle())
         assertTrue(settingsOverflowSectionBody().contains("Compacte navigatie"))
