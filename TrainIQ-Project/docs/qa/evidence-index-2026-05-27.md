@@ -4,6 +4,31 @@ Source ledger: docs/qa/full-app-qa-run-2026-05-27.md
 
 Total referenced evidence paths: 166
 
+## 2026-05-28 Direct APK readiness refresh
+
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/summary.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/sdk-adb.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/assembleDebug.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/testDebugUnitTest.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/lintDebug.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/connectedDebugAndroidTest.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/checkReleaseSigningReadiness.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/assembleRelease.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/installRelease.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/launch-release-smoke.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/logcat-release-smoke.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/logcat-release-crash-matches.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/upgrade-controlled-installDebug.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/upgrade-controlled-launch-debug.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/upgrade-controlled-installRelease-over-debug.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/upgrade-controlled-launch-release.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/logcat-upgrade-controlled.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/logcat-upgrade-controlled-crash-matches.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/fresh-release-install-final.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/fresh-release-launch-final.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/fresh-release-logcat-final.txt
+- docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/fresh-release-crash-matches-final.txt
 ## Evidence paths
 
 - docs/qa/evidence/`.

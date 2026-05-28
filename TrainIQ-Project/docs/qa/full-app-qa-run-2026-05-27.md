@@ -15,6 +15,24 @@ AI provider/key state: no real provider call configured in this short loop
 
 Status values: `PASS`, `FAIL`, `NOT RUN`.
 
+## 2026-05-28 Direct APK Readiness Refresh
+
+| Check | Command | Status | Evidence/notes |
+|---|---|---|---|
+| Debug build | `.\gradlew.bat :app:assembleDebug --console=plain` | PASS | Evidence: `docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/assembleDebug.txt`. |
+| JVM unit tests | `.\gradlew.bat :app:testDebugUnitTest --console=plain` | PASS | Evidence: `docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/testDebugUnitTest.txt`. |
+| Lint | `.\gradlew.bat :app:lintDebug --console=plain` | PASS | Evidence: `docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/lintDebug.txt`. |
+| Connected tests | `.\gradlew.bat :app:connectedDebugAndroidTest --console=plain` | PASS | Passed on `emulator-5554` / `sdk_gphone64_x86_64`. Evidence: `docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/connectedDebugAndroidTest.txt`. |
+| Release signing readiness | `.\gradlew.bat :app:checkReleaseSigningReadiness --console=plain` | PASS | Evidence: `docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/checkReleaseSigningReadiness.txt`. |
+| Release build | `.\gradlew.bat :app:assembleRelease --console=plain` | PASS | Evidence: `docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/assembleRelease.txt`. |
+| Fresh release install | `.\gradlew.bat :app:installRelease --console=plain` after no installed `com.trainiq` package | PASS | Evidence: `docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/installRelease.txt`, `docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/fresh-release-install-final.txt`. |
+| Release cold launch | `adb shell am start -W -n com.trainiq/.MainActivity` | PASS | Launch returned `Status: ok`. Evidence: `docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/launch-release-smoke.txt`, `docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/fresh-release-launch-final.txt`. |
+| Release crash/ANR gate | `Select-String ... "com.trainiq.*FATAL EXCEPTION|ANR in com.trainiq|Input dispatching timed out.*com.trainiq"` | PASS | No matches in release smoke or final fresh release smoke. Evidence: `docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/logcat-release-crash-matches.txt`, `docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/fresh-release-crash-matches-final.txt`. |
+| Debug-to-release upgrade command from plan | `.\gradlew.bat :app:installDebug`; launch; `.\gradlew.bat :app:installRelease`; launch | FAIL | Controlled retry reproduced `INSTALL_FAILED_UPDATE_INCOMPATIBLE` because debug and release signatures differ. This is not an app runtime crash/ANR/data-loss finding, but the exact debug-to-release command is not a valid direct APK upgrade proxy. Evidence: `docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/upgrade-controlled-installRelease-over-debug.txt`. |
+
+Direct APK Ready after this refresh: `NO`. No new reproducible app P0/P1/P2/P3 bugs were found in executed checks, but owner/manual gates remain open: TalkBack/Switch Access traversal, Health Connect partial/revoke/background-read matrix, real-key privacy/security signoff, live AI/provider flows, real camera/scanner result return, and manual deep-runtime UX audits.
+
+
 ## Short QA Fix Loop
 
 Use this run file as the loop ledger:
@@ -398,5 +416,3 @@ Definition of done audit:
 - evidence: `docs/qa/evidence/2026-05-27-healthconnect-status-refresh-loop/installDebug.txt`, `launch.txt`, `home.xml`, `settings-top.xml`, `settings-health-section.xml`, `logcat-crash-matches.txt`
 - result: Debug install passed on `emulator-5554`; cold launch returned `Status: ok`, `WaitTime: 7451`; first-run Home showed `Health Connect optioneel koppelen` and `Health Connect koppelen`; Settings summary and About/status copy showed `Health Connect: Toegang vereist`; logcat crash/ANR scan returned `NO_MATCHES`.
 - findings: No new safe P0/P1/P2 found. Partial grant, revoke-while-open and background-read runtime cases remain owner-gated because they mutate Health Connect/device permission state.
-
-

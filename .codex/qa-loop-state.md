@@ -1,7 +1,7 @@
-# QA Loop State
+﻿# QA Loop State
 
-- updated: 2026-05-27 15:15
-- mcp_used: no — not requested by user
+- updated: 2026-05-28 00:00
+- mcp_used: yes - requested by user via @superpowers and @test-android-apps
 - last_checked_areas:
   - current-build smoke + crash/ANR baseline: assembleDebug passed; testDebugUnitTest passed; emulator install/launch produced no TrainIQ crash/ANR logcat matches.
   - Health Connect no-permission/status refresh runtime smoke: emulator install/clear/launch passed; Home and Settings expose Health Connect as optional/`Toegang vereist`; logcat scan returned `NO_MATCHES`.
@@ -25,6 +25,42 @@
 
 ## Latest Loop
 
+- target: direct APK bug-free readiness refresh
+- priority: P0/P1 release gate
+- result: partial - no new app bugs found; Direct APK Ready remains NO due open owner/manual gates
+- commands:
+  - `.\gradlew.bat :app:assembleDebug --console=plain`
+  - `.\gradlew.bat :app:testDebugUnitTest --console=plain`
+  - `.\gradlew.bat :app:lintDebug --console=plain`
+  - `.\gradlew.bat :app:connectedDebugAndroidTest --console=plain`
+  - `.\gradlew.bat :app:checkReleaseSigningReadiness --console=plain`
+  - `.\gradlew.bat :app:assembleRelease --console=plain`
+  - `.\gradlew.bat :app:installRelease --console=plain`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - release logcat crash/ANR `Select-String` gate
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/assembleDebug.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/testDebugUnitTest.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/lintDebug.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/connectedDebugAndroidTest.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/checkReleaseSigningReadiness.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/assembleRelease.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/installRelease.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/launch-release-smoke.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/logcat-release-crash-matches.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/upgrade-controlled-installRelease-over-debug.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: owner/manual gates or release-over-release upgrade with a prior APK signed by the same release key.
+
+## Previous Loop
 - target: connected baseline refresh and active-workout active-key crash fix
 - priority: P1
 - result: fixed

@@ -1,8 +1,20 @@
-# TrainIQ QA Status Summary - 2026-05-27
+﻿# TrainIQ QA Status Summary - 2026-05-27
 
 Current status: `PARTIAL`
 
 Release-ready by full DoD: `NO`
+
+## 2026-05-28 Direct APK readiness refresh
+
+- Commit/build identifier: `fd9512e1`.
+- Device/emulator: `emulator-5554`, `sdk_gphone64_x86_64`.
+- App version/build id: `versionName 1.0.1-A`, `versionCode 2`, package `com.trainiq`.
+- PASS: `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, `:app:connectedDebugAndroidTest`, `:app:checkReleaseSigningReadiness`, `:app:assembleRelease`, fresh `:app:installRelease`, release cold launch and release logcat crash/ANR scan.
+- FAIL / not release-blocking app bug: the exact debug-to-release upgrade command failed with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` because debug and release signatures differ. This confirms the command is not a valid proxy for direct APK user upgrades unless both APKs share signing lineage.
+- New reproducible app P0/P1/P2/P3 bugs from executed checks: none.
+- Evidence: `docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/summary.txt`.
+- Direct APK Ready: `NO`, because owner/manual gates remain open and have not been owner-approved for defer.
+
 
 ## What is green
 
@@ -50,7 +62,3 @@ Rationale: the executed QA loops found and fixed P0/P1 issues and the automated 
 - Next-run commands: `docs/qa/next-run-command-sheet-2026-05-27.md`
 - Fixed findings index: `docs/qa/fixed-findings-index-2026-05-27.md`
 - Evidence index: `docs/qa/evidence-index-2026-05-27.md`
-
-
-
-

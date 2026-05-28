@@ -1,4 +1,4 @@
-{
+﻿{
     "date":  "2026-05-27",
     "project":  "TrainIQ",
     "schema":  "docs/qa/qa-status-schema-2026-05-27.json",
@@ -60,26 +60,26 @@
     "latestAutomatedBaseline":  {
                                     "assembleDebug":  {
                                                           "status":  "PASS",
-                                                          "evidence":  "docs/qa/evidence/2026-05-27-baseline-refresh-loop/assembleDebug.txt"
+                                                          "evidence":  "docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/assembleDebug.txt"
                                                       },
                                     "testDebugUnitTest":  {
                                                               "status":  "PASS",
-                                                              "evidence":  "docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/unit-and-lint-after-room-v14-marker-fix.txt"
+                                                              "evidence":  "docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/testDebugUnitTest.txt"
                                                           },
                                     "lintDebug":  {
                                                       "status":  "PASS",
-                                                      "evidence":  "docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/unit-and-lint-after-room-v14-marker-fix.txt"
+                                                      "evidence":  "docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/lintDebug.txt"
                                                   },
                                     "connectedDebugAndroidTest":  {
                                                                       "status":  "PASS",
-                                                                      "evidence":  "docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/connectedDebugAndroidTest-final-after-room-v14-marker-fix.txt"
+                                                                      "evidence":  "docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/connectedDebugAndroidTest.txt"
                                                                   }
                                 },
     "latestRuntimeSmoke":  {
                                "status":  "PASS",
-                               "uiDump":  "docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/trainiq-final-room-v14-smoke.xml",
-                               "logcat":  "docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/logcat-final-room-v14-smoke.txt",
-                               "crashAnrScan":  "docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/logcat-final-room-v14-crash-matches.txt"
+                               "uiDump":  null,
+                               "logcat":  "docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/fresh-release-logcat-final.txt",
+                               "crashAnrScan":  "docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/fresh-release-crash-matches-final.txt"
                            },
     "openReleaseGates":  [
                              "TalkBack/Switch Access traversal",
