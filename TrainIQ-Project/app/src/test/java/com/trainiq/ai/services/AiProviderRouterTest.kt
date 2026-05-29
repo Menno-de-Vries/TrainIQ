@@ -1,9 +1,11 @@
 package com.trainiq.ai.services
 
 import com.trainiq.core.datastore.AiPreferences
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import retrofit2.HttpException
@@ -55,6 +57,114 @@ class AiProviderRouterTest {
         assertEquals(listOf(AiProvider.OPENAI, AiProvider.GEMINI), generator.calls)
     }
 
+    @Test
+    fun routeAiProviderRequest_usesPreferredProviderWhenReady() = runTest {
+        val gemini = FakeAiModelClient(AiProvider.GEMINI)
+        val openAi = FakeAiModelClient(AiProvider.OPENAI)
+
+        val result = routeAiProviderRequest(
+            settings = aiSettings(
+                preferredProvider = AiProviderPreference.GEMINI_FIRST,
+                geminiApiKey = "gemini-key",
+                openAiApiKey = "openai-key",
+            ),
+            request = weeklyRequest(),
+            clientFor = { provider -> if (provider == AiProvider.GEMINI) gemini else openAi },
+        )
+
+        assertEquals(AiProvider.GEMINI, result.providerUsed)
+        assertEquals(listOf("gemini-key"), gemini.apiKeys)
+        assertTrue(openAi.apiKeys.isEmpty())
+    }
+
+    @Test
+    fun routeAiProviderRequest_fallsBackToSecondProviderOnTransientFailure() = runTest {
+        val openAi = FakeAiModelClient(AiProvider.OPENAI, error = rateLimitError())
+        val gemini = FakeAiModelClient(AiProvider.GEMINI)
+
+        val result = routeAiProviderRequest(
+            settings = aiSettings(
+                preferredProvider = AiProviderPreference.OPENAI_FIRST,
+                geminiApiKey = "gemini-key",
+                openAiApiKey = "openai-key",
+            ),
+            request = weeklyRequest(),
+            clientFor = { provider -> if (provider == AiProvider.GEMINI) gemini else openAi },
+        )
+
+        assertEquals(AiProvider.GEMINI, result.providerUsed)
+        assertEquals(listOf("OPENAI:AiRateLimitException"), result.fallbackFailures)
+        assertEquals(listOf("openai-key", "openai-key"), openAi.apiKeys)
+        assertEquals(listOf("gemini-key"), gemini.apiKeys)
+    }
+
+    @Test
+    fun routeAiProviderRequest_skipsProvidersWithoutKeysAndThrowsWhenNoneReady() = runTest {
+        val gemini = FakeAiModelClient(AiProvider.GEMINI)
+        val openAi = FakeAiModelClient(AiProvider.OPENAI)
+
+        val error = runCatching {
+            routeAiProviderRequest(
+                settings = aiSettings(
+                    preferredProvider = AiProviderPreference.OPENAI_FIRST,
+                    geminiApiKey = "",
+                    openAiApiKey = "",
+                ),
+                request = weeklyRequest(),
+                clientFor = { provider -> if (provider == AiProvider.GEMINI) gemini else openAi },
+            )
+        }.exceptionOrNull()
+
+        assertTrue(error is AiProviderUnavailableException)
+        assertTrue((error as AiProviderUnavailableException).failures.isEmpty())
+        assertTrue(gemini.apiKeys.isEmpty())
+        assertTrue(openAi.apiKeys.isEmpty())
+    }
+
+    @Test
+    fun routeAiProviderRequest_stopsOnNonTransientProviderFailure() = runTest {
+        val openAi = FakeAiModelClient(AiProvider.OPENAI, error = IllegalArgumentException("bad schema"))
+        val gemini = FakeAiModelClient(AiProvider.GEMINI)
+
+        val error = runCatching {
+            routeAiProviderRequest(
+                settings = aiSettings(
+                    preferredProvider = AiProviderPreference.OPENAI_FIRST,
+                    geminiApiKey = "gemini-key",
+                    openAiApiKey = "openai-key",
+                ),
+                request = weeklyRequest(),
+                clientFor = { provider -> if (provider == AiProvider.GEMINI) gemini else openAi },
+            )
+        }.exceptionOrNull()
+
+        assertTrue(error is IllegalArgumentException)
+        assertEquals(listOf("openai-key"), openAi.apiKeys)
+        assertTrue(gemini.apiKeys.isEmpty())
+    }
+
+    @Test
+    fun routeAiProviderRequest_propagatesCancellationWithoutFallback() = runTest {
+        val openAi = FakeAiModelClient(AiProvider.OPENAI, error = CancellationException("screen left"))
+        val gemini = FakeAiModelClient(AiProvider.GEMINI)
+
+        val error = runCatching {
+            routeAiProviderRequest(
+                settings = aiSettings(
+                    preferredProvider = AiProviderPreference.OPENAI_FIRST,
+                    geminiApiKey = "gemini-key",
+                    openAiApiKey = "openai-key",
+                ),
+                request = weeklyRequest(),
+                clientFor = { provider -> if (provider == AiProvider.GEMINI) gemini else openAi },
+            )
+        }.exceptionOrNull()
+
+        assertTrue(error is CancellationException)
+        assertEquals("screen left", error?.message)
+        assertFalse(gemini.apiKeys.isNotEmpty())
+    }
+
     private class FallbackTestGenerator(
         private val preference: AiProviderPreference,
         private val keys: Map<AiProvider, String>,
@@ -73,4 +183,46 @@ class AiProviderRouterTest {
             throw HttpException(Response.error<Unit>(429, "rate".toResponseBody()))
         }
     }
+
+    private class FakeAiModelClient(
+        override val provider: AiProvider,
+        private val error: Throwable? = null,
+    ) : AiModelClient {
+        val apiKeys = mutableListOf<String>()
+
+        override suspend fun generateJson(apiKey: String, request: AiRouteRequest): AiRouteResult {
+            apiKeys += apiKey
+            error?.let { throw it }
+            return AiRouteResult(
+                providerUsed = provider,
+                model = "${provider.name.lowercase()}-model",
+                rawJson = """{"summary":"Goed herstel.","nextWeekFocus":"Houd volume stabiel."}""",
+            )
+        }
+    }
+
+    private fun aiSettings(
+        preferredProvider: AiProviderPreference,
+        geminiApiKey: String,
+        openAiApiKey: String,
+    ): AiPreferences =
+        AiPreferences(
+            enabled = true,
+            apiKey = geminiApiKey,
+            geminiApiKey = geminiApiKey,
+            openAiApiKey = openAiApiKey,
+            preferredProvider = preferredProvider,
+        )
+
+    private fun weeklyRequest(): AiRouteRequest =
+        AiRouteRequest(
+            feature = AiFeature.WEEKLY_REPORT,
+            prompt = "Geef JSON",
+            schemaName = "weekly_report",
+            responseJsonSchema = GeminiJsonSchemas.weeklyReport,
+            thinkingBudget = 1000,
+        )
+
+    private fun rateLimitError(): HttpException =
+        HttpException(Response.error<Unit>(429, "rate".toResponseBody()))
 }

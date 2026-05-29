@@ -19,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -53,93 +54,15 @@ class HealthConnectPermissionsRationaleActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(MaterialTheme.spacing.large),
-                        contentAlignment = Alignment.TopCenter,
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
-                        ) {
-                            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                                Column(
-                                    modifier = Modifier.padding(MaterialTheme.spacing.large),
-                                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
-                                ) {
-                                    Text(
-                                        "Waarom TrainIQ Health Connect gebruikt",
-                                        style = MaterialTheme.typography.headlineSmall,
-                                    )
-                                    Text(
-                                        "TrainIQ leest zes signalen om training, herstel en voeding beter te duiden. Elke toestemming verklaart een ander deel van je belasting en herstel, zodat het dashboard niet doet alsof ontbrekende data bekend is.",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                    )
-                                }
-                            }
-
-                            if (statusMessage != null) {
-                                MessageCard(
-                                    message = statusMessage.orEmpty(),
-                                    onDismiss = { statusMessage = null },
-                                )
-                            }
-
-                            HealthConnectRationaleReasons.forEach { reason ->
-                                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                                    Column(
-                                        modifier = Modifier.padding(MaterialTheme.spacing.medium),
-                                        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
-                                    ) {
-                                        Text(
-                                            text = reason.title,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.SemiBold,
-                                        )
-                                        Text(
-                                            text = reason.description,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                        )
-                                    }
-                                }
-                            }
-
-                            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                                Column(
-                                    modifier = Modifier.padding(MaterialTheme.spacing.large),
-                                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
-                                ) {
-                                    Text(
-                                        "TrainIQ verbinden",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                    Text(
-                                        "Health Connect beheert toestemmingen op een centrale plek. TrainIQ vraagt alleen leestoegang om het dashboard te synchroniseren en coaching beter te onderbouwen.",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                    )
-                                    Button(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        onClick = {
-                                            statusMessage = null
-                                            permissionLauncher.launch(HealthConnectReadPermissions)
-                                        },
-                                    ) {
-                                        Text("Health Connect-toegang geven")
-                                    }
-                                    OutlinedButton(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        onClick = ::openTrainIq,
-                                    ) {
-                                        Text("Doorgaan naar TrainIQ")
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    HealthConnectPermissionsRationaleContent(
+                        statusMessage = statusMessage,
+                        onDismissStatus = { statusMessage = null },
+                        onRequestPermission = {
+                            statusMessage = null
+                            permissionLauncher.launch(HealthConnectReadPermissions)
+                        },
+                        onContinue = ::openTrainIq,
+                    )
                 }
             }
         }
@@ -151,6 +74,99 @@ class HealthConnectPermissionsRationaleActivity : ComponentActivity() {
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
         )
         finish()
+    }
+}
+
+@Composable
+internal fun HealthConnectPermissionsRationaleContent(
+    statusMessage: String?,
+    onDismissStatus: () -> Unit,
+    onRequestPermission: () -> Unit,
+    onContinue: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(MaterialTheme.spacing.large),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
+        ) {
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(MaterialTheme.spacing.large),
+                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
+                ) {
+                    Text(
+                        "Waarom TrainIQ Health Connect gebruikt",
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                    Text(
+                        "TrainIQ leest zes signalen om training, herstel en voeding beter te duiden. Elke toestemming verklaart een ander deel van je belasting en herstel, zodat het dashboard niet doet alsof ontbrekende data bekend is.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+
+            if (statusMessage != null) {
+                MessageCard(
+                    message = statusMessage,
+                    onDismiss = onDismissStatus,
+                )
+            }
+
+            HealthConnectRationaleReasons.forEach { reason ->
+                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(MaterialTheme.spacing.medium),
+                        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
+                    ) {
+                        Text(
+                            text = reason.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = reason.description,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+            }
+
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(MaterialTheme.spacing.large),
+                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
+                ) {
+                    Text(
+                        "TrainIQ verbinden",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        "Health Connect beheert toestemmingen op een centrale plek. TrainIQ vraagt alleen leestoegang om het dashboard te synchroniseren en coaching beter te onderbouwen.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Button(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onRequestPermission,
+                    ) {
+                        Text("Health Connect-toegang geven")
+                    }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onContinue,
+                    ) {
+                        Text("Doorgaan naar TrainIQ")
+                    }
+                }
+            }
+        }
     }
 }
 

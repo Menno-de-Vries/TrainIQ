@@ -146,22 +146,11 @@ class AiProviderRouter @Inject constructor(
 ) : AiJsonGenerator {
     override suspend fun generateJson(request: AiRouteRequest): AiRouteResult {
         val settings = aiUsageGate.currentSettings()
-        val failures = mutableListOf<String>()
-        for (provider in settings.preferredProvider.orderedProviders()) {
-            val apiKey = settings.apiKeyFor(provider) ?: continue
-            val client = if (provider == AiProvider.GEMINI) geminiClient else openAiClient
-            try {
-                return callAiWithBoundedRetry(feature = request.feature) {
-                    client.generateJson(apiKey, request)
-                }.copy(fallbackFailures = failures.toList())
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Throwable) {
-                failures += "${provider.name}:${error::class.simpleName.orEmpty()}"
-                if (!error.isTransientAiProviderFailure()) throw error
-            }
-        }
-        throw AiProviderUnavailableException(failures)
+        return routeAiProviderRequest(
+            settings = settings,
+            request = request,
+            clientFor = { provider -> if (provider == AiProvider.GEMINI) geminiClient else openAiClient },
+        )
     }
 }
 
@@ -185,6 +174,30 @@ private fun Throwable.isTransientAiProviderFailure(): Boolean {
     val mapped = asAiRateLimitExceptionIfNeeded()
     if (mapped is AiRateLimitException || mapped is AiFeatureThrottledException || mapped is AiTimeoutException) return true
     return this is HttpException && code() in listOf(408, 409, 425, 429, 500, 502, 503, 504)
+}
+
+internal suspend fun routeAiProviderRequest(
+    settings: AiPreferences,
+    request: AiRouteRequest,
+    throttleForProvider: (AiProvider) -> AiFeatureThrottle = { AiFeatureThrottle() },
+    clientFor: (AiProvider) -> AiModelClient,
+): AiRouteResult {
+    val failures = mutableListOf<String>()
+    for (provider in settings.preferredProvider.orderedProviders()) {
+        val apiKey = settings.apiKeyFor(provider) ?: continue
+        val client = clientFor(provider)
+        try {
+            return callAiWithBoundedRetry(feature = request.feature, throttle = throttleForProvider(provider)) {
+                client.generateJson(apiKey, request)
+            }.copy(fallbackFailures = failures.toList())
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            failures += "${provider.name}:${error::class.simpleName.orEmpty()}"
+            if (!error.isTransientAiProviderFailure()) throw error
+        }
+    }
+    throw AiProviderUnavailableException(failures)
 }
 
 @Suppress("UNCHECKED_CAST")

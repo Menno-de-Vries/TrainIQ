@@ -2,7 +2,1174 @@
 
 Source ledger: docs/qa/full-app-qa-run-2026-05-27.md
 
-Total referenced evidence paths: 166
+Total referenced evidence paths: 1905
+
+## 2026-05-29 Current direct APK artifact refresh
+
+- docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/summary.txt
+- docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/started.txt
+- docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/checkReleaseSigningReadiness-assembleRelease.txt
+- docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/release-build-result.txt
+- docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/release-apk-file-info.txt
+- docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/release-apk-sha256.txt
+- docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/release-apk-badging.txt
+- docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/release-apk-apksigner.txt
+- docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/device-model.txt
+- docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/android-release.txt
+- docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/adb-install-release-apk.txt
+- docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/pm-clear.txt
+- docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/launch-release-apk.txt
+- docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/trainiq-direct-apk-refresh.xml
+- docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/trainiq-direct-apk-refresh.png
+- docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/logcat-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/direct-apk-refresh-checks.txt
+
+## 2026-05-29 Post-accessibility readiness audit
+
+- docs/qa/evidence/2026-05-29-post-accessibility-readiness-audit-loop/summary.txt
+- docs/qa/evidence/2026-05-29-post-accessibility-readiness-audit-loop/post-accessibility-readiness-audit.json
+- docs/qa/evidence/2026-05-29-post-accessibility-readiness-audit-loop/audit-checks.txt
+- docs/qa/evidence/2026-05-29-post-accessibility-readiness-audit-loop/missing-evidence.txt
+
+## 2026-05-29 Release accessibility service-state/static UI audit
+
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/summary.txt
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/started.txt
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/accessibility-enabled.txt
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/enabled-accessibility-services.txt
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/touch-exploration-enabled.txt
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/magnification-enabled.txt
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/accessibility-related-packages.txt
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/dumpsys-accessibility.txt
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/installRelease.txt
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/pm-clear.txt
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/launch-release.txt
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/xml-content-summary.txt
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/accessibility-state-static-summary.txt
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/effective-label-summary.txt
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/under-48px-clickable-focusable.txt
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/effective-unlabeled-clickable-focusable.txt
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/naf-nodes.txt
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/logcat-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/trainiq-a11y-state-start.xml
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/trainiq-a11y-state-training.xml
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/trainiq-a11y-state-nutrition.xml
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/trainiq-a11y-state-coach.xml
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/trainiq-a11y-state-more.xml
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/trainiq-a11y-state-start-return.xml
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/trainiq-a11y-state-start.png
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/trainiq-a11y-state-training.png
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/trainiq-a11y-state-nutrition.png
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/trainiq-a11y-state-coach.png
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/trainiq-a11y-state-more.png
+- docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/trainiq-a11y-state-start-return.png
+
+## 2026-05-29 Post-performance readiness audit
+
+- docs/qa/evidence/2026-05-29-post-performance-readiness-audit-loop/summary.txt
+- docs/qa/evidence/2026-05-29-post-performance-readiness-audit-loop/post-performance-readiness-audit.json
+- docs/qa/evidence/2026-05-29-post-performance-readiness-audit-loop/audit-checks.txt
+- docs/qa/evidence/2026-05-29-post-performance-readiness-audit-loop/missing-evidence.txt
+
+## 2026-05-29 Current profileable performance refresh
+
+- docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/summary.txt
+- docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/started.txt
+- docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/ro-kernel-qemu.txt
+- docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/device-model.txt
+- docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/android-release.txt
+- docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/wm-size.txt
+- docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/wm-density.txt
+- docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/connectedProfileableAndroidTest-emulator-suppressed.txt
+- docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/logcat-after-profileable-timeout.txt
+- docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/logcat-timeout-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/connectedProfileableAndroidTest-coldStartup-emulator-suppressed.txt
+- docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/targeted-coldStartup-summary.txt
+- docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/logcat-after-coldStartup.txt
+- docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/logcat-coldStartup-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/additional-com.trainiq.macrobenchmark-benchmarkData.json
+- docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/result-macrobenchmark-coldstartup.xml
+- docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/result-test-results.log
+
+## 2026-05-29 Synthetic lower-version over-install persistence loop
+
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/summary.txt
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/started.txt
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/synthetic-lower-build-result.txt
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/synthetic-lower-assembleRelease-rerun.txt
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/synthetic-lower-versionCode1-release.apk
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/badging-synthetic-lower.txt
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/badging-current-release.txt
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/apksigner-synthetic-lower.txt
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/apksigner-current-release.txt
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/sha256-synthetic-lower.txt
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/sha256-current-release.txt
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/adb-uninstall-before-lower.txt
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/adb-install-synthetic-lower.txt
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/pm-clear-lower.txt
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/launch-synthetic-lower.txt
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/lower-after-theme.xml
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/lower-after-theme.png
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/adb-install-current-over-synthetic-lower.txt
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/launch-current-after-overinstall.txt
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/current-after-overinstall.xml
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/current-after-overinstall.png
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/logcat-current-after-overinstall.txt
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/logcat-actionable-matches-current-after-overinstall.txt
+- docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/overinstall-persistence-checks.txt
+
+## 2026-05-29 Privacy/key-storage contract refresh
+
+- docs/qa/evidence/2026-05-29-privacy-key-storage-contract-refresh-loop/summary.txt
+- docs/qa/evidence/2026-05-29-privacy-key-storage-contract-refresh-loop/started.txt
+- docs/qa/evidence/2026-05-29-privacy-key-storage-contract-refresh-loop/reviewed-files.txt
+- docs/qa/evidence/2026-05-29-privacy-key-storage-contract-refresh-loop/privacy-key-storage-targeted-tests.txt
+- docs/qa/evidence/2026-05-29-privacy-key-storage-contract-refresh-loop/privacy-scan-summary.txt
+- docs/qa/evidence/2026-05-29-privacy-key-storage-contract-refresh-loop/secret-pattern-matches.json
+- docs/qa/evidence/2026-05-29-privacy-key-storage-contract-refresh-loop/secret-pattern-false-positive-review.json
+- docs/qa/evidence/2026-05-29-privacy-key-storage-contract-refresh-loop/secret-pattern-classification-summary.txt
+
+## 2026-05-29 Current readiness completion audit
+
+- docs/qa/evidence/2026-05-29-current-readiness-completion-audit-loop/summary.txt
+- docs/qa/evidence/2026-05-29-current-readiness-completion-audit-loop/readiness-completion-audit.json
+- docs/qa/evidence/2026-05-29-current-readiness-completion-audit-loop/audit-checks.txt
+- docs/qa/evidence/2026-05-29-current-readiness-completion-audit-loop/missing-evidence.txt
+
+## 2026-05-29 Release Settings font-scale 1.5 scroll-candidate review
+
+- docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/summary.txt
+- docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/installRelease.txt
+- docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/pm-clear.txt
+- docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/launch.txt
+- docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/font-scale-before.txt
+- docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/font-scale-during.txt
+- docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/font-scale-after-restore.txt
+- docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/night-mode-before.txt
+- docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/night-mode-during.txt
+- docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/night-mode-after-restore.txt
+- docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/settings-scroll-candidate-summary.txt
+- docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/settings-edge-under-48px.txt
+- docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/settings-weergave-scrolled-under-48px.txt
+- docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/settings-edge.xml
+- docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/settings-weergave-scrolled.xml
+- docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/logcat-actionable-matches.txt
+
+## 2026-05-29 Release dark mode/font-scale 1.5 top-level loop
+
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/summary.txt
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/installRelease.txt
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/corrected-pm-clear.txt
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/corrected-launch-dark-font15.txt
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/font-scale-before.txt
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/font-scale-during.txt
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/font-scale-after-restore.txt
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/night-mode-before.txt
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/night-mode-during.txt
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/night-mode-after-restore.txt
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/xml-content-summary.txt
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/under-48px-clickable-focusable.txt
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/logcat-dark-font15.txt
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/logcat-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/trainiq-dark-font15-start.xml
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/trainiq-dark-font15-start.png
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/trainiq-dark-font15-training.xml
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/trainiq-dark-font15-training.png
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/trainiq-dark-font15-nutrition.xml
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/trainiq-dark-font15-nutrition.png
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/trainiq-dark-font15-coach.xml
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/trainiq-dark-font15-coach.png
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/trainiq-dark-font15-more.xml
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/trainiq-dark-font15-more.png
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/trainiq-dark-font15-start-return.xml
+- docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/trainiq-dark-font15-start-return.png
+
+## 2026-05-29 Owner-gate action packet refresh
+
+- docs/qa/evidence/2026-05-29-owner-gate-action-packet-loop/summary.txt
+- docs/qa/evidence/2026-05-29-owner-gate-action-packet-loop/owner-gate-action-matrix.json
+
+## 2026-05-29 Final packet consistency refresh
+
+- docs/qa/evidence/2026-05-29-final-packet-consistency-refresh-loop/summary.txt
+- docs/qa/evidence/2026-05-29-final-packet-consistency-refresh-loop/packet-checks.txt
+- docs/qa/evidence/2026-05-29-final-packet-consistency-refresh-loop/missing-evidence.txt
+- docs/qa/evidence/2026-05-29-final-packet-consistency-refresh-loop/missing-status-refs.txt
+- docs/qa/evidence/2026-05-29-final-packet-consistency-refresh-loop/undocumented-open-gates.txt
+
+## 2026-05-29 Current connected baseline refresh
+
+- docs/qa/evidence/2026-05-29-current-connected-baseline-refresh-loop/summary.txt
+- docs/qa/evidence/2026-05-29-current-connected-baseline-refresh-loop/started.txt
+- docs/qa/evidence/2026-05-29-current-connected-baseline-refresh-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-current-connected-baseline-refresh-loop/device-model.txt
+- docs/qa/evidence/2026-05-29-current-connected-baseline-refresh-loop/android-release.txt
+- docs/qa/evidence/2026-05-29-current-connected-baseline-refresh-loop/wm-size.txt
+- docs/qa/evidence/2026-05-29-current-connected-baseline-refresh-loop/wm-density.txt
+- docs/qa/evidence/2026-05-29-current-connected-baseline-refresh-loop/uninstall-release-before-connected.txt
+- docs/qa/evidence/2026-05-29-current-connected-baseline-refresh-loop/uninstall-test-before-connected.txt
+- docs/qa/evidence/2026-05-29-current-connected-baseline-refresh-loop/connectedDebugAndroidTest.txt
+- docs/qa/evidence/2026-05-29-current-connected-baseline-refresh-loop/logcat-after-connected.txt
+- docs/qa/evidence/2026-05-29-current-connected-baseline-refresh-loop/logcat-actionable-matches.txt
+
+## 2026-05-29 Current release top-level traversal refresh
+
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/summary.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/started.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/device-model.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/android-release.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/wm-size.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/wm-density.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/installRelease.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/pm-clear.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/launch-release.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/tap-start.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/dump-start.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/pull-start.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/trainiq-top-start.xml
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/trainiq-top-start.png
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/tap-training.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/dump-training.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/pull-training.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/trainiq-top-training.xml
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/trainiq-top-training.png
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/tap-nutrition.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/dump-nutrition.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/pull-nutrition.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/trainiq-top-nutrition.xml
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/trainiq-top-nutrition.png
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/tap-coach.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/dump-coach.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/pull-coach.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/trainiq-top-coach.xml
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/trainiq-top-coach.png
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/tap-settings.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/dump-settings.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/pull-settings.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/trainiq-top-settings.xml
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/trainiq-top-settings.png
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/tap-start-return.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/dump-start-return.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/pull-start-return.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/trainiq-top-start-return.xml
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/trainiq-top-start-return.png
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/logcat-top-level.txt
+- docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/logcat-actionable-matches.txt
+
+## 2026-05-29 Current release install/launch refresh
+
+- docs/qa/evidence/2026-05-29-current-release-install-launch-refresh-loop/summary.txt
+- docs/qa/evidence/2026-05-29-current-release-install-launch-refresh-loop/started.txt
+- docs/qa/evidence/2026-05-29-current-release-install-launch-refresh-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-current-release-install-launch-refresh-loop/device-model.txt
+- docs/qa/evidence/2026-05-29-current-release-install-launch-refresh-loop/android-release.txt
+- docs/qa/evidence/2026-05-29-current-release-install-launch-refresh-loop/wm-size.txt
+- docs/qa/evidence/2026-05-29-current-release-install-launch-refresh-loop/wm-density.txt
+- docs/qa/evidence/2026-05-29-current-release-install-launch-refresh-loop/installRelease.txt
+- docs/qa/evidence/2026-05-29-current-release-install-launch-refresh-loop/pm-clear.txt
+- docs/qa/evidence/2026-05-29-current-release-install-launch-refresh-loop/launch-release.txt
+- docs/qa/evidence/2026-05-29-current-release-install-launch-refresh-loop/trainiq-current-release-refresh.xml
+- docs/qa/evidence/2026-05-29-current-release-install-launch-refresh-loop/logcat-release-refresh.txt
+- docs/qa/evidence/2026-05-29-current-release-install-launch-refresh-loop/logcat-actionable-matches.txt
+
+## 2026-05-29 Current release build refresh
+
+- docs/qa/evidence/2026-05-29-current-release-build-refresh-loop/summary.txt
+- docs/qa/evidence/2026-05-29-current-release-build-refresh-loop/checkReleaseSigningReadiness-assembleRelease.txt
+- docs/qa/evidence/2026-05-29-current-release-build-refresh-loop/result.txt
+
+## 2026-05-29 Current automated baseline refresh
+
+- docs/qa/evidence/2026-05-29-current-automated-baseline-refresh-loop/summary.txt
+- docs/qa/evidence/2026-05-29-current-automated-baseline-refresh-loop/testDebugUnitTest-lintDebug-assembleDebug.txt
+- docs/qa/evidence/2026-05-29-current-automated-baseline-refresh-loop/result.txt
+
+## 2026-05-29 Current DoD completion audit
+
+- docs/qa/evidence/2026-05-29-current-dod-completion-audit-loop/summary.txt
+- docs/qa/evidence/2026-05-29-current-dod-completion-audit-loop/dod-gate-matrix.json
+
+## 2026-05-29 Release offline/network smoke
+
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/summary.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/airplane-before.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/android-release.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/connectivity-offline.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/connectivity-restored.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/device-model.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/disable-data.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/disable-wifi.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/dump-offline-coach.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/dump-offline-settings.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/dump-offline-start.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/enable-airplane-mode.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/git-head.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/installRelease.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/launch-offline.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/logcat-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/logcat-offline-start-recapture.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/logcat-offline.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/logcat-start-recapture-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/pm-clear.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/pull-offline-coach.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/pull-offline-settings.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/pull-offline-start.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/recapture-disable-data.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/recapture-disable-wifi.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/recapture-dump-offline-start.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/recapture-enable-airplane-mode.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/recapture-launch-offline-start.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/recapture-pull-offline-start.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/recapture-restore-airplane-mode-disable.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/recapture-restore-data-enable.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/recapture-restore-wifi-enable.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/restore-airplane-mode-disable.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/restore-data-enable.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/restore-wifi-enable.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/tap-coach-offline.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/tap-settings-offline.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/trainiq-offline-coach.png
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/trainiq-offline-coach.xml
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/trainiq-offline-settings.png
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/trainiq-offline-settings.xml
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/trainiq-offline-start-recapture.png
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/trainiq-offline-start.png
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/trainiq-offline-start.xml
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/wifi-before.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/wm-density.txt
+- docs/qa/evidence/2026-05-29-release-offline-network-loop/wm-size.txt
+
+## 2026-05-29 Release force-stop/process recreation smoke
+
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/summary.txt
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/android-release.txt
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/device-model.txt
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/wm-size.txt
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/wm-density.txt
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/git-head.txt
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/installRelease.txt
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/pm-clear.txt
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/launch-cold.txt
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/dump-start-before-navigation.txt
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/pull-start-before-navigation.txt
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/trainiq-force-stop-start-before.xml
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/trainiq-force-stop-start-before.png
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/tap-training.txt
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/dump-training-before-force-stop.txt
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/pull-training-before-force-stop.txt
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/trainiq-force-stop-training-before.xml
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/trainiq-force-stop-training-before.png
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/force-stop.txt
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/launch-after-force-stop.txt
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/dump-after-force-stop-relaunch.txt
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/pull-after-force-stop-relaunch.txt
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/trainiq-force-stop-after-relaunch.xml
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/trainiq-force-stop-after-relaunch.png
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/logcat-force-stop-recreation.txt
+- docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/logcat-actionable-matches.txt
+
+## 2026-05-29 Release rotation/configuration smoke
+
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/summary.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/device-model.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/android-release.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/wm-size-before.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/wm-density.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/accelerometer-rotation-before.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/user-rotation-before.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/git-head.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/installRelease.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/pm-clear.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/launch-portrait.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/dump-portrait-before-rotation.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/pull-portrait-before-rotation.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/trainiq-rotation-portrait-before.xml
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/trainiq-rotation-portrait-before.png
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/disable-accelerometer-rotation.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/set-user-rotation-landscape.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/wm-size-landscape.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/dump-landscape.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/pull-landscape.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/trainiq-rotation-landscape.xml
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/trainiq-rotation-landscape.png
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/return-start-landscape.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/set-user-rotation-portrait.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/wm-size-portrait-after.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/dump-portrait-after-rotation.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/pull-portrait-after-rotation.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/trainiq-rotation-portrait-after.xml
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/trainiq-rotation-portrait-after.png
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/restore-accelerometer-rotation.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/restore-user-rotation.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/logcat-rotation.txt
+- docs/qa/evidence/2026-05-29-release-rotation-config-loop/logcat-actionable-matches.txt
+
+## 2026-05-29 Release lifecycle lock/background smoke
+
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/summary.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/android-release.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/build-version.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/device-model.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/wm-size.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/wm-density.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/git-head.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/installRelease.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/pm-clear.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/launch-cold.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/dump-after-cold.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/pull-after-cold.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/trainiq-lifecycle-cold.xml
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/trainiq-lifecycle-cold.png
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/go-home.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/return-from-home.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/dump-after-return-from-home.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/pull-after-return-from-home.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/trainiq-lifecycle-return-home.xml
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/sleep-key.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/wake-key.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/unlock-swipe.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/return-after-lock-unlock.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/dump-after-lock-unlock.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/pull-after-lock-unlock.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/trainiq-lifecycle-lock-unlock.xml
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/trainiq-lifecycle-lock-unlock.png
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/logcat-lifecycle.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/logcat-actionable-matches.txt
+
+## 2026-05-29 AI/scanner static contract audit
+
+- docs/qa/evidence/2026-05-29-ai-scanner-static-contract-audit-loop/summary.txt
+- docs/qa/evidence/2026-05-29-ai-scanner-static-contract-audit-loop/source-files-reviewed.txt
+- docs/qa/evidence/2026-05-29-ai-scanner-static-contract-audit-loop/ai-scanner-contract-grep.txt
+- docs/qa/evidence/2026-05-29-ai-scanner-static-contract-audit-loop/contract-checks.txt
+- docs/qa/evidence/2026-05-29-ai-scanner-static-contract-audit-loop/secret-pattern-scan.txt
+
+## 2026-05-29 Profileable top-nav benchmark loop
+
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/summary.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/started.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/device-model.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/android-release.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/wm-size.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/wm-density.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/font-scale.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/git-head.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/uninstall-com.trainiq-before-benchmark.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/uninstall-macrobenchmark-before-benchmark.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/connectedProfileableAndroidTest-topnav.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/logcat-after-profileable-topnav.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/logcat-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/connectedProfileableAndroidTest-topnav-emulator-suppressed.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/logcat-after-profileable-topnav-emulator-suppressed.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/logcat-actionable-matches-emulator-suppressed.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/compileProfileableJavaWithJavac-after-benchmark-harness-fix.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/connectedProfileableAndroidTest-topnav-after-harness-fix-emulator-suppressed.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/logcat-after-profileable-topnav-after-harness-fix.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/logcat-actionable-matches-after-harness-fix.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/macrobenchmark-topnav-after-harness-fix-report.xml
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/macrobenchmark-topnav-after-harness-fix-result.textproto
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/macrobenchmark-topnav-after-harness-fix-test-results.log
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/macrobenchmark-topnav-after-harness-fix-metrics.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/regression-after-profileable-benchmark-harness-fix.txt
+- docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/completed.txt
+## 2026-05-29 Release top-nav performance smoke loop
+
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/summary.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/started.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/device-model.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/android-release.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/wm-size.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/wm-density.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/font-scale.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/git-head.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/installRelease.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/launch-release.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/release-topnav-start.xml
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/release-topnav-start.png
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/release-topnav-training.xml
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/release-topnav-nutrition.xml
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/dump-coach.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/dump-settings.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/release-topnav-start-return.xml
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/gfxinfo-summary-after-topnav.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/gfxinfo-framestats-after-topnav.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/logcat-after-topnav.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/logcat-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/rerun-launch-release.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/rerun-release-topnav-start.xml
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/rerun-gfxinfo-summary-after-topnav.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/rerun-gfxinfo-framestats-after-topnav.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/rerun-release-topnav-final.xml
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/rerun-release-topnav-final.png
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/rerun-logcat-after-topnav.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/rerun-logcat-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/completed.txt
+## 2026-05-29 Deep runtime regression loop
+
+- docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/summary.txt
+- docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/started.txt
+- docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/device-model.txt
+- docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/android-release.txt
+- docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/wm-size.txt
+- docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/wm-density.txt
+- docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/font-scale-before.txt
+- docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/force-stop-before-tests.txt
+- docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/revoke-camera-before-tests.txt
+- docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/uninstall-com.trainiq-before-connected.txt
+- docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/uninstall-com.trainiq.test-before-connected.txt
+- docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/connected-deep-runtime-targeted.txt
+- docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/connected-deep-runtime-targeted-report.xml
+- docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/connected-deep-runtime-targeted-testcases.txt
+- docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/logcat-after-targeted.txt
+- docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/logcat-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/font-scale-after.txt
+- docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/unit-lint-assembleDebug-after-deep-runtime.txt
+- docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/completed.txt
+## 2026-05-29 Health Connect Settings relaunch loop
+
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/summary.txt
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/started.txt
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/boot-completed.txt
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/wm-size.txt
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/wm-density.txt
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/font-scale.txt
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/installRelease-rerun.txt
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/rerun-package-after-active-calories-grant.txt
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/partial-settings-rerun2-launch.txt
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/partial-home-rerun2.xml
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/partial-settings-rerun2.xml
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/partial-settings-rerun2.png
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/partial-settings-rerun2-logcat.txt
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/partial-settings-rerun2-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/revoke-active-calories-while-open.txt
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/package-after-revoke-while-open.txt
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/relaunch-after-revoke.txt
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/settings-after-revoke-relaunch.xml
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/settings-after-revoke-relaunch.png
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/settings-after-revoke-relaunch-logcat.txt
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/settings-after-revoke-relaunch-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/window-after-systemui-dialog.txt
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/logcat-after-systemui-dialog.txt
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/systemui-dialog-trainiq-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/completed.txt
+## 2026-05-29 Health Connect revoke while open loop
+
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/summary.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/logcat-revoke-while-open-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/window-after-health-grant-anr.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/compile-after-healthconnect-io-fix-rerun.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/compile-after-healthconnect-page-size-fix.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/assembleRelease-after-healthconnect-page-size-fix.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/installRelease-after-healthconnect-page-size-fix.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/simple-after-fix-no-grant-launch.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/simple-after-fix-no-grant.xml
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/simple-after-fix-no-grant-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/isolated-grant-package-after-grant.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/isolated-grant-launch.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/isolated-grant.xml
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/isolated-grant-logcat.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/isolated-grant-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/isolated-grant-strict-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/relaunch-after-revoke-launch-granted.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/relaunch-after-revoke-pm-revoke-while-open.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/relaunch-after-revoke-package-after-revoke.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/relaunch-after-revoke-relaunch.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/relaunch-after-revoke.xml
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/relaunch-after-revoke-logcat.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/relaunch-after-revoke-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/clean-rerun-package-after-revoke.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/clean-rerun-window-after-revoke.txt
+- docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/unit-lint-assembleDebug-after-healthconnect-io-page-fix.txt
+
+## 2026-05-29 Release lifecycle runtime smoke loop
+
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/summary.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/logcat-release-lifecycle-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/rotation-only-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/window-after-lifecycle-anr.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/data-anr-list.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/pull-anr_2026-05-29-01-11-41-160.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/pull-anr_2026-05-29-01-12-26-410.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/assembleRelease-after-main-thread-lifecycle-fix.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/installRelease-after-main-thread-lifecycle-fix.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/cold-wait-after-fix-launch.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/cold-wait-after-fix.xml
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/cold-wait-after-fix-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/rotation-only-after-fix-launch.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/rotation-only-after-fix-landscape.xml
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/rotation-only-after-fix-portrait.xml
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/rotation-only-after-fix-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/full-lifecycle-after-fix-launch.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/full-lifecycle-after-fix-return-home.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/full-lifecycle-after-fix-return-unlock.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/full-lifecycle-after-fix-landscape.xml
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/full-lifecycle-after-fix-portrait.xml
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/full-lifecycle-after-fix-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/unit-assembleDebug-after-main-thread-lifecycle-fix.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/rotation-only-after-fix-accelerometer-restored.txt
+- docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/rotation-only-after-fix-user-rotation-restored.txt
+
+## 2026-05-29 Tablet/foldable layout smoke loop
+
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/completed.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/dump-release-tablet-coach.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/dump-release-tablet-coach-rerun.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/dump-release-tablet-nutrition.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/dump-release-tablet-progress.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/dump-release-tablet-settings-rerun.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/dump-release-tablet-settings-scrolled.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/dump-release-tablet-settings-scrolled-2.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/dump-release-tablet-start.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/dump-release-tablet-start-fresh.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/dump-release-tablet-start-return-rerun.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/dump-release-tablet-training.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/dump-tablet-repro.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/dump-tablet-start.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/evidence-index-count-sanity.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/file-count.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/file-list.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/font-scale-before.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/force-stop-after-tablet-restore.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/force-stop-before-tablet-relaunch.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/installDebug-tablet-smoke.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/installRelease-tablet-smoke.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/launch-release-after-display-restore.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/launch-release-tablet.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/launch-tablet-repro.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/launch-tablet-smoke.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/local-evidence-linkcheck.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/logcat-after-display-restore-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/logcat-after-display-restore-launch.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/logcat-after-release-tablet-launch.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/logcat-after-tablet-launch-timeout.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/logcat-after-tablet-repro.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/logcat-release-tablet-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/logcat-release-tablet-traversal.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/pm-clear-com.trainiq.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/pull-release-tablet-coach.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/pull-release-tablet-coach-rerun.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/pull-release-tablet-nutrition.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/pull-release-tablet-progress.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/pull-release-tablet-settings-rerun.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/pull-release-tablet-settings-scrolled.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/pull-release-tablet-settings-scrolled-2.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/pull-release-tablet-start.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/pull-release-tablet-start-fresh.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/pull-release-tablet-start-return-rerun.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/pull-release-tablet-training.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/pull-tablet-repro.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/pull-tablet-start.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/qa-status-json-parse.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/release-tablet-coach.xml
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/release-tablet-nutrition.xml
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/release-tablet-progress.xml
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/release-tablet-settings.xml
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/release-tablet-settings-scrolled.xml
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/release-tablet-settings-scrolled-2.xml
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/release-tablet-start.xml
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/release-tablet-start-fresh.xml
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/release-tablet-start-return.xml
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/release-tablet-training.xml
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/settings-scroll-down-for-switch-check.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/settings-scroll-down-second-for-key-field.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/settings-scrolled-touch-target-check.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/started.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/summary.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/tablet-layout-heuristic-scan.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/tablet-start.xml
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/tap-release-tablet-coach.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/tap-release-tablet-nutrition.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/tap-release-tablet-progress.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/tap-release-tablet-settings.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/tap-release-tablet-settings-rerun.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/tap-release-tablet-start-return.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/tap-release-tablet-start-return-rerun.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/tap-release-tablet-training.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/tap-settings-before-scroll-check.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/uninstall-before-release-tablet.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/window-after-release-tablet-launch.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/window-after-tablet-launch-timeout.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/window-after-tablet-repro.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/wm-density-after-restore.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/wm-density-before.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/wm-density-during.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/wm-density-restore.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/wm-density-set-tablet.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/wm-size-after-restore.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/wm-size-before.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/wm-size-during.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/wm-size-restore.txt
+- docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/wm-size-set-tablet.txt
+
+## 2026-05-29 Current regression refresh loop
+
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/summary.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/started.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/unit-lint-assembleDebug.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/adb-uninstall-com.trainiq-before-connected.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/adb-uninstall-com.trainiq.test-before-connected.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/connectedDebugAndroidTest-full.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/dump-after-connected-focus-failure.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/pull-after-connected-focus-failure.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/current-after-connected-focus-failure.xml
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/logcat-after-connected-focus-failure.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/window-after-connected-focus-failure.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/focus-failure-window-classification.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/focus-failure-logcat-classification.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/dismiss-focus-failure-back.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/force-stop-nexuslauncher.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/home-after-focus-failure.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/adb-uninstall-com.trainiq-before-targeted-rerun.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/adb-uninstall-com.trainiq.test-before-targeted-rerun.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/TrainIqFlowSmokeInstrumentedTest-targeted-after-focus-failure.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/adb-uninstall-com.trainiq-before-connected-rerun.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/adb-uninstall-com.trainiq.test-before-connected-rerun.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/connectedDebugAndroidTest-full-rerun.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/window-during-full-rerun-hang.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/logcat-during-full-rerun-hang.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/full-rerun-hang-classification.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/gradle-stop-after-hung-connected.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/uninstall-before-targeted-after-hardening.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/TrainIqFlowSmokeInstrumentedTest-targeted-after-hardening.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/uninstall-before-targeted-after-hardening-quoted.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/TrainIqFlowSmokeInstrumentedTest-targeted-after-hardening-quoted.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/uninstall-before-targeted-after-dispatcher-hardening.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/TrainIqFlowSmokeInstrumentedTest-targeted-after-dispatcher-hardening.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/uninstall-before-full-connected-after-hardening.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/connectedDebugAndroidTest-full-after-hardening.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/uninstall-before-debug-final-smoke.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/installDebug-final-smoke.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/launch-debug-final-smoke.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/uiautomator-dump-debug-final-smoke.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/pull-debug-final-smoke.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/window-before-debug-final-smoke-dump-rerun.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/uiautomator-dump-debug-final-smoke-rerun.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/pull-debug-final-smoke-rerun.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/trainiq-debug-final-smoke.xml
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/logcat-debug-final-smoke.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/logcat-debug-final-smoke-crash-anr-security-matches.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/logcat-debug-final-smoke-actionable-matches.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/completed.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/qa-status-json-parse.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/evidence-index-count-sanity.txt
+- docs/qa/evidence/2026-05-29-current-regression-refresh-loop/local-evidence-linkcheck.txt
+
+## 2026-05-29 Active workout font-scale 1.5 dense-controls loop
+
+- docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/summary.txt
+- docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/started.txt
+- docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/font-scale-before.txt
+- docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/font-scale-set-15.txt
+- docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/font-scale-during.txt
+- docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/adb-uninstall-com.trainiq.txt
+- docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/adb-uninstall-com.trainiq.test.txt
+- docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/ActiveWorkoutSetActionsInstrumentedTest-font15.txt
+- docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/font-scale-restore.txt
+- docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/font-scale-after-restore.txt
+- docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/logcat-active-workout-font15.txt
+- docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/logcat-crash-anr-security-matches.txt
+- docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/completed.txt
+- docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/qa-status-json-parse.txt
+- docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/evidence-index-count-sanity.txt
+- docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/local-evidence-linkcheck.txt
+
+## 2026-05-29 Health Connect all-metric/background-read loop
+
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/summary.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/started.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/installRelease.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/permissions-before.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/appops-before.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/launch-rationale.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/hc-all-rationale.xml
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/cta-center.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/dump-system-before-allow-all-0.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/pull-system-before-allow-all-0.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/hc-all-system-before-allow-all.xml
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/allow-all-tap.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/dump-system-after-allow-all.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/pull-system-after-allow-all.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/hc-all-system-after-allow-all.xml
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/allow-center.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/permissions-after-all-metric-grant.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/appops-after-all-metric-grant.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/pm-grant-background-read.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/permissions-after-background-grant-attempt.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/appops-after-background-grant-attempt.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/launch-main-after-all-grant.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/dump-settings-after-all-grant.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/pull-settings-after-all-grant.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/hc-all-settings.xml
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/settings-health-visible-text-after-all-grant.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/permissions-after-revoke.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/appops-after-revoke.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/logcat-healthconnect-all-metric-background.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/logcat-crash-anr-security-matches.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/completed.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/qa-status-json-parse.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/evidence-index-count-sanity.txt
+- docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/local-evidence-linkcheck.txt
+
+## 2026-05-29 Health Connect partial grant/revoke loop
+
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/summary.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/started.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/installRelease.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/permissions-before.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/launch-rationale.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/hc-partial-rationale.xml
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/cta-center.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/dump-current-after-failed-dump.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/current-after-failed-dump.xml
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/hc-partial-system-before-toggle.xml
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/active-calories-tap.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/dump-after-toggle.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/hc-partial-system-after-toggle.xml
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/allow-center.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/permissions-after-partial-grant.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/launch-main-after-partial-grant.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/dump-main-after-partial-grant.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/hc-partial-main.xml
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/main-health-visible-text.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/permissions-after-revoke.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/pm-grant-active-calories-for-settings.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/permissions-after-pm-partial-grant-for-settings.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/launch-main-for-settings-partial.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/dump-settings-after-partial-grant.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/hc-partial-settings.xml
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/settings-health-visible-text-after-partial.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/permissions-after-settings-revoke.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/pm-grant-active-calories-for-settings-detail.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/launch-main-for-settings-detail.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/dump-settings-detail-after-partial-grant.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/hc-partial-settings-detail.xml
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/settings-detail-health-visible-text-after-partial.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/permissions-after-settings-detail-revoke.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/logcat-healthconnect-partial-grant-revoke.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/logcat-crash-anr-security-matches.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/completed.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/SettingsUiStateTest-after-partial-copy-fix.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/unit-lint-assemble-after-partial-copy-fix.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/qa-status-json-parse.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/evidence-index-count-sanity.txt
+- docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/local-evidence-linkcheck.txt
+
+## 2026-05-29 Health Connect system prompt loop
+
+- docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/summary.txt
+- docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/started.txt
+- docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/installRelease.txt
+- docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/permissions-before.txt
+- docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/launch-rationale.txt
+- docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/dump-rationale-initial.txt
+- docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/hc-rationale-initial.xml
+- docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/hc-rationale-bottom.xml
+- docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/cta-center.txt
+- docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/dump-system-prompt.txt
+- docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/hc-system-prompt.xml
+- docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/window-after-cta.txt
+- docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/permissions-after-back.txt
+- docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/logcat-healthconnect-system-prompt.txt
+- docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/logcat-crash-anr-security-matches.txt
+- docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/completed.txt
+- docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/qa-status-json-parse.txt
+- docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/evidence-index-count-sanity.txt
+- docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/local-evidence-linkcheck.txt
+
+## 2026-05-29 Release permission-state audit loop
+
+- docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/summary.txt
+- docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/started.txt
+- docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/adb-uninstall-com.trainiq.txt
+- docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/installRelease.txt
+- docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/launch-release.txt
+- docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/uiautomator-dump.txt
+- docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/trainiq-release-permission-state.xml
+- docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/dumpsys-package-release.txt
+- docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/appops-release.txt
+- docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/permission-lines-extract.txt
+- docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/logcat-release-permission-state.txt
+- docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/logcat-crash-anr-matches.txt
+- docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/logcat-crash-anr-security-matches.txt
+- docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/completed-capture.txt
+- docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/qa-status-json-parse.txt
+- docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/evidence-index-count-sanity.txt
+- docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/local-evidence-linkcheck.txt
+
+## 2026-05-29 Backup/data-extraction privacy audit loop
+
+- docs/qa/evidence/2026-05-29-backup-data-extraction-audit-loop/summary.txt
+- docs/qa/evidence/2026-05-29-backup-data-extraction-audit-loop/started.txt
+- docs/qa/evidence/2026-05-29-backup-data-extraction-audit-loop/backup_rules.xml
+- docs/qa/evidence/2026-05-29-backup-data-extraction-audit-loop/data_extraction_rules.xml
+- docs/qa/evidence/2026-05-29-backup-data-extraction-audit-loop/merged-manifest-backup-lines.txt
+- docs/qa/evidence/2026-05-29-backup-data-extraction-audit-loop/backup-rule-exclusion-check.txt
+- docs/qa/evidence/2026-05-29-backup-data-extraction-audit-loop/source-store-mapping.txt
+
+## 2026-05-29 Release APK manifest/permission artifact audit loop
+
+- docs/qa/evidence/2026-05-29-release-apk-manifest-permission-audit-loop/summary.txt
+- docs/qa/evidence/2026-05-29-release-apk-manifest-permission-audit-loop/started.txt
+- docs/qa/evidence/2026-05-29-release-apk-manifest-permission-audit-loop/aapt2-dump-badging.txt
+- docs/qa/evidence/2026-05-29-release-apk-manifest-permission-audit-loop/aapt2-dump-permissions.txt
+- docs/qa/evidence/2026-05-29-release-apk-manifest-permission-audit-loop/aapt2-dump-xmltree-manifest.txt
+- docs/qa/evidence/2026-05-29-release-apk-manifest-permission-audit-loop/app-release-sha256.txt
+- docs/qa/evidence/2026-05-29-release-apk-manifest-permission-audit-loop/output-metadata.json
+- docs/qa/evidence/2026-05-29-release-apk-manifest-permission-audit-loop/expected-merged-permissions.txt
+- docs/qa/evidence/2026-05-29-release-apk-manifest-permission-audit-loop/permission-diff.txt
+- docs/qa/evidence/2026-05-29-release-apk-manifest-permission-audit-loop/permission-component-classification.txt
+
+## 2026-05-29 QA packet consistency refresh loop
+
+- docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/summary.txt
+- docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/started.txt
+- docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/qa-status-json-parse.txt
+- docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/qa-status-reference-check.txt
+- docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/local-evidence-linkcheck.txt
+- docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/not-run-count-consistency.txt
+- docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/evidence-index-count-sanity.txt
+- docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/qa-status-json-parse-after-index-fix.txt
+- docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/qa-status-reference-check-after-index-fix.txt
+- docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/local-evidence-linkcheck-after-index-fix.txt
+- docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/not-run-count-consistency-after-index-fix.txt
+- docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/evidence-index-count-sanity-after-index-fix.txt
+- docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/qa-status-json-parse-final.txt
+- docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/qa-status-reference-check-final.txt
+- docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/local-evidence-linkcheck-final.txt
+- docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/not-run-count-consistency-final.txt
+- docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/evidence-index-count-sanity-final.txt
+
+## 2026-05-29 Privacy artifact/secret scan loop
+
+- docs/qa/evidence/2026-05-29-privacy-artifact-secret-scan-loop/summary.txt
+- docs/qa/evidence/2026-05-29-privacy-artifact-secret-scan-loop/started.txt
+- docs/qa/evidence/2026-05-29-privacy-artifact-secret-scan-loop/scope.txt
+- docs/qa/evidence/2026-05-29-privacy-artifact-secret-scan-loop/secret-pattern-scan-raw.txt
+- docs/qa/evidence/2026-05-29-privacy-artifact-secret-scan-loop/release-evidence-sensitive-term-scan.txt
+- docs/qa/evidence/2026-05-29-privacy-artifact-secret-scan-loop/sensitive-term-classification.txt
+- docs/qa/evidence/2026-05-29-privacy-artifact-secret-scan-loop/sensitive-term-context-scan.txt
+- docs/qa/evidence/2026-05-29-privacy-artifact-secret-scan-loop/release-output-artifacts.txt
+
+## 2026-05-29 Release-over-release same-lineage loop
+
+- docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/summary.txt
+- docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/started.txt
+- docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/git-head.txt
+- docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/version-source.txt
+- docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/checkReleaseSigningReadiness.txt
+- docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/assembleRelease.txt
+- docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/adb-uninstall-com.trainiq-before-release-lineage.txt
+- docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/installRelease-baseline.txt
+- docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/launch-release-baseline.txt
+- docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/trainiq-release-baseline.xml
+- docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/installRelease-over-release.txt
+- docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/launch-release-after-overinstall.txt
+- docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/trainiq-release-after-overinstall.xml
+- docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/logcat-release-after-overinstall.txt
+- docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/logcat-release-after-overinstall-crash-anr-matches.txt
+
+## 2026-05-29 Current dark-mode top-level audit loop
+
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/summary.txt
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/started.txt
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/installDebug.txt
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/uimode-before.txt
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/uimode-set-dark.txt
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/uimode-during.txt
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/uimode-restore-after-progress.txt
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/uimode-after.txt
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/pm-clear.txt
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/launch.txt
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/start.xml
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/training.xml
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/nutrition.xml
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/coach.xml
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/settings.xml
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/settings-from-gear.xml
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/progress.xml
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/start-return.xml
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/dark-mode-audit-summary.txt
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/touch-target-under-48dp.txt
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/naf-matches.txt
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/unlabeled-interactive-effective.txt
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/text-bounds-suspects.txt
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/logcat-crash-anr-matches.txt
+- docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/logcat-dark-audit-with-progress.txt
+
+## 2026-05-29 Top-level recreation/back-stack loop
+
+- docs/qa/evidence/2026-05-29-top-level-recreation-backstack-loop/summary.txt
+- docs/qa/evidence/2026-05-29-top-level-recreation-backstack-loop/started.txt
+- docs/qa/evidence/2026-05-29-top-level-recreation-backstack-loop/TrainIqFlowSmokeInstrumentedTest.txt
+- docs/qa/evidence/2026-05-29-top-level-recreation-backstack-loop/TrainIqFlowSmokeInstrumentedTest-after-contract-fix.txt
+- docs/qa/evidence/2026-05-29-top-level-recreation-backstack-loop/testDebugUnitTest.txt
+- docs/qa/evidence/2026-05-29-top-level-recreation-backstack-loop/lintDebug.txt
+- docs/qa/evidence/2026-05-29-top-level-recreation-backstack-loop/assembleDebug.txt
+- docs/qa/evidence/2026-05-29-top-level-recreation-backstack-loop/connectedDebugAndroidTest-full.txt
+
+## 2026-05-29 Current font-scale 1.5 accessibility audit loop
+
+- docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/summary.txt
+- docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/false-positive-review.txt
+- docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/started.txt
+- docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/font-scale-before.txt
+- docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/font-scale-after.txt
+- docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/density.txt
+- docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/installDebug.txt
+- docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/start.xml
+- docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/training.xml
+- docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/nutrition.xml
+- docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/progress.xml
+- docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/coach.xml
+- docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/settings.xml
+- docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/start-return.xml
+- docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/logcat-font15-audit.txt
+- docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/font15-a11y-audit-summary.txt
+- docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/touch-target-under-48dp.txt
+- docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/naf-matches.txt
+- docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/unlabeled-interactive.txt
+- docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/text-bounds-suspects.txt
+
+## 2026-05-29 AI camera scanner modes loop
+
+- docs/qa/evidence/2026-05-29-ai-camera-scanner-modes-loop/summary.txt
+- docs/qa/evidence/2026-05-29-ai-camera-scanner-modes-loop/started.txt
+- docs/qa/evidence/2026-05-29-ai-camera-scanner-modes-loop/adb-uninstall-com.trainiq.txt
+- docs/qa/evidence/2026-05-29-ai-camera-scanner-modes-loop/adb-uninstall-com.trainiq.test.txt
+- docs/qa/evidence/2026-05-29-ai-camera-scanner-modes-loop/AiCameraScannerModesInstrumentedTest.txt
+- docs/qa/evidence/2026-05-29-ai-camera-scanner-modes-loop/AiCameraScannerModesInstrumentedTest-after-camera-bind-disable.txt
+- docs/qa/evidence/2026-05-29-ai-camera-scanner-modes-loop/AiCameraScannerModesInstrumentedTest-final.txt
+- docs/qa/evidence/2026-05-29-ai-camera-scanner-modes-loop/AiCameraScannerModesInstrumentedTest-after-permission-override.txt
+- docs/qa/evidence/2026-05-29-ai-camera-scanner-modes-loop/logcat-after-initial-crash.txt
+- docs/qa/evidence/2026-05-29-ai-camera-scanner-modes-loop/testDebugUnitTest.txt
+- docs/qa/evidence/2026-05-29-ai-camera-scanner-modes-loop/lintDebug.txt
+- docs/qa/evidence/2026-05-29-ai-camera-scanner-modes-loop/assembleDebug.txt
+- docs/qa/evidence/2026-05-29-ai-camera-scanner-modes-loop/connectedDebugAndroidTest-full.txt
+
+## 2026-05-29 Current release readiness refresh
+
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh/summary.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh/started.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh/adb-devices.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh/git-head.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh/version-source.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh/checkReleaseSigningReadiness.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh/assembleRelease.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh/installRelease.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh/launch-release.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh/uiautomator-dump-command.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh/uiautomator-pull-command.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh/trainiq-current-release-smoke.xml
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh/ui-smoke-key-lines.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh/logcat-release.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh/logcat-release-crash-anr-matches.txt
+
+## 2026-05-29 Generated routine preview runtime loop
+
+- docs/qa/evidence/2026-05-29-generated-routine-preview-runtime-loop/summary.txt
+- docs/qa/evidence/2026-05-29-generated-routine-preview-runtime-loop/GeneratedRoutinePreviewInstrumentedTest.txt
+- docs/qa/evidence/2026-05-29-generated-routine-preview-runtime-loop/testDebugUnitTest.txt
+- docs/qa/evidence/2026-05-29-generated-routine-preview-runtime-loop/lintDebug.txt
+- docs/qa/evidence/2026-05-29-generated-routine-preview-runtime-loop/assembleDebug.txt
+- docs/qa/evidence/2026-05-29-generated-routine-preview-runtime-loop/connectedDebugAndroidTest-full.txt
+- docs/qa/evidence/2026-05-29-generated-routine-preview-runtime-loop/started.txt
+
+## 2026-05-29 Health Connect rationale CTA loop
+
+- docs/qa/evidence/2026-05-29-health-connect-rationale-cta-loop/summary.txt
+- docs/qa/evidence/2026-05-29-health-connect-rationale-cta-loop/connected-health-rationale-targeted.txt
+- docs/qa/evidence/2026-05-29-health-connect-rationale-cta-loop/test-debug-unit.txt
+- docs/qa/evidence/2026-05-29-health-connect-rationale-cta-loop/lint-debug.txt
+- docs/qa/evidence/2026-05-29-health-connect-rationale-cta-loop/assemble-debug.txt
+- docs/qa/evidence/2026-05-29-health-connect-rationale-cta-loop/started.txt
+
+## 2026-05-29 AI provider router loop
+
+- docs/qa/evidence/2026-05-29-ai-provider-router-loop/summary.txt
+- docs/qa/evidence/2026-05-29-ai-provider-router-loop/AiProviderRouterTest.txt
+- docs/qa/evidence/2026-05-29-ai-provider-router-loop/AiProviderRouterTest-after-provider-throttle-fix.txt
+- docs/qa/evidence/2026-05-29-ai-provider-router-loop/AiProviderRouterTest-after-expectation-fix.txt
+- docs/qa/evidence/2026-05-29-ai-provider-router-loop/ai-services-tests-after-router-fix.txt
+- docs/qa/evidence/2026-05-29-ai-provider-router-loop/compileDebugKotlin-after-router-fix.txt
+- docs/qa/evidence/2026-05-29-ai-provider-router-loop/testDebugUnitTest-after-router-fix.txt
+- docs/qa/evidence/2026-05-29-ai-provider-router-loop/lintDebug-after-router-fix.txt
+- docs/qa/evidence/2026-05-29-ai-provider-router-loop/assembleDebug-after-router-fix.txt
+
+## 2026-05-29 Barcode offline runtime lookup loop
+
+- docs/qa/evidence/2026-05-29-barcode-offline-runtime-loop/summary.txt
+- docs/qa/evidence/2026-05-29-barcode-offline-runtime-loop/BarcodeProductLookupServiceTest.txt
+- docs/qa/evidence/2026-05-29-barcode-offline-runtime-loop/BarcodeProductLookupServiceTest-after-fake-connection-fix.txt
+- docs/qa/evidence/2026-05-29-barcode-offline-runtime-loop/testDebugUnitTest-after-barcode-offline.txt
+- docs/qa/evidence/2026-05-29-barcode-offline-runtime-loop/lintDebug-after-barcode-offline.txt
+- docs/qa/evidence/2026-05-29-barcode-offline-runtime-loop/assembleDebug-after-barcode-offline.txt
+
+## 2026-05-29 Scanner savedStateHandle runtime loop
+
+- docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/summary.txt
+- docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/compileDebugAndroidTestKotlin.txt
+- docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/ScannerSavedStateHandleInstrumentedTest.txt
+- docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/adb-uninstall-com.trainiq-before-rerun.txt
+- docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/adb-uninstall-com.trainiq.test-before-rerun.txt
+- docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/ScannerSavedStateHandleInstrumentedTest-rerun-after-uninstall.txt
+- docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/compileDebugAndroidTestKotlin-after-null-clear-fix.txt
+- docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/ScannerSavedStateHandleInstrumentedTest-final.txt
+- docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/ScannerModeRouteTest-after-clear-fix.txt
+- docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/compile-after-clear-fix.txt
+- docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/compile-after-clear-fix-rerun.txt
+- docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/adb-uninstall-com.trainiq-before-final-rerun.txt
+- docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/adb-uninstall-com.trainiq.test-before-final-rerun.txt
+- docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/ScannerSavedStateHandleInstrumentedTest-after-clear-fix.txt
+- docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/testDebugUnitTest-after-clear-fix.txt
+- docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/connectedDebugAndroidTest-after-clear-fix.txt
+- docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/ActiveWorkoutSetActionsInstrumentedTest-rerun-after-suite-failure.txt
+- docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/adb-uninstall-com.trainiq-before-full-rerun.txt
+- docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/adb-uninstall-com.trainiq.test-before-full-rerun.txt
+- docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/connectedDebugAndroidTest-full-rerun-after-uninstall.txt
+- docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/lintDebug-after-clear-fix.txt
+
+## 2026-05-29 Direct APK readiness refresh
+
+- docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/summary.txt
+- docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/assembleDebug.txt
+- docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/testDebugUnitTest.txt
+- docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/lintDebug.txt
+- docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/checkReleaseSigningReadiness.txt
+- docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/assembleRelease.txt
+- docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/connectedDebugAndroidTest.txt
+- docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/adb-uninstall-com.trainiq-before-connected-rerun.txt
+- docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/adb-uninstall-com.trainiq.test-before-connected-rerun.txt
+- docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/connectedDebugAndroidTest-rerun-after-uninstall.txt
+- docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/installRelease.txt
+- docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/launch-release-smoke.txt
+- docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/trainiq-release-smoke.xml
+- docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/logcat-release-smoke.txt
+- docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/logcat-release-crash-matches.txt
 
 ## 2026-05-28 Direct APK readiness refresh
 
@@ -506,3 +1673,439 @@ Next
 - docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/trainiq-final-room-v14-smoke.xml
 - docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/logcat-final-room-v14-smoke.txt
 - docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/logcat-final-room-v14-crash-matches.txt
+
+
+
+
+
+
+
+
+
+## 2026-05-29 Profileable active-workout benchmark loop
+
+- Finding: QA-2026-05-29-006 profileable active-workout benchmark seed/launch ANR and harness flake fixed.
+- Result: targeted active-workout Macrobenchmark passed 1/1 with explicit EMULATOR suppression; post-benchmark strict TrainIQ crash/ANR/security scan returned no matches.
+
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/adb-ls-data-anr.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/adb-ls-data-anr-after-fix.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/adb-root-for-anr-after-fix.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/anr_2026-05-29-02-36-24-327.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/anr_2026-05-29-02-39-51-690.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/clean-profileable-dump-command.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/clean-profileable-launch-no-seed.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/compile-install-profileable-after-seed-task-fix.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/compile-install-profileable-after-seed-thread-fix.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/compileProfileableJavaWithJavac-after-active-benchmark-wait-fix.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/connectedProfileableAndroidTest-active-workout-after-seed-task-fix-emulator-suppressed.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/connectedProfileableAndroidTest-active-workout-after-wait-fix-emulator-suppressed.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/connectedProfileableAndroidTest-active-workout-emulator-suppressed.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/connectedProfileableAndroidTest-active-workout-filtered-emulator-suppressed.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/connectedProfileableAndroidTest-active-workout-filtered-emulator-suppressed-quoted.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/dump-after-training-start-correct-tap-task-fix-command.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/dump-after-training-start-tap-task-fix-command.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/dump-seeded-launch-after-fix-command.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/dump-seeded-launch-after-task-fix-command.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/dump-seeded-launch-command.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/dump-training-after-seed-task-fix-command.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/installProfileable-for-active-workout-ui-probe.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/launch-after-seed-active-workout-ui-probe.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/launch-after-seed-task-fix.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/launch-after-seed-thread-fix.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/logcat-actionable-matches-after-active-workout-benchmark-fail.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/logcat-actionable-matches-after-active-workout-benchmark-wait-fix.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/logcat-actionable-matches-clean-profileable-launch-no-seed.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/logcat-actionable-matches-seeded-launch.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/logcat-actionable-matches-seeded-launch-after-seed-thread-fix.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/logcat-actionable-matches-seeded-launch-after-task-fix.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/logcat-after-active-workout-benchmark-fail.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/logcat-after-active-workout-benchmark-wait-fix.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/logcat-clean-profileable-launch-no-seed.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/logcat-seeded-launch.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/logcat-seeded-launch-after-seed-thread-fix.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/logcat-seeded-launch-after-task-fix.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/macrobenchmark-active-workout-after-wait-fix-additional-output-files.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/macrobenchmark-active-workout-after-wait-fix-metrics.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/macrobenchmark-active-workout-after-wait-fix-report.xml
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/pm-clear-before-clean-profileable-launch.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/pm-clear-before-seeded-launch-after-task-fix.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/pull-after-training-start-correct-tap-task-fix-dump.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/pull-after-training-start-tap-task-fix-dump.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/pull-clean-profileable-launch-dump.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/pull-seeded-launch-after-fix-dump.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/pull-seeded-launch-after-task-fix-dump.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/pull-seeded-launch-dump.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/pull-training-after-seed-task-fix-dump.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/regression-after-active-workout-profileable-benchmark-fix.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/seed-active-workout-after-seed-thread-fix.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/seed-active-workout-after-task-fix.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/seed-active-workout-ui-probe.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/summary.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/uiautomator-dump-after-active-workout-benchmark-fail.xml
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/uiautomator-dump-after-active-workout-benchmark-fail-command.txt
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/uiautomator-dump-after-training-start-correct-tap-task-fix.xml
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/uiautomator-dump-after-training-start-tap-task-fix.xml
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/uiautomator-dump-clean-profileable-launch.xml
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/uiautomator-dump-seeded-launch-after-fix.xml
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/uiautomator-dump-seeded-launch-after-task-fix.xml
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/uiautomator-dump-training-after-seed-task-fix.xml
+- docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/uiautomator-pull-after-active-workout-benchmark-fail.txt
+
+
+## 2026-05-29 Current release readiness refresh loop
+
+- Finding: QA-2026-05-29-007 release cold-launch early accessibility dump ANR fixed.
+- Result: current release signing/build/install passed; post-fix release cold launch plus early UIAutomator dump had no strict TrainIQ crash/ANR/security matches.
+
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/checkReleaseSigningReadiness-assembleRelease.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/compileReleaseKotlin-assembleRelease-after-home-startup-dispatcher-fix.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/installRelease.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/installRelease-after-home-startup-dispatcher-fix.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/launch-release-cold.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/launch-release-cold-after-home-startup-dispatcher-fix.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/launch-release-cold-delayed-dump-repro.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/launch-release-cold-no-dump-repro.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/logcat-actionable-matches-release-cold.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/logcat-actionable-matches-release-cold-after-home-startup-dispatcher-fix.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/logcat-actionable-matches-release-cold-delayed-dump-repro.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/logcat-actionable-matches-release-cold-no-dump-repro.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/logcat-release-cold.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/logcat-release-cold-after-home-startup-dispatcher-fix.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/logcat-release-cold-delayed-dump-repro.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/logcat-release-cold-no-dump-repro.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/pm-clear-release.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/pm-clear-release-after-home-startup-dispatcher-fix.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/pm-clear-release-delayed-dump-repro.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/pm-clear-release-no-dump-repro.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/regression-after-release-cold-startup-dispatcher-fix.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/summary.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/uiautomator-dump-release.xml
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/uiautomator-dump-release-after-home-startup-dispatcher-fix.xml
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/uiautomator-dump-release-after-home-startup-dispatcher-fix-command.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/uiautomator-dump-release-command.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/uiautomator-dump-release-delayed.xml
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/uiautomator-dump-release-delayed-command.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/uiautomator-pull-release.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/uiautomator-pull-release-after-home-startup-dispatcher-fix.txt
+- docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/uiautomator-pull-release-delayed.txt
+
+
+## 2026-05-29 Profileable cold-start benchmark loop
+
+- Result: targeted profileable cold-start Macrobenchmark passed 1/1 with explicit EMULATOR suppression after uninstalling stale release-signed packages from the emulator.
+- Post-benchmark strict TrainIQ crash/ANR/security scan returned no matches.
+
+- docs/qa/evidence/2026-05-29-profileable-cold-start-benchmark-loop/adb-uninstall-com.trainiq.macrobenchmark-before-cold-start-rerun.txt
+- docs/qa/evidence/2026-05-29-profileable-cold-start-benchmark-loop/adb-uninstall-com.trainiq-before-cold-start-rerun.txt
+- docs/qa/evidence/2026-05-29-profileable-cold-start-benchmark-loop/connectedProfileableAndroidTest-cold-start-after-uninstall-emulator-suppressed.txt
+- docs/qa/evidence/2026-05-29-profileable-cold-start-benchmark-loop/connectedProfileableAndroidTest-cold-start-emulator-suppressed.txt
+- docs/qa/evidence/2026-05-29-profileable-cold-start-benchmark-loop/logcat-actionable-matches-after-cold-start-benchmark.txt
+- docs/qa/evidence/2026-05-29-profileable-cold-start-benchmark-loop/logcat-after-cold-start-benchmark.txt
+- docs/qa/evidence/2026-05-29-profileable-cold-start-benchmark-loop/macrobenchmark-cold-start-additional-output-files.txt
+- docs/qa/evidence/2026-05-29-profileable-cold-start-benchmark-loop/macrobenchmark-cold-start-after-uninstall-report.xml
+- docs/qa/evidence/2026-05-29-profileable-cold-start-benchmark-loop/macrobenchmark-cold-start-metrics.txt
+- docs/qa/evidence/2026-05-29-profileable-cold-start-benchmark-loop/regression-after-profileable-cold-start-benchmark.txt
+- docs/qa/evidence/2026-05-29-profileable-cold-start-benchmark-loop/summary.txt
+
+
+## 2026-05-29 Release dark/font-scale startup loop
+
+- Finding: QA-2026-05-29-008 release dark/font-scale startup ANR fixed.
+- Result: post-fix release dark/font-scale cold launch stayed strict TrainIQ crash/ANR/security-clean; top-level dump traversal remains partial due Pixel Launcher system ANR overlay.
+
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/assemble-install-release.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/compile-install-release-after-delayed-home-health-refresh.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/compile-install-release-after-delayed-startup-diagnostics.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/compile-install-release-after-static-home-startup-placeholder.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/delayed-diagnostics-coach.xml
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/delayed-diagnostics-more.xml
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/delayed-diagnostics-nutrition.xml
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/delayed-diagnostics-start.xml
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/delayed-diagnostics-start-return.xml
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/delayed-diagnostics-training.xml
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dismiss-system-dialog-back.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-coach-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-delayed-diagnostics-coach-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-delayed-diagnostics-more-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-delayed-diagnostics-nutrition-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-delayed-diagnostics-start-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-delayed-diagnostics-start-return-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-delayed-diagnostics-training-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-final-coach-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-final-more-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-final-nutrition-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-final-start-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-final-start-return-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-final-training-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-more-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-nutrition-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-start-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-start-return-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-training-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-valid-coach-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-valid-more-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-valid-nutrition-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-valid-start-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-valid-start-return-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/dump-valid-training-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/final-coach.xml
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/final-more.xml
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/final-nutrition.xml
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/final-start.xml
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/final-start-return.xml
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/final-training.xml
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/force-stop-nexuslauncher-before-final-rerun.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/launch-after-delayed-diagnostics-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/launch-dark-font13-after-delayed-diagnostics.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/launch-dark-font13-after-delayed-refresh.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/launch-dark-font13-after-static-placeholder.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/launch-dark-font13-no-dump-repro.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/launch-final-dark-font13-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/launch-release-dark-font13.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/launch-valid-dark-font13-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/logcat-actionable-matches-dark-font13-after-delayed-diagnostics.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/logcat-actionable-matches-dark-font13-after-delayed-refresh.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/logcat-actionable-matches-dark-font13-after-static-placeholder.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/logcat-actionable-matches-dark-font13-no-dump-repro.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/logcat-actionable-matches-final-release-dark-font13-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/logcat-actionable-matches-release-dark-font13-after-delayed-diagnostics-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/logcat-actionable-matches-release-dark-font13-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/logcat-actionable-matches-valid-release-dark-font13-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/logcat-dark-font13-after-delayed-diagnostics.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/logcat-dark-font13-after-delayed-refresh.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/logcat-dark-font13-after-static-placeholder.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/logcat-dark-font13-no-dump-repro.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/logcat-final-release-dark-font13-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/logcat-release-dark-font13-after-delayed-diagnostics-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/logcat-release-dark-font13-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/logcat-valid-release-dark-font13-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/nutrition.xml
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/original-font-scale.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/original-night-mode.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pm-clear-after-delayed-diagnostics-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pm-clear-dark-font13-after-delayed-diagnostics.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pm-clear-dark-font13-after-delayed-refresh.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pm-clear-dark-font13-after-static-placeholder.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pm-clear-dark-font13-no-dump-repro.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pm-clear-final-dark-font13-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pm-clear-release-dark-font13.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pm-clear-valid-dark-font13-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-coach.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-delayed-diagnostics-coach.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-delayed-diagnostics-more.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-delayed-diagnostics-nutrition.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-delayed-diagnostics-start.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-delayed-diagnostics-start-return.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-delayed-diagnostics-training.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-final-coach.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-final-more.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-final-nutrition.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-final-start.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-final-start-return.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-final-training.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-more.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-nutrition.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-start.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-start-return.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-training.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-valid-coach.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-valid-more.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-valid-nutrition.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-valid-start.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-valid-start-return.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/pull-valid-training.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/regression-after-release-dark-font13-startup-fix.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/restore-font-after-delayed-diagnostics.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/restore-font-after-delayed-diagnostics-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/restore-font-after-delayed-refresh.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/restore-font-after-no-dump.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/restore-font-after-static-placeholder.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/restore-font-final-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/restore-font-scale-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/restore-font-valid-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/restore-night-after-delayed-diagnostics.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/restore-night-after-delayed-diagnostics-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/restore-night-after-delayed-refresh.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/restore-night-after-no-dump.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/restore-night-after-static-placeholder.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/restore-night-final-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/restore-night-mode-command.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/restore-night-valid-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/set-font13-after-delayed-diagnostics.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/set-font13-after-delayed-diagnostics-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/set-font13-after-delayed-refresh.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/set-font13-after-static-placeholder.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/set-font13-final-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/set-font13-isolation.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/set-font13-valid-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/set-night-after-delayed-diagnostics.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/set-night-after-delayed-diagnostics-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/set-night-after-delayed-refresh.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/set-night-after-static-placeholder.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/set-night-final-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/set-night-isolation.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/set-night-mode.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/set-night-valid-topnav.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/start-return.xml
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/summary.txt
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/valid-coach.xml
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/valid-more.xml
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/valid-nutrition.xml
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/valid-start-return.xml
+- docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/valid-training.xml
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-activity-service-check-after-cold-restart.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-activity-service-check-after-reboot.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-activity-service-check-after-wipe-start.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-activity-service-check-before-reboot.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-boot-wait-after-cold-restart.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-boot-wait-after-reboot.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-boot-wait-after-wipe-start.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-devices-after-cold-restart.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-devices-after-emulator-reboot.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-devices-after-wipe-start.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-devices-before-emulator-reboot.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-emu-avd-name-before-cold-restart.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-emu-kill-before-wipe-start.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-emu-kill.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-package-service-check-after-cold-restart.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-package-service-check-after-reboot.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-package-service-check-after-wipe-start.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-package-service-check-before-reboot.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-reboot-command.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-uninstall-com.trainiq-before-connected-rerun.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-uninstall-com.trainiq-before-connected.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-uninstall-com.trainiq.test-before-connected-rerun.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-uninstall-com.trainiq.test-before-connected.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/connectedDebugAndroidTest-active-workout-set-actions-targeted-after-delete-state-wait.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/connectedDebugAndroidTest-active-workout-set-actions-targeted-after-import-fix.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/connectedDebugAndroidTest-active-workout-set-actions-targeted-after-wait-fix-quoted.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/connectedDebugAndroidTest-active-workout-set-actions-targeted-after-wait-fix.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/connectedDebugAndroidTest-full-after-active-set-wait-fix.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/connectedDebugAndroidTest-full-after-delete-state-wait.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/connectedDebugAndroidTest-full-after-emulator-wipe-rerun.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/connectedDebugAndroidTest-full-after-startup-fixes.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/emulator-processes-after-emu-kill.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/emulator-processes-before-cold-restart.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/logcat-actionable-matches-after-active-workout-set-actions-targeted-delete-state-wait.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/logcat-actionable-matches-after-active-workout-set-actions-targeted-import-fix.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/logcat-actionable-matches-after-active-workout-set-actions-targeted-quoted.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/logcat-actionable-matches-after-active-workout-set-actions-targeted.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/logcat-actionable-matches-after-connectedDebugAndroidTest-full-after-active-set-wait-fix.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/logcat-actionable-matches-after-connectedDebugAndroidTest-full-after-delete-state-wait.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/logcat-actionable-matches-after-connectedDebugAndroidTest-full-rerun.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/logcat-actionable-matches-after-connectedDebugAndroidTest-full.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/logcat-after-active-workout-set-actions-targeted-delete-state-wait.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/logcat-after-active-workout-set-actions-targeted-import-fix.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/logcat-after-active-workout-set-actions-targeted-quoted.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/logcat-after-active-workout-set-actions-targeted.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/logcat-after-connectedDebugAndroidTest-full-after-active-set-wait-fix.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/logcat-after-connectedDebugAndroidTest-full-after-delete-state-wait.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/logcat-after-connectedDebugAndroidTest-full-rerun.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/logcat-after-connectedDebugAndroidTest-full.txt
+- docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/summary.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/adb-devices-before-release-smoke.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/app-version-config.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/assembleRelease.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/checkReleaseSigningReadiness.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/dump-coach-command.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/dump-more-command.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/dump-nutrition-command.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/dump-start-command.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/dump-start-return-command.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/dump-training-command.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/git-head-short.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/git-status-before-release-smoke.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/installRelease.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/launch-release-cold.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/logcat-actionable-matches-release-cold-start.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/logcat-actionable-matches-release-topnav.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/logcat-release-cold-start.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/logcat-release-topnav.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/pm-clear-release.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/pull-coach-png.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/pull-coach-xml.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/pull-more-png.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/pull-more-xml.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/pull-nutrition-png.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/pull-nutrition-xml.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/pull-release-start-png.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/pull-release-start-xml.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/pull-start-return-png.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/pull-start-return-xml.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/pull-training-png.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/pull-training-xml.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/regression-unit-lint-assembleDebug.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/release-coach.png
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/release-coach.xml
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/release-more.png
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/release-more.xml
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/release-nutrition.png
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/release-nutrition.xml
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/release-start-return.png
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/release-start-return.xml
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/release-start.png
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/release-start.xml
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/release-training.png
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/release-training.xml
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/screencap-coach-command.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/screencap-more-command.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/screencap-nutrition-command.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/screencap-start-command.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/screencap-start-return-command.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/screencap-training-command.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/summary.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/tap-coach.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/tap-more.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/tap-nutrition.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/tap-start-return.txt
+- docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/tap-training.txt
+- docs/qa/evidence/2026-05-29-release-artifact-secret-safety-loop/release-apk-entry-stream-secret-scan-matches.txt
+- docs/qa/evidence/2026-05-29-release-artifact-secret-safety-loop/release-apk-entry-stream-secret-scan-summary.txt
+- docs/qa/evidence/2026-05-29-release-artifact-secret-safety-loop/release-apk-extracted-secret-scan-matches.txt
+- docs/qa/evidence/2026-05-29-release-artifact-secret-safety-loop/release-apk-extracted-secret-scan-summary.txt
+- docs/qa/evidence/2026-05-29-release-artifact-secret-safety-loop/release-apk-file-info.txt
+- docs/qa/evidence/2026-05-29-release-artifact-secret-safety-loop/release-apk-zip-entries.txt
+- docs/qa/evidence/2026-05-29-release-artifact-secret-safety-loop/release-artifact-secret-scan-command.txt
+- docs/qa/evidence/2026-05-29-release-artifact-secret-safety-loop/release-artifact-secret-scan.txt
+- docs/qa/evidence/2026-05-29-release-artifact-secret-safety-loop/summary.txt
+- docs/qa/evidence/2026-05-29-release-ui-dump-accessibility-static-audit-loop/effective-label-summary-metrics.txt
+- docs/qa/evidence/2026-05-29-release-ui-dump-accessibility-static-audit-loop/release-ui-clickable-focusable-nodes.txt
+- docs/qa/evidence/2026-05-29-release-ui-dump-accessibility-static-audit-loop/release-ui-effective-labels-clickable-focusable.txt
+- docs/qa/evidence/2026-05-29-release-ui-dump-accessibility-static-audit-loop/release-ui-effective-unlabeled-clickable-focusable.txt
+- docs/qa/evidence/2026-05-29-release-ui-dump-accessibility-static-audit-loop/release-ui-naf-nodes.txt
+- docs/qa/evidence/2026-05-29-release-ui-dump-accessibility-static-audit-loop/release-ui-under-48px-clickable-focusable.txt
+- docs/qa/evidence/2026-05-29-release-ui-dump-accessibility-static-audit-loop/release-ui-unlabeled-clickable-focusable.txt
+- docs/qa/evidence/2026-05-29-release-ui-dump-accessibility-static-audit-loop/summary-metrics.txt
+- docs/qa/evidence/2026-05-29-release-ui-dump-accessibility-static-audit-loop/summary.txt
+- docs/qa/evidence/2026-05-29-release-baseline-profile-artifact-loop/assembleRelease-and-macrobenchmark-compile.txt
+- docs/qa/evidence/2026-05-29-release-baseline-profile-artifact-loop/git-head-short.txt
+- docs/qa/evidence/2026-05-29-release-baseline-profile-artifact-loop/git-status-before-baseline-profile-artifact-check.txt
+- docs/qa/evidence/2026-05-29-release-baseline-profile-artifact-loop/profile-config-search.txt
+- docs/qa/evidence/2026-05-29-release-baseline-profile-artifact-loop/release-apk-baseline-profile-entries.txt
+- docs/qa/evidence/2026-05-29-release-baseline-profile-artifact-loop/release-apk-file-info.txt
+- docs/qa/evidence/2026-05-29-release-baseline-profile-artifact-loop/source-baseline-prof.txt
+- docs/qa/evidence/2026-05-29-release-baseline-profile-artifact-loop/summary.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/adb-devices.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/adb-install-archived-release.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/adb-install-current-release-over-archived-release.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/adb-uninstall-before-archived-release.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/apksigner-app-release.apk.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/apksigner-TrainIQ-1.0.1-A-release-signed.apk.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/badging-app-release.apk.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/badging-TrainIQ-1.0.1-A-release-signed.apk.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/dump-archived-release-command.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/dump-current-release-after-overinstall-command.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/git-head-short.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/git-status-before-overinstall.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/launch-archived-release.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/launch-current-release-after-overinstall.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/logcat-actionable-matches-current-release-after-overinstall.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/logcat-current-release-after-overinstall.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/pm-clear-archived-release.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/pull-archived-release-xml.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/pull-current-release-after-overinstall-xml.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/sha256-app-release.apk.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/sha256-TrainIQ-1.0.1-A-release-signed.apk.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/summary.txt
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/trainiq-archived-release.xml
+- docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/trainiq-current-release-after-overinstall.xml

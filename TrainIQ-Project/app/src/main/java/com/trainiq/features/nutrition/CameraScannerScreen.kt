@@ -385,7 +385,7 @@ private fun ScreenUiState<CameraUiContent>.cameraScannerStateOrPreview(): Camera
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CameraScannerScreen(
+internal fun CameraScannerScreen(
     uiState: CameraScannerUiState,
     scannerMode: ScannerMode,
     onAnalyze: (String) -> Unit,
@@ -395,6 +395,8 @@ private fun CameraScannerScreen(
     onReviewScaleMeasurement: (BodyMeasurementPhotoResult) -> Unit,
     onBack: () -> Unit,
     onBarcodeScanned: (String) -> Unit,
+    bindCameraPreview: Boolean = true,
+    initialCameraPermissionGranted: Boolean? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -402,7 +404,7 @@ private fun CameraScannerScreen(
     val hasCameraFeature = remember(context) { isCameraFeatureAvailable(context.packageManager) }
     var hasPermission by rememberSaveable {
         mutableStateOf(
-            isCameraPermissionGranted(
+            initialCameraPermissionGranted ?: isCameraPermissionGranted(
                 ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA),
             ),
         )
@@ -426,19 +428,23 @@ private fun CameraScannerScreen(
             }
     }
 
-    val controller = remember(context, scannerMode) {
-        LifecycleCameraController(context).apply {
-            setEnabledUseCases(
-                if (scannerMode == ScannerMode.BARCODE) CameraController.IMAGE_ANALYSIS
-                else CameraController.IMAGE_CAPTURE,
-            )
-            cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+    val controller = remember(context, scannerMode, bindCameraPreview) {
+        if (bindCameraPreview) {
+            LifecycleCameraController(context).apply {
+                setEnabledUseCases(
+                    if (scannerMode == ScannerMode.BARCODE) CameraController.IMAGE_ANALYSIS
+                    else CameraController.IMAGE_CAPTURE,
+                )
+                cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+            }
+        } else {
+            null
         }
     }
 
-    DisposableEffect(controller, lifecycleOwner, hasPermission, hasCameraFeature, scannerMode) {
+    DisposableEffect(controller, lifecycleOwner, hasPermission, hasCameraFeature, scannerMode, bindCameraPreview) {
         var scanner: com.google.mlkit.vision.barcode.BarcodeScanner? = null
-        if (hasPermission && hasCameraFeature) {
+        if (hasPermission && hasCameraFeature && controller != null) {
             val bound = runCatching { controller.bindToLifecycle(lifecycleOwner) }
                 .onFailure {
                     restorableState = restorableState.copy(
@@ -464,7 +470,7 @@ private fun CameraScannerScreen(
             }
         }
         onDispose {
-            controller.clearImageAnalysisAnalyzer()
+            controller?.clearImageAnalysisAnalyzer()
             scanner?.close()
         }
     }
@@ -502,7 +508,7 @@ private fun CameraScannerScreen(
             )
         } else {
             Box(modifier = Modifier.fillMaxSize()) {
-                if (!showCameraFallback) {
+                if (!showCameraFallback && controller != null) {
                     AndroidView(
                         factory = { previewContext ->
                             PreviewView(previewContext).apply {
@@ -606,9 +612,17 @@ private fun CameraScannerScreen(
                                         if (isCapturing) return@Button
                                         restorableState = restorableState.copy(cameraError = null)
                                         isCapturing = true
+                                        val activeController = controller
+                                        if (activeController == null) {
+                                            isCapturing = false
+                                            restorableState = restorableState.copy(
+                                                cameraError = scannerCameraBindFailureMessage(scannerMode),
+                                            )
+                                            return@Button
+                                        }
                                         takeScannerPhoto(
                                             context = context,
-                                            controller = controller,
+                                            controller = activeController,
                                             onPhotoSaved = {
                                                 isCapturing = false
                                                 onAnalyze(it)

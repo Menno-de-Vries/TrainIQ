@@ -11,6 +11,7 @@ import androidx.benchmark.macro.junit4.MacrobenchmarkRule;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.uiautomator.By;
 import androidx.test.uiautomator.Direction;
+import androidx.test.uiautomator.StaleObjectException;
 import androidx.test.uiautomator.UiObject2;
 import androidx.test.uiautomator.UiDevice;
 import androidx.test.uiautomator.Until;
@@ -112,7 +113,7 @@ public class TrainIqStartupBenchmark {
         tapAnyText(device, "Voeding");
         tapAnyText(device, "Coach");
         tapAnyText(device, "Meer", "Instellingen");
-        tapAnyText(device, "Instellingen");
+        requireAnyText(device, "Instellingen", "Health Connect, AI en voorkeuren");
         device.waitForIdle();
         if (device.findObject(By.scrollable(true)) != null) {
             device.findObject(By.scrollable(true)).scroll(Direction.DOWN, 0.7f);
@@ -151,11 +152,17 @@ public class TrainIqStartupBenchmark {
     }
 
     private static void tapAnyText(UiDevice device, String... labels) {
-        for (String label : labels) {
-            if (device.wait(Until.hasObject(By.text(label)), 1_000L)) {
-                clickNearestClickable(device.findObject(By.text(label)));
-                device.waitForIdle();
-                return;
+        for (int attempt = 0; attempt < 10; attempt++) {
+            for (String label : labels) {
+                if (device.wait(Until.hasObject(By.text(label)), 1_500L)) {
+                    try {
+                        clickNearestClickable(device.findObject(By.text(label)));
+                        device.waitForIdle();
+                        return;
+                    } catch (StaleObjectException exception) {
+                        device.waitForIdle();
+                    }
+                }
             }
         }
         throw new AssertionError("Required benchmark target not found: " + String.join(" or ", labels));

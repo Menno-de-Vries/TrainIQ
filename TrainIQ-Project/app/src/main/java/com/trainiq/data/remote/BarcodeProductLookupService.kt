@@ -5,6 +5,7 @@ import com.trainiq.domain.model.BarcodeProductLookupResult
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.net.URLConnection
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
@@ -12,23 +13,32 @@ import kotlinx.coroutines.withContext
 
 @Singleton
 class BarcodeProductLookupService @Inject constructor() {
-    suspend fun lookup(barcode: String): BarcodeProductLookupResult? = withContext(Dispatchers.IO) {
-        val cleanBarcode = barcode.filter(Char::isDigit).takeIf { it.length in 8..14 } ?: return@withContext null
-        runCatching {
-            val encodedBarcode = URLEncoder.encode(cleanBarcode, Charsets.UTF_8.name())
-            val url = URL("$OpenFoodFactsBaseUrl$encodedBarcode.json?fields=status,product_name,nutriments")
-            val connection = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 5_000
-                readTimeout = 5_000
-                setRequestProperty("Accept", "application/json")
-                setRequestProperty("User-Agent", "TrainIQ Android - barcode nutrition lookup")
-            }
+    suspend fun lookup(barcode: String): BarcodeProductLookupResult? = lookupOpenFoodFactsProduct(barcode)
+}
+
+internal suspend fun lookupOpenFoodFactsProduct(
+    barcode: String,
+    openConnection: (URL) -> URLConnection = URL::openConnection,
+): BarcodeProductLookupResult? = withContext(Dispatchers.IO) {
+    val cleanBarcode = barcode.filter(Char::isDigit).takeIf { it.length in 8..14 } ?: return@withContext null
+    runCatching {
+        val encodedBarcode = URLEncoder.encode(cleanBarcode, Charsets.UTF_8.name())
+        val url = URL("$OpenFoodFactsBaseUrl$encodedBarcode.json?fields=status,product_name,nutriments")
+        val connection = (openConnection(url) as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 5_000
+            readTimeout = 5_000
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("User-Agent", "TrainIQ Android - barcode nutrition lookup")
+        }
+        try {
             connection.inputStream.bufferedReader().use { reader ->
                 parseOpenFoodFactsProduct(cleanBarcode, reader.readText())
             }
-        }.getOrNull()
-    }
+        } finally {
+            connection.disconnect()
+        }
+    }.getOrNull()
 }
 
 internal fun parseOpenFoodFactsProduct(barcode: String, json: String): BarcodeProductLookupResult? {

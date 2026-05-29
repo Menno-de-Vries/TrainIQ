@@ -112,6 +112,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
@@ -199,7 +200,7 @@ class TrainIqDataCoordinator @Inject constructor(
             streak = computeStreak(snapshot.sessions, snapshot.meals),
             aiInsight = buildDashboardInsight(snapshot, nextWorkout),
         )
-    }
+    }.flowOn(Dispatchers.Default)
 
     suspend fun getHealthConnectStatus(): HealthConnectStatus {
         val status = healthConnectDataSource.getStatus()

@@ -22,6 +22,7 @@ import com.trainiq.navigation.TrainIqWindowWidthClass
 import com.trainiq.navigation.TrainIqApp
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
@@ -52,12 +53,12 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
-        window.decorView.post {
+        window.decorView.postDelayed({
             performanceSessionMonitor.start(this)
-            lifecycleScope.launch {
+            lifecycleScope.launch(Dispatchers.IO) {
                 healthConnectBackgroundSyncScheduler.scheduleIfBackgroundReadAvailable()
             }
-        }
+        }, StartupDiagnosticsDelayMillis)
     }
 
     override fun onResume() {
@@ -71,7 +72,9 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
-        telemetryExporter.flush()
+        lifecycleScope.launch(Dispatchers.IO) {
+            telemetryExporter.flush()
+        }
         super.onStop()
     }
 
@@ -87,3 +90,5 @@ private fun WindowWidthSizeClass.toTrainIqWidthClass(): TrainIqWindowWidthClass 
     WindowWidthSizeClass.Expanded -> TrainIqWindowWidthClass.Expanded
     else -> TrainIqWindowWidthClass.Compact
 }
+
+private const val StartupDiagnosticsDelayMillis = 8_000L

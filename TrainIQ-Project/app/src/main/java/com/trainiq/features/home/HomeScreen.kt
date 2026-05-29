@@ -56,7 +56,6 @@ import com.trainiq.core.health.rememberHealthConnectPermissionRequester
 import com.trainiq.core.theme.spacing
 import com.trainiq.core.ui.PermissionManagerCard
 import com.trainiq.core.ui.ScreenHeader
-import com.trainiq.core.ui.ShimmerCardPlaceholder
 import com.trainiq.core.ui.AppCard
 import com.trainiq.core.ui.AppChip
 import com.trainiq.core.ui.PrimaryActionButton
@@ -83,6 +82,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -126,7 +126,7 @@ class HomeViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            delay(2_000L)
+            delay(8_000L)
             refreshHealthConnectStatus()
         }
     }
@@ -140,7 +140,7 @@ class HomeViewModel @Inject constructor(
 
     fun refreshHealthConnectStatus() {
         if (!healthConnectRefreshGate.tryStart()) return
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 healthConnectStatus.value = runCatching { getHealthConnectStatusUseCase() }.getOrElse {
                     HealthConnectStatus(
@@ -259,7 +259,7 @@ fun HomeScreen(
                     item(span = { GridItemSpan(gridColumns) }) {
                         ScreenHeader(title = "TrainIQ", subtitle = "Vandaag in een slimme cockpit", actionIcon = Icons.Default.Settings, actionContentDescription = "Instellingen openen", onActionClick = onOpenSettings)
                     }
-                    items(4) { ShimmerCardPlaceholder(lineCount = 4, modifier = Modifier.height(170.dp)) }
+                    items(4) { HomeStartupPlaceholder(modifier = Modifier.height(170.dp)) }
                 }
             }
 
@@ -526,6 +526,28 @@ private fun NextWorkoutCard(
                     )
                 }
                 PrimaryActionButton(onClick = { onStartWorkout(dashboard.nextWorkout.id) }, modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) { Text("Training starten") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeStartupPlaceholder(modifier: Modifier = Modifier) {
+    AppCard(modifier = modifier) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            repeat(4) { index ->
+                val widthFraction = when (index) {
+                    0 -> 0.5f
+                    3 -> 0.85f
+                    else -> 1f
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(widthFraction)
+                        .height(if (index == 0) 24.dp else 16.dp)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)),
+                )
             }
         }
     }

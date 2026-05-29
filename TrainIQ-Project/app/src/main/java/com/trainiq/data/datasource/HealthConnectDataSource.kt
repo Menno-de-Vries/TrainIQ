@@ -43,6 +43,8 @@ import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.reflect.KClass
 
 @Singleton
@@ -87,9 +89,9 @@ class HealthConnectDataSource @Inject constructor(
     fun settingsIntent(): Intent =
         Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
-    suspend fun canReadInBackground(): Boolean {
-        if (HealthConnectClient.getSdkStatus(context) != HealthConnectClient.SDK_AVAILABLE) return false
-        return runCatching {
+    suspend fun canReadInBackground(): Boolean = withContext(Dispatchers.IO) {
+        if (HealthConnectClient.getSdkStatus(context) != HealthConnectClient.SDK_AVAILABLE) return@withContext false
+        runCatching {
             val client = HealthConnectClient.getOrCreate(context)
             val featureAvailable = client.features.getFeatureStatus(
                 HealthConnectFeatures.FEATURE_READ_HEALTH_DATA_IN_BACKGROUND,
@@ -99,8 +101,8 @@ class HealthConnectDataSource @Inject constructor(
         }.getOrDefault(false)
     }
 
-    suspend fun getStatus(): HealthConnectStatus {
-        return when (HealthConnectClient.getSdkStatus(context)) {
+    suspend fun getStatus(): HealthConnectStatus = withContext(Dispatchers.IO) {
+        when (HealthConnectClient.getSdkStatus(context)) {
             HealthConnectClient.SDK_UNAVAILABLE -> {
                 preferencesRepository.clearHealthConnectSyncPreferences()
                 HealthConnectStatus(
@@ -358,6 +360,7 @@ class HealthConnectDataSource @Inject constructor(
                     recordType = recordType,
                     timeRangeFilter = timeRangeFilter,
                     pageToken = pageToken,
+                    pageSize = HealthConnectReadPageSize,
                 ),
             )
             records += response.records.map(mapper)
@@ -608,9 +611,9 @@ class HealthConnectDataSource @Inject constructor(
      * Lightweight — only checks SDK status, permissions, and runs one aggregate query.
      * Returns 0 when HC is unavailable or permissions are not granted.
      */
-    suspend fun getTodayStepsLive(): Int {
-        if (HealthConnectClient.getSdkStatus(context) != HealthConnectClient.SDK_AVAILABLE) return 0
-        return runCatching {
+    suspend fun getTodayStepsLive(): Int = withContext(Dispatchers.IO) {
+        if (HealthConnectClient.getSdkStatus(context) != HealthConnectClient.SDK_AVAILABLE) return@withContext 0
+        runCatching {
             val client = HealthConnectClient.getOrCreate(context)
             val granted = client.permissionController.getGrantedPermissions()
             if (!hasHealthConnectPermission(
@@ -628,10 +631,10 @@ class HealthConnectDataSource @Inject constructor(
      * Reads today's step count from the DataStore cache written by the last full/incremental sync.
      * Does not touch the HealthConnectClient — safe to call at repository init time.
      */
-    suspend fun getStepsFromPersistedCache(): Int {
+    suspend fun getStepsFromPersistedCache(): Int = withContext(Dispatchers.IO) {
         val storedState = preferencesRepository.getHealthConnectSyncPreferences()
-        if (storedState.cacheStateJson.isBlank()) return 0
-        return runCatching {
+        if (storedState.cacheStateJson.isBlank()) return@withContext 0
+        runCatching {
             val cacheState = gson.fromJson(storedState.cacheStateJson, HealthConnectCacheState::class.java)
                 ?: return@runCatching 0
             cacheState.prune(Instant.now()).toDomainMetrics().stepsToday
@@ -643,6 +646,10 @@ class HealthConnectDataSource @Inject constructor(
 
     private fun startOfSleepWindow(): Instant =
         LocalDate.now().minusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant()
+
+    private companion object {
+        const val HealthConnectReadPageSize = 100
+    }
 }
 
 internal data class CachedStepRecord(

@@ -614,7 +614,7 @@ internal fun NavBackStackEntry.setBarcodeScanResult(barcode: String) {
 }
 
 internal fun NavBackStackEntry.clearBarcodeScanResult() {
-    savedStateHandle.remove<String>(BarcodeScanResultKey)
+    savedStateHandle[BarcodeScanResultKey] = ""
 }
 
 internal fun NavBackStackEntry.setScaleMeasurementResult(result: com.trainiq.domain.model.BodyMeasurementPhotoResult) {
@@ -625,8 +625,8 @@ internal fun NavBackStackEntry.setScaleMeasurementResult(result: com.trainiq.dom
 }
 
 internal fun NavBackStackEntry.clearScaleMeasurementResult() {
-    savedStateHandle.remove<String>(ScaleWeightResultKey)
-    savedStateHandle.remove<String>(ScaleBodyFatResultKey)
-    savedStateHandle.remove<String>(ScaleMuscleMassResultKey)
-    savedStateHandle.remove<String>(ScaleNotesResultKey)
+    savedStateHandle[ScaleWeightResultKey] = ""
+    savedStateHandle[ScaleBodyFatResultKey] = ""
+    savedStateHandle[ScaleMuscleMassResultKey] = ""
+    savedStateHandle[ScaleNotesResultKey] = ""
 }

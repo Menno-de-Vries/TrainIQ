@@ -181,6 +181,37 @@ Pass criteria:
 Owner decision:
 - `PASS | DEFER | BLOCK`
 
+## 7. True older-version upgrade/persistence
+
+Owner:
+
+Required environment:
+- A lower `versionCode` release APK signed with the same release signing lineage as the current release APK.
+- Safe test profile/device with app data allowed to persist across over-install.
+- Seeded pre-upgrade user data that represents core persisted surfaces.
+
+Runtime cases:
+- Install the lower-version release APK.
+- Seed and reopen representative data before upgrade: profile/settings, training/workout state, nutrition data, progress data and AI/provider settings where safe.
+- Install the current release APK over the lower-version APK without clearing data.
+- Relaunch the current release APK and verify seeded data remains visible and usable.
+- Run a post-upgrade logcat crash/ANR/security scan.
+
+Required evidence:
+- `aapt dump badging` or equivalent version metadata for both APKs.
+- Signing certificate lineage/digest evidence for both APKs.
+- UI dumps/screenshots showing pre-upgrade seeded data and post-upgrade persistence.
+- Install/over-install command output.
+- Post-upgrade logcat and actionable-match scan.
+
+Pass criteria:
+- Current APK installs over the lower-version APK without uninstalling or clearing data.
+- Seeded user data persists and can be reopened after upgrade.
+- No destructive migration, crash, ANR or misleading empty state appears after upgrade.
+
+Owner decision:
+- `PASS | DEFER | BLOCK`
+
 ## Final owner signoff
 
 Overall release decision:

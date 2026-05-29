@@ -21,8 +21,10 @@ import kotlinx.coroutines.runBlocking
 class BenchmarkSeedActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        seedActiveWorkout()
-        finish()
+        Thread {
+            seedActiveWorkout()
+            runOnUiThread { finishAndRemoveTask() }
+        }.start()
     }
 
     private fun seedActiveWorkout() {

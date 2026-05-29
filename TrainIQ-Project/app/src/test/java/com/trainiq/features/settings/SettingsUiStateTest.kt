@@ -5,6 +5,9 @@ import com.trainiq.core.datastore.WorkoutFeedbackPreferences
 import com.trainiq.core.theme.ThemeMode
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
+import com.trainiq.domain.model.HealthMetricStatus
+import com.trainiq.domain.model.HealthMetricSyncState
+import com.trainiq.domain.model.HealthMetricType
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -89,6 +92,22 @@ class SettingsUiStateTest {
                 ),
             ),
         )
+    }
+
+    @Test
+    fun healthConnectSettingsCopyPreservesPartialPermissionMessage() {
+        val partialStatus = HealthConnectStatus(
+            state = HealthConnectState.NO_DATA,
+            message = "Health Connect is gedeeltelijk verbonden. Toegestane metrics zijn gesynchroniseerd, maar er is nog geen recente data.",
+            metricStatuses = listOf(
+                HealthMetricStatus(HealthMetricType.ACTIVE_CALORIES, HealthMetricSyncState.SYNCED),
+                HealthMetricStatus(HealthMetricType.STEPS, HealthMetricSyncState.DENIED),
+            ),
+        )
+
+        assertEquals("Gedeeltelijk verbonden", healthStatusLabel(partialStatus))
+        assertEquals(partialStatus.message, healthConnectSettingsMessage(partialStatus))
+        assertTrue(partialStatus.hasPartialHealthConnectAccess())
     }
 
     @Test

@@ -55,38 +55,88 @@
                               "priority":  "P1",
                               "area":  "Training - active workout edit/delete - active-key Room FK crash",
                               "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-29-001",
+                              "priority":  "P1",
+                              "area":  "Navigation - scanner savedStateHandle result clear",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-29-002",
+                              "priority":  "P1",
+                              "area":  "AI provider routing - transient fallback",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-29-003",
+                              "priority":  "P2",
+                              "area":  "Settings - Health Connect partial permission copy",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-29-004",
+                              "priority":  "P0",
+                              "area":  "Release lifecycle - main-thread lifecycle side effects ANR",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-29-005",
+                              "priority":  "P0",
+                              "area":  "Health Connect - partial-grant startup provider read ANR",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-29-006",
+                              "priority":  "P1",
+                              "area":  "Profileable Macrobenchmark - active-workout seed/launch ANR",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-29-007",
+                              "priority":  "P0",
+                              "area":  "Release APK - cold-launch early accessibility dump ANR",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-29-008",
+                              "priority":  "P0",
+                              "area":  "Release APK - dark mode/font-scale startup ANR",
+                              "status":  "fixed"
                           }
                       ],
     "latestAutomatedBaseline":  {
                                     "assembleDebug":  {
                                                           "status":  "PASS",
-                                                          "evidence":  "docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/assembleDebug.txt"
+                                                          "evidence":  "docs/qa/evidence/2026-05-29-current-automated-baseline-refresh-loop/testDebugUnitTest-lintDebug-assembleDebug.txt"
                                                       },
                                     "testDebugUnitTest":  {
                                                               "status":  "PASS",
-                                                              "evidence":  "docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/testDebugUnitTest.txt"
+                                                              "evidence":  "docs/qa/evidence/2026-05-29-current-automated-baseline-refresh-loop/testDebugUnitTest-lintDebug-assembleDebug.txt"
                                                           },
                                     "lintDebug":  {
                                                       "status":  "PASS",
-                                                      "evidence":  "docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/lintDebug.txt"
+                                                      "evidence":  "docs/qa/evidence/2026-05-29-current-automated-baseline-refresh-loop/testDebugUnitTest-lintDebug-assembleDebug.txt"
                                                   },
                                     "connectedDebugAndroidTest":  {
                                                                       "status":  "PASS",
-                                                                      "evidence":  "docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/connectedDebugAndroidTest.txt"
+                                                                      "evidence":  "docs/qa/evidence/2026-05-29-current-connected-baseline-refresh-loop/connectedDebugAndroidTest.txt"
                                                                   }
                                 },
     "latestRuntimeSmoke":  {
                                "status":  "PASS",
-                               "uiDump":  null,
-                               "logcat":  "docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/fresh-release-logcat-final.txt",
-                               "crashAnrScan":  "docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/fresh-release-crash-matches-final.txt"
+                               "uiDump":  "docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/trainiq-top-start-return.xml",
+                               "logcat":  "docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/logcat-top-level.txt",
+                               "crashAnrScan":  "docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/logcat-actionable-matches.txt"
                            },
     "openReleaseGates":  [
                              "TalkBack/Switch Access traversal",
-                             "full Health Connect runtime permission matrix",
+                             "release top-level performance threshold/signoff",
+                             "live Health Connect background data-read proof with seeded provider data",
                              "privacy/security real-key signoff",
                              "provider/runtime-gated AI and scanner flows",
-                             "manual deep-runtime UX audits"
+                             "manual deep-runtime UX audits",
+                             "true older-version upgrade/persistence"
                          ],
     "handoffDocuments":  {
                              "qaPacket":  "docs/qa/qa-packet-2026-05-27.md",

@@ -76,6 +76,39 @@ class TrainIqFlowSmokeInstrumentedTest {
         }
     }
 
+    @Test
+    fun progressBackStackAndTopLevelNavigationSurviveActivityRecreation() {
+        ActivityScenario.launch<MainActivity>(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ).use { scenario ->
+            waitForText("Start", checkpoint = "initial Start tab")
+
+            tapNavigationItem("Meer")
+            waitForText("Instellingen", checkpoint = "Meer before Progress")
+            tap("Voortgang openen")
+            waitForText("Voortgang", checkpoint = "Progress opened from Meer")
+
+            scenario.recreate()
+            waitForText("Voortgang", checkpoint = "Progress after activity recreation")
+            assertVisible("Voortgang")
+
+            scenario.onActivity { activity ->
+                activity.onBackPressedDispatcher.onBackPressed()
+            }
+            compose.waitForIdle()
+            waitForText("Start", checkpoint = "back to start after top-level recreation")
+            assertVisible("Start")
+
+            tapNavigationItem("Training")
+            waitForText("Routine maken", checkpoint = "Training after recreation/back")
+            assertAnyVisible("Routine maken", "Start met een lege template")
+
+            scenario.recreate()
+            waitForText("Training", checkpoint = "Training after second recreation")
+            assertAnyVisible("Routine maken", "Start met een lege template")
+        }
+    }
+
     private fun deleteAppLocalFile(relativePath: String) {
         val dataRoot = context.filesDir.parentFile ?: return
         val target = File(dataRoot, relativePath).canonicalFile

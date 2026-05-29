@@ -2,6 +2,7 @@ package com.trainiq.features.workout
 
 import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -119,6 +120,7 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             compose.onNodeWithText("Training starten").performClick()
             compose.waitForText("Actieve training")
 
+            compose.waitForContentDescription("Set 1 type Normaal, wijzig naar Warm-up")
             compose.onNodeWithContentDescription("Set 1 type Normaal, wijzig naar Warm-up")
                 .performScrollTo()
                 .performClick()
@@ -153,7 +155,7 @@ class ActiveWorkoutSetActionsInstrumentedTest {
                 .performClick()
             compose.waitForText("Set verwijderen?")
             compose.onNodeWithText("Verwijderen").performClick()
-            compose.waitForText("Set verwijderd.")
+            compose.waitForNoActiveWorkoutSets()
             compose.waitForText("0 sets gelogd")
         }
     }
@@ -161,6 +163,18 @@ class ActiveWorkoutSetActionsInstrumentedTest {
     private fun androidx.compose.ui.test.junit4.ComposeTestRule.waitForText(text: String) {
         waitUntil(timeoutMillis = 30_000L) {
             onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    private fun androidx.compose.ui.test.junit4.ComposeTestRule.waitForContentDescription(description: String) {
+        waitUntil(timeoutMillis = 30_000L) {
+            onAllNodesWithContentDescription(description).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    private fun androidx.compose.ui.test.junit4.ComposeTestRule.waitForNoActiveWorkoutSets() {
+        waitUntil(timeoutMillis = 30_000L) {
+            runBlocking { trainIqAndroidTestDatabase(context).dao().observeActiveWorkoutSets().first().isEmpty() }
         }
     }
 

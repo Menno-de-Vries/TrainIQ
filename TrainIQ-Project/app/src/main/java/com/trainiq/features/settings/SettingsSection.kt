@@ -81,6 +81,7 @@ import com.trainiq.features.profile.validateProfileInput
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
+import com.trainiq.domain.model.HealthMetricSyncState
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.usecase.ClearAppDataUseCase
 import com.trainiq.domain.usecase.GetHealthConnectStatusUseCase
@@ -870,22 +871,37 @@ private fun FeedbackToggleRow(
 internal fun settingsToggleAccessibilityLabel(title: String, checked: Boolean): String =
     "$title: ${if (checked) "ingeschakeld" else "uitgeschakeld"}"
 
-private fun healthStatusLabel(status: HealthConnectStatus): String = when (status.state) {
-    HealthConnectState.UNSUPPORTED -> "Niet ondersteund"
-    HealthConnectState.PROVIDER_MISSING -> "Provider ontbreekt"
-    HealthConnectState.PERMISSION_REQUIRED -> "Toegang vereist"
-    HealthConnectState.CONNECTED -> "Verbonden"
-    HealthConnectState.NO_DATA -> "Verbonden, nog geen data"
-    HealthConnectState.ERROR -> "Fout"
+internal fun healthStatusLabel(status: HealthConnectStatus): String = when {
+    status.hasPartialHealthConnectAccess() -> "Gedeeltelijk verbonden"
+    else -> when (status.state) {
+        HealthConnectState.UNSUPPORTED -> "Niet ondersteund"
+        HealthConnectState.PROVIDER_MISSING -> "Provider ontbreekt"
+        HealthConnectState.PERMISSION_REQUIRED -> "Toegang vereist"
+        HealthConnectState.CONNECTED -> "Verbonden"
+        HealthConnectState.NO_DATA -> "Verbonden, nog geen data"
+        HealthConnectState.ERROR -> "Fout"
+    }
 }
 
-internal fun healthConnectSettingsMessage(status: HealthConnectStatus): String = when (status.state) {
-    HealthConnectState.UNSUPPORTED -> "Health Connect wordt niet ondersteund op dit apparaat."
-    HealthConnectState.PROVIDER_MISSING -> "Installeer of update Health Connect en vernieuw daarna de status."
-    HealthConnectState.PERMISSION_REQUIRED -> "Geef toegang om stappen, hartslag, slaap, calorieen, gewicht en workouts te synchroniseren."
-    HealthConnectState.CONNECTED -> "Verbonden. TrainIQ synchroniseert toegestane metrics wanneer data beschikbaar is."
-    HealthConnectState.NO_DATA -> "Verbonden, maar er is nog geen recente Health Connect-data gevonden."
-    HealthConnectState.ERROR -> "Health Connect kan nu niet worden gelezen. Vernieuw straks opnieuw."
+internal fun healthConnectSettingsMessage(status: HealthConnectStatus): String = when {
+    status.hasPartialHealthConnectAccess() -> status.message
+    else -> when (status.state) {
+        HealthConnectState.UNSUPPORTED -> "Health Connect wordt niet ondersteund op dit apparaat."
+        HealthConnectState.PROVIDER_MISSING -> "Installeer of update Health Connect en vernieuw daarna de status."
+        HealthConnectState.PERMISSION_REQUIRED -> "Geef toegang om stappen, hartslag, slaap, calorieen, gewicht en workouts te synchroniseren."
+        HealthConnectState.CONNECTED -> "Verbonden. TrainIQ synchroniseert toegestane metrics wanneer data beschikbaar is."
+        HealthConnectState.NO_DATA -> "Verbonden, maar er is nog geen recente Health Connect-data gevonden."
+        HealthConnectState.ERROR -> "Health Connect kan nu niet worden gelezen. Vernieuw straks opnieuw."
+    }
+}
+
+internal fun HealthConnectStatus.hasPartialHealthConnectAccess(): Boolean {
+    if (metricStatuses.isEmpty()) return false
+    val hasDeniedMetric = metricStatuses.any { it.state == HealthMetricSyncState.DENIED }
+    val hasGrantedMetric = metricStatuses.any {
+        it.state != HealthMetricSyncState.DENIED && it.state != HealthMetricSyncState.UNAVAILABLE
+    }
+    return hasDeniedMetric && hasGrantedMetric
 }
 
 internal fun settingsUiState(

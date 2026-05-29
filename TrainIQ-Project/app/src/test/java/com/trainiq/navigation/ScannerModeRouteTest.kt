@@ -40,8 +40,8 @@ class ScannerModeRouteTest {
         assertTrue(scannerDestination.contains("previousBackStackEntry?.setBarcodeScanResult(barcode)"))
         assertTrue(scannerDestination.contains("previousBackStackEntry?.setScaleMeasurementResult(result)"))
         assertTrue(barcodeHelpers.contains("savedStateHandle[BarcodeScanResultKey] = barcode"))
-        assertTrue(barcodeHelpers.contains("savedStateHandle.remove<String>(BarcodeScanResultKey)"))
+        assertTrue(barcodeHelpers.contains("savedStateHandle[BarcodeScanResultKey] = \"\""))
         assertTrue(scaleHelpers.contains("savedStateHandle[ScaleWeightResultKey]"))
-        assertTrue(scaleHelpers.contains("savedStateHandle.remove<String>(ScaleNotesResultKey)"))
+        assertTrue(scaleHelpers.contains("savedStateHandle[ScaleNotesResultKey] = \"\""))
     }
 }
