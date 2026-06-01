@@ -2447,6 +2447,31 @@ internal fun buildMealItemSnapshots(
                     notes = request.notes,
                 )
             }
+
+            MealEntryType.SNAPSHOT -> {
+                val snapshot = request.snapshot ?: error("Deze maaltijd bevat een onvolledig tijdelijk product.")
+                val servingCount = request.servingCount.coerceAtLeast(1)
+                val nutrition = NutritionFacts(
+                    calories = snapshot.calories * servingCount,
+                    protein = snapshot.protein * servingCount,
+                    carbs = snapshot.carbs * servingCount,
+                    fat = snapshot.fat * servingCount,
+                ).rounded()
+                LoggedMealItemStorage(
+                    id = nextItemId++,
+                    mealId = mealId,
+                    itemType = LoggedMealItemType.SNAPSHOT,
+                    referenceId = 0L,
+                    name = snapshot.name.trim().ifBlank { "Tijdelijk product" },
+                    gramsUsed = request.gramsUsed,
+                    servingCount = servingCount,
+                    calories = nutrition.calories,
+                    protein = nutrition.protein,
+                    carbs = nutrition.carbs,
+                    fat = nutrition.fat,
+                    notes = request.notes,
+                )
+            }
         }
     }
 }

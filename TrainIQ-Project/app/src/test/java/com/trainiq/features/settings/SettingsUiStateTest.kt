@@ -3,6 +3,7 @@ package com.trainiq.features.settings
 import com.trainiq.core.datastore.AiPreferences
 import com.trainiq.core.datastore.WorkoutFeedbackPreferences
 import com.trainiq.core.theme.ThemeMode
+import com.trainiq.core.ui.UiMessage
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
 import com.trainiq.domain.model.HealthMetricStatus
@@ -27,7 +28,7 @@ class SettingsUiStateTest {
                 state = HealthConnectState.CONNECTED,
                 message = "Verbonden.",
             ),
-            message = "Instellingen opgeslagen.",
+            message = UiMessage("Instellingen opgeslagen.", id = 1L),
         )
 
         assertEquals(
@@ -41,7 +42,7 @@ class SettingsUiStateTest {
                     state = HealthConnectState.CONNECTED,
                     message = "Verbonden.",
                 ),
-                message = "Instellingen opgeslagen.",
+                message = UiMessage("Instellingen opgeslagen.", id = 1L),
                 maskedApiKey = "abcd****wxyz",
             ),
             state,
@@ -165,5 +166,36 @@ class SettingsUiStateTest {
         assertTrue(settingsOverflowSectionBody().contains("Compacte navigatie"))
         assertTrue(settingsOverflowSectionBody().contains("Voortgang"))
         assertEquals("Voortgang openen vanuit Meer", settingsOpenProgressActionLabel())
+    }
+
+    @Test
+    fun settingsUsesDocumentExportAndSnackbarFeedbackInsteadOfTopMessageItem() {
+        val source = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
+
+        assertTrue(source.contains("ActivityResultContracts.CreateDocument(\"application/json\")"))
+        assertTrue(source.contains("Data exporteren als JSON"))
+        assertTrue(source.contains("rememberLazyListState()"))
+        assertTrue(source.contains("SnackbarHost"))
+        assertFalse(source.contains("message?.let"))
+        assertFalse(source.contains("AnimatedScreenState(targetState = uiState)"))
+    }
+
+    @Test
+    fun transientMessagesUseSnackbarsInsteadOfTopListItemsAcrossMainFlows() {
+        val root = File("src/main/java/com/trainiq/features")
+        val nutrition = File(root, "nutrition/NutritionScreen.kt").readText()
+        val progress = File(root, "progress/ProgressScreen.kt").readText()
+        val coach = File(root, "coach/CoachScreen.kt").readText()
+        val workout = File(root, "workout/WorkoutScreen.kt").readText()
+
+        assertTrue(nutrition.contains("SnackbarHost"))
+        assertTrue(progress.contains("SnackbarHost"))
+        assertTrue(coach.contains("SnackbarHost"))
+        assertTrue(workout.contains("SnackbarHost"))
+        assertFalse(nutrition.contains("message?.let { MessageCard"))
+        assertFalse(progress.contains("message?.let { item"))
+        assertFalse(coach.contains("state.message?.let"))
+        assertFalse(workout.contains("active-workout-message"))
+        assertFalse(workout.contains("if (message != null) item"))
     }
 }

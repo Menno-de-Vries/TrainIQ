@@ -155,10 +155,12 @@ class WorkoutInputValidationTest {
         assertTrue(activeRouteCall.contains("onEditSet = viewModel::editLoggedSet"))
         assertTrue(activeRouteCall.contains("onDeleteSet = { setId -> viewModel.deleteLoggedSet(setId) }"))
         assertTrue(activeRouteCall.contains("onRelogSet = viewModel::relogSet"))
-        assertTrue(setRowsBody.contains("onSetTypeChange(set.id, set.setType.next())"))
-        assertTrue(setRowsBody.contains("onEdit = { loggedSets.getOrNull(index)?.let { onEditSet(it.id) } }"))
-        assertTrue(setRowsBody.contains("onDelete = { loggedSets.getOrNull(index)?.let { onDeleteSet(it.id) } }"))
-        assertTrue(setRowsBody.contains("onRelog = { loggedSets.getOrNull(index)?.let { onRelogSet(it.id) } }"))
+        assertTrue(editSetBody.contains("updateActiveWorkoutDraftUseCase(exerciseId, draft.toDomainDraft())"))
+        assertTrue(workoutScreen.contains("restSeconds = validInput.restSeconds"))
+        assertTrue(setRowsBody.contains("onSetTypeChange(set.id, type)"))
+        assertTrue(setRowsBody.contains("onEdit = { loggedSetForRow?.let { onEditSet(it.id) } }"))
+        assertTrue(setRowsBody.contains("onDelete = { loggedSetForRow?.let { onDeleteSet(it.id) } }"))
+        assertTrue(setRowsBody.contains("onRelog = { loggedSetForRow?.let { onRelogSet(it.id) } }"))
     }
 
     @Test
@@ -194,13 +196,17 @@ class WorkoutInputValidationTest {
     }
 
     @Test
-    fun `active workout set type selector condenses on compact short screens`() {
+    fun `active workout set type selector is integrated into set row pill`() {
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
         val activeExerciseBody = workoutScreen.substringAfter("private fun ActiveExerciseCard(")
             .substringBefore("private fun ActiveExerciseRestControl(")
+        val setRowBody = workoutScreen.substringAfter("private fun SetRow(")
+            .substringBefore("private fun RoutineSetMetricValue(")
 
-        assertTrue(activeExerciseBody.contains("val compactShortScreen = LocalConfiguration.current.screenHeightDp <= 640"))
-        assertTrue(activeExerciseBody.contains("compact = compactShortScreen"))
+        assertFalse(activeExerciseBody.contains("compactShortScreen"))
+        assertTrue(setRowBody.contains("SetTypePill("))
+        assertTrue(setRowBody.contains("SetType.entries.forEach"))
+        assertTrue(setRowBody.contains("enabled = loggedSet != null || isInputExpanded"))
     }
 
     @Test
@@ -389,14 +395,16 @@ class WorkoutInputValidationTest {
     }
 
     @Test
-    fun `routine detail resets training list scroll when opened`() {
+    fun `routine detail only resets training list scroll when opened from overview`() {
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
         val routeBody = workoutScreen
             .substringAfter("var selectedRoutineId by rememberSaveable")
             .substringBefore("@HiltViewModel\nclass WorkoutCompletionViewModel")
 
         assertTrue(routeBody.contains("val trainingListState = rememberLazyListState()"))
-        assertTrue(routeBody.contains("trainingListState.scrollToItem(0)"))
+        assertTrue(routeBody.contains("var previousSelectedRoutineId by rememberSaveable"))
+        assertTrue(routeBody.contains("selectedRoutineId != null && previousSelectedRoutineId == null"))
+        assertTrue(routeBody.contains("previousSelectedRoutineId = selectedRoutineId"))
         assertTrue(routeBody.contains("state = trainingListState"))
     }
 
@@ -668,6 +676,46 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun `workout action controls sit below exercise headers and active messages use snackbar`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val routineExerciseCard = workoutScreen
+            .substringAfter("private fun RoutineExerciseCard(")
+            .substringBefore("private fun ExerciseSummaryMetaRow(")
+        val activeExerciseCard = workoutScreen
+            .substringAfter("private fun ActiveExerciseCard(")
+            .substringBefore("private fun ActiveSetInputRow(")
+        val setRow = workoutScreen
+            .substringAfter("private fun SetRow(")
+            .substringBefore("private fun RoutineSetMetricValue(")
+
+        assertFalse(routineExerciseCard.contains("ActiveExerciseActionChip("))
+        assertTrue(routineExerciseCard.contains("text = { Text(\"Set toevoegen\") }"))
+        assertTrue(routineExerciseCard.contains("onAddSet()"))
+        assertTrue(activeExerciseCard.contains("modifier = Modifier\n                        .fillMaxWidth()"))
+        assertTrue(activeExerciseCard.contains("maxLines = 3"))
+        assertTrue(activeExerciseCard.contains("horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)"))
+        assertTrue(activeExerciseCard.contains("ActiveExerciseRestControl"))
+        assertTrue(workoutScreen.contains("val activeWorkoutListState = rememberLazyListState()"))
+        assertTrue(workoutScreen.contains("state = activeWorkoutListState"))
+        assertTrue(activeExerciseCard.contains("DropdownMenuItem("))
+        assertTrue(activeExerciseCard.contains("text = { Text(\"Set toevoegen\") }"))
+        assertTrue(activeExerciseCard.contains("onActivate ="))
+        assertTrue(activeExerciseCard.contains("activeInputIndex = index"))
+        assertFalse(activeExerciseCard.contains("Card(\n                        modifier = Modifier.fillMaxWidth(),\n                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)"))
+        assertTrue(setRow.contains("isInputExpanded: Boolean"))
+        assertTrue(setRow.contains("ActiveSetInputMetrics("))
+        assertFalse(setRow.contains("SetLoggerFields("))
+        assertTrue(setRow.contains("enabled = loggedSet != null || isInputExpanded"))
+        assertTrue(workoutScreen.contains("private fun ActiveSetInputMetricValue("))
+        assertTrue(workoutScreen.contains("BasicTextField("))
+        assertTrue(workoutScreen.contains("private fun SetTypePill("))
+        assertTrue(workoutScreen.contains("snackbarHost = { SnackbarHost(snackbarHostState) }"))
+        assertFalse(activeExerciseCard.contains("label = \"Set +\""))
+        assertFalse(activeExerciseCard.contains("label = activeExerciseReplaceLabel()"))
+        assertFalse(activeExerciseCard.contains("active-workout-message"))
+    }
+
+    @Test
     fun `active exercise rest override is per exercise and clamped`() {
         assertEquals(90, activeExerciseRestSeconds(baseRestSeconds = 90, overrideRestSeconds = null))
         assertEquals(120, activeExerciseRestSeconds(baseRestSeconds = 90, overrideRestSeconds = 120))
@@ -724,6 +772,14 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun `active set metric input replaces default zero when typing around it`() {
+        assertEquals("8", normalizeActiveSetMetricInput(previousValue = "0", filteredInput = "08"))
+        assertEquals("8", normalizeActiveSetMetricInput(previousValue = "0", filteredInput = "80"))
+        assertEquals("12", normalizeActiveSetMetricInput(previousValue = "0", filteredInput = "120"))
+        assertEquals("0.5", normalizeActiveSetMetricInput(previousValue = "0", filteredInput = "0.5"))
+    }
+
+    @Test
     fun `set input accepts comma decimal and blank rpe`() {
         val result = validateSetInput(SetInputDraft(weight = "80,5", reps = "8", rpe = ""))
 
@@ -731,6 +787,7 @@ class WorkoutInputValidationTest {
         result as SetLogValidationResult.Valid
         assertEquals(80.5, result.weight, 0.0)
         assertEquals(8, result.reps)
+        assertEquals(0, result.restSeconds)
         assertEquals(0.0, result.rpe, 0.0)
     }
 
@@ -742,7 +799,17 @@ class WorkoutInputValidationTest {
         result as SetLogValidationResult.Valid
         assertEquals(0.0, result.weight, 0.0)
         assertEquals(12, result.reps)
+        assertEquals(0, result.restSeconds)
         assertEquals(7.0, result.rpe, 0.0)
+    }
+
+    @Test
+    fun `set input accepts rest seconds within active workout bounds`() {
+        val result = validateSetInput(SetInputDraft(weight = "80", reps = "8", restSeconds = "120", rpe = "7"))
+
+        assertTrue(result is SetLogValidationResult.Valid)
+        result as SetLogValidationResult.Valid
+        assertEquals(120, result.restSeconds)
     }
 
     @Test
@@ -764,9 +831,18 @@ class WorkoutInputValidationTest {
             targetWeightKg = 0.0,
         )
 
-        assertEquals(SetInputDraft(weight = "0", reps = "12"), activeSetUiDraft(savedDraft = null, plan = plan, loggedSetCount = 0))
-        assertEquals(SetInputDraft(weight = "0", reps = "12"), activeSetUiDraft(savedDraft = SetInputDraft(weight = "", reps = "12"), plan = plan, loggedSetCount = 0))
-        assertEquals(SetInputDraft(weight = "20", reps = "8"), activeSetUiDraft(savedDraft = SetInputDraft(weight = "20", reps = "8"), plan = plan, loggedSetCount = 0))
+        assertEquals(SetInputDraft(weight = "0", reps = "12", restSeconds = "90"), activeSetUiDraft(savedDraft = null, plan = plan, loggedSetCount = 0))
+        assertEquals(SetInputDraft(weight = "0", reps = "12", restSeconds = "90"), activeSetUiDraft(savedDraft = SetInputDraft(weight = "", reps = "12"), plan = plan, loggedSetCount = 0))
+        assertEquals(SetInputDraft(weight = "20", reps = "8", restSeconds = "150"), activeSetUiDraft(savedDraft = SetInputDraft(weight = "20", reps = "8", restSeconds = "150"), plan = plan, loggedSetCount = 0))
+    }
+
+    @Test
+    fun `set input rejects rest outside active workout bounds`() {
+        val result = validateSetInput(SetInputDraft(weight = "80", reps = "8", restSeconds = "1200", rpe = "7"))
+
+        assertTrue(result is SetLogValidationResult.Invalid)
+        result as SetLogValidationResult.Invalid
+        assertEquals("Rust moet tussen 0 en 900s liggen.", result.fieldErrors.restSeconds)
     }
 
     @Test

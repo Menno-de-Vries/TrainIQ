@@ -5,6 +5,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -23,6 +24,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,6 +35,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -446,8 +450,17 @@ fun CoachScreen(
     var goal by remember { mutableStateOf("") }
     var profileInputError by remember { mutableStateOf<ProfileInputValidationError?>(null) }
     val haptics = LocalHapticFeedback.current
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val profile = (uiState as? CoachUiState.Success)?.currentProfile
+    val message = (uiState as? CoachUiState.Success)?.message
+    LaunchedEffect(message, profileInputError) {
+        val currentMessage = message ?: return@LaunchedEffect
+        if (profileInputError == null) {
+            snackbarHostState.showSnackbar(currentMessage)
+            onDismissMessage()
+        }
+    }
     LaunchedEffect(profile) {
         profile?.let {
             name = it.name
@@ -461,7 +474,9 @@ fun CoachScreen(
         }
     }
 
-    AnimatedContent(targetState = uiState, label = "coach-ui-state") { state ->
+    Box(modifier = Modifier.fillMaxSize()) {
+    AnimatedContent(targetState = uiState::class, label = "coach-ui-state") {
+        val state = uiState
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -489,9 +504,6 @@ fun CoachScreen(
                 }
 
                 is CoachUiState.Success -> {
-                    if (profileInputError == null) state.message?.let { message ->
-                        item { MessageCard(message = message, onDismiss = onDismissMessage) }
-                    }
                     if (state.currentProfile == null) {
                         item {
                             AppCard(modifier = Modifier.fillMaxWidth()) {
@@ -696,6 +708,14 @@ fun CoachScreen(
                 }
             }
         }
+    }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(MaterialTheme.spacing.medium),
+        )
     }
 }
 

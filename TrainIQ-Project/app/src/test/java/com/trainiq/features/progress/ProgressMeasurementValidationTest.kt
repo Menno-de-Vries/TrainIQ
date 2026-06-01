@@ -1,6 +1,7 @@
 package com.trainiq.features.progress
 
 import com.trainiq.domain.model.BodyMeasurement
+import com.trainiq.core.ui.UiMessage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -106,11 +107,22 @@ class ProgressMeasurementValidationTest {
             fatigueIndex = 0.0,
         )
 
+        val message = UiMessage("Meting opgeslagen.", id = 1L)
         assertEquals(ProgressUiState.Loading, progressUiState(overview = null, message = null))
         assertEquals(
-            ProgressUiState.Success(overview = overview, message = "Meting opgeslagen."),
-            progressUiState(overview = overview, message = "Meting opgeslagen."),
+            ProgressUiState.Success(overview = overview, message = message),
+            progressUiState(overview = overview, message = message),
         )
+    }
+
+    @Test
+    fun progressScreen_importsScalePhotoBeforeOpeningCameraScanner() {
+        val source = java.io.File("src/main/java/com/trainiq/features/progress/ProgressScreen.kt").readText()
+
+        assertTrue(source.contains("ActivityResultContracts.PickVisualMedia()"))
+        assertTrue(source.contains("copyScannerImageFromUri(context, uri)"))
+        assertTrue(source.contains("onAnalyzeImportedScalePhoto(path)"))
+        assertTrue(source.contains("Text(scalePhotoImportLabel())"))
     }
 
     private fun assertValidationError(

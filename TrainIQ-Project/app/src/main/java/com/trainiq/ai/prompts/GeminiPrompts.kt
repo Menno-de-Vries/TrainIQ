@@ -69,10 +69,11 @@ object GeminiPrompts {
         Analyseer de maaltijd-foto en schat zichtbare voeding conservatief.
         Gebruikerscontext: ${userContext.ifBlank { "Niet opgegeven." }}
         Regels voor context:
-        - Als de gebruikerscontext een gewicht noemt, behandel dat gewicht als waarheid.
-        - Herbereken of overschrijf opgegeven gewichten niet.
-        - Als de gebruikerscontext meerdere losse componenten noemt, behoud precies die componentgrenzen en namen.
-        - Gebruik de foto alleen om ontbrekende hoeveelheden en macro's aan te vullen.
+        - De gebruikerscontext is leidend wanneer die is opgegeven; de foto is alleen ondersteunend bewijs.
+        - Als de gebruikerscontext ingrediënten, productnamen, porties, dimensies of gewichten noemt, behandel die als waarheid.
+        - Herbereken, verwijder of overschrijf opgegeven componenten en gewichten niet op basis van wat zichtbaar is.
+        - Als de gebruikerscontext meerdere losse componenten noemt, behoud precies die componentgrenzen en namen, ook als ze niet zichtbaar zijn.
+        - Gebruik de foto alleen om ontbrekende hoeveelheden, ontbrekende zichtbare details en macro's aan te vullen.
         - Maak verschillende contextcomponenten nooit hetzelfde item; markeer onzekerheid met confidence "low" en notes.
         - Schat alleen hoeveelheden waar de gebruiker geen gewicht voor noemt.
         Return JSON only in this shape:
@@ -102,6 +103,7 @@ object GeminiPrompts {
 
         Regels:
         - Antwoord altijd als JSON only, zonder markdown.
+        - De gebruikerscontext is leidend wanneer die is opgegeven; de foto of screenshot is alleen ondersteunend bewijs.
         - Als de gebruikerscontext gewicht, vetpercentage of spiermassa noemt, behandel die waarde als waarheid.
         - Herbereken of overschrijf opgegeven contextwaarden niet.
         - Gebruik kg voor gewicht en spiermassa.

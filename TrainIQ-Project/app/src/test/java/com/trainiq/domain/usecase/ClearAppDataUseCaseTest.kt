@@ -16,4 +16,15 @@ class ClearAppDataUseCaseTest {
         assertTrue(body.contains("preferencesRepository.clearLocalPrivateData()"))
         assertTrue(body.contains("performanceSessionStore.clearAll()"))
     }
+
+    @Test
+    fun exportAppDataUseCaseExportsRoomStateWithoutSecretStores() {
+        val source = File("src/main/java/com/trainiq/domain/usecase/UseCases.kt").readText()
+        val body = source.substringAfter("class ExportAppDataUseCase").substringBefore("private data class TrainIqJsonExport")
+
+        assertTrue(body.contains("runtimeStore.state.value"))
+        assertTrue(body.contains("TrainIqJsonExport"))
+        assertTrue(!body.contains("aiUsageGate"))
+        assertTrue(!body.contains("preferencesRepository"))
+    }
 }

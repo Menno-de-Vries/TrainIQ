@@ -24,6 +24,7 @@ import com.trainiq.domain.model.ReadinessLevel
 import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.BodyMeasurement
 import com.trainiq.domain.repository.MealEntryRequest
+import com.trainiq.domain.repository.MealEntrySnapshot
 import com.trainiq.domain.repository.MealEntryType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -171,6 +172,39 @@ class TrainIqRepositoryTest {
         assertEquals(10.0, items.single().protein, 0.0)
         assertEquals(50.0, items.single().carbs, 0.0)
         assertEquals(4.0, items.single().fat, 0.0)
+    }
+
+    @Test
+    fun buildMealItemSnapshots_storesSnapshotWithoutFoodReference() {
+        val items = buildMealItemSnapshots(
+            mealId = 10L,
+            startItemId = 20L,
+            requests = listOf(
+                MealEntryRequest(
+                    itemType = MealEntryType.SNAPSHOT,
+                    referenceId = 0L,
+                    gramsUsed = 125.0,
+                    snapshot = MealEntrySnapshot(
+                        name = "Broodje kip",
+                        calories = 320.0,
+                        protein = 28.0,
+                        carbs = 34.0,
+                        fat = 8.0,
+                    ),
+                ),
+            ),
+            foods = emptyList(),
+            recipes = emptyList(),
+        )
+
+        assertEquals(1, items.size)
+        assertEquals(LoggedMealItemType.SNAPSHOT, items.single().itemType)
+        assertEquals(0L, items.single().referenceId)
+        assertEquals("Broodje kip", items.single().name)
+        assertEquals(320.0, items.single().calories, 0.0)
+        assertEquals(28.0, items.single().protein, 0.0)
+        assertEquals(34.0, items.single().carbs, 0.0)
+        assertEquals(8.0, items.single().fat, 0.0)
     }
 
     @Test

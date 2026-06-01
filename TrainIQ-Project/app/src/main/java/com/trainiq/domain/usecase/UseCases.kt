@@ -1,5 +1,6 @@
 package com.trainiq.domain.usecase
 
+import com.google.gson.Gson
 import com.trainiq.domain.model.LoggedSet
 import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.ActiveWorkoutSession
@@ -28,6 +29,7 @@ import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.diagnostics.PerformanceSessionStore
 import com.trainiq.ai.services.AiUsageGate
 import com.trainiq.data.repository.RoomTrainIqRuntimeStore
+import java.time.Instant
 import javax.inject.Inject
 
 class ObserveHomeDashboardUseCase @Inject constructor(private val repository: HomeRepository) {
@@ -470,6 +472,26 @@ class ClearAppDataUseCase @Inject constructor(
         performanceSessionStore.clearAll()
     }
 }
+
+class ExportAppDataUseCase @Inject constructor(
+    private val runtimeStore: RoomTrainIqRuntimeStore,
+) {
+    private val gson = Gson()
+
+    suspend operator fun invoke(): String = gson.toJson(
+        TrainIqJsonExport(
+            exportedAt = Instant.now().toString(),
+            data = runtimeStore.state.value,
+        ),
+    )
+}
+
+private data class TrainIqJsonExport(
+    val format: String = "trainiq-json-export",
+    val version: Int = 1,
+    val exportedAt: String,
+    val data: Any,
+)
 
 private fun ProgressionSuggestion.toInitialDraft(): ActiveWorkoutSetDraft? {
     val weight = lastLoggedWeightKg?.takeIf { it > 0.0 }?.let(::formatDraftWeight)

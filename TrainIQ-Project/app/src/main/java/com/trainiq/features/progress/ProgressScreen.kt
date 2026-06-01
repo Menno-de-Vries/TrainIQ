@@ -1,6 +1,10 @@
 package com.trainiq.features.progress
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -17,6 +21,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -27,6 +34,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -41,6 +50,7 @@ import com.trainiq.core.ui.AppCard
 import com.trainiq.core.ui.AppChip
 import com.trainiq.core.ui.EmptyStateCard
 import com.trainiq.core.ui.PrimaryActionButton
+import com.trainiq.core.ui.UiMessage
 import com.trainiq.core.ui.bringIntoViewOnFocus
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.theme.spacing
@@ -49,10 +59,14 @@ import com.trainiq.core.util.ChartComposable
 import com.trainiq.core.util.MetricCard
 import com.trainiq.core.util.toReadableDate
 import com.trainiq.domain.model.BodyMeasurement
+import com.trainiq.domain.model.BodyMeasurementPhotoSource
 import com.trainiq.domain.model.ProgressOverview
 import com.trainiq.domain.usecase.AddMeasurementUseCase
+import com.trainiq.domain.usecase.AnalyzeBodyMeasurementPhotoUseCase
 import com.trainiq.domain.usecase.DeleteMeasurementUseCase
 import com.trainiq.domain.usecase.ObserveProgressUseCase
+import com.trainiq.features.nutrition.copyScannerImageFromUri
+import com.trainiq.features.nutrition.scalePhotoImportLabel
 import com.trainiq.navigation.TrainIqWindowWidthClass
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -90,7 +104,7 @@ sealed interface ProgressUiState {
     data object Loading : ProgressUiState
     data class Success(
         val overview: ProgressOverview,
-        val message: String? = null,
+        val message: UiMessage? = null,
     ) : ProgressUiState
     data class Error(val message: String) : ProgressUiState
 }
@@ -163,20 +177,21 @@ private fun progressMeasurementError(spec: ProgressMeasurementFieldSpec) = Progr
 @HiltViewModel
 class ProgressViewModel @Inject constructor(
     observeProgressUseCase: ObserveProgressUseCase,
+    private val analyzeBodyMeasurementPhotoUseCase: AnalyzeBodyMeasurementPhotoUseCase,
     private val addMeasurementUseCase: AddMeasurementUseCase,
     private val deleteMeasurementUseCase: DeleteMeasurementUseCase,
 ) : ViewModel() {
     private val overview: StateFlow<ProgressOverview?> = observeProgressUseCase()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    private val _message = MutableStateFlow<String?>(null)
+    private val _message = MutableStateFlow<UiMessage?>(null)
     val uiState: StateFlow<ProgressUiState> = combine(overview, _message, ::progressUiState)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ProgressUiState.Loading)
 
     fun addMeasurement(weight: String, bodyFat: String, muscleMass: String) {
         when (val validation = validateProgressMeasurementInput(weight, bodyFat, muscleMass)) {
             is ProgressMeasurementValidationResult.Invalid -> {
-                _message.value = validation.error.message
+                emitMessage(validation.error.message)
                 return
             }
             is ProgressMeasurementValidationResult.Valid -> {
@@ -185,9 +200,9 @@ class ProgressViewModel @Inject constructor(
                         val measurement = validation.measurement
                         addMeasurementUseCase(measurement.weight, measurement.bodyFat, measurement.muscleMass)
                     }.onSuccess {
-                        _message.value = "Meting opgeslagen."
+                        emitMessage("Meting opgeslagen.")
                     }.onFailure {
-                        _message.value = "Meting opslaan mislukt. Probeer opnieuw."
+                        emitMessage("Meting opslaan mislukt. Probeer opnieuw.")
                     }
                 }
             }
@@ -196,18 +211,39 @@ class ProgressViewModel @Inject constructor(
 
     fun deleteMeasurement(measurementId: Long) {
         if (overview.value?.measurements?.none { it.id == measurementId } != false) {
-            _message.value = "Meting kon niet worden gevonden."
+            emitMessage("Meting kon niet worden gevonden.")
             return
         }
         viewModelScope.launch {
             runCatching { deleteMeasurementUseCase(measurementId) }
-                .onSuccess { _message.value = "Meting verwijderd." }
-                .onFailure { _message.value = "Meting verwijderen mislukt. Probeer opnieuw." }
+                .onSuccess { emitMessage("Meting verwijderd.") }
+                .onFailure { emitMessage("Meting verwijderen mislukt. Probeer opnieuw.") }
         }
     }
 
-    fun clearMessage() {
-        _message.value = null
+    fun analyzeScalePhoto(path: String, context: String, onResult: (com.trainiq.domain.model.BodyMeasurementPhotoResult) -> Unit) {
+        viewModelScope.launch {
+            runCatching { analyzeBodyMeasurementPhotoUseCase(path, context) }
+                .onSuccess { result ->
+                    if (result.source == BodyMeasurementPhotoSource.LOCAL_FALLBACK || result.weight <= 0.0) {
+                        emitMessage(result.notes ?: "Geen betrouwbare meting gevonden. Vul de waarden handmatig in.")
+                    } else {
+                        onResult(result)
+                        emitMessage(result.notes ?: "Weegfoto geimporteerd. Controleer de waarden voor opslaan.")
+                    }
+                }
+                .onFailure { emitMessage("Weegfoto analyseren mislukt. Probeer opnieuw of vul handmatig in.") }
+        }
+    }
+
+    private fun emitMessage(text: String) {
+        _message.value = UiMessage(text)
+    }
+
+    fun clearMessage(id: Long? = null) {
+        if (id == null || _message.value?.id == id) {
+            _message.value = null
+        }
     }
 }
 
@@ -234,6 +270,13 @@ fun ProgressRoute(
         pendingScaleNotes = pendingScaleNotes,
         onScaleResultConsumed = onScaleResultConsumed,
         onOpenScaleScanner = onOpenScaleScanner,
+        onAnalyzeImportedScalePhoto = { path, onResult ->
+            viewModel.analyzeScalePhoto(
+                path = path,
+                context = "Lees gewicht, vetpercentage en spiermassa uit van de geimporteerde smart-weegschaalfoto.",
+                onResult = onResult,
+            )
+        },
     )
 }
 
@@ -242,14 +285,16 @@ fun ProgressScreen(
     uiState: ProgressUiState,
     onAddMeasurement: (String, String, String) -> Unit,
     onDeleteMeasurement: (Long) -> Unit,
-    onDismissMessage: () -> Unit,
+    onDismissMessage: (Long) -> Unit,
     pendingScaleWeight: String? = null,
     pendingScaleBodyFat: String? = null,
     pendingScaleMuscleMass: String? = null,
     pendingScaleNotes: String? = null,
     onScaleResultConsumed: () -> Unit = {},
     onOpenScaleScanner: () -> Unit = {},
+    onAnalyzeImportedScalePhoto: (String, (com.trainiq.domain.model.BodyMeasurementPhotoResult) -> Unit) -> Unit = { _, _ -> },
 ) {
+    val context = LocalContext.current
     var weight by rememberSaveable { mutableStateOf("") }
     var bodyFat by rememberSaveable { mutableStateOf("") }
     var muscleMass by rememberSaveable { mutableStateOf("") }
@@ -266,15 +311,34 @@ fun ProgressScreen(
     val successState = uiState as? ProgressUiState.Success
     val overview = successState?.overview
     val message = successState?.message
+    val snackbarHostState = remember { SnackbarHostState() }
+    val photoImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        val path = copyScannerImageFromUri(context, uri) ?: return@rememberLauncherForActivityResult
+        onAnalyzeImportedScalePhoto(path) { result ->
+            weight = result.weight.takeIf { it > 0.0 }?.let(::oneDecimal).orEmpty()
+            bodyFat = result.bodyFat.takeIf { it > 0.0 }?.let(::oneDecimal).orEmpty()
+            muscleMass = result.muscleMass.takeIf { it > 0.0 }?.let(::oneDecimal).orEmpty()
+            weightTouched = weight.isNotBlank()
+            bodyFatTouched = bodyFat.isNotBlank()
+            muscleMassTouched = muscleMass.isNotBlank()
+            scalePhotoNote = result.notes
+        }
+    }
 
-    LaunchedEffect(message) {
-        if (message == "Meting opgeslagen.") {
+    LaunchedEffect(message?.id) {
+        val currentMessage = message
+        if (currentMessage?.text == "Meting opgeslagen.") {
             weight = ""
             bodyFat = ""
             muscleMass = ""
             weightTouched = false
             bodyFatTouched = false
             muscleMassTouched = false
+        }
+        if (currentMessage != null) {
+            snackbarHostState.showSnackbar(currentMessage.text)
+            onDismissMessage(currentMessage.id)
         }
     }
 
@@ -297,25 +361,27 @@ fun ProgressScreen(
         }
     }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .clearFocusOnScrollOrDrag()
-            .navigationBarsPadding()
-            .imePadding(),
-        contentPadding = PaddingValues(
-            start = MaterialTheme.spacing.medium,
-            top = MaterialTheme.spacing.medium,
-            end = MaterialTheme.spacing.medium,
-            bottom = 132.dp,
-        ),
-        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
-    ) {
-        item { ScreenHeader(title = "Voortgang", subtitle = "Metingen, grafieken en krachttrends") }
-        message?.let {
-            item { MessageCard(message = it, onDismiss = onDismissMessage) }
-        }
-        when (uiState) {
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+    ) { _ ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .clearFocusOnScrollOrDrag()
+                .navigationBarsPadding()
+                .imePadding(),
+            contentPadding = PaddingValues(
+                start = MaterialTheme.spacing.medium,
+                top = MaterialTheme.spacing.medium,
+                end = MaterialTheme.spacing.medium,
+                bottom = 132.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
+        ) {
+            item { ScreenHeader(title = "Voortgang", subtitle = "Metingen, grafieken en krachttrends") }
+            when (uiState) {
             ProgressUiState.Loading -> {
                 item { ShimmerCardPlaceholder(lineCount = 4) }
                 item { ShimmerCardPlaceholder(lineCount = 3) }
@@ -358,7 +424,13 @@ fun ProgressScreen(
                         muscleMass = latestMuscleMassText(overview.measurements),
                     )
                     OutlinedButton(onClick = onOpenScaleScanner, modifier = Modifier.fillMaxWidth()) {
-                        Text("Smart-weegschaal foto maken of importeren")
+                        Text("Smart-weegschaal foto maken")
+                    }
+                    OutlinedButton(
+                        onClick = { photoImportLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(scalePhotoImportLabel())
                     }
                     MeasurementTextField(
                         value = weight,
@@ -463,11 +535,12 @@ fun ProgressScreen(
             item { ChartComposable("Spiermassa", overview.muscleMassTrend, Modifier.fillMaxWidth()) }
             item { ChartComposable("Krachtprogressie", overview.strengthTrend, Modifier.fillMaxWidth()) }
             item { ChartComposable("Trainingsvolume", overview.volumeTrend, Modifier.fillMaxWidth()) }
+            }
         }
     }
 }
 
-internal fun progressUiState(overview: ProgressOverview?, message: String?): ProgressUiState =
+internal fun progressUiState(overview: ProgressOverview?, message: UiMessage?): ProgressUiState =
     overview?.let { ProgressUiState.Success(overview = it, message = message) } ?: ProgressUiState.Loading
 
 @Composable

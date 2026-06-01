@@ -3,7 +3,9 @@ package com.trainiq.features.settings
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.rememberScrollState
@@ -28,6 +31,9 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,6 +43,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -65,11 +72,11 @@ import com.trainiq.core.datastore.AiPreferences
 import com.trainiq.core.datastore.WorkoutFeedbackPreferences
 import com.trainiq.core.health.HealthConnectRefreshOnResume
 import com.trainiq.core.health.rememberHealthConnectPermissionRequester
-import com.trainiq.core.ui.AnimatedScreenState
 import com.trainiq.core.ui.MessageCard
 import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.SectionCard
 import com.trainiq.core.ui.ShimmerCardPlaceholder
+import com.trainiq.core.ui.UiMessage
 import com.trainiq.core.ui.bringIntoViewOnFocus
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.datastore.UserPreferencesRepository
@@ -84,6 +91,7 @@ import com.trainiq.domain.model.HealthConnectStatus
 import com.trainiq.domain.model.HealthMetricSyncState
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.usecase.ClearAppDataUseCase
+import com.trainiq.domain.usecase.ExportAppDataUseCase
 import com.trainiq.domain.usecase.GetHealthConnectStatusUseCase
 import com.trainiq.domain.usecase.ObserveUserProfileUseCase
 import com.trainiq.domain.usecase.ResetProfileUseCase
@@ -98,7 +106,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 sealed interface SettingsUiState {
     data object Loading : SettingsUiState
@@ -109,7 +119,7 @@ sealed interface SettingsUiState {
         val workoutFeedbackPreferences: WorkoutFeedbackPreferences,
         val profile: UserProfile?,
         val healthStatus: HealthConnectStatus,
-        val message: String? = null,
+        val message: UiMessage? = null,
         val maskedApiKey: String = maskedSettingsApiKey(aiPreferences.apiKey),
     ) : SettingsUiState
     data class Error(val message: String) : SettingsUiState
@@ -134,6 +144,7 @@ class SettingsViewModel @Inject constructor(
     private val goalAdvisorService: GoalAdvisorService,
     private val resetProfileUseCase: ResetProfileUseCase,
     private val clearAppDataUseCase: ClearAppDataUseCase,
+    private val exportAppDataUseCase: ExportAppDataUseCase,
 ) : ViewModel() {
     private val themeMode: StateFlow<ThemeMode> = preferencesRepository.themeMode
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ThemeMode.SYSTEM)
@@ -159,7 +170,7 @@ class SettingsViewModel @Inject constructor(
     )
     private val healthStatus: StateFlow<HealthConnectStatus> = _healthStatus.asStateFlow()
 
-    private val _message = MutableStateFlow<String?>(null)
+    private val _message = MutableStateFlow<UiMessage?>(null)
     val uiState: StateFlow<SettingsUiState> = combine(
         combine(themeMode, aiPreferences, telemetryOptIn, workoutFeedbackPreferences, profile) { theme, ai, telemetry, feedback, userProfile ->
             SettingsUiInputs(
@@ -197,54 +208,54 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             preferencesRepository.setAiEnabled(enabled)
             apiKeyRefreshes.update { it + 1 }
-            _message.value = if (enabled) {
+            emitMessage(if (enabled) {
                 "AI-functies ingeschakeld. Verzoeken starten alleen na jouw expliciete actie."
             } else {
                 "AI-functies uitgeschakeld. TrainIQ blijft handmatig werken."
-            }
+            })
         }
     }
 
     fun setTelemetryOptIn(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setTelemetryOptIn(enabled)
-            _message.value = if (enabled) {
+            emitMessage(if (enabled) {
                 "Privacyveilige technische telemetrie ingeschakeld."
             } else {
                 "Telemetrie uitgeschakeld. Er worden geen technische events geupload."
-            }
+            })
         }
     }
 
     fun saveGeminiKey(apiKey: String) {
         viewModelScope.launch {
             if (apiKey.isBlank()) {
-                _message.value = "Voer eerst een Gemini API-sleutel in."
+                emitMessage("Voer eerst een Gemini API-sleutel in.")
                 return@launch
             }
             val encrypted = aiUsageGate.saveApiKey(apiKey)
-            _message.value = if (encrypted) {
+            emitMessage(if (encrypted) {
                 apiKeyRefreshes.update { it + 1 }
                 "Gemini API-sleutel versleuteld opgeslagen."
             } else {
                 "Gemini API-sleutel opslaan mislukt. Bestaande sleutel blijft behouden."
-            }
+            })
         }
     }
 
     fun saveOpenAiKey(apiKey: String) {
         viewModelScope.launch {
             if (apiKey.isBlank()) {
-                _message.value = "Voer eerst een OpenAI API-sleutel in."
+                emitMessage("Voer eerst een OpenAI API-sleutel in.")
                 return@launch
             }
             val encrypted = aiUsageGate.saveOpenAiApiKey(apiKey)
-            _message.value = if (encrypted) {
+            emitMessage(if (encrypted) {
                 apiKeyRefreshes.update { it + 1 }
                 "OpenAI API-sleutel versleuteld opgeslagen."
             } else {
                 "OpenAI API-sleutel opslaan mislukt. Bestaande sleutel blijft behouden."
-            }
+            })
         }
     }
 
@@ -252,7 +263,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             aiUsageGate.setProviderPreference(preference)
             apiKeyRefreshes.update { it + 1 }
-            _message.value = "${preference.label} ingesteld voor AI-acties."
+            emitMessage("${preference.label} ingesteld voor AI-acties.")
         }
     }
 
@@ -262,7 +273,7 @@ class SettingsViewModel @Inject constructor(
             preferencesRepository.clearGeminiApiKey()
             preferencesRepository.setAiEnabled(false)
             apiKeyRefreshes.update { it + 1 }
-            _message.value = "Gemini API-sleutel verwijderd en AI uitgeschakeld."
+            emitMessage("Gemini API-sleutel verwijderd en AI uitgeschakeld.")
         }
     }
 
@@ -272,21 +283,21 @@ class SettingsViewModel @Inject constructor(
             preferencesRepository.clearGeminiApiKey()
             preferencesRepository.setAiEnabled(false)
             apiKeyRefreshes.update { it + 1 }
-            _message.value = "AI-sleutels verwijderd en AI uitgeschakeld."
+            emitMessage("AI-sleutels verwijderd en AI uitgeschakeld.")
         }
     }
 
     fun setRestTimerSoundEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setRestTimerSoundEnabled(enabled)
-            _message.value = if (enabled) "Rusttimer-geluid ingeschakeld." else "Rusttimer-geluid uitgeschakeld."
+            emitMessage(if (enabled) "Rusttimer-geluid ingeschakeld." else "Rusttimer-geluid uitgeschakeld.")
         }
     }
 
     fun setWorkoutHapticsEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setWorkoutHapticsEnabled(enabled)
-            _message.value = if (enabled) "Workouttrillingen ingeschakeld." else "Workouttrillingen uitgeschakeld."
+            emitMessage(if (enabled) "Workouttrillingen ingeschakeld." else "Workouttrillingen uitgeschakeld.")
         }
     }
 
@@ -317,7 +328,7 @@ class SettingsViewModel @Inject constructor(
         ) {
             is ProfileInputValidationResult.Valid -> result.input
             is ProfileInputValidationResult.Invalid -> {
-                _message.value = result.error.message
+                emitMessage(result.error.message)
                 return
             }
         }
@@ -351,9 +362,9 @@ class SettingsViewModel @Inject constructor(
                     ),
                 )
             }.onSuccess {
-                _message.value = "Profiel opgeslagen. Dashboarddoelen bijgewerkt."
+                emitMessage("Profiel opgeslagen. Dashboarddoelen bijgewerkt.")
             }.onFailure {
-                _message.value = "Profiel opslaan mislukt. Probeer opnieuw."
+                emitMessage("Profiel opslaan mislukt. Probeer opnieuw.")
             }
         }
     }
@@ -361,8 +372,8 @@ class SettingsViewModel @Inject constructor(
     fun resetProfile() {
         viewModelScope.launch {
             runCatching { resetProfileUseCase() }
-                .onSuccess { _message.value = "Profiel verwijderd." }
-                .onFailure { _message.value = "Profiel verwijderen mislukt. Probeer opnieuw." }
+                .onSuccess { emitMessage("Profiel verwijderd.") }
+                .onFailure { emitMessage("Profiel verwijderen mislukt. Probeer opnieuw.") }
         }
     }
 
@@ -375,16 +386,32 @@ class SettingsViewModel @Inject constructor(
                     state = HealthConnectState.NO_DATA,
                     message = "Lokale Health Connect-cache is gewist. Android-toegang is niet ingetrokken; beheer toegang in Health Connect.",
                 )
-                _message.value = "Alle lokale appdata, AI-sleutel, voorkeuren en Health Connect-cache zijn gewist. Health Connect-toegang beheer je apart in Android."
+                emitMessage("Alle lokale appdata, AI-sleutel, voorkeuren en Health Connect-cache zijn gewist. Health Connect-toegang beheer je apart in Android.")
                 refreshHealthConnectStatus()
             }.onFailure {
-                _message.value = "Lokale data wissen mislukt. Probeer opnieuw."
+                emitMessage("Lokale data wissen mislukt. Probeer opnieuw.")
             }
         }
     }
 
-    fun clearMessage() {
-        _message.value = null
+    private fun emitMessage(text: String) {
+        _message.value = UiMessage(text)
+    }
+
+    fun clearMessage(id: Long? = null) {
+        if (id == null || _message.value?.id == id) {
+            _message.value = null
+        }
+    }
+
+    suspend fun exportAppDataJson(): String = exportAppDataUseCase()
+
+    fun setExportMessage(success: Boolean) {
+        emitMessage(if (success) {
+            "TrainIQ-data geexporteerd als JSON."
+        } else {
+            "Data exporteren mislukt. Probeer opnieuw."
+        })
     }
 
 }
@@ -396,55 +423,71 @@ fun SettingsRoute(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val requestHealthPermission = rememberHealthConnectPermissionRequester(viewModel::refreshHealthConnectStatus)
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            val success = runCatching {
+                val json = viewModel.exportAppDataJson()
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
+                        writer.write(json)
+                    } ?: error("Kon exportbestand niet openen.")
+                }
+            }.isSuccess
+            viewModel.setExportMessage(success)
+        }
+    }
     HealthConnectRefreshOnResume(viewModel::refreshHealthConnectStatus, refreshOnFirstResume = false)
 
-    AnimatedScreenState(targetState = uiState) { animatedState ->
-        when (val state = animatedState as SettingsUiState) {
-            SettingsUiState.Loading -> SettingsLoadingScreen()
-            is SettingsUiState.Error -> SettingsErrorScreen(state.message)
-            is SettingsUiState.Success -> {
-                SettingsScreen(
-                    themeMode = state.themeMode,
-                    aiPreferences = state.aiPreferences,
-                    telemetryOptIn = state.telemetryOptIn,
-                    workoutFeedbackPreferences = state.workoutFeedbackPreferences,
-                    maskedApiKey = state.maskedApiKey,
-                    profile = state.profile,
-                    healthStatus = state.healthStatus,
-                    message = state.message,
-                    onThemeSelected = viewModel::setThemeMode,
-                    onToggleAi = viewModel::setAiEnabled,
-                    onToggleTelemetry = viewModel::setTelemetryOptIn,
-                    onToggleRestTimerSound = viewModel::setRestTimerSoundEnabled,
-                    onToggleWorkoutHaptics = viewModel::setWorkoutHapticsEnabled,
-                    onProviderPreferenceSelected = viewModel::setAiProviderPreference,
-                    onSaveApiKey = viewModel::saveGeminiKey,
-                    onSaveOpenAiKey = viewModel::saveOpenAiKey,
-                    onClearApiKey = viewModel::clearAllAiKeys,
-                    onSaveProfile = viewModel::saveProfile,
-                    onResetProfile = viewModel::resetProfile,
-                    onClearAllData = viewModel::clearAllData,
-                    onDismissMessage = viewModel::clearMessage,
-                    onRequestHealthPermission = requestHealthPermission,
-                    onRefreshHealth = viewModel::refreshHealthConnectStatus,
-                    onOpenHealthSettings = {
-                        val intent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
-                        if (!context.startActivityIfResolvable(intent)) {
-                            viewModel.refreshHealthConnectStatus()
-                        }
-                    },
-                    onOpenHealthInstall = {
-                        val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata"))
-                        val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata"))
-                        if (!context.startActivityIfResolvable(marketIntent) && !context.startActivityIfResolvable(webIntent)) {
-                            viewModel.refreshHealthConnectStatus()
-                        }
-                    },
-                    onOpenProgress = onOpenProgress,
-                )
-            }
+    when (val state = uiState) {
+        SettingsUiState.Loading -> SettingsLoadingScreen()
+        is SettingsUiState.Error -> SettingsErrorScreen(state.message)
+        is SettingsUiState.Success -> {
+            SettingsScreen(
+                themeMode = state.themeMode,
+                aiPreferences = state.aiPreferences,
+                telemetryOptIn = state.telemetryOptIn,
+                workoutFeedbackPreferences = state.workoutFeedbackPreferences,
+                maskedApiKey = state.maskedApiKey,
+                profile = state.profile,
+                healthStatus = state.healthStatus,
+                message = state.message,
+                onThemeSelected = viewModel::setThemeMode,
+                onToggleAi = viewModel::setAiEnabled,
+                onToggleTelemetry = viewModel::setTelemetryOptIn,
+                onToggleRestTimerSound = viewModel::setRestTimerSoundEnabled,
+                onToggleWorkoutHaptics = viewModel::setWorkoutHapticsEnabled,
+                onProviderPreferenceSelected = viewModel::setAiProviderPreference,
+                onSaveApiKey = viewModel::saveGeminiKey,
+                onSaveOpenAiKey = viewModel::saveOpenAiKey,
+                onClearApiKey = viewModel::clearAllAiKeys,
+                onSaveProfile = viewModel::saveProfile,
+                onResetProfile = viewModel::resetProfile,
+                onClearAllData = viewModel::clearAllData,
+                onDismissMessage = viewModel::clearMessage,
+                onRequestHealthPermission = requestHealthPermission,
+                onRefreshHealth = viewModel::refreshHealthConnectStatus,
+                onOpenHealthSettings = {
+                    val intent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
+                    if (!context.startActivityIfResolvable(intent)) {
+                        viewModel.refreshHealthConnectStatus()
+                    }
+                },
+                onOpenHealthInstall = {
+                    val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata"))
+                    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata"))
+                    if (!context.startActivityIfResolvable(marketIntent) && !context.startActivityIfResolvable(webIntent)) {
+                        viewModel.refreshHealthConnectStatus()
+                    }
+                },
+                onExportData = {
+                    exportLauncher.launch("trainiq-export-${System.currentTimeMillis()}.json")
+                },
+                onOpenProgress = onOpenProgress,
+            )
         }
     }
 }
@@ -505,7 +548,7 @@ fun SettingsScreen(
     maskedApiKey: String,
     profile: UserProfile?,
     healthStatus: HealthConnectStatus,
-    message: String?,
+    message: UiMessage?,
     onThemeSelected: (ThemeMode) -> Unit,
     onToggleAi: (Boolean) -> Unit,
     onToggleTelemetry: (Boolean) -> Unit,
@@ -518,31 +561,46 @@ fun SettingsScreen(
     onSaveProfile: (String, String, BiologicalSex, String, String, String, String, String) -> Unit,
     onResetProfile: () -> Unit,
     onClearAllData: () -> Unit,
-    onDismissMessage: () -> Unit,
+    onDismissMessage: (Long) -> Unit,
     onRequestHealthPermission: () -> Unit,
     onRefreshHealth: () -> Unit,
     onOpenHealthSettings: () -> Unit,
     onOpenHealthInstall: () -> Unit,
+    onExportData: () -> Unit,
     onOpenProgress: () -> Unit = {},
 ) {
     var apiKey by rememberSaveable { mutableStateOf("") }
     var openAiKey by rememberSaveable { mutableStateOf("") }
     var pendingDestructiveAction by rememberSaveable { mutableStateOf<PendingDestructiveSettingsAction?>(null) }
+    val listState = rememberLazyListState()
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .clearFocusOnScrollOrDrag()
-            .navigationBarsPadding()
-            .imePadding(),
-        contentPadding = PaddingValues(
-            start = MaterialTheme.spacing.medium,
-            top = MaterialTheme.spacing.small,
-            end = MaterialTheme.spacing.medium,
-            bottom = 132.dp,
-        ),
-        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
-    ) {
+    LaunchedEffect(message?.id) {
+        val currentMessage = message ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(currentMessage.text)
+        onDismissMessage(currentMessage.id)
+    }
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+    ) { _ ->
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                .clearFocusOnScrollOrDrag()
+                .navigationBarsPadding()
+                .imePadding(),
+            contentPadding = PaddingValues(
+                start = MaterialTheme.spacing.medium,
+                top = MaterialTheme.spacing.small,
+                end = MaterialTheme.spacing.medium,
+                bottom = 132.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
+        ) {
         item { ScreenHeader(title = "Instellingen", subtitle = "Health Connect, AI en voorkeuren") }
         item {
             SectionCard(title = settingsOverflowSectionTitle()) {
@@ -558,11 +616,6 @@ fun SettingsScreen(
                 ) {
                     Text("Voortgang openen")
                 }
-            }
-        }
-        message?.let {
-            item {
-                MessageCard(message = it, onDismiss = onDismissMessage)
             }
         }
         item {
@@ -765,6 +818,10 @@ fun SettingsScreen(
                 Text("Health Connect-cache: sync-token en recente stappen, hartslag, slaap, calorieën en gewicht.")
                 Text("Toegang intrekken doe je in Android Health Connect.")
                 Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+                    Button(
+                        onClick = onExportData,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Data exporteren als JSON") }
                     TextButton(
                         onClick = { pendingDestructiveAction = PendingDestructiveSettingsAction.CLEAR_API_KEY },
                         modifier = Modifier.fillMaxWidth(),
@@ -784,6 +841,7 @@ fun SettingsScreen(
                 Text("Ontworpen als handmatige training- en voedings-MVP.")
             }
         }
+    }
     }
 
     pendingDestructiveAction?.let { action ->
@@ -911,7 +969,7 @@ internal fun settingsUiState(
     workoutFeedbackPreferences: WorkoutFeedbackPreferences,
     profile: UserProfile?,
     healthStatus: HealthConnectStatus,
-    message: String?,
+    message: UiMessage?,
 ): SettingsUiState = SettingsUiState.Success(
     themeMode = themeMode,
     aiPreferences = aiPreferences,

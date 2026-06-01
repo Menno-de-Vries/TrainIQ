@@ -1,6 +1,7 @@
 package com.trainiq.features.nutrition
 
 import com.trainiq.domain.repository.MealEntryRequest
+import com.trainiq.domain.repository.MealEntrySnapshot
 import com.trainiq.domain.repository.MealEntryType
 import com.trainiq.domain.model.EnergyBalanceSnapshot
 import com.trainiq.domain.model.MealType
@@ -59,6 +60,28 @@ class NutritionInputValidationTest {
         assertEquals("Naam is verplicht.", missingItems.name)
         assertEquals("Voeg minimaal een product of recept toe.", missingItems.items)
         assertEquals("Vul voor elk item een positief aantal gram in.", zeroItem.items)
+    }
+
+    @Test
+    fun mealValidation_requiresCompleteSnapshotItems() {
+        val invalid = validateMealInput(
+            "Lunch",
+            listOf(MealEntryRequest(MealEntryType.SNAPSHOT, referenceId = 0L, gramsUsed = 100.0)),
+        )
+        val valid = validateMealInput(
+            "Lunch",
+            listOf(
+                MealEntryRequest(
+                    MealEntryType.SNAPSHOT,
+                    referenceId = 0L,
+                    gramsUsed = 100.0,
+                    snapshot = MealEntrySnapshot("Broodje", calories = 250.0, protein = 12.0, carbs = 30.0, fat = 7.0),
+                ),
+            ),
+        )
+
+        assertEquals("Controleer tijdelijke producten voordat je opslaat.", invalid.items)
+        assertFalse(valid.hasErrors)
     }
 
     @Test
@@ -186,6 +209,31 @@ class NutritionInputValidationTest {
     }
 
     @Test
+    fun nutritionScreen_usesProductEditorSheetAndSeparateRecipeIngredientPicker() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+
+        assertTrue(source.contains("foodEditorSheetState"))
+        assertTrue(source.contains("if (showFoodEditor)"))
+        assertTrue(source.contains("ProductPickerSheet"))
+        assertTrue(source.contains("RecipeIngredientEditorSheet"))
+        assertTrue(source.contains("selectedRecipeIngredientFoodId"))
+        assertTrue(source.contains("selectedFood = selectedRecipeIngredientFood"))
+        assertTrue(source.contains("onOpenIngredientEditor = { showIngredientEditor = true }"))
+        assertTrue(source.contains("showIngredientEditor = false"))
+        assertFalse(source.contains("if (showFoodEditor) item"))
+    }
+
+    @Test
+    fun nutritionScreen_offersPhotoImportBeforeOpeningCameraScanner() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+
+        assertTrue(source.contains("ActivityResultContracts.PickVisualMedia()"))
+        assertTrue(source.contains("copyScannerImageFromUri(context, uri)"))
+        assertTrue(source.contains("onAnalyzeImportedPhoto(path, activeContext, System.currentTimeMillis())"))
+        assertTrue(source.contains("Text(\"Foto importeren\")"))
+    }
+
+    @Test
     fun nutritionScreen_keepsMealAddAndEditFlowsContextual() {
         val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
         val dailyAddBody = source.substringAfter("onAddToMeal = { type ->").substringBefore("onEditMeal = { meal ->")
@@ -285,7 +333,8 @@ class NutritionInputValidationTest {
         val addSheet = source.substringAfter("AddToMealActionSheet(").substringBefore("pendingDelete?.let")
         val contextualTargetHelper = source.substringAfter("fun preserveContextualMealTarget()").substringBefore("fun finishAiBatchItem")
         val aiMealSave = source.substringAfter("onSaveToDraft = {").substringBefore("},\n                                )")
-        val photoMealSave = source.substringAfter("onAddToMeal = {").substringAfter("startAiFoodBatchSave(").substringBefore("},\n                                    )")
+        val photoMealSave = source.substringAfter("onAddToMeal = {").substringBefore("},\n                                    )")
+        val aiSnapshotHelper = source.substringAfter("fun addAiBatchItemsAsMealSnapshots(").substringBefore("LaunchedEffect(pendingBarcode)")
         val savedRecipeAdd = source.substringAfter("onUseInMeal = { recipe ->").substringBefore("onDelete = { pendingDelete = PendingNutritionDelete.Recipe")
         val savedFoodAdd = source.substringAfter("onQuickAdd = { food ->").substringBefore("onDelete = { pendingDelete = PendingNutritionDelete.Food")
         val reuseMeal = source.substringAfter("onReuseMeal = { meal ->").substringBefore("onDeleteMeal = { pendingDelete = PendingNutritionDelete.Meal")
@@ -293,8 +342,9 @@ class NutritionInputValidationTest {
         assertTrue(addSheet.contains("mealType = addToMealType"))
         assertTrue(addSheet.contains("pendingAiMealType = addToMealType"))
         assertTrue(contextualTargetHelper.contains("mealType = addToMealType"))
-        assertTrue(aiMealSave.contains("selectedTab = 1"))
-        assertTrue(photoMealSave.contains("selectedTab = 1"))
+        assertTrue(aiMealSave.contains("addAiBatchItemsAsMealSnapshots(batchItems)"))
+        assertTrue(photoMealSave.contains("addAiBatchItemsAsMealSnapshots(batchItems)"))
+        assertTrue(aiSnapshotHelper.contains("selectedTab = 1"))
         assertTrue(savedRecipeAdd.contains("preserveContextualMealTarget()"))
         assertTrue(savedRecipeAdd.contains("selectedTab = 1"))
         assertTrue(savedFoodAdd.contains("preserveContextualMealTarget()"))
@@ -314,7 +364,8 @@ class NutritionInputValidationTest {
         assertTrue(reuseMeal.contains("mealNotes = meal.notes.orEmpty()"))
         assertTrue(reuseMeal.contains("mealDraft.clear()"))
         assertTrue(reuseMeal.contains("mealDraft.addAll(meal.items.map"))
-        assertTrue(reuseMeal.contains("itemType = if (it.itemType.name == \"FOOD\") MealEntryType.FOOD else MealEntryType.RECIPE"))
+        assertTrue(reuseMeal.contains("itemType = it.itemType.toMealEntryType()"))
+        assertTrue(reuseMeal.contains("snapshot = it.takeIf"))
         assertTrue(reuseMeal.contains("referenceId = it.referenceId"))
         assertTrue(reuseMeal.contains("gramsUsed = it.gramsUsed"))
         assertTrue(reuseMeal.contains("servingCount = it.servingCount"))

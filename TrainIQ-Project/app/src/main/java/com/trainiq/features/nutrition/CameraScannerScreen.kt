@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.Keep
 import androidx.camera.core.CameraSelector
@@ -418,7 +419,7 @@ internal fun CameraScannerScreen(
         hasPermission = it
         restorableState = restorableState.copy(permissionDenied = !it)
     }
-    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    val imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         restorableState = restorableState.copy(cameraError = null)
         copyScannerImageFromUri(context, uri)
@@ -491,8 +492,8 @@ internal fun CameraScannerScreen(
             PermissionGate(
                 permissionDenied = restorableState.permissionDenied,
                 onGrant = { permissionLauncher.launch(Manifest.permission.CAMERA) },
-                onImportPhoto = if (scannerMode == ScannerMode.AI_SCALE) {
-                    { galleryLauncher.launch("image/*") }
+                onImportPhoto = if (scannerMode.supportsPhotoImport()) {
+                    { imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                 } else {
                     null
                 },
@@ -529,7 +530,7 @@ internal fun CameraScannerScreen(
                     showCameraFallback -> scannerCameraUnavailableMessage(scannerMode)
                     scannerMode == ScannerMode.BARCODE -> "Richt de camera op de barcode van het product."
                     uiState is CameraScannerUiState.Preview -> uiState.contextHint.ifBlank {
-                        "Zet het volledige bord of de verpakking duidelijk in beeld. TrainIQ maakt er bewerkbare producten en macro's van."
+                        "Voeg context toe als je weet wat erin zit. TrainIQ gebruikt je context als waarheid en de foto voor ontbrekende details."
                     }
                     uiState is CameraScannerUiState.Error -> uiState.contextHint.ifBlank { "" }
                     uiState is CameraScannerUiState.Empty -> uiState.contextHint.ifBlank { "" }
@@ -636,13 +637,13 @@ internal fun CameraScannerScreen(
                                     enabled = uiState.isEnabled && !isCapturing && !showCameraFallback,
                                 ) { Text(if (isCapturing) "Foto maken..." else "Foto maken") }
                             }
-                            if (scannerMode == ScannerMode.AI_SCALE) {
+                            if (scannerMode.supportsPhotoImport()) {
                                 OutlinedButton(
-                                    onClick = { galleryLauncher.launch("image/*") },
+                                    onClick = { imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                                     enabled = uiState.isEnabled,
                                     modifier = Modifier.fillMaxWidth(),
                                 ) {
-                                    Text(scalePhotoImportLabel())
+                                    Text(photoImportLabel(scannerMode))
                                 }
                             }
                         }
@@ -767,6 +768,15 @@ internal fun scannerManualFallbackLabel(scannerMode: ScannerMode): String =
         ScannerMode.AI_SCALE -> "Handmatig invoeren"
     }
 
+internal fun ScannerMode.supportsPhotoImport(): Boolean =
+    this == ScannerMode.AI_MEAL || this == ScannerMode.AI_SCALE
+
+internal fun photoImportLabel(scannerMode: ScannerMode): String = when (scannerMode) {
+    ScannerMode.AI_MEAL -> "Maaltijdfoto importeren"
+    ScannerMode.AI_SCALE -> "Weegfoto importeren"
+    ScannerMode.BARCODE -> "Foto importeren"
+}
+
 internal fun scalePhotoImportLabel(): String = "Foto importeren"
 
 internal enum class ScannerSheetErrorAction { Dismiss, ScanAgain }
@@ -801,7 +811,7 @@ private fun PermissionGate(
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                     onImportPhoto?.let {
-                        OutlinedButton(onClick = it, modifier = Modifier.fillMaxWidth()) { Text(scalePhotoImportLabel()) }
+                        OutlinedButton(onClick = it, modifier = Modifier.fillMaxWidth()) { Text("Foto importeren") }
                     }
                     Button(onClick = onGrant, modifier = Modifier.fillMaxWidth()) { Text(scannerPermissionGrantLabel()) }
                     if (permissionDenied) {
@@ -1058,9 +1068,9 @@ private fun takeScannerPhoto(
     )
 }
 
-private fun copyScannerImageFromUri(context: Context, uri: Uri): String? =
+internal fun copyScannerImageFromUri(context: Context, uri: Uri): String? =
     runCatching {
-        val file = File(context.cacheDir, "scale-import-${System.currentTimeMillis()}.jpg")
+        val file = File(context.cacheDir, "scanner-import-${System.currentTimeMillis()}.jpg")
         context.contentResolver.openInputStream(uri)?.use { input ->
             file.outputStream().use { output -> input.copyTo(output) }
         } ?: return@runCatching null

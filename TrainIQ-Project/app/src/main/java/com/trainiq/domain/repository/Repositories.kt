@@ -164,12 +164,22 @@ data class MealEntryRequest(
     val gramsUsed: Double,
     val servingCount: Int = 1,
     val notes: String? = null,
+    val snapshot: MealEntrySnapshot? = null,
 )
 
 enum class MealEntryType {
     FOOD,
     RECIPE,
+    SNAPSHOT,
 }
+
+data class MealEntrySnapshot(
+    val name: String,
+    val calories: Double,
+    val protein: Double,
+    val carbs: Double,
+    val fat: Double,
+)
 
 interface ProgressRepository {
     fun observeProgressOverview(): Flow<ProgressOverview>

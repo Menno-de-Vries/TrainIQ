@@ -363,6 +363,7 @@ data class Recipe(
 enum class LoggedMealItemType {
     FOOD,
     RECIPE,
+    SNAPSHOT,
 }
 
 data class LoggedMealItem(

@@ -15,20 +15,21 @@ class AdaptiveNavigationPolicyTest {
     }
 
     @Test
-    fun compactBottomNavigationUsesOverflowPolicy() {
+    fun compactBottomNavigationKeepsTrendVisible() {
         val visibleRoutes = compactBottomNavigationRouteClasses()
 
-        assertTrue(visibleRoutes.size <= 5)
+        assertTrue(visibleRoutes.size >= 6)
+        assertTrue(Progress::class in visibleRoutes)
         assertTrue(Settings::class in visibleRoutes)
-        assertFalse(Progress::class in visibleRoutes)
         assertEquals(Settings::class, visibleRoutes.last())
+        assertEquals("Trend", bottomNavigationLabel("Voortgang"))
         assertEquals("Meer", bottomNavigationLabel("Instellingen"))
     }
 
     @Test
     fun compactSwipeNavigationMatchesVisibleBottomNavigation() {
         assertTrue(compactSwipeNavigationRouteClasses() == compactBottomNavigationRouteClasses())
-        assertFalse(Progress::class in compactSwipeNavigationRouteClasses())
+        assertTrue(Progress::class in compactSwipeNavigationRouteClasses())
     }
 
     @Test

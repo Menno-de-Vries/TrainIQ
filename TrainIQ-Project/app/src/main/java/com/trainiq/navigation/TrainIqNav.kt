@@ -371,11 +371,7 @@ private fun bottomNavigationDestinations(
     items: List<TopLevelDestination>,
     windowWidthClass: TrainIqWindowWidthClass,
 ): List<TopLevelDestination> =
-    if (windowWidthClass == TrainIqWindowWidthClass.Compact) {
-        items.filterNot { it.routeClass == Progress::class }
-    } else {
-        items
-    }
+    items
 
 internal fun compactBottomNavigationRouteClasses(): List<KClass<*>> =
     bottomNavigationDestinations(

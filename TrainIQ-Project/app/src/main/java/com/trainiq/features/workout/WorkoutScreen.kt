@@ -45,6 +45,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -97,6 +98,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.AssistChip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.runtime.Composable
@@ -123,7 +125,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -262,6 +263,7 @@ import kotlin.math.roundToInt
 data class SetInputDraft(
     val weight: String = "",
     val reps: String = "",
+    val restSeconds: String = "",
     val rpe: String = "",
     val setType: SetType = SetType.NORMAL,
 )
@@ -269,6 +271,7 @@ data class SetInputDraft(
 data class SetInputFieldErrors(
     val weight: String? = null,
     val reps: String? = null,
+    val restSeconds: String? = null,
     val rpe: String? = null,
 )
 
@@ -657,10 +660,15 @@ class WorkoutViewModel @Inject constructor(
         val loggedSets = _loggedSetsThisSession.value[key].orEmpty()
         val correctionSet = correctionSetId?.let { id -> loggedSets.firstOrNull { it.id == id } }
         val loggedCount = loggedSets.size
+        val draftRestSeconds = activeExerciseRestSeconds(
+            baseRestSeconds = plan.plannedRestSeconds(correctionSet?.orderIndex ?: loggedCount),
+            overrideRestSeconds = _exerciseRestOverrides.value[key],
+        )
         val draft = activeSetUiDraft(
             savedDraft = _drafts.value[key],
             plan = plan,
             loggedSetCount = loggedCount,
+            activeRestSeconds = draftRestSeconds,
         )
         val validation = validateSetInput(draft)
         if (validation is SetLogValidationResult.Invalid) {
@@ -690,7 +698,7 @@ class WorkoutViewModel @Inject constructor(
             rpe = validInput.rpe,
             repsInReserve = StrengthCalculator.estimateRepsInReserve(validInput.rpe),
             setType = draft.setType,
-            restSeconds = correctionSet?.restSeconds ?: 0,
+            restSeconds = validInput.restSeconds,
             orderIndex = correctionSet?.orderIndex ?: 0,
         )
         viewModelScope.launch {
@@ -699,10 +707,7 @@ class WorkoutViewModel @Inject constructor(
                 it.weight.isNotBlank() || it.reps.isNotBlank() || it.rpe.isNotBlank()
             } ?: SetInputDraft(setType = draft.setType)
             try {
-                val restSeconds = activeExerciseRestSeconds(
-                    baseRestSeconds = plan.plannedRestSeconds(correctionSet?.orderIndex ?: loggedCount),
-                    overrideRestSeconds = _exerciseRestOverrides.value[key],
-                )
+                val restSeconds = validInput.restSeconds
                 val active = if (correctionSet != null) {
                     updateActiveWorkoutSetUseCase(
                         setId = correctionSet.id,
@@ -1249,6 +1254,7 @@ class WorkoutViewModel @Inject constructor(
     }
 
     private fun applyActiveSession(session: ActiveWorkoutSession) {
+        val previousDrafts = _drafts.value
         _activeSession.value = session
         _loggedSetsThisSession.value = session.loggedSets
             .groupBy { it.activeKey }
@@ -1256,7 +1262,10 @@ class WorkoutViewModel @Inject constructor(
         _pendingCorrectionSetIds.value = _pendingCorrectionSetIds.value.filter { (key, setId) ->
             session.loggedSets.any { it.activeKey == key && it.id == setId }
         }
-        _drafts.value = session.drafts.mapValues { it.value.toUiDraft() }
+        _drafts.value = session.drafts.mapValues { (key, draft) ->
+            val previousRest = previousDrafts[key]?.restSeconds.orEmpty()
+            draft.toUiDraft().copy(restSeconds = previousRest)
+        }
         _activeWorkout.value?.exercises?.map { it.activeKey }?.toSet()?.let { activeKeys ->
             _exerciseRestOverrides.value = _exerciseRestOverrides.value.filterKeys { it in activeKeys }
         }
@@ -1380,12 +1389,15 @@ fun WorkoutScreen(
     var showCreateDialog by remember { mutableStateOf(false) }
     var isGenerating by remember { mutableStateOf(false) }
     var selectedRoutineId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var previousSelectedRoutineId by rememberSaveable { mutableStateOf<Long?>(null) }
     val trainingListState = rememberLazyListState()
+    val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(selectedRoutineId) {
         onDetailModeChanged(selectedRoutineId != null)
-        if (selectedRoutineId != null) {
+        if (selectedRoutineId != null && previousSelectedRoutineId == null) {
             trainingListState.scrollToItem(0)
         }
+        previousSelectedRoutineId = selectedRoutineId
     }
     BackHandler(enabled = selectedRoutineId != null) {
         selectedRoutineId = null
@@ -1394,6 +1406,10 @@ fun WorkoutScreen(
         if (message == "Routine gegenereerd." || message?.contains("mislukt", ignoreCase = true) == true) {
             isGenerating = false
             showAiDialog = false
+        }
+        if (message != null) {
+            snackbarHostState.showSnackbar(message)
+            onDismissMessage()
         }
     }
     val selectedRoutine = remember(selectedRoutineId, overview?.routines) {
@@ -1440,6 +1456,7 @@ fun WorkoutScreen(
         )
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     TrainingWithoutOverscroll {
         LazyColumn(
             state = trainingListState,
@@ -1457,7 +1474,6 @@ fun WorkoutScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
         item { ScreenHeader(title = "Train", subtitle = "Routines, progressie en actieve sessies") }
-        if (message != null) item { MessageCard(message = message, onDismiss = onDismissMessage) }
         if (overview == null) {
             item { ShimmerCardPlaceholder(lineCount = 4) }
             item { ShimmerCardPlaceholder(lineCount = 3) }
@@ -1572,6 +1588,14 @@ fun WorkoutScreen(
         }
         }
     }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(MaterialTheme.spacing.medium),
+        )
+    }
 }
 
 @HiltViewModel
@@ -1591,10 +1615,13 @@ class WorkoutCompletionViewModel @Inject constructor(
                 WorkoutCompletionUiState.Success(summary)
             }
             if (summary?.debrief?.source == WorkoutDebriefSource.LOCAL_FALLBACK) {
-                kotlinx.coroutines.delay(2_500L)
-                val refreshed = getWorkoutCompletionSummaryUseCase(sessionId)
-                if (refreshed != null && refreshed.debrief.source != summary.debrief.source) {
+                repeat(6) {
+                    kotlinx.coroutines.delay(2_000L)
+                    val refreshed = getWorkoutCompletionSummaryUseCase(sessionId) ?: return@repeat
                     _uiState.value = WorkoutCompletionUiState.Success(refreshed)
+                    if (refreshed.debrief.source != WorkoutDebriefSource.LOCAL_FALLBACK) {
+                        return@launch
+                    }
                 }
             }
         }
@@ -2708,6 +2735,14 @@ private fun RoutineExerciseCard(
                                 onClick = {
                                     menuExpanded = false
                                     onOpenHistory()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Set toevoegen") },
+                                leadingIcon = { Icon(Icons.Rounded.Add, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onAddSet()
                                 },
                             )
                             DropdownMenuItem(
@@ -4666,6 +4701,13 @@ private fun CompletionSmartSummary(summary: WorkoutCompletionSummary) {
             AppChip(label = summary.recommendationLabel, accent = intensityContentColor(debrief.intensitySignal))
         }
         AiSummaryLead(text = debrief.summary)
+        if (debrief.source == WorkoutDebriefSource.LOCAL_FALLBACK) {
+            Text(
+                "AI-feedback wordt opgehaald. Deze samenvatting wordt automatisch bijgewerkt zodra Gemini of OpenAI klaar is.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         CompletionInsightChips(summary)
         AiBulletSection(title = "Hoogtepunten", items = debrief.wins.ifEmpty { listOf(debrief.progressionFeedback) })
         AiBulletSection(title = "Aandachtspunten", items = debrief.risks.ifEmpty { listOf("Geen duidelijke aandachtspunten op basis van de beschikbare trainingsdata.") })
@@ -4867,8 +4909,14 @@ fun ActiveWorkoutScreen(
     val currentOnDismissMessage by rememberUpdatedState(onDismissMessage)
     val workoutExercises = uiState.workout?.exercises.orEmpty()
     val exerciseGroups = remember(workoutExercises) { workoutExerciseGroups(workoutExercises) }
+    val activeWorkoutListState = rememberLazyListState()
     val suggestionsByExerciseId = remember(uiState.progressionSuggestions) {
         uiState.progressionSuggestions.associateBy { it.exerciseId }
+    }
+    LaunchedEffect(uiState.message) {
+        val currentMessage = uiState.message ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(currentMessage)
+        currentOnDismissMessage()
     }
 
     replacingActivePlan?.let { plan ->
@@ -4943,6 +4991,7 @@ fun ActiveWorkoutScreen(
     ) { padding ->
         TrainingWithoutOverscroll {
             LazyColumn(
+                state = activeWorkoutListState,
                 modifier = Modifier
                     .fillMaxSize()
                     .clearFocusOnScrollOrDrag()
@@ -4992,9 +5041,6 @@ fun ActiveWorkoutScreen(
                     )
                     ActiveWorkoutSessionSummary(uiState, restTimerSeconds)
                 }
-            }
-            uiState.message?.let { message ->
-                item(key = "active-workout-message") { MessageCard(message = message, onDismiss = currentOnDismissMessage) }
             }
             if (uiState.workout == null) {
                 item { EmptyCard("Training niet beschikbaar", "Deze training kon niet worden geladen.") }
@@ -5371,14 +5417,18 @@ private fun ActiveWorkoutPlanCard(
 ) {
     val key = plan.activeKey
     val loggedSets = uiState.loggedSetsThisSession[key].orEmpty()
+    val activeRestSeconds = activeExerciseRestSeconds(
+        plan.plannedRestSeconds(loggedSets.size),
+        uiState.exerciseRestOverrides[key],
+    )
     val draft = activeSetUiDraft(
         savedDraft = uiState.drafts[key],
         plan = plan,
         loggedSetCount = loggedSets.size,
+        activeRestSeconds = activeRestSeconds,
     )
     val draftErrors = uiState.draftErrors[key] ?: SetInputFieldErrors()
     val collapsed = key in uiState.collapsedExerciseIds
-    val activeRestSeconds = activeExerciseRestSeconds(plan.restSeconds, uiState.exerciseRestOverrides[key])
     ActiveExerciseCard(
         plan = plan,
         loggedSets = loggedSets,
@@ -5519,7 +5569,6 @@ private fun ActiveExerciseCard(
     onReplaceExercise: () -> Unit,
     onRemoveExercise: () -> Unit,
 ) {
-    val compactShortScreen = LocalConfiguration.current.screenHeightDp <= 640
     var activeSetTargetDelta by rememberSaveable(plan.id) { mutableIntStateOf(0) }
     val plannedSetCount = plan.plannedSetCount()
     val activeSetTargetCount = (plannedSetCount + activeSetTargetDelta).coerceAtLeast(loggedSets.size)
@@ -5531,6 +5580,7 @@ private fun ActiveExerciseCard(
         hasPendingCorrection = hasPendingCorrection,
     )
     val targetWeight = draft.weight.toFloatOrNull() ?: suggestion?.suggestedWeightKg?.toFloat()
+    var activeInputIndex by rememberSaveable(plan.id) { mutableIntStateOf(-1) }
     val platePlan = remember(targetWeight) {
         targetWeight?.let { StrengthCalculator.calculatePlates(it) }.orEmpty()
     }
@@ -5551,14 +5601,13 @@ private fun ActiveExerciseCard(
         },
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Column(
                     modifier = Modifier
-                        .weight(1f)
+                        .fillMaxWidth()
                         .semantics { contentDescription = "Open geschiedenis voor ${plan.exercise.name}" }
                         .clickable(
                             role = Role.Button,
@@ -5571,7 +5620,7 @@ private fun ActiveExerciseCard(
                         plan.exercise.name,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 2,
+                        maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
@@ -5583,49 +5632,62 @@ private fun ActiveExerciseCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                ActiveExerciseRestControl(
-                    restSeconds = activeRestSeconds,
-                    onDecrease = { onAdjustExerciseRest(-30) },
-                    onIncrease = { onAdjustExerciseRest(30) },
-                )
-                IconButton(onClick = onToggleCollapsed) {
-                    Icon(
-                        if (collapsed) Icons.Rounded.ExpandMore else Icons.Rounded.ExpandLess,
-                        contentDescription = if (collapsed) "Open oefening" else "Klap oefening in",
-                    )
-                }
-                Box {
-                    IconButton(onClick = { menuExpanded = true }) {
-                        Icon(Icons.Rounded.MoreVert, contentDescription = "Actieve oefening acties")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = onToggleCollapsed) {
+                        Icon(
+                            if (collapsed) Icons.Rounded.ExpandMore else Icons.Rounded.ExpandLess,
+                            contentDescription = if (collapsed) "Open oefening" else "Klap oefening in",
+                        )
                     }
-                    DropdownMenu(
-                        expanded = menuExpanded,
-                        onDismissRequest = { menuExpanded = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Set toevoegen") },
-                            leadingIcon = { Icon(Icons.Rounded.Add, contentDescription = null) },
-                            onClick = {
-                                menuExpanded = false
-                                activeSetTargetDelta += 1
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(activeExerciseReplaceLabel()) },
-                            leadingIcon = { Icon(Icons.Rounded.SwapHoriz, contentDescription = null) },
-                            onClick = {
-                                menuExpanded = false
-                                onReplaceExercise()
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(activeExerciseDeleteLabel()) },
-                            leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null) },
-                            onClick = {
-                                menuExpanded = false
-                                onRemoveExercise()
-                            },
-                        )
+                    ActiveExerciseRestControl(
+                        restSeconds = activeRestSeconds,
+                        onDecrease = { onAdjustExerciseRest(-30) },
+                        onIncrease = { onAdjustExerciseRest(30) },
+                    )
+                    Box {
+                        IconButton(onClick = { menuExpanded = true }) {
+                            Icon(Icons.Rounded.MoreVert, contentDescription = "Actieve oefening acties")
+                        }
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Set toevoegen") },
+                                leadingIcon = { Icon(Icons.Rounded.Add, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    activeSetTargetDelta += 1
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Geschiedenis") },
+                                onClick = {
+                                    menuExpanded = false
+                                    onOpenHistory()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(activeExerciseReplaceLabel()) },
+                                leadingIcon = { Icon(Icons.Rounded.SwapHoriz, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onReplaceExercise()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(activeExerciseDeleteLabel()) },
+                                leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onRemoveExercise()
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -5639,26 +5701,46 @@ private fun ActiveExerciseCard(
                 plan.sets.sortedWith(compareBy<RoutineSet> { it.orderIndex }.thenBy { it.id })
             }
             repeat(visibleSetRows) { index ->
+                val loggedSetForRow = loggedSets.getOrNull(index)
+                val rowIsActiveInput = showLogger &&
+                    !collapsed &&
+                    (
+                        pendingCorrectionSetId?.let { loggedSetForRow?.id == it } == true ||
+                            (loggedSetForRow == null && (index == loggedSets.size || activeInputIndex == index))
+                    )
                 SetRow(
                     index = index + 1,
                     repRange = plan.repRange,
                     plannedSet = plannedSets.getOrNull(index),
-                    loggedSet = loggedSets.getOrNull(index),
+                    loggedSet = loggedSetForRow,
                     activeRestSeconds = activeRestSeconds,
                     isCurrent = index == loggedSets.size || pendingCorrectionSetId?.let { loggedSets.getOrNull(index)?.id == it } == true,
                     isCorrecting = pendingCorrectionSetId?.let { loggedSets.getOrNull(index)?.id == it } == true,
-                    onCycleType = {
-                        loggedSets.getOrNull(index)?.let { set ->
-                            onSetTypeChange(set.id, set.setType.next())
+                    isInputExpanded = rowIsActiveInput,
+                    draft = draft,
+                    draftErrors = draftErrors,
+                    lastSession = suggestion?.toLastSessionDraft(),
+                    onSetTypeSelected = { type ->
+                        if (rowIsActiveInput) {
+                            onDraftChange(draft.copy(setType = type))
+                        } else {
+                            loggedSetForRow?.let { set ->
+                                onSetTypeChange(set.id, type)
+                            }
                         }
                     },
-                    onEdit = { loggedSets.getOrNull(index)?.let { onEditSet(it.id) } },
-                    onDelete = { loggedSets.getOrNull(index)?.let { onDeleteSet(it.id) } },
+                    onDraftChange = onDraftChange,
+                    onSubmit = onLogSet,
+                    onEdit = { loggedSetForRow?.let { onEditSet(it.id) } },
+                    onDelete = { loggedSetForRow?.let { onDeleteSet(it.id) } },
                     canRemovePlanned = !isSessionFinished &&
                         loggedSets.getOrNull(index) == null &&
                         activeSetTargetCount > loggedSets.size,
                     onRemovePlanned = { activeSetTargetDelta -= 1 },
-                    onRelog = { loggedSets.getOrNull(index)?.let { onRelogSet(it.id) } },
+                    onRelog = { loggedSetForRow?.let { onRelogSet(it.id) } },
+                    onActivate = {
+                        if (loggedSetForRow == null && showLogger && !collapsed) activeInputIndex = index
+                    },
                 )
             }
             if (collapsed) return@Column
@@ -5671,18 +5753,6 @@ private fun ActiveExerciseCard(
                 )
             }
             if (showLogger) Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SetTypeSelector(
-                    selectedType = draft.setType,
-                    onSelectedTypeChange = { onDraftChange(draft.copy(setType = it)) },
-                    compact = compactShortScreen,
-                )
-                SetLoggerFields(
-                    draft = draft,
-                    errors = draftErrors,
-                    lastSession = suggestion?.toLastSessionDraft(),
-                    onDraftChange = onDraftChange,
-                    onSubmit = onLogSet,
-                )
                 liveOneRepMax?.let { oneRepMax ->
                     Text(
                         "Geschatte 1RM: ${formatWeight(oneRepMax)} kg",
@@ -5870,102 +5940,179 @@ private fun SetTypeSelector(
 }
 
 @Composable
-private fun SetLoggerFields(
+private fun SetTypePill(
+    setType: SetType,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val color = setTypeColor(setType)
+    Surface(
+        modifier = Modifier
+            .defaultMinSize(minWidth = 34.dp, minHeight = 28.dp)
+            .clickable(
+                enabled = enabled,
+                role = Role.Button,
+                onClickLabel = "Settype wijzigen",
+                onClick = onClick,
+            ),
+        shape = RoundedCornerShape(999.dp),
+        color = color.copy(alpha = if (enabled) 0.26f else 0.14f),
+        contentColor = color,
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+            Text(setType.shortCode(), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun ActiveSetInputMetrics(
+    layout: RoutineSetMetricLayout,
     draft: SetInputDraft,
     errors: SetInputFieldErrors,
     lastSession: SetInputDraft?,
     onDraftChange: (SetInputDraft) -> Unit,
     onSubmit: () -> Unit,
 ) {
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        maxItemsInEachRow = 3,
-    ) {
-        QuickNumberField(
-            value = draft.weight,
-            label = "Gewicht",
-            suffix = "kg",
-            keyboardType = KeyboardType.Decimal,
-            fallback = lastSession?.weight,
-            errorText = errors.weight,
-            decimalPlaces = 2,
-            modifier = Modifier
-                .weight(1f)
-                .width(108.dp),
-            onValueChange = { onDraftChange(draft.copy(weight = it)) },
-            onSubmit = onSubmit,
-        )
-        QuickNumberField(
-            value = draft.reps,
-            label = "Reps",
-            suffix = "",
-            keyboardType = KeyboardType.Number,
-            fallback = lastSession?.reps,
-            errorText = errors.reps,
-            modifier = Modifier
-                .weight(1f)
-                .width(96.dp),
-            onValueChange = { onDraftChange(draft.copy(reps = it)) },
-            onSubmit = onSubmit,
-        )
-        QuickNumberField(
-            value = draft.rpe,
-            label = "RPE",
-            suffix = "",
-            keyboardType = KeyboardType.Decimal,
-            fallback = null,
-            errorText = errors.rpe,
-            decimalPlaces = 1,
-            modifier = Modifier
-                .weight(1f)
-                .width(96.dp),
-            onValueChange = { onDraftChange(draft.copy(rpe = it)) },
-            onSubmit = onSubmit,
-        )
+    val cells = listOf<@Composable (Modifier) -> Unit>(
+        { modifier ->
+            ActiveSetInputMetricValue(
+                label = RepetitionsMetricLabel,
+                value = draft.reps,
+                suffix = "",
+                keyboardType = KeyboardType.Number,
+                fallback = lastSession?.reps,
+                errorText = errors.reps,
+                modifier = modifier,
+                onValueChange = { onDraftChange(draft.copy(reps = filterIntegerInput(it))) },
+                onSubmit = onSubmit,
+            )
+        },
+        { modifier ->
+            ActiveSetInputMetricValue(
+                label = "Kg",
+                value = draft.weight,
+                suffix = "kg",
+                keyboardType = KeyboardType.Decimal,
+                fallback = lastSession?.weight,
+                errorText = errors.weight,
+                decimalPlaces = 2,
+                modifier = modifier,
+                onValueChange = { onDraftChange(draft.copy(weight = filterDecimalInput(it, maxDecimals = 2))) },
+                onSubmit = onSubmit,
+            )
+        },
+        { modifier ->
+            ActiveSetInputMetricValue(
+                label = "Rust",
+                value = draft.restSeconds,
+                suffix = "s",
+                keyboardType = KeyboardType.Number,
+                fallback = lastSession?.restSeconds,
+                errorText = errors.restSeconds,
+                modifier = modifier,
+                onValueChange = { onDraftChange(draft.copy(restSeconds = filterIntegerInput(it))) },
+                onSubmit = onSubmit,
+            )
+        },
+        { modifier ->
+            ActiveSetInputMetricValue(
+                label = "RPE",
+                value = draft.rpe,
+                suffix = "",
+                keyboardType = KeyboardType.Decimal,
+                fallback = lastSession?.rpe,
+                errorText = errors.rpe,
+                decimalPlaces = 1,
+                modifier = modifier,
+                onValueChange = { onDraftChange(draft.copy(rpe = filterDecimalInput(it, maxDecimals = 1))) },
+                onSubmit = onSubmit,
+            )
+        },
+    )
+    when (layout) {
+        RoutineSetMetricLayout.OneRow -> {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                cells.forEach { cell -> cell(Modifier.weight(1f)) }
+            }
+        }
+        RoutineSetMetricLayout.BalancedGrid -> {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                cells.chunked(2).forEach { rowCells ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        rowCells.forEach { cell -> cell(Modifier.weight(1f)) }
+                    }
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun QuickNumberField(
-    value: String,
+private fun ActiveSetInputMetricValue(
     label: String,
+    value: String,
     suffix: String,
     keyboardType: KeyboardType,
     fallback: String?,
-    errorText: String? = null,
-    decimalPlaces: Int = 0,
+    errorText: String?,
     modifier: Modifier = Modifier,
+    decimalPlaces: Int = 0,
     onValueChange: (String) -> Unit,
     onSubmit: () -> Unit,
 ) {
     val focusManager = LocalFocusManager.current
-    val fieldModifier = if (errorText == null) {
-        Modifier.semantics { contentDescription = if (suffix.isBlank()) label else "$label, $suffix" }
-    } else {
-        Modifier.semantics {
-            contentDescription = if (suffix.isBlank()) label else "$label, $suffix"
-            error(errorText)
-        }
-    }
-    val filterInput: (String) -> String = {
-        if (keyboardType == KeyboardType.Decimal) {
-            filterDecimalInput(it, maxDecimals = decimalPlaces)
-        } else {
-            filterIntegerInput(it)
-        }
-    }
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        TapOnlyOutlinedTextField(
+    val content = if (suffix.isBlank()) label else "$label, $suffix"
+    val textStyle = MaterialTheme.typography.labelMedium.copy(
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurface,
+        textAlign = TextAlign.Center,
+    )
+    Column(
+        modifier = modifier
+            .defaultMinSize(minWidth = 52.dp, minHeight = 52.dp)
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.62f), MaterialTheme.shapes.small)
+            .padding(horizontal = 6.dp, vertical = 4.dp)
+            .semantics {
+                contentDescription = content
+                errorText?.let { error(it) }
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(1.dp),
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (errorText == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+        )
+        BasicTextField(
             value = value,
-            onValueChange = { onValueChange(filterInput(it)) },
-            label = { Text(label) },
-            placeholder = { Text(fallback.orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)) },
-            suffix = suffix.takeIf { it.isNotBlank() }?.let { { Text(it) } },
-            isError = errorText != null,
-            supportingText = errorText?.let { message -> { Text(message) } },
+            onValueChange = { raw ->
+                val filtered = if (keyboardType == KeyboardType.Decimal) {
+                    filterDecimalInput(raw, maxDecimals = decimalPlaces)
+                } else {
+                    filterIntegerInput(raw)
+                }
+                onValueChange(normalizeActiveSetMetricInput(previousValue = value, filteredInput = filtered))
+            },
             singleLine = true,
+            textStyle = textStyle,
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(
                 onDone = {
@@ -5973,10 +6120,37 @@ private fun QuickNumberField(
                     focusManager.clearFocus(force = true)
                 },
             ),
-            modifier = fieldModifier
+            modifier = Modifier
                 .fillMaxWidth()
-                .defaultMinSize(minHeight = 64.dp)
-                .bringIntoViewOnFocus(),
+                .defaultMinSize(minHeight = 24.dp),
+            decorationBox = { innerTextField ->
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    if (value.isBlank()) {
+                        Text(
+                            fallback.orEmpty(),
+                            style = textStyle.copy(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(modifier = if (value.isBlank()) Modifier.width(1.dp) else Modifier) {
+                            innerTextField()
+                        }
+                        if (suffix.isNotBlank() && value.isNotBlank()) {
+                            Text(
+                                suffix,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            },
         )
     }
 }
@@ -5990,14 +6164,23 @@ private fun SetRow(
     activeRestSeconds: Int,
     isCurrent: Boolean,
     isCorrecting: Boolean,
-    onCycleType: () -> Unit,
+    isInputExpanded: Boolean,
+    draft: SetInputDraft?,
+    draftErrors: SetInputFieldErrors?,
+    lastSession: SetInputDraft?,
+    onSetTypeSelected: (SetType) -> Unit,
+    onDraftChange: (SetInputDraft) -> Unit,
+    onSubmit: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     canRemovePlanned: Boolean,
     onRemovePlanned: () -> Unit,
     onRelog: () -> Unit,
+    onActivate: () -> Unit,
 ) {
     var showDeleteConfirm by remember(index, loggedSet) { mutableStateOf(false) }
+    var setTypeMenuExpanded by remember(index, loggedSet?.id, plannedSet?.id) { mutableStateOf(false) }
+    val visibleSetType = draft?.takeIf { isInputExpanded }?.setType ?: loggedSet?.setType ?: plannedSet?.setType
     val background = if (isCurrent) {
         MaterialTheme.trainIqColors.amber.copy(alpha = 0.18f)
     } else {
@@ -6030,6 +6213,12 @@ private fun SetRow(
         modifier = Modifier
             .fillMaxWidth()
             .background(rpeColor, MaterialTheme.shapes.medium)
+            .clickable(
+                enabled = loggedSet == null,
+                role = Role.Button,
+                onClickLabel = "Set $index invullen",
+                onClick = onActivate,
+            )
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -6047,26 +6236,31 @@ private fun SetRow(
                     Icon(Icons.Rounded.Edit, contentDescription = "Set wordt gecorrigeerd", modifier = Modifier.size(18.dp))
                 }
             }
-            Text(
-                text = activeSetTitleText(index, loggedSet?.setType ?: plannedSet?.setType),
-                modifier = Modifier
-                    .weight(1f)
-                    .semantics {
-                        if (loggedSet != null) {
-                            contentDescription = activeSetTypeCycleContentDescription(
-                                index = index,
-                                currentType = loggedSet.setType,
-                            )
-                        }
+            Box {
+                SetTypePill(
+                    setType = visibleSetType ?: SetType.NORMAL,
+                    enabled = loggedSet != null || isInputExpanded,
+                    onClick = { setTypeMenuExpanded = true },
+                )
+                DropdownMenu(
+                    expanded = setTypeMenuExpanded,
+                    onDismissRequest = { setTypeMenuExpanded = false },
+                ) {
+                    SetType.entries.forEach { type ->
+                        DropdownMenuItem(
+                            text = { Text(type.label()) },
+                            onClick = {
+                                setTypeMenuExpanded = false
+                                onSetTypeSelected(type)
+                            },
+                        )
                     }
-                    .clickable(
-                        enabled = loggedSet != null,
-                        role = Role.Button,
-                        onClickLabel = loggedSet?.setType?.next()?.let { nextType ->
-                            "Wijzig settype naar ${nextType.label()}"
-                        },
-                        onClick = onCycleType,
-                    ),
+                }
+            }
+            Text(
+                text = "Set $index",
+                modifier = Modifier
+                    .weight(1f),
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -6090,7 +6284,16 @@ private fun SetRow(
             }
         }
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            when (routineSetMetricLayoutForWidth(maxWidth)) {
+            if (isInputExpanded && draft != null && draftErrors != null) {
+                ActiveSetInputMetrics(
+                    layout = routineSetMetricLayoutForWidth(maxWidth),
+                    draft = draft,
+                    errors = draftErrors,
+                    lastSession = lastSession,
+                    onDraftChange = onDraftChange,
+                    onSubmit = onSubmit,
+                )
+            } else when (routineSetMetricLayoutForWidth(maxWidth)) {
                 RoutineSetMetricLayout.OneRow -> {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -6622,6 +6825,16 @@ internal fun filterDecimalInput(input: String, maxDecimals: Int): String {
 internal fun filterIntegerInput(input: String): String =
     input.filter { it.isDigit() }
 
+internal fun normalizeActiveSetMetricInput(previousValue: String, filteredInput: String): String {
+    if (previousValue != "0" || filteredInput.length <= 1 || filteredInput == "0") return filteredInput
+    return when {
+        filteredInput.startsWith("0.") -> filteredInput
+        filteredInput.startsWith("0") -> filteredInput.dropWhile { it == '0' }.ifBlank { "0" }
+        filteredInput.endsWith("0") -> filteredInput.dropLast(1).ifBlank { "0" }
+        else -> filteredInput
+    }
+}
+
 internal fun shouldDismissExercisePickerFromHandleDrag(
     verticalDragPx: Float,
     thresholdPx: Float,
@@ -6633,7 +6846,7 @@ internal fun shouldDismissSetEditorFromHandleDrag(
 ): Boolean = verticalDragPx >= thresholdPx
 
 internal sealed interface SetLogValidationResult {
-    data class Valid(val weight: Double, val reps: Int, val rpe: Double) : SetLogValidationResult
+    data class Valid(val weight: Double, val reps: Int, val restSeconds: Int, val rpe: Double) : SetLogValidationResult
     data class Invalid(
         val message: String,
         val fieldErrors: SetInputFieldErrors = SetInputFieldErrors(),
@@ -6685,6 +6898,8 @@ internal fun activeSetLogButtonLabel(
 internal fun validateSetInput(draft: SetInputDraft): SetLogValidationResult {
     val parsedWeight = draft.weight.normalizedDecimal().toDoubleOrNull()
     val parsedReps = draft.reps.trim().toIntOrNull()
+    val restInput = draft.restSeconds.trim()
+    val parsedRestSeconds = if (restInput.isBlank()) 0 else restInput.toIntOrNull()
     val rpeInput = draft.rpe.normalizedDecimal()
     val parsedRpe = if (rpeInput.isBlank()) 0.0 else rpeInput.toDoubleOrNull()
     if (parsedWeight == null || !parsedWeight.isFinite() || parsedWeight < 0.0 || parsedWeight > MaxWeightKg) {
@@ -6695,11 +6910,15 @@ internal fun validateSetInput(draft: SetInputDraft): SetLogValidationResult {
         val message = "Voer reps tussen 1 en $MaxReps in."
         return SetLogValidationResult.Invalid(message, SetInputFieldErrors(reps = message))
     }
+    if (parsedRestSeconds == null || parsedRestSeconds !in 0..MaxRestSeconds) {
+        val message = "Rust moet tussen 0 en ${MaxRestSeconds}s liggen."
+        return SetLogValidationResult.Invalid(message, SetInputFieldErrors(restSeconds = message))
+    }
     if (parsedRpe == null || !parsedRpe.isFinite() || parsedRpe !in 0.0..10.0) {
         val message = "RPE moet leeg zijn of tussen 0 en 10 liggen."
         return SetLogValidationResult.Invalid(message, SetInputFieldErrors(rpe = message))
     }
-    return SetLogValidationResult.Valid(parsedWeight, parsedReps, parsedRpe)
+    return SetLogValidationResult.Valid(parsedWeight, parsedReps, parsedRestSeconds, parsedRpe)
 }
 
 private const val MaxTargetSets = 20
@@ -6861,6 +7080,7 @@ private fun intensityContentColor(signal: String): Color = when (signal.uppercas
 private fun LoggedSet.toDraft() = SetInputDraft(
     weight = formatWeight(weight),
     reps = reps.toString(),
+    restSeconds = restSeconds.takeIf { it > 0 }?.toString().orEmpty(),
     rpe = if (rpe > 0.0) formatWeight(rpe) else "",
     setType = setType,
 )
@@ -6913,6 +7133,7 @@ private fun WorkoutExercisePlan.nextPlannedDraft(loggedCount: Int): SetInputDraf
 private fun RoutineSet.toDraft() = SetInputDraft(
     weight = activeSetDraftWeightText(targetWeightKg),
     reps = targetReps.takeIf { it > 0 }?.toString().orEmpty(),
+    restSeconds = restSeconds.takeIf { it > 0 }?.toString().orEmpty(),
     rpe = targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty(),
     setType = setType,
 )
@@ -6920,6 +7141,7 @@ private fun RoutineSet.toDraft() = SetInputDraft(
 private fun WorkoutExercisePlan.toPlannedDraft() = SetInputDraft(
     weight = activeSetDraftWeightText(targetWeightKg),
     reps = displayRepTarget(repRange).takeIf { it.isNotBlank() && it != repRange } ?: repRange.toIntOrNull()?.toString().orEmpty(),
+    restSeconds = restSeconds.takeIf { it > 0 }?.toString().orEmpty(),
     rpe = targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty(),
     setType = setType,
 )
@@ -6931,11 +7153,15 @@ internal fun activeSetUiDraft(
     savedDraft: SetInputDraft?,
     plan: WorkoutExercisePlan,
     loggedSetCount: Int,
+    activeRestSeconds: Int = plan.plannedRestSeconds(loggedSetCount),
 ): SetInputDraft {
-    val plannedDraft = plan.nextPlannedDraft(loggedSetCount)
+    val plannedDraft = plan.nextPlannedDraft(loggedSetCount).copy(
+        restSeconds = activeRestSeconds.takeIf { it > 0 }?.toString().orEmpty(),
+    )
     return savedDraft?.copy(
         weight = savedDraft.weight.ifBlank { plannedDraft.weight },
         reps = savedDraft.reps.ifBlank { plannedDraft.reps },
+        restSeconds = savedDraft.restSeconds.ifBlank { plannedDraft.restSeconds },
         rpe = savedDraft.rpe.ifBlank { plannedDraft.rpe },
     ) ?: plannedDraft
 }
@@ -6955,6 +7181,23 @@ private fun SetType.label(): String = when (this) {
     SetType.DROP_SET -> "Drop set"
     SetType.FAILURE -> "Failure"
     SetType.BACK_OFF -> "Back-off"
+}
+
+private fun SetType.shortCode(): String = when (this) {
+    SetType.NORMAL -> "N"
+    SetType.WARM_UP -> "W"
+    SetType.DROP_SET -> "D"
+    SetType.FAILURE -> "F"
+    SetType.BACK_OFF -> "B"
+}
+
+@Composable
+private fun setTypeColor(setType: SetType): Color = when (setType) {
+    SetType.NORMAL -> MaterialTheme.colorScheme.primary
+    SetType.WARM_UP -> MaterialTheme.trainIqColors.amber
+    SetType.DROP_SET -> MaterialTheme.colorScheme.tertiary
+    SetType.FAILURE -> MaterialTheme.colorScheme.error
+    SetType.BACK_OFF -> MaterialTheme.trainIqColors.mint
 }
 
 private fun SetType.next(): SetType = when (this) {
