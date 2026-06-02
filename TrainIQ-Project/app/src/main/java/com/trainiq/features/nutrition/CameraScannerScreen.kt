@@ -92,6 +92,8 @@ import com.trainiq.domain.usecase.AnalyzeMealUseCase
 import com.trainiq.domain.usecase.ClearLastScanResultUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -1071,8 +1073,33 @@ private fun takeScannerPhoto(
 internal fun copyScannerImageFromUri(context: Context, uri: Uri): String? =
     runCatching {
         val file = File(context.cacheDir, "scanner-import-${System.currentTimeMillis()}.jpg")
-        context.contentResolver.openInputStream(uri)?.use { input ->
-            file.outputStream().use { output -> input.copyTo(output) }
-        } ?: return@runCatching null
+        runCatching {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                file.outputStream().use { output -> input.copyToLimit(output, MaxScannerImportBytes) }
+            } ?: return@runCatching null
+        }.onFailure {
+            file.delete()
+            throw it
+        }
         file.takeIf { it.exists() && it.length() > 0L }?.absolutePath
-    }.getOrNull()
+    }.getOrElse {
+        null
+    }
+
+private fun InputStream.copyToLimit(output: OutputStream, maxBytes: Long) {
+    var copied = 0L
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    while (true) {
+        val read = read(buffer)
+        if (read < 0) return
+        copied += read
+        if (copied > maxBytes) {
+            throw ScannerImportTooLargeException()
+        }
+        output.write(buffer, 0, read)
+    }
+}
+
+private class ScannerImportTooLargeException : RuntimeException()
+
+private const val MaxScannerImportBytes = 6L * 1024L * 1024L

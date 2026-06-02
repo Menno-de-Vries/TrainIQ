@@ -175,6 +175,38 @@ data class TrainIqColors(
 
 internal fun warmMoodboardDarkTrainIqColors(): TrainIqColors = TrainIqColors()
 
+internal fun calmCoachDarkTrainIqColors(): TrainIqColors = TrainIqColors(
+    appBackground = Color(0xFF0B1116),
+    backgroundGlow = Color(0xFF102A24),
+    card = Color(0xFF111A20),
+    cardElevated = Color(0xFF17232B),
+    cardBorder = Color(0xFF253842),
+    mutedText = Color(0xFFA8B8B5),
+    track = Color(0xFF263A43),
+    mint = Color(0xFF5EDCC2),
+    blue = Color(0xFF7EB7FF),
+    amber = Color(0xFFE5A742),
+    peach = Color(0xFFE87561),
+    purple = Color(0xFFBCA2FF),
+    cyan = Color(0xFF73D7E9),
+)
+
+internal fun calmCoachLightTrainIqColors(): TrainIqColors = TrainIqColors(
+    appBackground = Color(0xFFF6FAF8),
+    backgroundGlow = Color(0xFFE2F8EF),
+    card = Color.White,
+    cardElevated = Color(0xFFF9FCFA),
+    cardBorder = Color(0xFFD7E4E0),
+    mutedText = Color(0xFF566A66),
+    track = Color(0xFFDDEAE6),
+    mint = Color(0xFF0F766E),
+    blue = Color(0xFF2D76C8),
+    amber = Color(0xFFC98218),
+    peach = Color(0xFFC95E4C),
+    purple = Color(0xFF7C65C8),
+    cyan = Color(0xFF168CA5),
+)
+
 private val LocalSpacing = staticCompositionLocalOf { Spacing() }
 private val LocalRadii = staticCompositionLocalOf { TrainIqRadii() }
 private val LocalTrainIqColors = staticCompositionLocalOf { TrainIqColors() }
@@ -214,23 +246,9 @@ fun TrainIqTheme(
         else -> LightColors
     }
     val designColors = if (darkTheme) {
-        TrainIqColors()
+        calmCoachDarkTrainIqColors()
     } else {
-        TrainIqColors(
-            appBackground = Color(0xFFF4F7F9),
-            backgroundGlow = Color(0xFFD9F4F3),
-            card = Color.White,
-            cardElevated = Color(0xFFF8FAFC),
-            cardBorder = Color(0xFFD7DFE8),
-            mutedText = Color(0xFF566270),
-            track = Color(0xFFD8E0EA),
-            mint = Color(0xFF12A982),
-            blue = Color(0xFF2B7BEA),
-            amber = Color(0xFFD98918),
-            peach = Color(0xFFD94F3D),
-            purple = Color(0xFF8F51E8),
-            cyan = Color(0xFF168CBF),
-        )
+        calmCoachLightTrainIqColors()
     }
     CompositionLocalProvider(
         LocalSpacing provides Spacing(),

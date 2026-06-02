@@ -234,6 +234,16 @@ class NutritionInputValidationTest {
     }
 
     @Test
+    fun cameraScanner_limitsImportedImageCopyBeforeAnalysis() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/CameraScannerScreen.kt").readText()
+
+        assertTrue(source.contains("MaxScannerImportBytes"))
+        assertTrue(source.contains("copyToLimit(output, MaxScannerImportBytes)"))
+        assertTrue(source.contains("file.delete()"))
+        assertFalse(source.contains("input.copyTo(output)"))
+    }
+
+    @Test
     fun nutritionScreen_keepsMealAddAndEditFlowsContextual() {
         val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
         val dailyAddBody = source.substringAfter("onAddToMeal = { type ->").substringBefore("onEditMeal = { meal ->")
@@ -351,6 +361,48 @@ class NutritionInputValidationTest {
         assertTrue(savedFoodAdd.contains("selectedTab = 1"))
         assertTrue(reuseMeal.contains("mealType = meal.mealType"))
         assertTrue(reuseMeal.contains("selectedTab = 1"))
+    }
+
+    @Test
+    fun contextualMealAdd_usesFirstItemNameAsDraftMealNameInsteadOfMealTypeLabel() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val selectMealDraftTarget = source.substringAfter("fun selectMealDraftTarget(type: MealType) {").substringBefore("fun preserveContextualMealTarget()")
+        val contextualTargetHelper = source.substringAfter("fun preserveContextualMealTarget()").substringBefore("fun resetFoodEditor()")
+        val savedFoodAdd = source.substringAfter("onQuickAdd = { food ->").substringBefore("onDelete = { pendingDelete = PendingNutritionDelete.Food")
+        val savedRecipeAdd = source.substringAfter("onUseInMeal = { recipe ->").substringBefore("onDelete = { pendingDelete = PendingNutritionDelete.Recipe")
+        val manualFoodSave = source.substringAfter("if (hasAddToMealTarget && selectedFoodId == null) {").substringBefore("onSaveFood(")
+
+        assertFalse(selectMealDraftTarget.contains("mealName = type.dutchLabel"))
+        assertFalse(contextualTargetHelper.contains("mealName = addToMealType.dutchLabel"))
+        assertTrue(savedFoodAdd.contains("applyDefaultMealName(food.name)"))
+        assertTrue(savedRecipeAdd.contains("applyDefaultMealName(recipe.name)"))
+        assertTrue(manualFoodSave.contains("applyDefaultMealName(foodName)"))
+    }
+
+    @Test
+    fun productEditor_newProductFlowClearsPreviousFoodSelectionAndFields() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val openNewFoodEditor = source.substringAfter("fun openNewFoodEditor() {").substringBefore("fun resetQuickIngredientEditor()")
+        val addToMealSheet = source.substringAfter("AddToMealActionSheet(").substringBefore("pendingDelete?.let")
+        val productsHeader = source.substringAfter("ProductsHeaderCard(").substringBefore("onScanBarcode =")
+
+        assertTrue(openNewFoodEditor.contains("resetFoodEditorState()"))
+        assertTrue(openNewFoodEditor.contains("showFoodEditor = true"))
+        assertTrue(addToMealSheet.contains("openNewFoodEditor()"))
+        assertTrue(productsHeader.contains("openNewFoodEditor()"))
+    }
+
+    @Test
+    fun mealDraftGramsFieldKeepsEditableTextInsteadOfFormattingFromDoubleOnEveryKeypress() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val mealDraftDeclaration = source.substringAfter("var editingMealId by remember").substringBefore("var mealErrors")
+        val updateGramsHandler = source.substringAfter("onUpdateDraftItemGrams = { index, grams ->").substringBefore("onUpdateDraftItemServingCount")
+        val mealDraftReviewCard = source.substringAfter("private fun MealDraftReviewCard(").substringBefore("@Composable\nprivate fun AiMealAnalysisCard")
+
+        assertTrue(mealDraftDeclaration.contains("EditableMealEntryRequest"))
+        assertTrue(updateGramsHandler.contains("gramsText = grams"))
+        assertTrue(mealDraftReviewCard.contains("value = entry.gramsText"))
+        assertFalse(mealDraftReviewCard.contains("value = formatNumber(entry.gramsUsed)"))
     }
 
     @Test

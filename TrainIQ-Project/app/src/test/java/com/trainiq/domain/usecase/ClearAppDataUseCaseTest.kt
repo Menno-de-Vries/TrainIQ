@@ -11,6 +11,7 @@ class ClearAppDataUseCaseTest {
         val body = source.substringAfter("class ClearAppDataUseCase").substringBefore("private fun ProgressionSuggestion.toInitialDraft")
 
         assertTrue(body.contains("runtimeStore.clearAll()"))
+        assertTrue(body.contains("legacyStore.clearAll()"))
         assertTrue(body.contains("aiUsageGate.clearAllAiKeys()"))
         assertTrue(!body.contains("aiUsageGate.clearEncryptedApiKey()"))
         assertTrue(body.contains("preferencesRepository.clearLocalPrivateData()"))

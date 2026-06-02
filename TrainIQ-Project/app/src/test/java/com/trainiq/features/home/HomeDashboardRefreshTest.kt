@@ -8,6 +8,7 @@ import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -59,6 +60,12 @@ class HomeDashboardRefreshTest {
     }
 
     @Test
+    fun homeRefreshMessageNamesSuccessfulAndFailedHealthConnectRefreshes() {
+        assertEquals("Health Connect bijgewerkt.", homeHealthRefreshMessage(success = true))
+        assertEquals("Health Connect kon niet worden ververst. Laatste bekende data blijft zichtbaar.", homeHealthRefreshMessage(success = false))
+    }
+
+    @Test
     fun refreshDashboardDataSafely_whenCancelled_rethrowsCancellation() = runTest {
         try {
             refreshDashboardDataSafely { throw CancellationException("cancelled") }
@@ -98,6 +105,28 @@ class HomeDashboardRefreshTest {
         )
 
         assertTrue(result == "Stappen offline - Training 180 kcal")
+    }
+
+    @Test
+    fun energyBalanceBreakdownCopyExplainsEachCaloriesOutSource() {
+        val source = File("src/main/java/com/trainiq/core/util/Formatters.kt").readText()
+
+        assertTrue(source.contains("Waar komt calorieën uit vandaan?"))
+        assertTrue(source.contains("BMR"))
+        assertTrue(source.contains("TEF"))
+        assertTrue(source.contains("Stappen"))
+        assertTrue(source.contains("Training"))
+        assertTrue(source.contains("energyOutBreakdownRows"))
+    }
+
+    @Test
+    fun homeScreenShowsHealthConnectRefreshStateAndLastSyncCopy() {
+        val source = File("src/main/java/com/trainiq/features/home/HomeScreen.kt").readText()
+
+        assertTrue(source.contains("isRefreshingHealth"))
+        assertTrue(source.contains("homeHealthRefreshMessage"))
+        assertTrue(source.contains("Laatst gesynchroniseerd"))
+        assertTrue(source.contains("Verversen"))
     }
 
     @Test

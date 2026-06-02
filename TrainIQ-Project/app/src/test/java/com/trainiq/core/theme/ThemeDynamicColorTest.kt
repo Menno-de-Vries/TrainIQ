@@ -24,10 +24,21 @@ class ThemeDynamicColorTest {
         assertTrue(source.contains("dynamicDarkColorScheme(context)"))
         assertTrue(source.contains("dynamicLightColorScheme(context)"))
     }
+
+    @Test
+    fun fallbackThemeUsesCalmCoachColorTokensWithoutDisablingDynamicColor() {
+        val source = testSourceFile("core/theme/Theme.kt").readText()
+
+        assertTrue(source.contains("calmCoachLightTrainIqColors()"))
+        assertTrue(source.contains("calmCoachDarkTrainIqColors()"))
+        assertTrue(source.contains("Color(0xFF0F766E)"))
+        assertTrue(source.contains("Color(0xFF5EDCC2)"))
+        assertTrue(source.contains("shouldUseDynamicColor(dynamicColor, Build.VERSION.SDK_INT)"))
+    }
 }
 
 private fun testSourceFile(relativePackagePath: String): File {
-    val userDir = File(System.getProperty("user.dir"))
+    val userDir = File(System.getProperty("user.dir").orEmpty())
     return listOf(
         File(userDir, "src/main/java/com/trainiq/$relativePackagePath"),
         File(userDir, "app/src/main/java/com/trainiq/$relativePackagePath"),

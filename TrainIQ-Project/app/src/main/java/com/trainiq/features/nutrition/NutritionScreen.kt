@@ -564,12 +564,12 @@ fun NutritionScreen(
     var quickIngredientErrors by remember { mutableStateOf(FoodFieldErrors()) }
 
     var mealType by remember { mutableStateOf(MealType.LUNCH) }
-    var mealName by remember { mutableStateOf(MealType.LUNCH.dutchLabel) }
+    var mealName by remember { mutableStateOf("") }
     var mealNotes by remember { mutableStateOf("") }
     var mealFoodGrams by remember { mutableStateOf("100") }
     var mealRecipeGrams by remember { mutableStateOf("150") }
     var editingMealId by remember { mutableStateOf<Long?>(null) }
-    val mealDraft = remember { mutableStateListOf<MealEntryRequest>() }
+    val mealDraft = remember { mutableStateListOf<EditableMealEntryRequest>() }
     var mealErrors by remember { mutableStateOf(MealFieldErrors()) }
     var mealFoodGramsErrors by remember { mutableStateOf(QuickAddFieldErrors()) }
     var mealRecipeGramsErrors by remember { mutableStateOf(QuickAddFieldErrors()) }
@@ -594,7 +594,6 @@ fun NutritionScreen(
     fun selectMealDraftTarget(type: MealType) {
         editingMealId = null
         mealType = type
-        mealName = type.dutchLabel
         mealErrors = MealFieldErrors()
         addToMealType = type
         hasAddToMealTarget = true
@@ -603,11 +602,16 @@ fun NutritionScreen(
     fun preserveContextualMealTarget() {
         if (hasAddToMealTarget) {
             mealType = addToMealType
-            mealName = addToMealType.dutchLabel
         }
     }
 
-    fun resetFoodEditor() {
+    fun applyDefaultMealName(itemName: String) {
+        if (editingMealId == null && mealName.isBlank()) {
+            mealName = itemName.trim()
+        }
+    }
+
+    fun resetFoodEditorState() {
         selectedFoodId = null
         foodName = ""
         barcode = ""
@@ -616,7 +620,16 @@ fun NutritionScreen(
         carbs = ""
         fat = ""
         foodErrors = FoodFieldErrors()
+    }
+
+    fun resetFoodEditor() {
+        resetFoodEditorState()
         showFoodEditor = false
+    }
+
+    fun openNewFoodEditor() {
+        resetFoodEditorState()
+        showFoodEditor = true
     }
 
     fun resetQuickIngredientEditor() {
@@ -702,7 +715,9 @@ fun NutritionScreen(
 
     fun addAiBatchItemsAsMealSnapshots(batchItems: List<AiBatchItem>) {
         batchItems.forEach { batchItem ->
-            mealDraft += batchItem.toSnapshotMealEntry()
+            val request = batchItem.toSnapshotMealEntry()
+            applyDefaultMealName(request.snapshot?.name.orEmpty())
+            mealDraft += request.toEditableMealEntryRequest()
         }
         editableAiItems.clear()
         aiItemErrors = emptyMap()
@@ -898,7 +913,7 @@ fun NutritionScreen(
                                                 servingCount = it.servingCount,
                                                 notes = it.notes,
                                                 snapshot = it.takeIf { item -> item.itemType.name == "SNAPSHOT" }?.toMealEntrySnapshot(),
-                                            )
+                                            ).toEditableMealEntryRequest()
                                         })
                                         selectedTab = 1
                                         coroutineScope.launch { nutritionListState.animateScrollToItem(1) }
@@ -931,27 +946,39 @@ fun NutritionScreen(
                                     isSaving = isMealSaving,
                                     isEditing = editingMealId != null,
                                     onMealTypeChange = { mealType = it },
-                                    onMealNameChange = { mealName = it },
+                                    onMealNameChange = { mealName = it; mealErrors = mealErrors.copy(name = null) },
                                     onMealNotesChange = { mealNotes = it },
                                     onUpdateDraftItemGrams = { index, grams ->
                                         val parsed = grams.toNutritionNumberOrNull(max = 100_000.0)
+                                        val current = mealDraft[index]
                                         if (parsed != null && parsed > 0.0) {
-                                            val current = mealDraft[index]
-                                            mealDraft[index] = current.copy(gramsUsed = parsed)
+                                            mealDraft[index] = current.copy(
+                                                request = current.request.copy(gramsUsed = parsed),
+                                                gramsText = grams,
+                                            )
+                                        } else {
+                                            mealDraft[index] = current.copy(gramsText = grams)
                                         }
+                                        mealErrors = mealErrors.copy(items = null)
                                     },
                                     onUpdateDraftItemServingCount = { index, count ->
                                         val current = mealDraft[index]
-                                        mealDraft[index] = current.copy(servingCount = count.coerceAtLeast(1))
+                                        mealDraft[index] = current.copy(request = current.request.copy(servingCount = count.coerceAtLeast(1)))
                                     },
                                     onRemoveDraftItem = { index -> mealDraft.removeAt(index) },
                                     onSave = {
-                                        val errors = validateMealInput(mealName, mealDraft.toList())
+                                        val requests = mealDraft.toMealEntryRequestsOrNull()
+                                        val errors = if (requests == null) {
+                                            validateMealInput(mealName, emptyList()).copy(items = "Vul voor elk item een positief aantal gram in.")
+                                        } else {
+                                            validateMealInput(mealName, requests)
+                                        }
                                         mealErrors = errors
                                         if (errors.hasErrors || isMealSaving) return@MealDraftReviewCard
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        onSaveMeal(editingMealId, mealType, mealName, mealNotes, mealDraft.toList()) {
+                                        onSaveMeal(editingMealId, mealType, mealName, mealNotes, requests.orEmpty()) {
                                             editingMealId = null
+                                            mealName = ""
                                             mealNotes = ""
                                             mealDraft.clear()
                                             mealErrors = MealFieldErrors()
@@ -1176,7 +1203,8 @@ fun NutritionScreen(
                                         val grams = mealRecipeGrams.toNutritionNumberOrNull(max = 100_000.0)
                                         if (grams != null && grams > 0.0) {
                                             preserveContextualMealTarget()
-                                            mealDraft += MealEntryRequest(MealEntryType.RECIPE, recipe.id, grams)
+                                            applyDefaultMealName(recipe.name)
+                                            mealDraft += MealEntryRequest(MealEntryType.RECIPE, recipe.id, grams).toEditableMealEntryRequest()
                                             mealErrors = MealFieldErrors()
                                             hasAddToMealTarget = false
                                             selectedTab = 1
@@ -1191,18 +1219,10 @@ fun NutritionScreen(
                                 ProductsHeaderCard(
                                     foodCount = overview?.foods.orEmpty().size,
                                     onCreateClick = {
-                                        selectedFoodId = null
-                                        foodName = ""
-                                        barcode = ""
-                                        calories = ""
-                                        protein = ""
-                                        carbs = ""
-                                        fat = ""
-                                        foodErrors = FoodFieldErrors()
-                                        showFoodEditor = true
+                                        openNewFoodEditor()
                                     },
                                     onScanBarcode = {
-                                        showFoodEditor = true
+                                        openNewFoodEditor()
                                         onSetScanTarget(ScanTarget.FOOD_EDITOR)
                                         onOpenBarcodeScanner()
                                     },
@@ -1229,7 +1249,8 @@ fun NutritionScreen(
                                         val grams = mealFoodGrams.toNutritionNumberOrNull(max = 100_000.0)
                                         if (grams != null && grams > 0.0) {
                                             preserveContextualMealTarget()
-                                            mealDraft += MealEntryRequest(MealEntryType.FOOD, food.id, grams)
+                                            applyDefaultMealName(food.name)
+                                            mealDraft += MealEntryRequest(MealEntryType.FOOD, food.id, grams).toEditableMealEntryRequest()
                                             mealErrors = MealFieldErrors()
                                             hasAddToMealTarget = false
                                             selectedTab = 1
@@ -1258,7 +1279,7 @@ fun NutritionScreen(
                                                 servingCount = it.servingCount,
                                                 notes = it.notes,
                                                 snapshot = it.takeIf { item -> item.itemType.name == "SNAPSHOT" }?.toMealEntrySnapshot(),
-                                            )
+                                            ).toEditableMealEntryRequest()
                                         })
                                         selectedTab = 1
                                     },
@@ -1311,6 +1332,7 @@ fun NutritionScreen(
                     if (errors.hasErrors || isFoodSaving) return@FoodEditorCard
                     if (hasAddToMealTarget && selectedFoodId == null) {
                         val grams = mealFoodGrams.toNutritionNumberOrNull(max = 100_000.0) ?: 100.0
+                        applyDefaultMealName(foodName)
                         mealDraft += createSnapshotMealEntry(
                             name = foodName,
                             grams = grams,
@@ -1318,7 +1340,7 @@ fun NutritionScreen(
                             proteinPer100g = protein.toNutritionNumberOrNull(max = 1000.0) ?: 0.0,
                             carbsPer100g = carbs.toNutritionNumberOrNull(max = 1000.0) ?: 0.0,
                             fatPer100g = fat.toNutritionNumberOrNull(max = 1000.0) ?: 0.0,
-                        )
+                        ).toEditableMealEntryRequest()
                         resetFoodEditor()
                         hasAddToMealTarget = false
                         selectedTab = 1
@@ -1485,19 +1507,18 @@ fun NutritionScreen(
                 onDismiss = { showAddToMealActions = false },
                 onManualFood = {
                     mealType = addToMealType
-                    mealName = addToMealType.dutchLabel
+                    openNewFoodEditor()
                     showAddToMealActions = false
                     selectedTab = 4
                 },
                 onSavedFood = {
                     mealType = addToMealType
-                    mealName = addToMealType.dutchLabel
+                    selectedFoodId = null
                     showAddToMealActions = false
                     selectedTab = 4
                 },
                 onRecipe = {
                     mealType = addToMealType
-                    mealName = addToMealType.dutchLabel
                     showAddToMealActions = false
                     selectedTab = 3
                 },
@@ -1505,7 +1526,6 @@ fun NutritionScreen(
                 onAiContextChange = { aiContext = it },
                 onPhotoAi = {
                     mealType = addToMealType
-                    mealName = addToMealType.dutchLabel
                     pendingAiMealType = addToMealType
                     showAddToMealActions = false
                     aiScanForRecipe = false
@@ -1513,7 +1533,6 @@ fun NutritionScreen(
                 },
                 onOpenMealDraft = {
                     mealType = addToMealType
-                    mealName = addToMealType.dutchLabel
                     showAddToMealActions = false
                     selectedTab = 1
                 },
@@ -2522,7 +2541,7 @@ private fun MealDraftReviewCard(
     mealType: MealType,
     mealName: String,
     mealNotes: String,
-    mealDraft: List<MealEntryRequest>,
+    mealDraft: List<EditableMealEntryRequest>,
     foods: List<FoodItem>,
     recipes: List<Recipe>,
     errors: MealFieldErrors,
@@ -2537,19 +2556,20 @@ private fun MealDraftReviewCard(
     onSave: () -> Unit,
 ) {
     val draftTotals = mealDraft.fold(NutritionFacts.Zero) { acc, entry ->
-        val itemNutrition = when (entry.itemType) {
-            MealEntryType.FOOD -> foods.firstOrNull { it.id == entry.referenceId }?.let { food ->
+        val request = entry.request
+        val itemNutrition = when (request.itemType) {
+            MealEntryType.FOOD -> foods.firstOrNull { it.id == request.referenceId }?.let { food ->
                 NutritionFacts(
-                    calories = food.caloriesPer100g * entry.gramsUsed / 100.0,
-                    protein = food.proteinPer100g * entry.gramsUsed / 100.0,
-                    carbs = food.carbsPer100g * entry.gramsUsed / 100.0,
-                    fat = food.fatPer100g * entry.gramsUsed / 100.0,
+                    calories = food.caloriesPer100g * request.gramsUsed / 100.0,
+                    protein = food.proteinPer100g * request.gramsUsed / 100.0,
+                    carbs = food.carbsPer100g * request.gramsUsed / 100.0,
+                    fat = food.fatPer100g * request.gramsUsed / 100.0,
                 )
             }
-            MealEntryType.RECIPE -> recipes.firstOrNull { it.id == entry.referenceId }?.let { recipe ->
+            MealEntryType.RECIPE -> recipes.firstOrNull { it.id == request.referenceId }?.let { recipe ->
                 val baseGrams = recipe.totalCookedGrams ?: recipe.ingredients.sumOf { it.gramsUsed }
                 if (baseGrams > 0.0) {
-                    val ratio = entry.gramsUsed / baseGrams
+                    val ratio = request.gramsUsed / baseGrams
                     NutritionFacts(
                         calories = recipe.totalNutrition.calories * ratio,
                         protein = recipe.totalNutrition.protein * ratio,
@@ -2560,7 +2580,7 @@ private fun MealDraftReviewCard(
                     null
                 }
             }
-            MealEntryType.SNAPSHOT -> entry.snapshot?.let {
+            MealEntryType.SNAPSHOT -> request.snapshot?.let {
                 NutritionFacts(
                     calories = it.calories,
                     protein = it.protein,
@@ -2570,10 +2590,10 @@ private fun MealDraftReviewCard(
             }
         } ?: NutritionFacts.Zero
         acc + NutritionFacts(
-            calories = itemNutrition.calories * entry.servingCount.coerceAtLeast(1),
-            protein = itemNutrition.protein * entry.servingCount.coerceAtLeast(1),
-            carbs = itemNutrition.carbs * entry.servingCount.coerceAtLeast(1),
-            fat = itemNutrition.fat * entry.servingCount.coerceAtLeast(1),
+            calories = itemNutrition.calories * request.servingCount.coerceAtLeast(1),
+            protein = itemNutrition.protein * request.servingCount.coerceAtLeast(1),
+            carbs = itemNutrition.carbs * request.servingCount.coerceAtLeast(1),
+            fat = itemNutrition.fat * request.servingCount.coerceAtLeast(1),
         )
     }.rounded()
     Card(
@@ -2608,10 +2628,11 @@ private fun MealDraftReviewCard(
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             mealDraft.forEachIndexed { index, entry ->
-                val label = when (entry.itemType) {
-                    MealEntryType.FOOD -> foods.firstOrNull { it.id == entry.referenceId }?.name
-                    MealEntryType.RECIPE -> recipes.firstOrNull { it.id == entry.referenceId }?.name
-                    MealEntryType.SNAPSHOT -> entry.snapshot?.name
+                val request = entry.request
+                val label = when (request.itemType) {
+                    MealEntryType.FOOD -> foods.firstOrNull { it.id == request.referenceId }?.name
+                    MealEntryType.RECIPE -> recipes.firstOrNull { it.id == request.referenceId }?.name
+                    MealEntryType.SNAPSHOT -> request.snapshot?.name
                 } ?: "Item"
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -2624,17 +2645,17 @@ private fun MealDraftReviewCard(
                         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(label, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             NutritionNumberField(
-                                value = formatNumber(entry.gramsUsed),
+                                value = entry.gramsText,
                                 onValueChange = { onUpdateDraftItemGrams(index, it) },
                                 label = "Gram per portie",
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                OutlinedButton(onClick = { onUpdateDraftItemServingCount(index, entry.servingCount - 1) }, enabled = entry.servingCount > 1) {
+                                OutlinedButton(onClick = { onUpdateDraftItemServingCount(index, request.servingCount - 1) }, enabled = request.servingCount > 1) {
                                     Text("-")
                                 }
-                                Text("${entry.servingCount.coerceAtLeast(1)}x", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                OutlinedButton(onClick = { onUpdateDraftItemServingCount(index, entry.servingCount + 1) }) {
+                                Text("${request.servingCount.coerceAtLeast(1)}x", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                OutlinedButton(onClick = { onUpdateDraftItemServingCount(index, request.servingCount + 1) }) {
                                     Text("+")
                                 }
                             }
@@ -2643,7 +2664,7 @@ private fun MealDraftReviewCard(
                     }
                 }
             }
-            RecipeTotalsCard(title = "Maaltijdtotalen", totalNutrition = draftTotals, totalGrams = mealDraft.sumOf { it.gramsUsed * it.servingCount.coerceAtLeast(1) })
+            RecipeTotalsCard(title = "Maaltijdtotalen", totalNutrition = draftTotals, totalGrams = mealDraft.sumOf { it.request.gramsUsed * it.request.servingCount.coerceAtLeast(1) })
             Button(onClick = onSave, enabled = mealDraft.isNotEmpty() && !isSaving, modifier = Modifier.fillMaxWidth()) {
                 Text(if (isSaving) "Opslaan..." else mealDraftSaveLabel(isEditing))
             }
@@ -2831,6 +2852,22 @@ private data class AiBatchItem(
     val item: EditableAiItem,
     val grams: Double,
 )
+
+private data class EditableMealEntryRequest(
+    val request: MealEntryRequest,
+    val gramsText: String = formatNumber(request.gramsUsed),
+)
+
+private fun MealEntryRequest.toEditableMealEntryRequest(): EditableMealEntryRequest =
+    EditableMealEntryRequest(request = this)
+
+private fun List<EditableMealEntryRequest>.toMealEntryRequestsOrNull(): List<MealEntryRequest>? =
+    map { entry ->
+        val grams = entry.gramsText.toNutritionNumberOrNull(max = 100_000.0)
+            ?.takeIf { it > 0.0 }
+            ?: return null
+        entry.request.copy(gramsUsed = grams)
+    }
 
 private fun AiBatchItem.toSnapshotMealEntry(): MealEntryRequest {
     val nutrition = MealEntrySnapshot(

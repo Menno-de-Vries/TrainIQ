@@ -48,6 +48,20 @@ internal fun energyBalanceValueText(balance: Int): String {
 internal fun energyBalanceMetaText(caloriesIn: Int, caloriesOut: Int, calorieTarget: Int): String =
     "In $caloriesIn kcal - Uit $caloriesOut kcal - Doel $calorieTarget kcal"
 
+internal data class EnergyOutBreakdownRow(
+    val label: String,
+    val value: Int,
+    val source: String,
+)
+
+internal fun energyOutBreakdownRows(energyBalance: EnergyBalanceSnapshot): List<EnergyOutBreakdownRow> =
+    listOf(
+        EnergyOutBreakdownRow("BMR", energyBalance.bmr, "Profielschatting"),
+        EnergyOutBreakdownRow("TEF", energyBalance.tefCalories, "Uit gelogde intake"),
+        EnergyOutBreakdownRow("Stappen", energyBalance.neatCalories, "Health Connect"),
+        EnergyOutBreakdownRow("Training", energyBalance.workoutCalories, "Krachttraining"),
+    )
+
 @Composable
 fun MetricCard(title: String, value: String, subtitle: String, modifier: Modifier = Modifier) {
     AppCard(modifier = modifier) {
@@ -86,7 +100,7 @@ fun EnergyBalanceCard(
         ) {
             Text("Energiebalans", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
             Text(
-                energyBalance?.let { "Inname, verbranding en stappen live bij elkaar" }
+                energyBalance?.let { "Netto status met zicht op de bronnen achter calorieën uit." }
                     ?: "Vul je profiel in voor rustverbranding, vertering, beweging en trainingsverbruik.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.trainIqColors.mutedText,
@@ -103,11 +117,33 @@ fun EnergyBalanceCard(
         }
         AppLinearProgress(progress = progress)
         energyBalance?.let {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Calorieën in", style = MaterialTheme.typography.labelLarge)
+                Text("${it.caloriesIn} kcal", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.mutedText)
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Calorieën uit", style = MaterialTheme.typography.labelLarge)
+                Text("${it.caloriesOut} kcal", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.mutedText)
+            }
             Text(
                 energyBalanceMetaText(it.caloriesIn, it.caloriesOut, calorieTarget),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.trainIqColors.mutedText,
             )
+            Text(
+                "Waar komt calorieën uit vandaan?",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            energyOutBreakdownRows(it).forEach { row ->
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(row.label, style = MaterialTheme.typography.labelLarge)
+                        Text(row.source, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.trainIqColors.mutedText)
+                    }
+                    Text("${row.value} kcal", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                }
+            }
         }
     }
 }

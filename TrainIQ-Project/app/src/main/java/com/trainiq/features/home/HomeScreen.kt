@@ -30,6 +30,7 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -75,6 +76,9 @@ import com.trainiq.domain.usecase.RefreshDashboardDataUseCase
 import com.trainiq.navigation.TrainIqWindowWidthClass
 import com.trainiq.navigation.adaptiveDashboardGridColumns
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -91,6 +95,8 @@ sealed interface HomeUiState {
     data class Success(
         val dashboard: HomeDashboard,
         val healthConnectStatus: HealthConnectStatus,
+        val isRefreshingHealth: Boolean = false,
+        val refreshMessage: String? = null,
     ) : HomeUiState
     data class Error(val message: String) : HomeUiState
 }
@@ -103,6 +109,7 @@ class HomeViewModel @Inject constructor(
     private val refreshDashboardDataUseCase: RefreshDashboardDataUseCase,
 ) : ViewModel() {
     private val healthConnectRefreshGate = HomeRefreshGate()
+    private val healthRefreshUiState = MutableStateFlow(HomeHealthRefreshUiState())
 
     private val dashboard = observeHomeDashboardUseCase()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -114,12 +121,14 @@ class HomeViewModel @Inject constructor(
         ),
     )
 
-    val uiState: StateFlow<HomeUiState> = combine(dashboard, healthConnectStatus) { home, health ->
+    val uiState: StateFlow<HomeUiState> = combine(dashboard, healthConnectStatus, healthRefreshUiState) { home, health, refresh ->
         when {
             home == null -> HomeUiState.Loading
             else -> HomeUiState.Success(
                 buildHomeDashboardUseCase.mergeHealthStatus(home, health),
                 health,
+                isRefreshingHealth = refresh.isRefreshing,
+                refreshMessage = refresh.message,
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState.Loading)
@@ -132,9 +141,20 @@ class HomeViewModel @Inject constructor(
     }
 
     fun refreshDashboardAndHealthStatus() {
-        viewModelScope.launch {
-            refreshDashboardDataSafely { refreshDashboardDataUseCase() }
-            refreshHealthConnectStatus()
+        if (!healthConnectRefreshGate.tryStart()) return
+        healthRefreshUiState.value = HomeHealthRefreshUiState(isRefreshing = true)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val dashboardRefreshSucceeded = refreshDashboardDataSafely { refreshDashboardDataUseCase() }
+                val statusResult = runCatching { getHealthConnectStatusUseCase() }
+                statusResult.getOrNull()?.let { healthConnectStatus.value = it }
+                healthRefreshUiState.value = HomeHealthRefreshUiState(
+                    isRefreshing = false,
+                    message = homeHealthRefreshMessage(dashboardRefreshSucceeded && statusResult.isSuccess),
+                )
+            } finally {
+                healthConnectRefreshGate.finish()
+            }
         }
     }
 
@@ -155,6 +175,11 @@ class HomeViewModel @Inject constructor(
     }
 }
 
+internal data class HomeHealthRefreshUiState(
+    val isRefreshing: Boolean = false,
+    val message: String? = null,
+)
+
 internal class HomeRefreshGate {
     private var inFlight = false
 
@@ -170,6 +195,13 @@ internal class HomeRefreshGate {
         inFlight = false
     }
 }
+
+internal fun homeHealthRefreshMessage(success: Boolean): String =
+    if (success) {
+        "Health Connect bijgewerkt."
+    } else {
+        "Health Connect kon niet worden ververst. Laatste bekende data blijft zichtbaar."
+    }
 
 internal suspend fun refreshDashboardDataSafely(refreshDashboardData: suspend () -> Unit): Boolean {
     return try {
@@ -218,7 +250,7 @@ fun HomeRoute(
         onOpenTrain = onOpenTrain,
         onOpenSettings = onOpenSettings,
         onRequestHealthPermission = requestHealthPermission,
-        onRefreshHealth = viewModel::refreshHealthConnectStatus,
+        onRefreshHealth = viewModel::refreshDashboardAndHealthStatus,
         windowWidthClass = windowWidthClass,
     )
 }
@@ -358,6 +390,17 @@ fun HomeScreen(
                             )
                         }
                         item(span = { GridItemSpan(gridColumns) }) {
+                            HealthConnectSyncCard(
+                                status = healthConnectStatus,
+                                isRefreshingHealth = uiState.isRefreshingHealth,
+                                refreshMessage = uiState.refreshMessage,
+                                onRefresh = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onRefreshHealth()
+                                },
+                            )
+                        }
+                        item(span = { GridItemSpan(gridColumns) }) {
                             PermissionManagerCard(
                                 status = healthConnectStatus,
                                 onRequestPermission = {
@@ -419,6 +462,57 @@ internal fun buildHomeRecoverySubtitle(
         append(" - ")
     }
     append("Training $todaysWorkoutCalories kcal")
+}
+
+@Composable
+private fun HealthConnectSyncCard(
+    status: HealthConnectStatus,
+    isRefreshingHealth: Boolean,
+    refreshMessage: String?,
+    onRefresh: () -> Unit,
+) {
+    AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.mint) {
+        Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Health Connect", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                    Text(
+                        homeHealthStatusSummary(status),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.trainIqColors.mutedText,
+                    )
+                }
+                TextButton(onClick = onRefresh, enabled = !isRefreshingHealth) {
+                    Text(if (isRefreshingHealth) "Verversen..." else "Verversen")
+                }
+            }
+            Text(
+                "Laatst gesynchroniseerd: ${formatHomeLastSync(status.lastSyncedAt)}",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.trainIqColors.mutedText,
+            )
+            refreshMessage?.let {
+                Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
+}
+
+internal fun homeHealthStatusSummary(status: HealthConnectStatus): String = when (status.state) {
+    HealthConnectState.CONNECTED -> "Stappen en toegestane Health Connect-bronnen zijn beschikbaar."
+    HealthConnectState.NO_DATA -> "Verbonden, maar er is nog geen recente data."
+    HealthConnectState.PERMISSION_REQUIRED -> "Toestemming ontbreekt voor een of meer bronnen."
+    HealthConnectState.PROVIDER_MISSING -> "Health Connect moet worden geïnstalleerd of bijgewerkt."
+    HealthConnectState.UNSUPPORTED -> "Health Connect wordt niet ondersteund op dit apparaat."
+    HealthConnectState.ERROR -> "Health Connect kan nu niet worden gelezen."
+}
+
+internal fun formatHomeLastSync(lastSyncedAt: Long?): String {
+    lastSyncedAt ?: return "nog niet"
+    val formatter = DateTimeFormatter.ofPattern("HH:mm")
+    return Instant.ofEpochMilli(lastSyncedAt)
+        .atZone(ZoneId.systemDefault())
+        .format(formatter)
 }
 
 @Composable

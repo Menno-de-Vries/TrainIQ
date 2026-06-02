@@ -136,21 +136,18 @@ class HealthConnectDataSource @Inject constructor(
             val grantedPermissions = client.permissionController.getGrantedPermissions()
             val grantedMetrics = grantedMetrics(grantedPermissions)
             if (grantedMetrics.isEmpty()) {
-                val storedState = preferencesRepository.getHealthConnectSyncPreferences()
-                val lastSyncedAt = storedState.lastSyncedAt.takeIf { it > 0L }
+                preferencesRepository.clearHealthConnectSyncPreferences()
                 HealthConnectStatus(
                     state = HealthConnectState.PERMISSION_REQUIRED,
-                    metrics = readMetricsFromStoredState(storedState),
                     message = if (grantedPermissions.isEmpty()) {
                         "Geen toegang tot Health Connect. Verbind opnieuw om stappen, hartslag, slaap, calorieën, gewicht en workouts te lezen."
                     } else {
                         "Health Connect-toegang is gedeeltelijk. Sta ontbrekende metrics toe om alle inzichten te synchroniseren."
                     },
-                    lastSyncedAt = lastSyncedAt,
                     metricStatuses = buildHealthMetricPermissionStatuses(
                         grantedPermissions = grantedPermissions,
                         requiredPermissionsByMetric = requiredPermissionsByMetric,
-                        lastSyncedAt = lastSyncedAt,
+                        lastSyncedAt = null,
                     ),
                 )
             } else {

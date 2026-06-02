@@ -28,6 +28,7 @@ import com.trainiq.domain.repository.WorkoutRepository
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.diagnostics.PerformanceSessionStore
 import com.trainiq.ai.services.AiUsageGate
+import com.trainiq.data.local.TrainIqLocalStore
 import com.trainiq.data.repository.RoomTrainIqRuntimeStore
 import java.time.Instant
 import javax.inject.Inject
@@ -461,12 +462,14 @@ class ResetProfileUseCase @Inject constructor(
 
 class ClearAppDataUseCase @Inject constructor(
     private val runtimeStore: RoomTrainIqRuntimeStore,
+    private val legacyStore: TrainIqLocalStore,
     private val preferencesRepository: UserPreferencesRepository,
     private val performanceSessionStore: PerformanceSessionStore,
     private val aiUsageGate: AiUsageGate,
 ) {
     suspend operator fun invoke() {
         runtimeStore.clearAll()
+        legacyStore.clearAll()
         aiUsageGate.clearAllAiKeys()
         preferencesRepository.clearLocalPrivateData()
         performanceSessionStore.clearAll()

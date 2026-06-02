@@ -24,7 +24,7 @@ class ProfileableBenchmarkSeedArchitectureTest {
         assertTrue(activitySource.contains("clearMirrorTables()"))
         assertTrue(activitySource.contains("startOrResumeActiveWorkoutSession("))
         assertTrue(manifestSource.contains("com.trainiq.benchmark.BenchmarkSeedActivity"))
-        assertTrue(manifestSource.contains("android:exported=\"true\""))
+        assertTrue(manifestSource.contains("android:exported=\"false\""))
         assertTrue(macrobenchmarkSource.contains("BenchmarkSeedActivity"))
         assertTrue(macrobenchmarkSource.contains("activeWorkoutLoggingFrames"))
         assertFalse("Benchmark seed activity must not ship from main manifest", mainManifest.contains("BenchmarkSeedActivity"))
