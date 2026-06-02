@@ -9,7 +9,7 @@ g down VM
 :  [CONTEXT sampling_count=5 ]
 > docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:148:05-27 00:58:06.183 16769 16769 D AndroidRuntime: >>>>>>
  START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
-> docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:149:05-27 00:58:06.189 16769 16769 I AndroidRuntime: Using 
+> docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:149:05-27 00:58:06.189 16769 16769 I AndroidRuntime: Using
 default boot image
 > docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:150:05-27 00:58:06.189 16769 16769 I AndroidRuntime: Leavin
 g lock profiling enabled
@@ -38,6 +38,3 @@ ng down VM
 o talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
   docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:475:05-27 00:58:07.512 16769 16779 W IPCThreadState: call t
 o talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
-
-
-

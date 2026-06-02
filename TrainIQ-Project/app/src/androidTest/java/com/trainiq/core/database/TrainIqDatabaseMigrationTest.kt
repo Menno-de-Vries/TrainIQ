@@ -110,6 +110,67 @@ class TrainIqDatabaseMigrationTest {
     }
 
     @Test
+    fun migration12To13AddsServingCountAndPreservesMealItems() {
+        helper.createDatabase(TEST_DB, 12).apply {
+            seedVersion11RelationalData()
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            TEST_DB,
+            13,
+            true,
+            TrainIqMigrations.Migration12To13,
+        )
+
+        migrated.assertMealItemServingCountDefaulted()
+        migrated.close()
+    }
+
+    @Test
+    fun migration13To14RemovesDraftExerciseForeignKeysAndPreservesDraftState() {
+        helper.createDatabase(TEST_DB, 13).apply {
+            seedVersion11RelationalData()
+            seedActiveWorkoutDraftState()
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            TEST_DB,
+            14,
+            true,
+            TrainIqMigrations.Migration13To14,
+        )
+
+        migrated.assertActiveWorkoutDraftStateSurvived()
+        migrated.assertNoForeignKey("active_workout_drafts", "exercises")
+        migrated.assertNoForeignKey("active_workout_collapsed_exercises", "exercises")
+        migrated.close()
+    }
+
+    @Test
+    fun migration12To14PreservesNutritionAndActiveWorkoutState() {
+        helper.createDatabase(TEST_DB, 12).apply {
+            seedVersion11RelationalData()
+            seedActiveWorkoutDraftState()
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            TEST_DB,
+            14,
+            true,
+            TrainIqMigrations.Migration12To13,
+            TrainIqMigrations.Migration13To14,
+        )
+
+        migrated.assertMealItemServingCountDefaulted()
+        migrated.assertActiveWorkoutDraftStateSurvived()
+        migrated.assertNoForeignKeyViolations()
+        migrated.close()
+    }
+
+    @Test
     fun olderMigrationChainFromVersions2Through8PreservesLegacyDataAndReachesCurrentSchema() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
 
@@ -410,6 +471,23 @@ class TrainIqDatabaseMigrationTest {
         )
     }
 
+    private fun SupportSQLiteDatabase.seedActiveWorkoutDraftState() {
+        execSQL(
+            """
+            INSERT INTO active_workout_drafts (
+                session_id, exercise_id, weight, reps, rpe, set_type
+            ) VALUES (300, 30, '102.5', '6', '8.5', 'WORKING')
+            """.trimIndent(),
+        )
+        execSQL(
+            """
+            INSERT INTO active_workout_collapsed_exercises (
+                session_id, exercise_id
+            ) VALUES (300, 30)
+            """.trimIndent(),
+        )
+    }
+
     private fun SupportSQLiteDatabase.assertVersion11RelationalDataSurvived() {
         query("SELECT COUNT(*) FROM workout_days WHERE id = 20 AND routineId = 10").use { cursor ->
             assertTrue(cursor.moveToFirst())
@@ -434,6 +512,15 @@ class TrainIqDatabaseMigrationTest {
         }
     }
 
+    private fun SupportSQLiteDatabase.assertNoForeignKey(tableName: String, parentTableName: String) {
+        query("PRAGMA foreign_key_list(`$tableName`)").use { cursor ->
+            val parentIndex = cursor.getColumnIndex("table")
+            val parents = generateSequence { if (cursor.moveToNext()) cursor.getString(parentIndex) else null }
+                .toSet()
+            assertTrue("$tableName should not reference $parentTableName", parentTableName !in parents)
+        }
+    }
+
     private fun SupportSQLiteDatabase.assertRejectsForeignKeyViolation() {
         execSQL("PRAGMA foreign_keys=ON")
         var rejected = false
@@ -448,6 +535,27 @@ class TrainIqDatabaseMigrationTest {
     private fun SupportSQLiteDatabase.assertNoForeignKeyViolations() {
         query("PRAGMA foreign_key_check").use { cursor ->
             assertEquals("No foreign-key violations should remain after v12 migration", 0, cursor.count)
+        }
+    }
+
+    private fun SupportSQLiteDatabase.assertMealItemServingCountDefaulted() {
+        query("SELECT serving_count FROM meal_items WHERE id = 230").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(1, cursor.getInt(0))
+        }
+    }
+
+    private fun SupportSQLiteDatabase.assertActiveWorkoutDraftStateSurvived() {
+        query("SELECT weight, reps, rpe, set_type FROM active_workout_drafts WHERE session_id = 300 AND exercise_id = 30").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("102.5", cursor.getString(0))
+            assertEquals("6", cursor.getString(1))
+            assertEquals("8.5", cursor.getString(2))
+            assertEquals("WORKING", cursor.getString(3))
+        }
+        query("SELECT COUNT(*) FROM active_workout_collapsed_exercises WHERE session_id = 300 AND exercise_id = 30").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(1, cursor.getInt(0))
         }
     }
 

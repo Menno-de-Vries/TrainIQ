@@ -14,4 +14,3 @@ cameraPermissionRestoredToInitialFalse=True
 deniedCrashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES
 
 grantedCrashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES
-

@@ -5,4 +5,3 @@ Activity: com.trainiq/.MainActivity
 TotalTime: 5209
 WaitTime: 5221
 Complete
-

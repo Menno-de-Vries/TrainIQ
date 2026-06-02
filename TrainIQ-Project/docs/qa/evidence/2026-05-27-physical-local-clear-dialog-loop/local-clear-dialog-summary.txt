@@ -6,4 +6,3 @@ destructiveConfirmExecuted=False
 afterCancelDialogGone=True
 afterCancelStorageVisible=True
 crashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES
-

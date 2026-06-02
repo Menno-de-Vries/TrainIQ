@@ -11,4 +11,3 @@ reasonSystemPromptNotReached=CTA was visible at bottom edge but coordinate taps 
 backNavigationReturnedSafely=True
 healthPermissionsMutated=False
 crashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES
-

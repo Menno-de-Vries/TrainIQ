@@ -188,6 +188,3 @@ docs\qa\evidence\2026-05-27-physical-training-history-loop\training-scrolled.xml
 docs\qa\evidence\2026-05-27-physical-training-history-loop\training-scrolled.xml                             Oefeningenbibliotheek                                                                                                                      984       77
 docs\qa\evidence\2026-05-27-physical-training-history-loop\training-scrolled.xml                             Maak een routine, voeg trainingsdagen toe en koppel oefeningen om te starten.                                                              888      115
 docs\qa\evidence\2026-05-27-physical-training-history-loop\training-scrolled.xml                             Nog geen actieve routine. Maak er hieronder een en markeer die als actief.                                                                 888      199
-
-
-

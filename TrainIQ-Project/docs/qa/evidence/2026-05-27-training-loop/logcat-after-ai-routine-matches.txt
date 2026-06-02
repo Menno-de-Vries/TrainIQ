@@ -55,12 +55,9 @@ time: Shutting down VM
 tate: call to talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
 > docs\qa\evidence\2026-05-27-training-loop\logcat-after-ai-routine.txt:505:05-27 01:04:00.458 17470 17480 W IPCThreadS
 tate: call to talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
-  docs\qa\evidence\2026-05-27-training-loop\logcat-after-ai-routine.txt:506:05-27 01:04:00.458  1507  1734 I AiAiEcho: 
+  docs\qa\evidence\2026-05-27-training-loop\logcat-after-ai-routine.txt:506:05-27 01:04:00.458  1507  1734 I AiAiEcho:
 #postPredictionTargets: Sending updates to UISurface home with targets# 0 (types=[])
   docs\qa\evidence\2026-05-27-training-loop\logcat-after-ai-routine.txt:507:05-27 01:04:00.459   701   701 W IPCThreadS
 tate: Sending oneway calls to frozen process.
   docs\qa\evidence\2026-05-27-training-loop\logcat-after-ai-routine.txt:508:05-27 01:04:00.460   701   701 W IPCThreadS
 tate: Sending oneway calls to frozen process.
-
-
-

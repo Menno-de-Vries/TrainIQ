@@ -99,6 +99,38 @@ class AiProviderRouterTest {
     }
 
     @Test
+    fun routeAiProviderRequest_reusesThrottleToSkipRecentlyRateLimitedProvider() = runTest {
+        val openAiThrottle = AiFeatureThrottle(nowMillis = { 1_000L })
+        val gemini = FakeAiModelClient(AiProvider.GEMINI)
+        val openAi = FakeAiModelClient(AiProvider.OPENAI, error = rateLimitError())
+        val settings = aiSettings(
+            preferredProvider = AiProviderPreference.OPENAI_FIRST,
+            geminiApiKey = "gemini-key",
+            openAiApiKey = "openai-key",
+        )
+
+        routeAiProviderRequest(
+            settings = settings,
+            request = weeklyRequest(),
+            throttleForProvider = { provider ->
+                if (provider == AiProvider.OPENAI) openAiThrottle else AiFeatureThrottle(nowMillis = { 1_000L })
+            },
+            clientFor = { provider -> if (provider == AiProvider.GEMINI) gemini else openAi },
+        )
+        routeAiProviderRequest(
+            settings = settings,
+            request = weeklyRequest(),
+            throttleForProvider = { provider ->
+                if (provider == AiProvider.OPENAI) openAiThrottle else AiFeatureThrottle(nowMillis = { 1_000L })
+            },
+            clientFor = { provider -> if (provider == AiProvider.GEMINI) gemini else openAi },
+        )
+
+        assertEquals(listOf("openai-key", "openai-key"), openAi.apiKeys)
+        assertEquals(listOf("gemini-key", "gemini-key"), gemini.apiKeys)
+    }
+
+    @Test
     fun routeAiProviderRequest_skipsProvidersWithoutKeysAndThrowsWhenNoneReady() = runTest {
         val gemini = FakeAiModelClient(AiProvider.GEMINI)
         val openAi = FakeAiModelClient(AiProvider.OPENAI)

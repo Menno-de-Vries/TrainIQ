@@ -6,4 +6,3 @@ enabledServices=null
 talkBackSwitchTraversalExecuted=False
 result=INSPECTABLE_LABEL_FOCUS_SMOKE_ONLY
 crashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES
-

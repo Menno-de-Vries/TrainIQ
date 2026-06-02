@@ -144,11 +144,14 @@ class AiProviderRouter @Inject constructor(
     private val openAiClient: OpenAiModelClient,
     private val aiUsageGate: AiUsageGate,
 ) : AiJsonGenerator {
+    private val providerThrottles = AiProvider.entries.associateWith { AiFeatureThrottle() }
+
     override suspend fun generateJson(request: AiRouteRequest): AiRouteResult {
         val settings = aiUsageGate.currentSettings()
         return routeAiProviderRequest(
             settings = settings,
             request = request,
+            throttleForProvider = providerThrottles::getValue,
             clientFor = { provider -> if (provider == AiProvider.GEMINI) geminiClient else openAiClient },
         )
     }

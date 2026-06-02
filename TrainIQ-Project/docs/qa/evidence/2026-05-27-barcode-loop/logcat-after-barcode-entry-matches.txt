@@ -16,10 +16,10 @@ D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-barcode-loop\logca
 D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-barcode-loop\logcat-after-barcode-entry.txt:218:05-27 01:48:40.989   622  9742 I AttributionAndPermissionUtils: checkPermission (forDataDelivery 0 startDataDelivery 0): Permission hard denied for client attribution [uid 10253, pid 22823, packageName "<unknown>"]
 D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-barcode-loop\logcat-after-barcode-entry.txt:219:05-27 01:48:41.009 22823 23031 D CameraRepository: Added camera: 1
 D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-barcode-loop\logcat-after-barcode-entry.txt:222:05-27 01:48:41.049 22823 22823 D CameraController: Use cases not attached to camera.
-D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-barcode-loop\logcat-after-barcode-entry.txt:223:05-27 01:48:41.053 22823 23031 D CameraQuirks: camera2 CameraQuirks = 
+D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-barcode-loop\logcat-after-barcode-entry.txt:223:05-27 01:48:41.053 22823 23031 D CameraQuirks: camera2 CameraQuirks =
 D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-barcode-loop\logcat-after-barcode-entry.txt:224:05-27 01:48:41.169 22823 23031 I Camera2CameraInfo: Device Level: INFO_SUPPORTED_HARDWARE_LEVEL_FULL
 D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-barcode-loop\logcat-after-barcode-entry.txt:225:05-27 01:48:41.211 22823 23031 D CameraRepository: Added camera: 10
-D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-barcode-loop\logcat-after-barcode-entry.txt:226:05-27 01:48:41.212 22823 23031 D CameraQuirks: camera2 CameraQuirks = 
+D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-barcode-loop\logcat-after-barcode-entry.txt:226:05-27 01:48:41.212 22823 23031 D CameraQuirks: camera2 CameraQuirks =
 D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-barcode-loop\logcat-after-barcode-entry.txt:227:05-27 01:48:41.233 22823 23031 I Camera2CameraInfo: Device Level: INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED
 D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-barcode-loop\logcat-after-barcode-entry.txt:228:05-27 01:48:41.234 22823 23031 D CameraValidator: Verifying camera lens facing on emu64xa, lensFacingInteger: null
 D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-barcode-loop\logcat-after-barcode-entry.txt:232:05-27 01:48:41.369 22823 22823 D CameraController: Use cases not attached to camera.

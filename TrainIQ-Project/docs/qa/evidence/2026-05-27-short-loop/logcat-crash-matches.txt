@@ -30,7 +30,7 @@ dia.swcodec.flags is mapped to com.android.media.swcodec
 .android.settings.simplemode.flags is mapped to system_ext
   docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:88:05-27 00:55:10.594 16477 16477 I AconfigPackage: com.google
 .android.systemui is mapped to system_ext
-> docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:425:05-27 00:55:11.724 16477 16477 D AndroidRuntime: Shutting 
+> docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:425:05-27 00:55:11.724 16477 16477 D AndroidRuntime: Shutting
 down VM
   docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:426:05-27 00:55:11.724  1507  1734 I AiAiEcho: #remoteViewsTwi
 ddler: feature disabled.
@@ -38,6 +38,3 @@ ddler: feature disabled.
 alkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
   docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:428:05-27 00:55:11.725 16477 16487 W IPCThreadState: call to t
 alkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
-
-
-

@@ -1,7 +1,4 @@
 
-file                text  width height bounds               reason     
-----                ----  ----- ------ ------               ------     
+file                text  width height bounds               reason
+----                ----  ----- ------ ------               ------
 settings-font15.xml Licht   127      6 [126,2105][253,2111] tiny-bounds
-
-
-
