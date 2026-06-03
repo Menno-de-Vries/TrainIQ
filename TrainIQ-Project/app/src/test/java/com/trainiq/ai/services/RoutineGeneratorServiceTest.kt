@@ -151,6 +151,44 @@ class RoutineGeneratorServiceTest {
     }
 
     @Test
+    fun parseGeneratedRoutine_withExistingExerciseId_keepsLibraryReference() {
+        val fallback = fallbackGeneratedRoutine(
+            goal = "Spiermassa",
+            targetFocus = "Full body",
+            daysPerWeek = 3,
+            equipment = "Barbell",
+            experienceLevel = "intermediate",
+            sessionDurationMinutes = 60,
+            includeDeload = false,
+        )
+        val json = """
+            {
+              "routineName": "Volledig lichaam kracht",
+              "days": [
+                {
+                  "dayName": "Dag 1",
+                  "exercises": [
+                    {
+                      "exerciseName": "Bench Press",
+                      "muscleGroup": "Borst",
+                      "equipment": "Halterstang",
+                      "targetSets": 3,
+                      "repRange": "6-10",
+                      "restSeconds": 120,
+                      "existingExerciseId": 7
+                    }
+                  ]
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val routine = parseGeneratedRoutine(json, fallback)
+
+        assertEquals(7L, routine.days.first().exercises.first().existingExerciseId)
+    }
+
+    @Test
     fun parseGeneratedRoutine_withMalformedJson_returnsDeterministicFallback() {
         val fallback = fallbackGeneratedRoutine(
             goal = "Recomp",

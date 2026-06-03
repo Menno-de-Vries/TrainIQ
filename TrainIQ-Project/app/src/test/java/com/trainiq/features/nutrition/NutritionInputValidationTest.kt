@@ -37,6 +37,15 @@ class NutritionInputValidationTest {
     }
 
     @Test
+    fun foodValidation_requiresPositiveDefaultServingGrams() {
+        val zero = validateFoodInput("Kwark", "60", "10", "4", "0", "0")
+        val decimalComma = validateFoodInput("Kwark", "60", "10", "4", "0", "150,5")
+
+        assertEquals("Vul een positief aantal gram in.", zero.defaultServingGrams)
+        assertFalse(decimalComma.hasErrors)
+    }
+
+    @Test
     fun recipeValidation_rejectsMissingNameMissingIngredientsAndInvalidCookedGrams() {
         val errors = validateRecipeInput(
             name = " ",
@@ -390,6 +399,19 @@ class NutritionInputValidationTest {
         assertTrue(openNewFoodEditor.contains("showFoodEditor = true"))
         assertTrue(addToMealSheet.contains("openNewFoodEditor()"))
         assertTrue(productsHeader.contains("openNewFoodEditor()"))
+    }
+
+    @Test
+    fun savedProductsUseDefaultServingGramsForQuickMealAdd() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val savedFoodAdd = source.substringAfter("onQuickAdd = { food ->").substringBefore("onDelete = { pendingDelete = PendingNutritionDelete.Food")
+        val foodEditor = source.substringAfter("private fun FoodEditorCard(").substringBefore("@Composable\nprivate fun SavedFoodsCard")
+        val savedFoodsCard = source.substringAfter("private fun SavedFoodsCard(").substringBefore("@Composable\nprivate fun ProductPickerSheet")
+
+        assertTrue(foodEditor.contains("Standaard hoeveelheid (gram)"))
+        assertTrue(savedFoodAdd.contains("food.defaultServingGrams"))
+        assertTrue(savedFoodsCard.contains("Standaard portie:"))
+        assertFalse(savedFoodsCard.contains("Gram bij toevoegen aan maaltijd"))
     }
 
     @Test

@@ -104,6 +104,7 @@ object GeminiJsonSchemas {
                                     "targetWeightKg" to numberSchema(),
                                     "targetRpe" to numberSchema(),
                                     "coachingCue" to stringSchema(),
+                                    "existingExerciseId" to integerSchema(),
                                 ),
                                 required = listOf(
                                     "exerciseName",

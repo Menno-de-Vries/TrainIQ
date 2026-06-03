@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
@@ -33,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -449,6 +451,7 @@ fun CoachScreen(
     var activityLevel by remember { mutableStateOf("Gemiddeld actief") }
     var goal by remember { mutableStateOf("") }
     var profileInputError by remember { mutableStateOf<ProfileInputValidationError?>(null) }
+    var selectedCoachTab by rememberSaveable { mutableStateOf(CoachSectionTab.Week.key) }
     val haptics = LocalHapticFeedback.current
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -504,14 +507,20 @@ fun CoachScreen(
                 }
 
                 is CoachUiState.Success -> {
-                    if (state.currentProfile == null) {
+                    item {
+                        CoachSectionTabSwitcher(
+                            selectedTab = selectedCoachTab,
+                            onSelectTab = { selectedCoachTab = it.key },
+                        )
+                    }
+                    if (state.currentProfile == null && selectedCoachTab != CoachSectionTab.Goals.key) {
                         item {
                             AppCard(modifier = Modifier.fillMaxWidth()) {
                                 Text("Profiel instellen", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                                Text("Vul eerst je profiel en doel in. Daarna worden weekrapporten en voedingsadvies zichtbaar op basis van jouw gegevens.")
+                                Text("Vul je profiel en doel in onder Doelen. Daarna worden weekrapporten en advies zichtbaar op basis van jouw gegevens.")
                             }
                         }
-                    } else item {
+                    } else if (selectedCoachTab == CoachSectionTab.Week.key) item {
                         AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
                                 WeekReportCard(report = state.generatedReport, fallbackSummary = state.overview.weeklyReport)
                                 Button(
@@ -546,7 +555,7 @@ fun CoachScreen(
                                 }
                         }
                     }
-                    item {
+                    if (selectedCoachTab == CoachSectionTab.Goals.key) item {
                         AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
                                 Text("Doeladvies", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.amber, fontWeight = FontWeight.SemiBold)
                                 Text("Profiel en doelen", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
@@ -680,8 +689,7 @@ fun CoachScreen(
                                 if (state.isGeneratingAdvice) {
                                     ShimmerCardPlaceholder(lineCount = 4)
                                 }
-                                state.goalAdvice?.let { advice ->
-                                    GoalAdviceCard(advice = advice, activityLevel = activityLevel)
+                                state.goalAdvice?.let {
                                     Button(
                                         onClick = {
                                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -705,6 +713,16 @@ fun CoachScreen(
                                 }
                         }
                     }
+                    if (selectedCoachTab == CoachSectionTab.Advice.key) item {
+                        AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
+                            state.goalAdvice?.let { advice ->
+                                GoalAdviceCard(advice = advice, activityLevel = activityLevel)
+                            } ?: run {
+                                Text("Nog geen advies", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+                                Text("Maak eerst een doeladvies onder Doelen. Daarna zie je hier calorieën, macro's, actiepunten en datakwaliteit los van het formulier.")
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -719,6 +737,47 @@ fun CoachScreen(
     }
 }
 
+private enum class CoachSectionTab(val key: String, val label: String) {
+    Week("week", "Week"),
+    Goals("goals", "Doelen"),
+    Advice("advice", "Advies"),
+}
+
+@Composable
+private fun CoachSectionTabSwitcher(
+    selectedTab: String,
+    onSelectTab: (CoachSectionTab) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.trainIqColors.cardElevated,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val chipColors = FilterChipDefaults.filterChipColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+            CoachSectionTab.entries.forEach { tab ->
+                FilterChip(
+                    selected = selectedTab == tab.key,
+                    onClick = { onSelectTab(tab) },
+                    label = { Text(tab.label) },
+                    colors = chipColors,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
 private fun GoalAdviceCard(advice: GoalAdvice, activityLevel: String) {
@@ -728,9 +787,10 @@ private fun GoalAdviceCard(advice: GoalAdvice, activityLevel: String) {
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
     ) {
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
         ) {
             Text("Voedingsadvies", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Surface(
@@ -812,7 +872,7 @@ private fun AdviceSurface(content: @Composable ColumnScope.() -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        color = MaterialTheme.trainIqColors.amber.copy(alpha = 0.10f),
         contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
         Column(

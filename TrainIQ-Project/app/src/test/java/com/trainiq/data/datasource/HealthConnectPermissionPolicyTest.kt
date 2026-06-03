@@ -178,4 +178,54 @@ class HealthConnectPermissionPolicyTest {
         assertEquals("workouts-token", payload.nextChangesTokens[HealthMetricType.WORKOUTS])
         assertEquals("steps-token", payload.nextChangesToken)
     }
+
+    @Test
+    fun cacheStateDropsMetricsAfterPermissionRevocation() {
+        val cacheState = HealthConnectCacheState(
+            aggregatedStepsToday = 777L,
+            stepRecords = listOf(CachedStepRecord("steps", 1L, 2L, 100)),
+            heartRateRecords = listOf(CachedHeartRateRecord("hr", 1L, 2L, 60, 64, 2L, 3)),
+            sleepSessionRecords = listOf(CachedSleepSessionRecord("sleep", 1L, 2L, 480)),
+            caloriesBurnedRecords = listOf(CachedCaloriesBurnedRecord("cal", 1L, 2L, 300.0)),
+            weightRecords = listOf(CachedWeightRecord("weight", 1L, 80.0)),
+            exerciseSessionRecords = listOf(CachedExerciseSessionRecord("workout", 1L, 2L, 45, "Squat")),
+        )
+
+        val redacted = cacheState.onlyMetrics(setOf(HealthMetricType.STEPS, HealthMetricType.SLEEP))
+
+        assertEquals(777L, redacted.aggregatedStepsToday)
+        assertEquals(1, redacted.stepRecords.size)
+        assertEquals(1, redacted.sleepSessionRecords.size)
+        assertTrue(redacted.heartRateRecords.isEmpty())
+        assertTrue(redacted.caloriesBurnedRecords.isEmpty())
+        assertTrue(redacted.weightRecords.isEmpty())
+        assertTrue(redacted.exerciseSessionRecords.isEmpty())
+    }
+
+    @Test
+    fun revokedMetricTokensAreNotRetainedWhenReEncodingGrantedMetricTokens() {
+        val retainedTokens = mapOf(
+            HealthMetricType.STEPS to "steps-token",
+            HealthMetricType.HEART_RATE to "revoked-heart-token",
+            HealthMetricType.SLEEP to "sleep-token",
+        ).filterKeys { it in setOf(HealthMetricType.STEPS, HealthMetricType.SLEEP) }
+
+        val decoded = decodeMetricChangesTokens(encodeMetricChangesTokens(retainedTokens))
+
+        assertEquals("steps-token", decoded[HealthMetricType.STEPS])
+        assertEquals("sleep-token", decoded[HealthMetricType.SLEEP])
+        assertFalse(decoded.containsKey(HealthMetricType.HEART_RATE))
+    }
+
+    @Test
+    fun domainMetricsPreferAggregateStepsOverRawRecordSum() {
+        val metrics = HealthConnectCacheState(
+            aggregatedStepsToday = 12820L,
+            stepRecords = listOf(
+                CachedStepRecord("raw-1", 1L, 2L, 12384),
+            ),
+        ).toDomainMetrics()
+
+        assertEquals(12820, metrics.stepsToday)
+    }
 }

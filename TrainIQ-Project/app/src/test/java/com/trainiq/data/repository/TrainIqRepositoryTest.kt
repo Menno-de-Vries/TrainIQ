@@ -16,6 +16,7 @@ import com.trainiq.data.local.LoggedMealItemStorage
 import com.trainiq.data.local.TrainIqStorageState
 import com.trainiq.domain.model.FoodItem
 import com.trainiq.domain.model.FoodSourceType
+import com.trainiq.domain.model.GeneratedExercise
 import com.trainiq.domain.model.LoggedMealItemType
 import com.trainiq.domain.model.NutritionFacts
 import com.trainiq.domain.model.Recipe
@@ -31,6 +32,41 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class TrainIqRepositoryTest {
+    @Test
+    fun generatedExerciseMatcher_prefersExistingExerciseId() {
+        val exercises = listOf(
+            ExerciseEntity(id = 3L, name = "Bench Press", muscleGroup = "Chest", equipment = "Barbell"),
+            ExerciseEntity(id = 9L, name = "Incline Press", muscleGroup = "Chest", equipment = "Dumbbell"),
+        )
+        val generated = GeneratedExercise(
+            exerciseName = "Nieuwe press",
+            muscleGroup = "Borst",
+            equipment = "Halterstang",
+            targetSets = 3,
+            repRange = "6-10",
+            restSeconds = 120,
+            existingExerciseId = 9L,
+        )
+
+        assertEquals(9L, exercises.findBestGeneratedExerciseMatch(generated)?.id)
+    }
+
+    @Test
+    fun generatedExerciseMatcher_reusesSimilarExistingExerciseBeforeCreatingDuplicate() {
+        val exercises = listOf(
+            ExerciseEntity(id = 3L, name = "Bench Press", muscleGroup = "Chest", equipment = "Barbell"),
+        )
+        val generated = GeneratedExercise(
+            exerciseName = "Barbell bench press",
+            muscleGroup = "Chest",
+            equipment = "Barbell",
+            targetSets = 3,
+            repRange = "6-10",
+            restSeconds = 120,
+        )
+
+        assertEquals(3L, exercises.findBestGeneratedExerciseMatch(generated)?.id)
+    }
     @Test
     fun generatedRoutineValidationMessagesStayDutchForUiSurfacedErrors() {
         assertEquals(

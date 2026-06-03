@@ -48,6 +48,7 @@ import com.trainiq.domain.model.Exercise
 import com.trainiq.domain.model.ExerciseHistory
 import com.trainiq.domain.model.ExerciseHistorySession
 import com.trainiq.domain.model.ExerciseHistorySet
+import com.trainiq.domain.model.ExerciseLibraryItem
 import com.trainiq.domain.model.ExerciseRank
 import com.trainiq.domain.model.ExerciseRankProgress
 import com.trainiq.domain.model.ExerciseStats
@@ -79,6 +80,7 @@ import com.trainiq.domain.model.WeeklyReportResult
 import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutDebrief
 import com.trainiq.domain.model.WorkoutDebriefSource
+import com.trainiq.domain.model.WorkoutSessionSummary
 import com.trainiq.domain.model.WorkoutCompletionExercise
 import com.trainiq.domain.model.WorkoutCompletionResult
 import com.trainiq.domain.model.WorkoutCompletionSet
@@ -163,7 +165,9 @@ class TrainIqDataCoordinator @Inject constructor(
     init {
         scope.launch {
             delay(3_000L)
-            exerciseLibrarySeeder.ensureSeeded()
+            runCatching {
+                exerciseLibrarySeeder.ensureSeeded()
+            }
         }
     }
 
@@ -213,7 +217,14 @@ class TrainIqDataCoordinator @Inject constructor(
     }
 
     suspend fun refreshDashboardData() {
-        _cachedSteps.value = healthConnectDataSource.getTodayStepsLive()
+        val status = healthConnectDataSource.getStatus()
+        when (status.state) {
+            com.trainiq.domain.model.HealthConnectState.CONNECTED,
+            com.trainiq.domain.model.HealthConnectState.NO_DATA -> {
+                _cachedSteps.value = status.metrics?.stepsToday ?: 0
+            }
+            else -> error(status.message)
+        }
     }
 
     fun observeWorkoutOverview(): Flow<WorkoutOverview> = snapshotState.map(::buildWorkoutOverview)
@@ -582,16 +593,18 @@ class TrainIqDataCoordinator @Inject constructor(
             activeSessionId = activeSessionId,
         )
         scope.launch {
-            val refreshedDebrief = workoutDebriefService.generateWorkoutDebrief(
-                totalVolume = currentVolume,
-                progression = progression,
-                comparisonSummary = comparison?.summary ?: "Nog geen eerdere vergelijkbare training gevonden.",
-                distribution = distribution,
-                avgRpe = avgRpe,
-                topExercises = topExercises,
-                weeklyFrequency = weeklyFrequency,
-            )
-            runtimeStore.updateWorkoutSessionDebrief(sessionId = sessionId, debrief = refreshedDebrief)
+            runCatching {
+                val refreshedDebrief = workoutDebriefService.generateWorkoutDebrief(
+                    totalVolume = currentVolume,
+                    progression = progression,
+                    comparisonSummary = comparison?.summary ?: "Nog geen eerdere vergelijkbare training gevonden.",
+                    distribution = distribution,
+                    avgRpe = avgRpe,
+                    topExercises = topExercises,
+                    weeklyFrequency = weeklyFrequency,
+                )
+                runtimeStore.updateWorkoutSessionDebrief(sessionId = sessionId, debrief = refreshedDebrief)
+            }
         }
         return WorkoutCompletionResult(sessionId = sessionId, debrief = localDebrief)
     }
@@ -896,6 +909,10 @@ class TrainIqDataCoordinator @Inject constructor(
             experienceLevel = experienceLevel,
             sessionDurationMinutes = sessionDurationMinutes,
             includeDeload = includeDeload,
+            existingExercises = snapshotState.value.exercises
+                .sortedBy { it.name }
+                .take(80)
+                .map { "${it.id}: ${it.name} | ${it.muscleGroup} | ${it.equipment}" },
         )
 
         check(generated.days.isNotEmpty()) {
@@ -945,10 +962,7 @@ class TrainIqDataCoordinator @Inject constructor(
                 orderIndex = orderIndex,
             )
             generatedDay.exercises.forEach { generatedExercise ->
-                val existing = allExercises.firstOrNull {
-                    it.name.equals(generatedExercise.exerciseName, ignoreCase = true) &&
-                        it.equipment.equals(generatedExercise.equipment, ignoreCase = true)
-                }
+                val existing = allExercises.findBestGeneratedExerciseMatch(generatedExercise)
                 val exerciseId = existing?.id ?: run {
                     val newId = nextExerciseId++
                     val newExercise = ExerciseEntity(
@@ -1040,6 +1054,7 @@ class TrainIqDataCoordinator @Inject constructor(
         proteinPer100g: Double,
         carbsPer100g: Double,
         fatPer100g: Double,
+        defaultServingGrams: Double,
         sourceType: FoodSourceType,
     ): FoodItem {
         val now = System.currentTimeMillis()
@@ -1057,6 +1072,7 @@ class TrainIqDataCoordinator @Inject constructor(
             proteinPer100g = proteinPer100g,
             carbsPer100g = carbsPer100g,
             fatPer100g = fatPer100g,
+            defaultServingGrams = defaultServingGrams.normalizedDefaultServingGrams(),
             sourceType = sourceType,
             createdAt = existing?.createdAt ?: duplicateBarcode?.createdAt ?: now,
             updatedAt = now,
@@ -1299,12 +1315,63 @@ class TrainIqDataCoordinator @Inject constructor(
         val history = snapshot.sessions
             .filter { it.completed && it.status == "COMPLETED" }
             .sortedByDescending { it.date }
-            .map { it.toDomain(sessionVolumes[it.id] ?: 0.0) }
+            .map { session -> buildWorkoutSessionSummary(snapshot, session, sessionVolumes[session.id] ?: 0.0) }
+        val exerciseLibrary = snapshot.exercises
+            .map { buildExerciseLibraryItem(snapshot, it) }
+            .sortedWith(compareByDescending<ExerciseLibraryItem> { it.completedSessions > 0 }.thenBy { it.exercise.name })
         return WorkoutOverview(
             activeRoutine = routines.firstOrNull { it.active },
             routines = routines,
             exercises = snapshot.exercises.map { it.toDomain() }.sortedBy { it.name },
+            exerciseLibrary = exerciseLibrary,
             history = history,
+        )
+    }
+
+    private fun buildWorkoutSessionSummary(
+        snapshot: RepositorySnapshot,
+        session: WorkoutSessionEntity,
+        totalVolume: Double,
+    ): WorkoutSessionSummary {
+        val sessionSets = snapshot.sets.filter { it.sessionId == session.id && it.completed }
+        val exerciseCount = sessionSets.map { it.exerciseId }.distinct().size
+        val strongestSet = sessionSets.maxWithOrNull(compareBy<WorkoutSetEntity> { it.weight }.thenBy { it.reps })
+        val day = session.workoutDayId?.let { dayId -> snapshot.days.firstOrNull { it.id == dayId } }
+        val routine = session.routineId?.let { routineId -> snapshot.routines.firstOrNull { it.id == routineId } }
+            ?: day?.let { workoutDay -> snapshot.routines.firstOrNull { it.id == workoutDay.routineId } }
+        val workoutName = listOfNotNull(routine?.name, day?.name)
+            .filter { it.isNotBlank() }
+            .joinToString(" - ")
+            .ifBlank { "Krachttraining" }
+        return WorkoutSessionSummary(
+            id = session.id,
+            date = session.endedAt.takeIf { it > 0L } ?: session.date,
+            duration = session.duration,
+            caloriesBurned = session.caloriesBurned,
+            totalVolume = totalVolume,
+            workoutName = workoutName,
+            exerciseCount = exerciseCount,
+            setsLogged = sessionSets.size,
+            strongestSetLabel = strongestSet?.let { "${formatSummaryWeight(it.weight)} kg x ${it.reps}" }.orEmpty(),
+            debriefSummary = session.debriefSummary,
+            debriefRecommendation = session.debriefRecommendation,
+            debriefNextSessionFocus = session.debriefNextSessionFocus,
+            debriefRecoveryScore = session.debriefRecoveryScore.coerceIn(0, 100),
+            debriefIntensitySignal = session.debriefIntensitySignal,
+            debriefSource = runCatching { WorkoutDebriefSource.valueOf(session.debriefSource) }.getOrDefault(WorkoutDebriefSource.LOCAL_FALLBACK),
+        )
+    }
+
+    private fun buildExerciseLibraryItem(snapshot: RepositorySnapshot, exercise: ExerciseEntity): ExerciseLibraryItem {
+        val history = buildExerciseHistory(snapshot, exercise.id)
+        return ExerciseLibraryItem(
+            exercise = exercise.toDomain(),
+            completedSessions = history.stats.completedSessions,
+            score = history.rank.score,
+            rankLabel = history.rank.rank.label,
+            lastPerformedAt = history.stats.lastPerformedAt,
+            bestEstimatedOneRepMax = history.stats.bestEstimatedOneRepMax,
+            totalVolume = history.stats.totalVolume,
         )
     }
 
@@ -1545,10 +1612,14 @@ class TrainIqDataCoordinator @Inject constructor(
         proteinPer100g = storage.proteinPer100g,
         carbsPer100g = storage.carbsPer100g,
         fatPer100g = storage.fatPer100g,
+        defaultServingGrams = storage.defaultServingGrams.normalizedDefaultServingGrams(),
         sourceType = storage.sourceType,
         createdAt = storage.createdAt,
         updatedAt = storage.updatedAt,
     )
+
+    private fun Double.normalizedDefaultServingGrams(): Double =
+        takeIf { it.isFinite() && it > 0.0 } ?: 100.0
 
     private fun buildRecipes(
         foods: List<FoodItemStorage>,
@@ -2181,6 +2252,48 @@ internal fun TrainIqStorageState.withExerciseAddedToDay(
     )
 }
 
+internal fun List<ExerciseEntity>.findBestGeneratedExerciseMatch(generatedExercise: GeneratedExercise): ExerciseEntity? {
+    generatedExercise.existingExerciseId
+        ?.let { id -> firstOrNull { it.id == id } }
+        ?.let { return it }
+
+    val targetName = generatedExercise.exerciseName.normalizedExerciseKey()
+    val targetEquipment = generatedExercise.equipment.normalizedExerciseKey()
+    val targetMuscle = generatedExercise.muscleGroup.normalizedExerciseKey()
+
+    firstOrNull { exercise ->
+        exercise.name.normalizedExerciseKey() == targetName
+    }?.let { return it }
+
+    return mapNotNull { exercise ->
+        val nameScore = exercise.name.normalizedExerciseKey().exerciseSimilarityScore(targetName)
+        val equipmentScore = if (exercise.equipment.normalizedExerciseKey() == targetEquipment) 1 else 0
+        val muscleScore = if (exercise.muscleGroup.normalizedExerciseKey() == targetMuscle) 1 else 0
+        val score = nameScore + equipmentScore + muscleScore
+        if (nameScore >= 2 && score >= 3) exercise to score else null
+    }.maxByOrNull { it.second }?.first
+}
+
+private fun String.normalizedExerciseKey(): String =
+    lowercase(Locale.US)
+        .replace("dumbbells", "dumbbell")
+        .replace("dumbells", "dumbbell")
+        .replace("barbell", "halterstang")
+        .replace("bodyweight", "lichaamsgewicht")
+        .replace("cable", "kabel")
+        .replace("machine", "machine")
+        .replace(Regex("[^a-z0-9]+"), " ")
+        .trim()
+
+private fun String.exerciseSimilarityScore(other: String): Int {
+    if (isBlank() || other.isBlank()) return 0
+    if (this == other) return 4
+    if (contains(other) || other.contains(this)) return 3
+    val tokens = split(" ").filter { it.length > 2 }.toSet()
+    val otherTokens = other.split(" ").filter { it.length > 2 }.toSet()
+    return tokens.intersect(otherTokens).size
+}
+
 internal fun TrainIqStorageState.withRoutineSetAdded(workoutExerciseId: Long): TrainIqStorageState {
     val workoutExercise = workoutExercises.firstOrNull { it.id == workoutExerciseId } ?: return this
     val existingSets = routineSets
@@ -2580,6 +2693,7 @@ private fun com.trainiq.ai.services.GeneratedRoutine.toDomainGeneratedRoutine() 
                     repRange = exercise.repRange,
                     restSeconds = exercise.restSeconds,
                     coachingCue = exercise.coachingCue,
+                    existingExerciseId = exercise.existingExerciseId,
                 )
             },
         )

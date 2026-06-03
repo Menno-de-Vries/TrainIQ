@@ -189,6 +189,7 @@ object GeminiPrompts {
         experienceLevel: String,
         sessionDurationMinutes: Int,
         includeDeload: Boolean,
+        existingExercises: List<String> = emptyList(),
     ) = """
         Je bent een senior strength coach en periodisering-specialist voor TrainIQ.
         Antwoord altijd in het Nederlands volgens locale nl-NL.
@@ -202,6 +203,9 @@ object GeminiPrompts {
         - Sessieduur: ongeveer $sessionDurationMinutes minuten
         - Deload-richtlijn opnemen: $includeDeload
 
+        Bestaande oefeningenbibliotheek:
+        ${existingExercises.takeIf { it.isNotEmpty() }?.joinToString("\n") { "- $it" } ?: "- Geen bestaande oefeningen meegegeven."}
+
         Periodiseringsregels per niveau:
         - Beginner: lineaire progressie, 3x8-12, bij voorkeur volledig lichaam
         - Gemiddeld: boven/onder of push/pull/legs, wekelijkse progressieve overbelasting met kleine stappen
@@ -212,6 +216,12 @@ object GeminiPrompts {
         - 45 min -> 4-5 oefeningen
         - 60 min -> 5-6 oefeningen
         - 90 min -> 6-8 oefeningen
+
+        Bibliotheekregels:
+        - Kies eerst een bestaande oefening als die inhoudelijk overeenkomt met wat je wilt programmeren.
+        - Zet dan existingExerciseId op het ID uit de bestaande oefeningenbibliotheek.
+        - Maak alleen een nieuwe oefening wanneer geen bestaande oefening sterk genoeg overeenkomt.
+        - Houd oefeningnamen concreet; gebruik geen varianten die alleen anders gespeld zijn.
 
         Return JSON only, no markdown. Alle strings zijn Nederlands, behalve oefeningnamen als gebruikersinput Engels is:
         {
@@ -230,7 +240,8 @@ object GeminiPrompts {
                   "targetSets": 3,
                   "repRange": "8-12",
                   "restSeconds": 90,
-                  "coachingCue": "string"
+                  "coachingCue": "string",
+                  "existingExerciseId": 123
                 }
               ]
             }

@@ -126,8 +126,7 @@ abstract class CheckReleaseSigningReadinessTask : DefaultTask() {
         val inputs = signingInputs.get()
         val present = inputs.filterValues(String::isNotBlank).keys
         if (present.isEmpty()) {
-            logger.lifecycle("TrainIQ release signing is not configured; release artifacts will be unsigned.")
-            return
+            error("TrainIQ release signing is required for release artifacts.")
         }
         val missing = inputs.filterValues(String::isBlank).keys
         check(missing.isEmpty()) {
@@ -149,7 +148,7 @@ abstract class CheckReleaseSigningReadinessTask : DefaultTask() {
 
 tasks.register<CheckReleaseSigningReadinessTask>("checkReleaseSigningReadiness") {
     group = "verification"
-    description = "Verifies TrainIQ release signing configuration is complete when signing is requested."
+    description = "Verifies TrainIQ release signing configuration is complete before release artifacts are packaged."
     projectDirectoryPath.set(layout.projectDirectory.asFile.absolutePath)
     signingInputs.putAll(
         mapOf(
@@ -159,6 +158,10 @@ tasks.register<CheckReleaseSigningReadinessTask>("checkReleaseSigningReadiness")
             "TRAINIQ_KEY_PASSWORD/trainiq.keyPassword" to trainIqSigningValue("TRAINIQ_KEY_PASSWORD", "trainiq.keyPassword").orNull.orEmpty(),
         ),
     )
+}
+
+tasks.matching { it.name in setOf("assembleRelease", "bundleRelease", "packageRelease") }.configureEach {
+    dependsOn("checkReleaseSigningReadiness")
 }
 
 fun registerRoomMigrationChainVerificationMarkerTask(
@@ -180,17 +183,17 @@ fun registerRoomMigrationChainVerificationMarkerTask(
     )
 
     doLast {
-        val marker = "trainiq-room-migration-chain-v2-to-v14"
+        val marker = "trainiq-room-migration-chain-v2-to-v15"
         val testTask = "connectedDebugAndroidTest"
-        val currentRoomVersion = 14
+        val currentRoomVersion = 15
         val requiredStartVersion = 2
-        val requiredEndVersion = 14
+        val requiredEndVersion = 15
         val coveredStartVersion = 2
-        val coveredEndVersion = 14
+        val coveredEndVersion = 15
         val verifiedAtMillis = verifiedAtMillisProperty
             .map(String::toLong)
             .getOrElse(System.currentTimeMillis())
-        val migrationCount = 11
+        val migrationCount = 12
         val payloadForHash = listOf(
             marker,
             buildVariant,

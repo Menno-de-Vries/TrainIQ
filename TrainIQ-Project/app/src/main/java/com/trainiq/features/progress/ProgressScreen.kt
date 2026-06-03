@@ -18,12 +18,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -301,6 +304,7 @@ fun ProgressScreen(
     var weightTouched by rememberSaveable { mutableStateOf(false) }
     var bodyFatTouched by rememberSaveable { mutableStateOf(false) }
     var muscleMassTouched by rememberSaveable { mutableStateOf(false) }
+    var selectedProgressTab by rememberSaveable { mutableStateOf(ProgressSectionTab.Body.key) }
     var scalePhotoNote by rememberSaveable { mutableStateOf<String?>(null) }
 
     val weightError = validateProgressMeasurementField(weight, weightSpec).takeIf { weightTouched }
@@ -380,7 +384,7 @@ fun ProgressScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
         ) {
-            item { ScreenHeader(title = "Voortgang", subtitle = "Metingen, grafieken en krachttrends") }
+            item { ScreenHeader(title = "Trend", subtitle = "Metingen, grafieken en krachttrends") }
             when (uiState) {
             ProgressUiState.Loading -> {
                 item { ShimmerCardPlaceholder(lineCount = 4) }
@@ -406,7 +410,14 @@ fun ProgressScreen(
             return@LazyColumn
         }
         item {
-            AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
+            ProgressSectionTabSwitcher(
+                selectedTab = selectedProgressTab,
+                onSelectTab = { selectedProgressTab = it.key },
+            )
+        }
+        if (selectedProgressTab == ProgressSectionTab.Body.key) {
+            item {
+                AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
                 Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                     Text("Lichaamssamenstelling", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.amber, fontWeight = FontWeight.SemiBold)
                     Text(
@@ -469,6 +480,7 @@ fun ProgressScreen(
                     }, enabled = canSaveMeasurement, modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) { Text("Meting opslaan") }
                 }
             }
+            }
         }
         if (
             overview.weightTrend.isEmpty() &&
@@ -486,7 +498,7 @@ fun ProgressScreen(
             }
         } else {
             val hasTrainingProgress = overview.strengthTrend.isNotEmpty() || overview.volumeTrend.isNotEmpty()
-            if (!hasTrainingProgress) {
+            if (selectedProgressTab == ProgressSectionTab.Strength.key && !hasTrainingProgress) {
                 item {
                     EmptyStateCard(
                         title = "Nog geen trainingsprogressie",
@@ -495,15 +507,17 @@ fun ProgressScreen(
                     )
                 }
             }
-            if (hasTrainingProgress) {
+            if (selectedProgressTab == ProgressSectionTab.Strength.key && hasTrainingProgress) {
                 item {
                     MetricCard("Geschatte 1RM", estimatedOneRepMaxText(overview.estimatedOneRepMax), "Beste geschatte maximale kracht uit je gelogde sets", Modifier.fillMaxWidth())
                 }
                 item {
                     MetricCard("Vermoeidheidsindex", String.format(Locale.getDefault(), "%.2f", overview.fatigueIndex), "Waarschuwing bij snelle volume + RPE stijging", Modifier.fillMaxWidth())
                 }
+                item { ChartComposable("Krachtprogressie", overview.strengthTrend, Modifier.fillMaxWidth()) }
+                item { ChartComposable("Trainingsvolume", overview.volumeTrend, Modifier.fillMaxWidth()) }
             }
-            item {
+            if (selectedProgressTab == ProgressSectionTab.History.key) item {
                 AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
                     Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                         Text("Meetgeschiedenis", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
@@ -530,11 +544,11 @@ fun ProgressScreen(
                     }
                 }
             }
-            item { ChartComposable("Lichaamsgewicht", overview.weightTrend, Modifier.fillMaxWidth()) }
-            item { ChartComposable("Vetpercentage", overview.bodyFatTrend, Modifier.fillMaxWidth()) }
-            item { ChartComposable("Spiermassa", overview.muscleMassTrend, Modifier.fillMaxWidth()) }
-            item { ChartComposable("Krachtprogressie", overview.strengthTrend, Modifier.fillMaxWidth()) }
-            item { ChartComposable("Trainingsvolume", overview.volumeTrend, Modifier.fillMaxWidth()) }
+            if (selectedProgressTab == ProgressSectionTab.Body.key) {
+                item { ChartComposable("Lichaamsgewicht", overview.weightTrend, Modifier.fillMaxWidth()) }
+                item { ChartComposable("Vetpercentage", overview.bodyFatTrend, Modifier.fillMaxWidth()) }
+                item { ChartComposable("Spiermassa", overview.muscleMassTrend, Modifier.fillMaxWidth()) }
+            }
             }
         }
     }
@@ -542,6 +556,47 @@ fun ProgressScreen(
 
 internal fun progressUiState(overview: ProgressOverview?, message: UiMessage?): ProgressUiState =
     overview?.let { ProgressUiState.Success(overview = it, message = message) } ?: ProgressUiState.Loading
+
+private enum class ProgressSectionTab(val key: String, val label: String) {
+    Body("body", "Lichaam"),
+    Strength("strength", "Kracht"),
+    History("history", "Historie"),
+}
+
+@Composable
+private fun ProgressSectionTabSwitcher(
+    selectedTab: String,
+    onSelectTab: (ProgressSectionTab) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.trainIqColors.cardElevated,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val chipColors = FilterChipDefaults.filterChipColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+            ProgressSectionTab.entries.forEach { tab ->
+                FilterChip(
+                    selected = selectedTab == tab.key,
+                    onClick = { onSelectTab(tab) },
+                    label = { Text(tab.label) },
+                    colors = chipColors,
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun MeasurementTextField(

@@ -33,6 +33,41 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun workoutOverviewSeparatesRoutinesLibraryAndHistoryTabs() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+
+        assertTrue(workoutScreen.contains("WorkoutOverviewTab.Routines"))
+        assertTrue(workoutScreen.contains("WorkoutOverviewTab.Library"))
+        assertTrue(workoutScreen.contains("WorkoutOverviewTab.History"))
+        assertTrue(workoutScreen.contains("filterNot { it.id == overview.activeRoutine?.id }"))
+        assertTrue(workoutScreen.contains("RoutineOverlapProposalCard"))
+    }
+
+    @Test
+    fun workoutLibrarySupportsScoredRecentAndUntrainedFilters() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val filterBody = workoutScreen.substringAfter("private enum class ExerciseLibraryFilter").substringBefore("private fun dayEstimatedMinutes")
+
+        assertTrue(filterBody.contains("Scored(\"scored\", \"Met score\")"))
+        assertTrue(filterBody.contains("Recent(\"recent\", \"Recent\")"))
+        assertTrue(filterBody.contains("Untrained(\"untrained\", \"Nog niet getraind\")"))
+        assertTrue(filterBody.contains("item.score > 0.0 && item.completedSessions > 0"))
+        assertTrue(filterBody.contains("item.completedSessions == 0"))
+    }
+
+    @Test
+    fun workoutHistoryCardShowsStoredDebriefFeedback() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val historyCard = workoutScreen.substringAfter("private fun HistoryCard(").substringBefore("@OptIn(ExperimentalMaterial3Api::class)")
+
+        assertTrue(historyCard.contains("session.workoutName"))
+        assertTrue(historyCard.contains("session.strongestSetLabel"))
+        assertTrue(historyCard.contains("session.debriefSummary"))
+        assertTrue(historyCard.contains("session.debriefRecommendation"))
+        assertTrue(historyCard.contains("session.debriefNextSessionFocus"))
+    }
+
+    @Test
     fun `critical headers and set labels allow wrapping except short screen header condensation`() {
         val appDesign = testSourceFile("core/ui/AppDesign.kt").readText()
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
@@ -412,14 +447,11 @@ class WorkoutInputValidationTest {
     fun `active routine is prioritized before routine creation when present`() {
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
         val overviewBody = workoutScreen
-            .substringAfter("if (selectedRoutine != null) {")
-            .substringAfter("return@LazyColumn")
-            .substringBefore("item { SectionHeader(\"Routines\") }")
+            .substringAfter("WorkoutOverviewTab.Routines.key -> {")
+            .substringBefore("WorkoutOverviewTab.Library.key -> {")
 
-        assertTrue(overviewBody.contains("if (overview.activeRoutine != null)"))
         assertTrue(overviewBody.indexOf("ActiveRoutineCard(") < overviewBody.indexOf("RoutineCreationCard("))
-        assertTrue(overviewBody.contains("else"))
-        assertTrue(overviewBody.lastIndexOf("RoutineCreationCard(") < overviewBody.lastIndexOf("ActiveRoutineCard("))
+        assertTrue(overviewBody.contains("filterNot { it.id == overview.activeRoutine?.id }"))
     }
 
     @Test
@@ -1071,9 +1103,9 @@ private fun sampleLoggedSet(id: Long): LoggedSet =
     )
 
 private fun testSourceFile(relativePackagePath: String): File {
-    val userDir = File(System.getProperty("user.dir"))
+    val userDir = File(System.getProperty("user.dir") ?: ".")
     return listOf(
         File(userDir, "src/main/java/com/trainiq/$relativePackagePath"),
         File(userDir, "app/src/main/java/com/trainiq/$relativePackagePath"),
-    ).first(File::isFile)
+    ).first { it.isFile }
 }

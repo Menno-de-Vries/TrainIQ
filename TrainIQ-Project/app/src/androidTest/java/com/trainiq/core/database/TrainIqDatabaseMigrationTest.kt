@@ -128,6 +128,24 @@ class TrainIqDatabaseMigrationTest {
     }
 
     @Test
+    fun migration14To15AddsDefaultServingGramsToFoodItems() {
+        helper.createDatabase(TEST_DB, 14).apply {
+            seedVersion11RelationalData()
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            TEST_DB,
+            15,
+            true,
+            TrainIqMigrations.Migration14To15,
+        )
+
+        migrated.assertFoodDefaultServingGramsDefaulted()
+        migrated.close()
+    }
+
+    @Test
     fun migration13To14RemovesDraftExerciseForeignKeysAndPreservesDraftState() {
         helper.createDatabase(TEST_DB, 13).apply {
             seedVersion11RelationalData()
@@ -149,7 +167,7 @@ class TrainIqDatabaseMigrationTest {
     }
 
     @Test
-    fun migration12To14PreservesNutritionAndActiveWorkoutState() {
+    fun migration12To15PreservesNutritionAndActiveWorkoutState() {
         helper.createDatabase(TEST_DB, 12).apply {
             seedVersion11RelationalData()
             seedActiveWorkoutDraftState()
@@ -158,13 +176,15 @@ class TrainIqDatabaseMigrationTest {
 
         val migrated = helper.runMigrationsAndValidate(
             TEST_DB,
-            14,
+            15,
             true,
             TrainIqMigrations.Migration12To13,
             TrainIqMigrations.Migration13To14,
+            TrainIqMigrations.Migration14To15,
         )
 
         migrated.assertMealItemServingCountDefaulted()
+        migrated.assertFoodDefaultServingGramsDefaulted()
         migrated.assertActiveWorkoutDraftStateSurvived()
         migrated.assertNoForeignKeyViolations()
         migrated.close()
@@ -542,6 +562,13 @@ class TrainIqDatabaseMigrationTest {
         query("SELECT serving_count FROM meal_items WHERE id = 230").use { cursor ->
             assertTrue(cursor.moveToFirst())
             assertEquals(1, cursor.getInt(0))
+        }
+    }
+
+    private fun SupportSQLiteDatabase.assertFoodDefaultServingGramsDefaulted() {
+        query("SELECT default_serving_grams FROM food_items WHERE id = 200").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(100.0, cursor.getDouble(0), 0.0)
         }
     }
 

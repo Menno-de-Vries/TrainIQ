@@ -12,6 +12,7 @@ data class FoodItemStorage(
     val proteinPer100g: Double = 0.0,
     val carbsPer100g: Double = 0.0,
     val fatPer100g: Double = 0.0,
+    val defaultServingGrams: Double = 100.0,
     val sourceType: FoodSourceType = FoodSourceType.MANUAL,
     val createdAt: Long = 0L,
     val updatedAt: Long = 0L,

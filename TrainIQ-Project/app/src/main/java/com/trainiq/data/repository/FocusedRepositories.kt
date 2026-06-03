@@ -121,8 +121,8 @@ class RoomNutritionRepository @Inject constructor(
         delegate.analyzeMealPhoto(path, context, capturedAtMillis)
     override suspend fun lookupBarcodeProduct(barcode: String) = delegate.lookupBarcodeProduct(barcode)
     override fun clearLastScanResult() = delegate.clearLastScanResult()
-    override suspend fun saveFoodItem(id: Long?, name: String, barcode: String?, caloriesPer100g: Double, proteinPer100g: Double, carbsPer100g: Double, fatPer100g: Double, sourceType: FoodSourceType): FoodItem =
-        delegate.saveFoodItem(id, name, barcode, caloriesPer100g, proteinPer100g, carbsPer100g, fatPer100g, sourceType)
+    override suspend fun saveFoodItem(id: Long?, name: String, barcode: String?, caloriesPer100g: Double, proteinPer100g: Double, carbsPer100g: Double, fatPer100g: Double, defaultServingGrams: Double, sourceType: FoodSourceType): FoodItem =
+        delegate.saveFoodItem(id, name, barcode, caloriesPer100g, proteinPer100g, carbsPer100g, fatPer100g, defaultServingGrams, sourceType)
     override suspend fun saveRecipe(id: Long?, name: String, notes: String?, totalCookedGrams: Double?, ingredients: List<Pair<Long, Double>>): Recipe =
         delegate.saveRecipe(id, name, notes, totalCookedGrams, ingredients)
     override suspend fun saveMeal(id: Long?, mealType: MealType, name: String, notes: String?, items: List<MealEntryRequest>): Long =

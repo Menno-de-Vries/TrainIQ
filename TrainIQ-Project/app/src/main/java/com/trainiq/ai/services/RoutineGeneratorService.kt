@@ -38,6 +38,7 @@ data class GeneratedExercise(
     val repRange: String,
     val restSeconds: Int,
     val coachingCue: String = "",
+    val existingExerciseId: Long? = null,
 )
 
 @Singleton
@@ -69,6 +70,7 @@ class RoutineGeneratorService @Inject constructor(
         experienceLevel: String,
         sessionDurationMinutes: Int,
         includeDeload: Boolean,
+        existingExercises: List<String> = emptyList(),
     ): GeneratedRoutine {
         val promptGoal = goal.toDutchGoalSummary()
         val promptFocus = targetFocus.toDutchRoutineFocus().ifBlank { "kracht" }
@@ -101,6 +103,7 @@ class RoutineGeneratorService @Inject constructor(
                         experienceLevel = experienceLevel,
                         sessionDurationMinutes = sessionDurationMinutes,
                         includeDeload = includeDeload,
+                        existingExercises = existingExercises,
                     ),
                 ),
             )
@@ -145,6 +148,7 @@ internal fun parseGeneratedRoutine(text: String, fallback: GeneratedRoutine, pro
                 repRange = exObj.get("repRange")?.asString ?: "8-12",
                 restSeconds = exObj.get("restSeconds")?.asInt ?: 90,
                 coachingCue = exObj.get("coachingCue")?.asString.orEmpty(),
+                existingExerciseId = exObj.get("existingExerciseId")?.takeIf { !it.isJsonNull }?.asLong,
             )
         }.orEmpty()
         GeneratedDay(

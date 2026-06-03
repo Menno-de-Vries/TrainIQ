@@ -1,6 +1,16 @@
 package com.trainiq.domain.usecase
 
 import com.google.gson.Gson
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
+import com.trainiq.core.database.TrainIqDatabase
+import com.trainiq.data.local.TrainIqStorageState
+import com.trainiq.data.migration.JsonRoomImportCoordinator
+import com.trainiq.data.migration.JsonRoomImportOutcome
+import com.trainiq.data.migration.JsonRoomImportPlanner
+import com.trainiq.data.migration.RoomJsonImportSink
+import com.trainiq.data.migration.TrainIqJsonExportFormat
+import com.trainiq.data.migration.importedRowCount
 import com.trainiq.domain.model.LoggedSet
 import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.ActiveWorkoutSession
@@ -368,8 +378,9 @@ class SaveFoodItemUseCase @Inject constructor(private val repository: NutritionR
         proteinPer100g: Double,
         carbsPer100g: Double,
         fatPer100g: Double,
+        defaultServingGrams: Double,
         sourceType: FoodSourceType,
-    ) = repository.saveFoodItem(id, name, barcode, caloriesPer100g, proteinPer100g, carbsPer100g, fatPer100g, sourceType)
+    ) = repository.saveFoodItem(id, name, barcode, caloriesPer100g, proteinPer100g, carbsPer100g, fatPer100g, defaultServingGrams, sourceType)
 }
 
 class SaveRecipeUseCase @Inject constructor(private val repository: NutritionRepository) {
@@ -490,11 +501,105 @@ class ExportAppDataUseCase @Inject constructor(
 }
 
 private data class TrainIqJsonExport(
-    val format: String = "trainiq-json-export",
+    val format: String = TrainIqJsonExportFormat,
     val version: Int = 1,
     val exportedAt: String,
     val data: Any,
 )
+
+class PreviewAppDataImportUseCase @Inject constructor() {
+    private val planner = JsonRoomImportPlanner()
+
+    operator fun invoke(json: String): AppDataImportPreview {
+        require(json.length <= MaxTrainIqImportJsonChars) {
+            "Importbestand is te groot. Exporteer opnieuw of kies een kleiner TrainIQ JSON-bestand."
+        }
+        val metadata = readTrainIqImportMetadata(json)
+        val plan = planner.plan(json)
+        val rowCount = plan.importedRowCount()
+        require(rowCount > 0) { "Importbestand bevat geen TrainIQ-data om te herstellen." }
+        require(rowCount <= MaxTrainIqImportRows) {
+            "Importbestand bevat te veel rijen om veilig te importeren."
+        }
+        return AppDataImportPreview(
+            format = metadata.format,
+            version = metadata.version,
+            exportedAt = metadata.exportedAt,
+            rowCount = rowCount,
+            routineCount = plan.routines.size,
+            workoutCount = plan.sessions.size,
+            mealCount = plan.meals.size,
+            foodCount = plan.foodItems.size,
+            measurementCount = plan.measurements.size,
+        )
+    }
+}
+
+class ImportAppDataUseCase @Inject constructor(
+    private val database: TrainIqDatabase,
+) {
+    private val planner = JsonRoomImportPlanner()
+
+    suspend operator fun invoke(json: String): AppDataImportResult {
+        val preview = PreviewAppDataImportUseCase().invoke(json)
+        val outcome = JsonRoomImportCoordinator(
+            planner = planner,
+            sink = RoomJsonImportSink(database),
+        ).tryImport(
+            sourceJson = json,
+            fallbackState = TrainIqStorageState(),
+        )
+        return when (outcome) {
+            is JsonRoomImportOutcome.Imported -> AppDataImportResult(
+                preview = preview,
+                importedRowCount = outcome.plan.importedRowCount(),
+            )
+            is JsonRoomImportOutcome.Failed -> error(outcome.cause.message ?: "Importeren mislukt.")
+        }
+    }
+}
+
+data class AppDataImportPreview(
+    val format: String,
+    val version: Int?,
+    val exportedAt: String?,
+    val rowCount: Int,
+    val routineCount: Int,
+    val workoutCount: Int,
+    val mealCount: Int,
+    val foodCount: Int,
+    val measurementCount: Int,
+)
+
+data class AppDataImportResult(
+    val preview: AppDataImportPreview,
+    val importedRowCount: Int,
+)
+
+private fun readTrainIqImportMetadata(json: String): AppDataImportMetadata {
+    val root = JsonParser.parseString(json)
+    val rootObject = root as? JsonObject ?: error("Importbestand moet een JSON-object zijn.")
+    val format = rootObject.get("format")?.asString
+    return if (format == null) {
+        AppDataImportMetadata(format = "legacy-trainiq-state", version = null, exportedAt = null)
+    } else {
+        require(format == TrainIqJsonExportFormat) { "Onbekend TrainIQ exportformaat: $format." }
+        AppDataImportMetadata(
+            format = format,
+            version = rootObject.get("version")?.asInt,
+            exportedAt = rootObject.get("exportedAt")?.asString,
+        )
+    }
+}
+
+private data class AppDataImportMetadata(
+    val format: String,
+    val version: Int?,
+    val exportedAt: String?,
+)
+
+internal const val MaxTrainIqImportJsonChars: Int = 5 * 1024 * 1024
+internal const val MaxTrainIqImportRows: Int = 20_000
 
 private fun ProgressionSuggestion.toInitialDraft(): ActiveWorkoutSetDraft? {
     val weight = lastLoggedWeightKg?.takeIf { it > 0.0 }?.let(::formatDraftWeight)

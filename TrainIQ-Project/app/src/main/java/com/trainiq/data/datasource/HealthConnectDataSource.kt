@@ -155,6 +155,7 @@ class HealthConnectDataSource @Inject constructor(
                 val storedState = preferencesRepository.getHealthConnectSyncPreferences()
                 val mergedMetricTokens = storedState
                     .resolvedMetricChangesTokens(requiredPermissionsByMetric.keys)
+                    .filterKeys { it in grantedMetrics }
                     .toMutableMap()
                     .apply {
                         syncPayload.nextChangesTokens.forEach { (metric, token) ->
@@ -199,11 +200,11 @@ class HealthConnectDataSource @Inject constructor(
             return performFullSync(
                 client = client,
                 metricsToSync = metricsToSync,
-                initialCacheState = readCacheStateFromStoredState(storedState),
+                initialCacheState = readCacheStateFromStoredState(storedState).onlyMetrics(metricsToSync),
             )
         }
 
-        val cachedState = readCacheStateFromStoredState(storedState)
+        val cachedState = readCacheStateFromStoredState(storedState).onlyMetrics(metricsToSync)
 
         if (cachedState.isEmpty()) {
             return performFullSync(client = client, metricsToSync = metricsToSync, initialCacheState = cachedState)
@@ -713,6 +714,16 @@ internal data class HealthConnectCacheState(
             weightRecords.isEmpty() &&
             exerciseSessionRecords.isEmpty()
 }
+
+internal fun HealthConnectCacheState.onlyMetrics(metrics: Set<HealthMetricType>): HealthConnectCacheState = copy(
+    aggregatedStepsToday = if (HealthMetricType.STEPS in metrics) aggregatedStepsToday else 0L,
+    stepRecords = if (HealthMetricType.STEPS in metrics) stepRecords else emptyList(),
+    heartRateRecords = if (HealthMetricType.HEART_RATE in metrics) heartRateRecords else emptyList(),
+    sleepSessionRecords = if (HealthMetricType.SLEEP in metrics) sleepSessionRecords else emptyList(),
+    caloriesBurnedRecords = if (HealthMetricType.ACTIVE_CALORIES in metrics) caloriesBurnedRecords else emptyList(),
+    weightRecords = if (HealthMetricType.WEIGHT in metrics) weightRecords else emptyList(),
+    exerciseSessionRecords = if (HealthMetricType.WORKOUTS in metrics) exerciseSessionRecords else emptyList(),
+)
 
 internal data class SyncPayload(
     val cacheState: HealthConnectCacheState,

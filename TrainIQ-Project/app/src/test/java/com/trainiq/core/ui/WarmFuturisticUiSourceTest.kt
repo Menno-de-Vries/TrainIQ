@@ -28,12 +28,21 @@ class WarmFuturisticUiSourceTest {
         assertTrue(appDesign.contains("FlowRow("))
         assertTrue(appDesign.contains("softWrap = true"))
     }
+
+    @Test
+    fun `app card gradient fills the whole card surface`() {
+        val appDesign = testSourceFile("core/ui/AppDesign.kt").readText()
+        val appCardBody = appDesign.substringAfter("fun AppCard(").substringBefore("@Composable\nfun WarmGlassCard(")
+
+        assertTrue(appCardBody.contains(".fillMaxSize()"))
+        assertTrue(appCardBody.contains("Brush.linearGradient"))
+    }
 }
 
 private fun testSourceFile(relativePackagePath: String): File {
-    val userDir = File(System.getProperty("user.dir"))
+    val userDir = File(System.getProperty("user.dir") ?: ".")
     return listOf(
         File(userDir, "src/main/java/com/trainiq/$relativePackagePath"),
         File(userDir, "app/src/main/java/com/trainiq/$relativePackagePath"),
-    ).first(File::isFile)
+    ).first { it.isFile }
 }

@@ -16,6 +16,8 @@ class WarmFuturisticScreenPolishSourceTest {
         assertTrue(sources["nutrition"]!!.contains("MaterialTheme.trainIqColors.amber"))
         assertTrue(sources["progress"]!!.contains("MaterialTheme.trainIqColors.amber"))
         assertTrue(sources["coach"]!!.contains("MaterialTheme.trainIqColors.amber"))
+        assertTrue(sources["settings"]!!.contains("SectionCard("))
+        assertFalse(sources["settings"]!!.contains("Voortgang openen"))
     }
 
     @Test
@@ -30,10 +32,19 @@ class WarmFuturisticScreenPolishSourceTest {
         )
     }
 
+    @Test
+    fun homeMetricsUseSharedWarmMetricCards() {
+        val home = ownedScreenSources()["home"]!!
+
+        assertTrue(home.contains("CompactMetricCard("))
+        assertFalse(home.contains("com.trainiq.core.util.MetricCard"))
+    }
+
     private fun ownedScreenSources(): Map<String, String> = mapOf(
         "home" to File(root, "home/HomeScreen.kt").readText(),
         "nutrition" to File(root, "nutrition/NutritionScreen.kt").readText(),
         "progress" to File(root, "progress/ProgressScreen.kt").readText(),
         "coach" to File(root, "coach/CoachScreen.kt").readText(),
+        "settings" to File(root, "settings/SettingsSection.kt").readText(),
     )
 }

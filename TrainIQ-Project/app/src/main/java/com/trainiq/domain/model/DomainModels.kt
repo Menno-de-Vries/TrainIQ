@@ -24,6 +24,16 @@ data class Exercise(
     val equipment: String,
 )
 
+data class ExerciseLibraryItem(
+    val exercise: Exercise,
+    val completedSessions: Int = 0,
+    val score: Double = 0.0,
+    val rankLabel: String = "",
+    val lastPerformedAt: Long? = null,
+    val bestEstimatedOneRepMax: Double = 0.0,
+    val totalVolume: Double = 0.0,
+)
+
 data class WorkoutExercisePlan(
     val id: Long,
     val exercise: Exercise,
@@ -71,6 +81,16 @@ data class WorkoutSessionSummary(
     val duration: Long,
     val caloriesBurned: Int,
     val totalVolume: Double,
+    val workoutName: String = "Sessie $id",
+    val exerciseCount: Int = 0,
+    val setsLogged: Int = 0,
+    val strongestSetLabel: String = "",
+    val debriefSummary: String = "",
+    val debriefRecommendation: String = "",
+    val debriefNextSessionFocus: String = "",
+    val debriefRecoveryScore: Int = 0,
+    val debriefIntensitySignal: String = "",
+    val debriefSource: WorkoutDebriefSource = WorkoutDebriefSource.LOCAL_FALLBACK,
 )
 
 data class ExerciseHistory(
@@ -285,6 +305,7 @@ data class GeneratedExercise(
     val repRange: String,
     val restSeconds: Int,
     val coachingCue: String = "",
+    val existingExerciseId: Long? = null,
 )
 
 data class NutritionFacts(
@@ -320,6 +341,7 @@ data class FoodItem(
     val proteinPer100g: Double,
     val carbsPer100g: Double,
     val fatPer100g: Double,
+    val defaultServingGrams: Double = 100.0,
     val sourceType: FoodSourceType,
     val createdAt: Long,
     val updatedAt: Long,
@@ -600,6 +622,7 @@ data class WorkoutOverview(
     val activeRoutine: WorkoutRoutine?,
     val routines: List<WorkoutRoutine>,
     val exercises: List<Exercise>,
+    val exerciseLibrary: List<ExerciseLibraryItem> = exercises.map { ExerciseLibraryItem(it) },
     val history: List<WorkoutSessionSummary>,
 )
 

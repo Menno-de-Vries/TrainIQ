@@ -62,6 +62,18 @@ class SettingsUiStateTest {
     }
 
     @Test
+    fun importReaderRejectsOversizedJsonBeforeReadingWholeDocument() {
+        val oversized = "x".repeat(32)
+
+        val error = runCatching {
+            readTrainIqImportJson(oversized.reader(), maxChars = 16)
+        }.exceptionOrNull()
+
+        assertTrue(error is IllegalStateException)
+        assertTrue(error?.message.orEmpty().contains("te groot"))
+    }
+
+    @Test
     fun geminiApiKeyHelpPointsToGoogleAiStudioWithoutEncouragingCommittedSecrets() {
         assertEquals("Google AI Studio API Keys", geminiApiKeySourceLabel())
         assertEquals("https://aistudio.google.com/app/apikey", geminiApiKeySourceUrl())
@@ -143,7 +155,9 @@ class SettingsUiStateTest {
         assertEquals("Themamodus: Donker", themeModeAccessibilityLabel(ThemeMode.DARK))
 
         val source = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
-        assertTrue(source.contains("Modifier.settingsActionLabel(themeModeAccessibilityLabel(mode))"))
+        val displaySection = source.substringAfter("SectionCard(title = \"Weergave\")").substringBefore("SectionCard(title = \"Workoutfeedback\")")
+        assertTrue(displaySection.contains("FlowRow("))
+        assertTrue(displaySection.contains(".settingsActionLabel(themeModeAccessibilityLabel(mode))"))
     }
 
     @Test
@@ -161,11 +175,14 @@ class SettingsUiStateTest {
     }
 
     @Test
-    fun compactSettingsReadsAsOverflowAndExposesProgressNearTop() {
+    fun compactSettingsReadsAsOverflowWithoutDuplicatingTrendNavigation() {
         assertEquals("Meer", settingsOverflowSectionTitle())
         assertTrue(settingsOverflowSectionBody().contains("Compacte navigatie"))
-        assertTrue(settingsOverflowSectionBody().contains("Voortgang"))
-        assertEquals("Voortgang openen vanuit Meer", settingsOpenProgressActionLabel())
+        assertTrue(settingsOverflowSectionBody().contains("Trend"))
+
+        val source = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
+        assertFalse(source.contains("Voortgang openen"))
+        assertFalse(source.contains("settingsOpenProgressActionLabel"))
     }
 
     @Test
@@ -174,10 +191,44 @@ class SettingsUiStateTest {
 
         assertTrue(source.contains("ActivityResultContracts.CreateDocument(\"application/json\")"))
         assertTrue(source.contains("Data exporteren als JSON"))
+        assertTrue(source.contains("ActivityResultContracts.OpenDocument()"))
+        assertTrue(source.contains("Data importeren uit JSON"))
+        assertTrue(source.contains("JSON-import bevestigen"))
+        assertTrue(source.contains("Importeren en vervangen"))
+        assertTrue(source.contains("TrainIQ-data exporteren als JSON"))
+        assertTrue(source.contains("TrainIQ-data importeren uit JSON"))
+        assertTrue(source.contains("Lokale TrainIQ-data wissen"))
+        assertTrue(source.contains("previewImportJson"))
+        assertTrue(source.contains("confirmImport"))
         assertTrue(source.contains("rememberLazyListState()"))
         assertTrue(source.contains("SnackbarHost"))
         assertFalse(source.contains("message?.let"))
         assertFalse(source.contains("AnimatedScreenState(targetState = uiState)"))
+    }
+
+    @Test
+    fun importPreviewSummaryNamesDestructiveRestoreCounts() {
+        val summary = importPreviewSummary(
+            com.trainiq.domain.usecase.AppDataImportPreview(
+                format = "trainiq-json-export",
+                version = 1,
+                exportedAt = "2026-06-03T10:15:30Z",
+                rowCount = 42,
+                routineCount = 2,
+                workoutCount = 3,
+                mealCount = 4,
+                foodCount = 5,
+                measurementCount = 6,
+            ),
+        )
+
+        assertTrue(summary.contains("trainiq-json-export v1"))
+        assertTrue(summary.contains("Rijen: 42"))
+        assertTrue(summary.contains("Routines: 2"))
+        assertTrue(summary.contains("Workouts: 3"))
+        assertTrue(summary.contains("Maaltijden: 4"))
+        assertTrue(summary.contains("Producten: 5"))
+        assertTrue(summary.contains("Metingen: 6"))
     }
 
     @Test

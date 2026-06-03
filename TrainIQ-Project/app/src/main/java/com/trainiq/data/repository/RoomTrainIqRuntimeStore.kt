@@ -71,7 +71,9 @@ class RoomTrainIqRuntimeStore @Inject constructor(
 
     init {
         scope.launch {
-            seedRoomFromLegacyJsonIfNeeded()
+            runCatching {
+                seedRoomFromLegacyJsonIfNeeded()
+            }
         }
     }
 
@@ -686,6 +688,7 @@ private fun FoodItemEntity.toStorage() = FoodItemStorage(
     proteinPer100g = proteinPer100g,
     carbsPer100g = carbsPer100g,
     fatPer100g = fatPer100g,
+    defaultServingGrams = defaultServingGrams.normalizedDefaultServingGrams(),
     sourceType = sourceType.toEnum(FoodSourceType.MANUAL),
     createdAt = createdAt,
     updatedAt = updatedAt,
@@ -699,10 +702,14 @@ private fun FoodItemStorage.toFoodItemEntity() = FoodItemEntity(
     proteinPer100g = proteinPer100g,
     carbsPer100g = carbsPer100g,
     fatPer100g = fatPer100g,
+    defaultServingGrams = defaultServingGrams.normalizedDefaultServingGrams(),
     sourceType = sourceType.name,
     createdAt = createdAt,
     updatedAt = updatedAt,
 )
+
+private fun Double.normalizedDefaultServingGrams(): Double =
+    takeIf { it.isFinite() && it > 0.0 } ?: 100.0
 
 private fun RecipeEntity.toStorage() = RecipeStorage(
     id = id,

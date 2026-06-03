@@ -90,10 +90,13 @@ import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
 import com.trainiq.domain.model.HealthMetricSyncState
 import com.trainiq.domain.model.UserProfile
+import com.trainiq.domain.usecase.AppDataImportPreview
 import com.trainiq.domain.usecase.ClearAppDataUseCase
 import com.trainiq.domain.usecase.ExportAppDataUseCase
 import com.trainiq.domain.usecase.GetHealthConnectStatusUseCase
+import com.trainiq.domain.usecase.ImportAppDataUseCase
 import com.trainiq.domain.usecase.ObserveUserProfileUseCase
+import com.trainiq.domain.usecase.PreviewAppDataImportUseCase
 import com.trainiq.domain.usecase.ResetProfileUseCase
 import com.trainiq.domain.usecase.SaveUserProfileUseCase
 import com.trainiq.navigation.TrainIqWindowWidthClass
@@ -119,6 +122,8 @@ sealed interface SettingsUiState {
         val workoutFeedbackPreferences: WorkoutFeedbackPreferences,
         val profile: UserProfile?,
         val healthStatus: HealthConnectStatus,
+        val importPreview: AppDataImportPreview? = null,
+        val isImporting: Boolean = false,
         val message: UiMessage? = null,
         val maskedApiKey: String = maskedSettingsApiKey(aiPreferences.apiKey),
     ) : SettingsUiState
@@ -145,6 +150,8 @@ class SettingsViewModel @Inject constructor(
     private val resetProfileUseCase: ResetProfileUseCase,
     private val clearAppDataUseCase: ClearAppDataUseCase,
     private val exportAppDataUseCase: ExportAppDataUseCase,
+    private val previewAppDataImportUseCase: PreviewAppDataImportUseCase,
+    private val importAppDataUseCase: ImportAppDataUseCase,
 ) : ViewModel() {
     private val themeMode: StateFlow<ThemeMode> = preferencesRepository.themeMode
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ThemeMode.SYSTEM)
@@ -171,6 +178,9 @@ class SettingsViewModel @Inject constructor(
     private val healthStatus: StateFlow<HealthConnectStatus> = _healthStatus.asStateFlow()
 
     private val _message = MutableStateFlow<UiMessage?>(null)
+    private val _importPreview = MutableStateFlow<AppDataImportPreview?>(null)
+    private val _isImporting = MutableStateFlow(false)
+    private var pendingImportJson: String? = null
     val uiState: StateFlow<SettingsUiState> = combine(
         combine(themeMode, aiPreferences, telemetryOptIn, workoutFeedbackPreferences, profile) { theme, ai, telemetry, feedback, userProfile ->
             SettingsUiInputs(
@@ -183,8 +193,10 @@ class SettingsViewModel @Inject constructor(
             )
         },
         healthStatus,
+        _importPreview,
+        _isImporting,
         _message,
-    ) { inputs, health, message ->
+    ) { inputs, health, importPreview, isImporting, message ->
         settingsUiState(
             themeMode = inputs.themeMode,
             aiPreferences = inputs.aiPreferences,
@@ -192,6 +204,8 @@ class SettingsViewModel @Inject constructor(
             workoutFeedbackPreferences = inputs.workoutFeedbackPreferences,
             profile = inputs.profile,
             healthStatus = health,
+            importPreview = importPreview,
+            isImporting = isImporting,
             message = message,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState.Loading)
@@ -406,6 +420,48 @@ class SettingsViewModel @Inject constructor(
 
     suspend fun exportAppDataJson(): String = exportAppDataUseCase()
 
+    fun previewImportJson(json: String) {
+        viewModelScope.launch {
+            runCatching {
+                previewAppDataImportUseCase(json)
+            }.onSuccess { preview ->
+                pendingImportJson = json
+                _importPreview.value = preview
+                emitMessage("Importbestand gecontroleerd. Bevestig om lokale data te vervangen.")
+            }.onFailure { throwable ->
+                pendingImportJson = null
+                _importPreview.value = null
+                emitMessage(throwable.message ?: "Importbestand kon niet worden gelezen.")
+            }
+        }
+    }
+
+    fun confirmImport() {
+        val json = pendingImportJson ?: run {
+            emitMessage("Kies eerst een geldig importbestand.")
+            return
+        }
+        viewModelScope.launch {
+            _isImporting.value = true
+            runCatching {
+                importAppDataUseCase(json)
+            }.onSuccess { result ->
+                pendingImportJson = null
+                _importPreview.value = null
+                emitMessage("TrainIQ-data geimporteerd: ${result.importedRowCount} rijen hersteld.")
+                refreshHealthConnectStatus()
+            }.onFailure { throwable ->
+                emitMessage(throwable.message ?: "Data importeren mislukt. Probeer opnieuw.")
+            }
+            _isImporting.value = false
+        }
+    }
+
+    fun dismissImportPreview() {
+        pendingImportJson = null
+        _importPreview.value = null
+    }
+
     fun setExportMessage(success: Boolean) {
         emitMessage(if (success) {
             "TrainIQ-data geexporteerd als JSON."
@@ -414,12 +470,19 @@ class SettingsViewModel @Inject constructor(
         })
     }
 
+    fun setImportFileReadMessage(success: Boolean) {
+        emitMessage(if (success) {
+            "Importbestand gelezen."
+        } else {
+            "Importbestand openen mislukt. Probeer opnieuw."
+        })
+    }
+
 }
 
 @Composable
 fun SettingsRoute(
     windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
-    onOpenProgress: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -440,6 +503,22 @@ fun SettingsRoute(
             viewModel.setExportMessage(success)
         }
     }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            val json = runCatching {
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
+                        readTrainIqImportJson(reader)
+                    } ?: error("Kon importbestand niet openen.")
+                }
+            }.getOrElse {
+                viewModel.setImportFileReadMessage(false)
+                return@launch
+            }
+            viewModel.previewImportJson(json)
+        }
+    }
     HealthConnectRefreshOnResume(viewModel::refreshHealthConnectStatus, refreshOnFirstResume = false)
 
     when (val state = uiState) {
@@ -454,6 +533,8 @@ fun SettingsRoute(
                 maskedApiKey = state.maskedApiKey,
                 profile = state.profile,
                 healthStatus = state.healthStatus,
+                importPreview = state.importPreview,
+                isImporting = state.isImporting,
                 message = state.message,
                 onThemeSelected = viewModel::setThemeMode,
                 onToggleAi = viewModel::setAiEnabled,
@@ -486,7 +567,11 @@ fun SettingsRoute(
                 onExportData = {
                     exportLauncher.launch("trainiq-export-${System.currentTimeMillis()}.json")
                 },
-                onOpenProgress = onOpenProgress,
+                onImportData = {
+                    importLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
+                },
+                onConfirmImport = viewModel::confirmImport,
+                onDismissImportPreview = viewModel::dismissImportPreview,
             )
         }
     }
@@ -548,6 +633,8 @@ fun SettingsScreen(
     maskedApiKey: String,
     profile: UserProfile?,
     healthStatus: HealthConnectStatus,
+    importPreview: AppDataImportPreview?,
+    isImporting: Boolean,
     message: UiMessage?,
     onThemeSelected: (ThemeMode) -> Unit,
     onToggleAi: (Boolean) -> Unit,
@@ -567,7 +654,9 @@ fun SettingsScreen(
     onOpenHealthSettings: () -> Unit,
     onOpenHealthInstall: () -> Unit,
     onExportData: () -> Unit,
-    onOpenProgress: () -> Unit = {},
+    onImportData: () -> Unit,
+    onConfirmImport: () -> Unit,
+    onDismissImportPreview: () -> Unit,
 ) {
     var apiKey by rememberSaveable { mutableStateOf("") }
     var openAiKey by rememberSaveable { mutableStateOf("") }
@@ -608,26 +697,26 @@ fun SettingsScreen(
                 Text("Thema: ${themeMode.displayLabel()}")
                 Text("AI: ${if (aiPreferences.enabled && aiPreferences.apiKey.isNotBlank()) "Klaar voor expliciet gebruik" else "Alleen handmatig"}")
                 Text("Health Connect: ${healthStatusLabel(healthStatus)}")
-                Button(
-                    onClick = onOpenProgress,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .settingsActionLabel(settingsOpenProgressActionLabel()),
-                ) {
-                    Text("Voortgang openen")
-                }
             }
         }
         item {
             SectionCard(title = "Weergave") {
                 Text("Themamodus")
-                ThemeMode.entries.forEach { mode ->
-                    FilterChip(
-                        modifier = Modifier.settingsActionLabel(themeModeAccessibilityLabel(mode)).height(48.dp),
-                        selected = themeMode == mode,
-                        onClick = { onThemeSelected(mode) },
-                        label = { Text(mode.displayLabel()) },
-                    )
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
+                ) {
+                    ThemeMode.entries.forEach { mode ->
+                        FilterChip(
+                            modifier = Modifier
+                                .settingsActionLabel(themeModeAccessibilityLabel(mode))
+                                .height(48.dp),
+                            selected = themeMode == mode,
+                            onClick = { onThemeSelected(mode) },
+                            label = { Text(mode.displayLabel()) },
+                        )
+                    }
                 }
             }
         }
@@ -718,7 +807,11 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
+                ) {
                     Button(onClick = {
                         onSaveApiKey(apiKey)
                         apiKey = ""
@@ -744,7 +837,11 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
+                ) {
                     Button(onClick = {
                         onSaveOpenAiKey(openAiKey)
                         openAiKey = ""
@@ -820,15 +917,28 @@ fun SettingsScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                     Button(
                         onClick = onExportData,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .settingsActionLabel("TrainIQ-data exporteren als JSON"),
                     ) { Text("Data exporteren als JSON") }
+                    Button(
+                        onClick = onImportData,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .settingsActionLabel("TrainIQ-data importeren uit JSON"),
+                        enabled = !isImporting,
+                    ) { Text(if (isImporting) "Importeren..." else "Data importeren uit JSON") }
                     TextButton(
                         onClick = { pendingDestructiveAction = PendingDestructiveSettingsAction.CLEAR_API_KEY },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .settingsActionLabel("AI-sleutels wissen"),
                     ) { Text("AI-sleutel wissen") }
                     TextButton(
                         onClick = { pendingDestructiveAction = PendingDestructiveSettingsAction.CLEAR_ALL_DATA },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .settingsActionLabel("Lokale TrainIQ-data wissen"),
                     ) { Text("Lokale data wissen") }
                 }
             }
@@ -867,6 +977,31 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { pendingDestructiveAction = null }) { Text("Annuleren") }
+            },
+        )
+    }
+
+    importPreview?.let { preview ->
+        AlertDialog(
+            onDismissRequest = onDismissImportPreview,
+            title = { Text("JSON-import bevestigen") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall)) {
+                    Text("Deze import vervangt je lokale TrainIQ-data. Health Connect-toegang en AI-sleutels beheer je apart.")
+                    Text(importPreviewSummary(preview))
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = onConfirmImport,
+                    enabled = !isImporting,
+                ) { Text(if (isImporting) "Importeren..." else "Importeren en vervangen") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = onDismissImportPreview,
+                    enabled = !isImporting,
+                ) { Text("Annuleren") }
             },
         )
     }
@@ -924,6 +1059,7 @@ private fun FeedbackToggleRow(
                 .clearAndSetSemantics { },
         )
     }
+
 }
 
 internal fun settingsToggleAccessibilityLabel(title: String, checked: Boolean): String =
@@ -969,6 +1105,8 @@ internal fun settingsUiState(
     workoutFeedbackPreferences: WorkoutFeedbackPreferences,
     profile: UserProfile?,
     healthStatus: HealthConnectStatus,
+    importPreview: AppDataImportPreview? = null,
+    isImporting: Boolean = false,
     message: UiMessage?,
 ): SettingsUiState = SettingsUiState.Success(
     themeMode = themeMode,
@@ -977,8 +1115,39 @@ internal fun settingsUiState(
     workoutFeedbackPreferences = workoutFeedbackPreferences,
     profile = profile,
     healthStatus = healthStatus,
+    importPreview = importPreview,
+    isImporting = isImporting,
     message = message,
 )
+
+internal fun importPreviewSummary(preview: AppDataImportPreview): String =
+    buildString {
+        append("Formaat: ${preview.format}")
+        preview.version?.let { append(" v$it") }
+        preview.exportedAt?.let { append("\nExportdatum: $it") }
+        append("\nRijen: ${preview.rowCount}")
+        append("\nRoutines: ${preview.routineCount} | Workouts: ${preview.workoutCount}")
+        append("\nMaaltijden: ${preview.mealCount} | Producten: ${preview.foodCount}")
+        append("\nMetingen: ${preview.measurementCount}")
+    }
+
+internal const val MaxTrainIqImportJsonChars: Int = 5 * 1024 * 1024
+
+internal fun readTrainIqImportJson(
+    reader: java.io.Reader,
+    maxChars: Int = MaxTrainIqImportJsonChars,
+): String {
+    val buffer = CharArray(8 * 1024)
+    val output = StringBuilder()
+    while (true) {
+        val read = reader.read(buffer)
+        if (read == -1) return output.toString()
+        if (output.length + read > maxChars) {
+            error("Importbestand is te groot. Exporteer opnieuw of kies een kleiner TrainIQ JSON-bestand.")
+        }
+        output.append(buffer, 0, read)
+    }
+}
 
 internal fun maskedSettingsApiKey(key: String): String {
     if (key.isBlank()) return "Niet ingesteld"
@@ -1005,7 +1174,9 @@ internal fun aiProviderStatusLabel(aiPreferences: AiPreferences): String = when 
     !aiPreferences.enabled -> "Uitgeschakeld"
     aiPreferences.hasAnyReadyProvider() -> buildString {
         append("Klaar: ${aiPreferences.preferredProvider.label}")
-        if (aiPreferences.geminiApiKey.isNotBlank() && aiPreferences.openAiApiKey.isNotBlank()) append(", fallbackprovider klaar")
+        if (aiPreferences.geminiApiKey.isNotBlank() && aiPreferences.openAiApiKey.isNotBlank()) {
+            append(", tweede provider opgeslagen")
+        }
     }
     else -> "Geen AI-sleutel ingesteld"
 }
@@ -1013,9 +1184,7 @@ internal fun aiProviderStatusLabel(aiPreferences: AiPreferences): String = when 
 internal fun settingsOverflowSectionTitle(): String = "Meer"
 
 internal fun settingsOverflowSectionBody(): String =
-    "Compacte navigatie: extra onderdelen staan hier. Open Voortgang voor trends en grafieken."
-
-internal fun settingsOpenProgressActionLabel(): String = "Voortgang openen vanuit Meer"
+    "Compacte navigatie: instellingen, voorkeuren en appbeheer staan hier. Trends en grafieken staan direct in de tab Trend."
 
 internal fun themeModeAccessibilityLabel(mode: ThemeMode): String = "Themamodus: ${mode.displayLabel()}"
 

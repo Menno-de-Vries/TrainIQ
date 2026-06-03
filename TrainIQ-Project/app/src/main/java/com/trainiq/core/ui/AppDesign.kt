@@ -513,7 +513,7 @@ fun AppCard(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .background(
                     Brush.linearGradient(
                         listOf(

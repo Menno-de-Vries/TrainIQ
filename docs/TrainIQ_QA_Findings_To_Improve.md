@@ -6,6 +6,48 @@ Refresh date: 2026-05-10, current worktree
 
 Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emulator smoke, Health Connect, Gemini/AI, Room/data, UI/UX/accessibility, release readiness.
 
+## 2026-06-03 JSON Import + Health Connect Steps Correctness
+
+- status: done for safe local JSON import preview/confirm and the reported Health Connect step mismatch class.
+- files changed: Settings now supports `Data importeren uit JSON` next to export, validates selected JSON with a preview dialog before destructive replacement, and labels data-storage actions for accessibility; export-wrapper JSON is accepted by the Room import planner; confirmed import uses the existing Room import coordinator/sink transactionally; Home refresh now uses the Health Connect status/cache path so fresh `StepsRecord.COUNT_TOTAL` aggregate steps update the dashboard and Settings consistently.
+- verification evidence:
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests com.trainiq.features.settings.SettingsUiStateTest --tests com.trainiq.data.migration.JsonRoomImportPlannerTest --tests com.trainiq.data.datasource.HealthConnectPermissionPolicyTest --tests com.trainiq.features.home.HomeDashboardRefreshTest --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 4827`, and crash buffer was empty.
+  - PASS: emulator Settings UI dump showed `Gegevens / opslag`, `Data exporteren als JSON`, and `Data importeren uit JSON`.
+- external sources used: Android Health Connect aggregate data docs for using aggregate metrics such as `StepsRecord.COUNT_TOTAL` as the deduplication-aware daily step source.
+- remaining risk: file-picker import confirmation was source/unit guarded and Settings-render smoke verified; a full end-to-end SAF import with a real selected JSON file remains a manual/device QA follow-up because automating Android DocumentsUI file selection safely in this workspace is brittle.
+
+## 2026-06-03 Home/Training History/Settings Polish Follow-up
+
+- status: done for the requested Home card strip, Settings theme-button alignment, scored exercise-library filtering, and workout-history feedback visibility.
+- files changed: shared `AppCard` gradient now fills the whole card surface; Settings theme choices wrap in a single aligned `FlowRow`; Training library items now include sessions, score/rank, last-performed, best estimated 1RM, and total volume; Training history cards now show routine name, duration, volume, exercise/set counts, strongest set, recovery score, stored debrief summary, recommendation, and next-session focus.
+- verification evidence:
+  - PASS: `./gradlew.bat :app:compileDebugKotlin :app:testDebugUnitTest --tests com.trainiq.features.workout.WorkoutInputValidationTest --tests com.trainiq.features.settings.SettingsUiStateTest --tests com.trainiq.core.ui.WarmFuturisticUiSourceTest --tests com.trainiq.data.repository.TrainIqRepositoryTest --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 6008`, and the crash buffer was empty.
+- remaining risk: manual screenshot/font-scale signoff is still needed for the exact Home/Settings visual result on the user's device class; no new AI provider behavior was introduced in this follow-up.
+
+## 2026-06-03 Training/Nutrition/Trend/Coach Polish Update
+
+- status: partially-done for related P2 layout polish and AI routine duplicate-prevention; routine merge is proposal-first and non-destructive unless the user opens/compares routines.
+- files changed: Training now separates Routines, Bibliotheek, and Geschiedenis inside the Train tab; active routine is no longer duplicated in the routine list; AI routine save reuses existing exercises by returned ID or conservative normalized matching; Nutrition daily meal cards and recipe editor are lighter; Trend is split into Lichaam/Kracht/Historie; Coach is split into Week/Doelen/Advies.
+- verification evidence:
+  - PASS: `./gradlew.bat :app:compileDebugKotlin :app:testDebugUnitTest --tests com.trainiq.features.workout.WorkoutInputValidationTest --tests com.trainiq.ai.services.RoutineGeneratorServiceTest --tests com.trainiq.data.repository.TrainIqRepositoryTest --tests com.trainiq.features.nutrition.NutritionInputValidationTest --tests com.trainiq.features.coach.GoalAdviceInputTest --tests com.trainiq.features.progress.ProgressMeasurementValidationTest --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 8014`, and the crash buffer was empty.
+- remaining risk: routine merge currently surfaces overlap proposals and compare actions, but a full confirmed transactional merge/archive workflow remains future work; manual screenshot/font-scale signoff is still needed.
+
+## 2026-06-03 Safe UI/AI/Product Portion Polish Update
+
+- status: partially-done for related P2 polish and AI-output confidence items; no blocked release/accessibility owner gates were closed.
+- files changed: Settings/Navigation removed the duplicate Settings-to-Voortgang CTA; Home metrics moved to shared warm metric cards; Coach goal advice uses wrapping warm sections; Nutrition product storage/editor/quick-add now supports `default_serving_grams`; Room schema advanced to v15 with a 14->15 migration and marker update.
+- verification evidence:
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --tests "com.trainiq.features.coach.GoalAdviceInputTest" --tests "com.trainiq.features.ui.WarmFuturisticScreenPolishSourceTest" --tests "com.trainiq.navigation.AdaptiveNavigationPolicyTest" --tests "com.trainiq.ai.services.AiServicesTest" --tests "com.trainiq.architecture.RoomAuthorityArchitectureTest" --tests "com.trainiq.data.mapper.MappersTest" --tests "com.trainiq.data.migration.RoomMigrationChainVerificationProviderTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 6366`, and the crash buffer was empty.
+- remaining risk: manual font-scale/TalkBack visual signoff, live Gemini key-backed workout debrief proof, and connected migration execution remain follow-up evidence items.
+
 ## Findings
 
 ### QA-2026-05-09-001

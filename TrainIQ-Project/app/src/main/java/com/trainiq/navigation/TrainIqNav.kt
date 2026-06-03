@@ -524,7 +524,6 @@ private fun TrainIqNavHost(
         composable<Settings> {
             SettingsRoute(
                 windowWidthClass = windowWidthClass,
-                onOpenProgress = { navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Progress::class }) },
             )
         }
         composable<CameraScanner> { entry ->

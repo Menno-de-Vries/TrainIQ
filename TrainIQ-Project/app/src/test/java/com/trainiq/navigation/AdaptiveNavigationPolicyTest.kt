@@ -1,6 +1,5 @@
 package com.trainiq.navigation
 
-import com.trainiq.features.settings.settingsOpenProgressActionLabel
 import com.trainiq.features.settings.settingsOverflowSectionBody
 import com.trainiq.features.settings.settingsOverflowSectionTitle
 import org.junit.Assert.assertFalse
@@ -33,10 +32,10 @@ class AdaptiveNavigationPolicyTest {
     }
 
     @Test
-    fun compactOverflowSettingsMakesProgressDiscoverable() {
+    fun compactOverflowSettingsDoesNotDuplicateTrendNavigation() {
         assertEquals("Meer", settingsOverflowSectionTitle())
-        assertTrue(settingsOverflowSectionBody().contains("Voortgang"))
-        assertTrue(settingsOpenProgressActionLabel().contains("Voortgang openen"))
+        assertTrue(settingsOverflowSectionBody().contains("Trend"))
+        assertFalse(settingsOverflowSectionBody().contains("Voortgang openen"))
     }
 
     @Test

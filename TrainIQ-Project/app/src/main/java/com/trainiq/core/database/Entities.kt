@@ -284,6 +284,7 @@ data class FoodItemEntity(
     @ColumnInfo(name = "protein_per_100g") val proteinPer100g: Double,
     @ColumnInfo(name = "carbs_per_100g") val carbsPer100g: Double,
     @ColumnInfo(name = "fat_per_100g") val fatPer100g: Double,
+    @ColumnInfo(name = "default_serving_grams", defaultValue = "100.0") val defaultServingGrams: Double = 100.0,
     @ColumnInfo(name = "source_type") val sourceType: String,
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,

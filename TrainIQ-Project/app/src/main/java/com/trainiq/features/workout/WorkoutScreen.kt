@@ -82,7 +82,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
@@ -176,6 +178,7 @@ import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.ChartPoint
 import com.trainiq.domain.model.ExerciseHistory
 import com.trainiq.domain.model.ExerciseHistorySession
+import com.trainiq.domain.model.ExerciseLibraryItem
 import com.trainiq.domain.model.ExerciseRankProgress
 import com.trainiq.domain.model.ExerciseStats
 import com.trainiq.domain.model.Exercise
@@ -196,6 +199,7 @@ import com.trainiq.domain.model.WorkoutExercisePlan
 import com.trainiq.domain.model.WorkoutLoggingSummary
 import com.trainiq.domain.model.WorkoutOverview
 import com.trainiq.domain.model.WorkoutRoutine
+import com.trainiq.domain.model.WorkoutSessionSummary
 import com.trainiq.domain.usecase.AddExerciseToDayUseCase
 import com.trainiq.domain.usecase.AddExerciseToRoutineUseCase
 import com.trainiq.domain.usecase.AddSetToExerciseUseCase
@@ -1389,6 +1393,9 @@ fun WorkoutScreen(
     var showCreateDialog by remember { mutableStateOf(false) }
     var isGenerating by remember { mutableStateOf(false) }
     var selectedRoutineId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var selectedTrainingTab by rememberSaveable { mutableStateOf(WorkoutOverviewTab.Routines.key) }
+    var exerciseLibraryQuery by rememberSaveable { mutableStateOf("") }
+    var exerciseLibraryFilter by rememberSaveable { mutableStateOf(ExerciseLibraryFilter.All.key) }
     var previousSelectedRoutineId by rememberSaveable { mutableStateOf<Long?>(null) }
     val trainingListState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -1519,71 +1526,106 @@ fun WorkoutScreen(
             }
             return@LazyColumn
         }
-        if (overview.activeRoutine != null) {
-            item {
-                ActiveRoutineCard(
-                    activeRoutine = overview.activeRoutine,
-                    onStartWorkout = onStartWorkout,
-                    onOpenDetails = { selectedRoutineId = it },
-                )
-            }
-            item { RoutineCreationCard(onShowCreateDialog = { showCreateDialog = true }, onShowAiDialog = { showAiDialog = true }) }
-        } else {
-            item { RoutineCreationCard(onShowCreateDialog = { showCreateDialog = true }, onShowAiDialog = { showAiDialog = true }) }
-            item {
-                ActiveRoutineCard(
-                    activeRoutine = overview.activeRoutine,
-                    onStartWorkout = onStartWorkout,
-                    onOpenDetails = { selectedRoutineId = it },
-                )
-            }
+        item {
+            WorkoutOverviewTabSwitcher(
+                selectedTab = selectedTrainingTab,
+                onSelectTab = { selectedTrainingTab = it.key },
+            )
         }
-        item { SectionHeader("Routines") }
-        if (overview.routines.isEmpty()) {
-            item { EmptyCard("Nog geen routines", "Maak een routine, voeg trainingsdagen toe en koppel oefeningen om te starten.") }
-        } else {
-            items(overview.routines, key = { workoutRoutineListKey(it.id) }) { routine ->
-                RoutineCard(
-                    routine = routine,
-                    exerciseLibrary = overview.exercises,
-                    detailMode = false,
-                    onOpenDetails = { selectedRoutineId = routine.id },
-                    onBackToOverview = {},
-                    onStartWorkout = onStartWorkout,
-                    onOpenExerciseHistory = onOpenExerciseHistory,
-                    onUpdateRoutine = onUpdateRoutine,
-                    onDeleteRoutine = onDeleteRoutine,
-                    onSetActiveRoutine = onSetActiveRoutine,
-                    onAddDay = onAddDay,
-                    onRemoveDay = onRemoveDay,
-                    onAddExercise = onAddExercise,
-                    onAddExerciseToRoutine = onAddExerciseToRoutine,
-                    onRemoveExercise = onRemoveExercise,
-                    onReorderExercises = onReorderExercises,
-                    onSetSupersetGroup = onSetSupersetGroup,
-                    onReplaceExercise = onReplaceExercise,
-                    onUpdateWorkoutExercisePlan = onUpdateWorkoutExercisePlan,
-                    onAddSetToExercise = onAddSetToExercise,
-                    onUpdateRoutineSet = onUpdateRoutineSet,
-                    onDeleteRoutineSet = onDeleteRoutineSet,
-                    onMoveRoutineSet = onMoveRoutineSet,
+        when (selectedTrainingTab) {
+            WorkoutOverviewTab.Routines.key -> {
+                item {
+                    ActiveRoutineCard(
+                        activeRoutine = overview.activeRoutine,
+                        onStartWorkout = onStartWorkout,
+                        onOpenDetails = { selectedRoutineId = it },
+                    )
+                }
+                item { RoutineCreationCard(onShowCreateDialog = { showCreateDialog = true }, onShowAiDialog = { showAiDialog = true }) }
+                item { SectionHeader("Routines") }
+                val listedRoutines = overview.routines.filterNot { it.id == overview.activeRoutine?.id }
+                val overlapProposal = overview.routines.bestRoutineOverlapProposal()
+                if (overlapProposal != null) {
+                    item {
+                        RoutineOverlapProposalCard(
+                            proposal = overlapProposal,
+                            onOpenPrimary = { selectedRoutineId = overlapProposal.primary.id },
+                            onOpenSecondary = { selectedRoutineId = overlapProposal.secondary.id },
+                        )
+                    }
+                }
+                if (overview.routines.isEmpty()) {
+                    item { EmptyCard("Nog geen routines", "Maak een routine, voeg trainingsdagen toe en koppel oefeningen om te starten.") }
+                } else if (listedRoutines.isEmpty()) {
+                    item { EmptyCard("Alleen actieve routine", "Je actieve routine staat hierboven. Maak een extra routine als je wilt vergelijken of wisselen.") }
+                } else {
+                    items(listedRoutines, key = { workoutRoutineListKey(it.id) }) { routine ->
+                        RoutineCard(
+                            routine = routine,
+                            exerciseLibrary = overview.exercises,
+                            detailMode = false,
+                            onOpenDetails = { selectedRoutineId = routine.id },
+                            onBackToOverview = {},
+                            onStartWorkout = onStartWorkout,
+                            onOpenExerciseHistory = onOpenExerciseHistory,
+                            onUpdateRoutine = onUpdateRoutine,
+                            onDeleteRoutine = onDeleteRoutine,
+                            onSetActiveRoutine = onSetActiveRoutine,
+                            onAddDay = onAddDay,
+                            onRemoveDay = onRemoveDay,
+                            onAddExercise = onAddExercise,
+                            onAddExerciseToRoutine = onAddExerciseToRoutine,
+                            onRemoveExercise = onRemoveExercise,
+                            onReorderExercises = onReorderExercises,
+                            onSetSupersetGroup = onSetSupersetGroup,
+                            onReplaceExercise = onReplaceExercise,
+                            onUpdateWorkoutExercisePlan = onUpdateWorkoutExercisePlan,
+                            onAddSetToExercise = onAddSetToExercise,
+                            onUpdateRoutineSet = onUpdateRoutineSet,
+                            onDeleteRoutineSet = onDeleteRoutineSet,
+                            onMoveRoutineSet = onMoveRoutineSet,
+                        )
+                    }
+                }
+            }
+            WorkoutOverviewTab.Library.key -> {
+                item { SectionHeader("Oefeningenbibliotheek") }
+                item {
+                    OutlinedTextField(
+                        value = exerciseLibraryQuery,
+                        onValueChange = { exerciseLibraryQuery = it },
+                        label = { Text("Zoek oefening, spiergroep of materiaal") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                item {
+                    ExerciseLibraryFilterRow(
+                        selectedFilter = exerciseLibraryFilter,
+                        onSelectFilter = { exerciseLibraryFilter = it.key },
+                    )
+                }
+                val filteredExercises = overview.exerciseLibrary.filteredByExerciseLibraryQuery(
+                    query = exerciseLibraryQuery,
+                    filterKey = exerciseLibraryFilter,
                 )
+                if (filteredExercises.isEmpty()) {
+                    item { EmptyCard("Geen oefeningen gevonden", "Pas je zoekterm aan of voeg een oefening toe vanuit een routine.") }
+                } else {
+                    items(filteredExercises, key = { workoutExerciseLibraryListKey(it.exercise.id) }) { item ->
+                        ExerciseLibraryCard(item)
+                    }
+                }
             }
-        }
-        item { SectionHeader("Oefeningenbibliotheek") }
-        if (overview.exercises.isEmpty()) {
-            item { Text("Nog geen oefeningen beschikbaar.") }
-        } else {
-            items(overview.exercises, key = { workoutExerciseLibraryListKey(it.id) }) { exercise ->
-                ExerciseLibraryCard(exercise.name, exercise.muscleGroup, exercise.equipment)
-            }
-        }
-        item { SectionHeader("Geschiedenis") }
-        if (overview.history.isEmpty()) {
-            item { EmptyCard("Nog geen trainingsgeschiedenis", "Voltooi een training en je sessiegeschiedenis verschijnt hier.") }
-        } else {
-            items(overview.history, key = { workoutHistoryListKey(it.id) }) { session ->
-                HistoryCard(session.id, session.totalVolume, session.duration, onDeleteWorkoutSession)
+            WorkoutOverviewTab.History.key -> {
+                item { SectionHeader("Geschiedenis") }
+                if (overview.history.isEmpty()) {
+                    item { EmptyCard("Nog geen trainingsgeschiedenis", "Voltooi een training en je sessiegeschiedenis verschijnt hier.") }
+                } else {
+                    items(overview.history, key = { workoutHistoryListKey(it.id) }) { session ->
+                        HistoryCard(session, onDeleteWorkoutSession)
+                    }
+                }
             }
         }
         }
@@ -1723,9 +1765,9 @@ private fun CreateRoutineDialog(onConfirm: (String) -> Unit, onDismiss: () -> Un
 private fun RoutineCreationCard(onShowCreateDialog: () -> Unit, onShowAiDialog: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Routine maken", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Nieuwe routine", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(
-                "Start met een lege template en voeg dagen handmatig toe, of laat AI een routine maken op basis van je niveau en planning.",
+                "Kies handmatig als je zelf wilt bouwen, of laat AI een voorstel maken dat eerst je bestaande oefeningenbibliotheek controleert.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1735,7 +1777,7 @@ private fun RoutineCreationCard(onShowCreateDialog: () -> Unit, onShowAiDialog: 
                     .fillMaxWidth()
                     .semantics { contentDescription = "Lege routine maken" },
             ) {
-                Text("Lege routine maken")
+                Text("Handmatig starten")
             }
             Button(
                 onClick = onShowAiDialog,
@@ -1743,7 +1785,48 @@ private fun RoutineCreationCard(onShowCreateDialog: () -> Unit, onShowAiDialog: 
                     .fillMaxWidth()
                     .semantics { contentDescription = "Met AI genereren" },
             ) {
-                Text("Met AI genereren")
+                Text("AI-voorstel maken")
+            }
+        }
+    }
+}
+
+private enum class WorkoutOverviewTab(val key: String, val label: String) {
+    Routines("routines", "Routines"),
+    Library("library", "Bibliotheek"),
+    History("history", "Geschiedenis"),
+}
+
+@Composable
+private fun WorkoutOverviewTabSwitcher(
+    selectedTab: String,
+    onSelectTab: (WorkoutOverviewTab) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.trainIqColors.cardElevated,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val chipColors = FilterChipDefaults.filterChipColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+            WorkoutOverviewTab.entries.forEach { tab ->
+                FilterChip(
+                    selected = selectedTab == tab.key,
+                    onClick = { onSelectTab(tab) },
+                    label = { Text(tab.label) },
+                    colors = chipColors,
+                )
             }
         }
     }
@@ -1820,33 +1903,115 @@ private fun EmptyCard(title: String, body: String) {
     EmptyStateCard(title = title, body = body, modifier = Modifier.fillMaxWidth())
 }
 
+private enum class ExerciseLibraryFilter(val key: String, val label: String) {
+    All("all", "Alles"),
+    Scored("scored", "Met score"),
+    Recent("recent", "Recent"),
+    Untrained("untrained", "Nog niet getraind"),
+}
+
 @Composable
-private fun ExerciseLibraryCard(name: String, muscleGroup: String, equipment: String) {
-    AppCard(modifier = Modifier.fillMaxWidth()) {
-        Text(name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
-        Text(
-            exerciseHistorySubtitleText(muscleGroup, equipment),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.trainIqColors.mutedText,
+private fun ExerciseLibraryFilterRow(
+    selectedFilter: String,
+    onSelectFilter: (ExerciseLibraryFilter) -> Unit,
+) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        val chipColors = FilterChipDefaults.filterChipColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+            labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
         )
+        ExerciseLibraryFilter.entries.forEach { filter ->
+            FilterChip(
+                selected = selectedFilter == filter.key,
+                onClick = { onSelectFilter(filter) },
+                label = { Text(filter.label) },
+                colors = chipColors,
+            )
+        }
     }
 }
 
 @Composable
-private fun HistoryCard(sessionId: Long, totalVolume: Double, durationSeconds: Long, onDelete: (Long) -> Unit) {
-    AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.blue) {
-        Row(
+private fun ExerciseLibraryCard(item: ExerciseLibraryItem) {
+    val exercise = item.exercise
+    AppCard(modifier = Modifier.fillMaxWidth()) {
+        Text(exercise.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+        Text(
+            exerciseHistorySubtitleText(exercise.muscleGroup, exercise.equipment),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.trainIqColors.mutedText,
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Sessie $sessionId", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
-                Text("Volume ${totalVolume.toInt()} kg", color = MaterialTheme.trainIqColors.mutedText)
+            AppChip(
+                label = if (item.completedSessions > 0) "${item.completedSessions} sessies" else "Nog niet getraind",
+                accent = MaterialTheme.trainIqColors.mint,
+            )
+            AppChip(
+                label = if (item.score > 0.0) "${item.rankLabel} - ${formatWeight(item.score)} score" else "Geen score",
+                accent = MaterialTheme.trainIqColors.amber,
+            )
+            if (item.bestEstimatedOneRepMax > 0.0) {
+                AppChip(label = "1RM ${formatWeight(item.bestEstimatedOneRepMax)} kg", accent = MaterialTheme.trainIqColors.blue)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AppChip(label = "${durationSeconds / 60} min", accent = MaterialTheme.trainIqColors.blue)
-                TextButton(onClick = { onDelete(sessionId) }) { Text("Verwijderen") }
+        }
+        item.lastPerformedAt?.let {
+            Text(
+                "Laatste keer: ${formatHistoryDate(it)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HistoryCard(session: WorkoutSessionSummary, onDelete: (Long) -> Unit) {
+    AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.blue) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(session.workoutName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                    Text(formatHistoryDate(session.date), color = MaterialTheme.trainIqColors.mutedText)
+                }
+                TextButton(onClick = { onDelete(session.id) }) { Text("Verwijderen") }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                AppChip(label = "${session.duration / 60} min", accent = MaterialTheme.trainIqColors.blue)
+                AppChip(label = "${session.totalVolume.toInt()} kg volume", accent = MaterialTheme.trainIqColors.blue)
+                AppChip(label = "${session.exerciseCount} oefeningen", accent = MaterialTheme.trainIqColors.mint)
+                AppChip(label = "${session.setsLogged} sets", accent = MaterialTheme.trainIqColors.mint)
+                if (session.strongestSetLabel.isNotBlank()) {
+                    AppChip(label = "Topset ${session.strongestSetLabel}", accent = MaterialTheme.trainIqColors.amber)
+                }
+                if (session.debriefRecoveryScore > 0) {
+                    AppChip(label = "Herstel ${session.debriefRecoveryScore}/100", accent = intensityContentColor(session.debriefIntensitySignal))
+                }
+            }
+            session.debriefSummary.takeIf { it.isNotBlank() }?.let {
+                AiSummaryLead(text = it)
+            }
+            session.debriefRecommendation.takeIf { it.isNotBlank() }?.let {
+                Text("Advies: $it", style = MaterialTheme.typography.bodyMedium)
+            }
+            session.debriefNextSessionFocus.takeIf { it.isNotBlank() }?.let {
+                Text("Volgende focus: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -5884,6 +6049,102 @@ private fun ActiveExerciseRestControl(
             }
         }
     }
+}
+
+private data class RoutineOverlapProposal(
+    val primary: WorkoutRoutine,
+    val secondary: WorkoutRoutine,
+    val sharedExercises: Int,
+)
+
+@Composable
+private fun RoutineOverlapProposalCard(
+    proposal: RoutineOverlapProposal,
+    onOpenPrimary: () -> Unit,
+    onOpenSecondary: () -> Unit,
+) {
+    AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
+        Text("Mogelijke dubbele routine", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(
+            "${proposal.primary.name} en ${proposal.secondary.name} delen ${proposal.sharedExercises} oefeningen. Controleer beide routines voordat je er een samenvoegt of verwijdert.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.trainIqColors.mutedText,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = onOpenPrimary, modifier = Modifier.weight(1f)) { Text("Beste optie") }
+            OutlinedButton(onClick = onOpenSecondary, modifier = Modifier.weight(1f)) { Text("Vergelijk") }
+        }
+    }
+}
+
+private fun List<WorkoutRoutine>.bestRoutineOverlapProposal(): RoutineOverlapProposal? {
+    if (size < 2) return null
+    val pairs = flatMapIndexed { index, first ->
+        drop(index + 1).mapNotNull { second ->
+            val firstExercises = first.exerciseNameKeys()
+            val secondExercises = second.exerciseNameKeys()
+            val shared = firstExercises.intersect(secondExercises).size
+            val smallest = minOf(firstExercises.size, secondExercises.size).coerceAtLeast(1)
+            if (shared >= 2 && shared.toDouble() / smallest >= 0.5) {
+                val primary = listOf(first, second).maxBy { it.routineCompletenessScore() }
+                val secondary = if (primary.id == first.id) second else first
+                RoutineOverlapProposal(primary, secondary, shared)
+            } else {
+                null
+            }
+        }
+    }
+    return pairs.maxByOrNull { it.sharedExercises }
+}
+
+private fun WorkoutRoutine.exerciseNameKeys(): Set<String> =
+    days.flatMap { day -> day.exercises.map { it.exercise.name.normalizedWorkoutExerciseName() } }
+        .filter { it.isNotBlank() }
+        .toSet()
+
+private fun WorkoutRoutine.routineCompletenessScore(): Int =
+    days.size * 10 + days.sumOf { it.exercises.size }
+
+private fun String.normalizedWorkoutExerciseName(): String =
+    lowercase(Locale.getDefault())
+        .replace("barbell", "halterstang")
+        .replace("dumbbells", "dumbbell")
+        .replace(Regex("[^a-z0-9]+"), " ")
+        .trim()
+
+private fun List<ExerciseLibraryItem>.filteredByExerciseLibraryQuery(
+    query: String,
+    filterKey: String,
+): List<ExerciseLibraryItem> {
+    val normalized = query.trim().lowercase(Locale.getDefault())
+    return asSequence()
+        .filter { item ->
+            when (filterKey) {
+                ExerciseLibraryFilter.Scored.key -> item.score > 0.0 && item.completedSessions > 0
+                ExerciseLibraryFilter.Recent.key -> item.lastPerformedAt != null
+                ExerciseLibraryFilter.Untrained.key -> item.completedSessions == 0
+                else -> true
+            }
+        }
+        .filter { item ->
+            if (normalized.isBlank()) {
+                true
+            } else {
+                val exercise = item.exercise
+                exercise.name.lowercase(Locale.getDefault()).contains(normalized) ||
+                    exercise.muscleGroup.lowercase(Locale.getDefault()).contains(normalized) ||
+                    exercise.equipment.lowercase(Locale.getDefault()).contains(normalized) ||
+                    item.rankLabel.lowercase(Locale.getDefault()).contains(normalized)
+            }
+        }
+        .sortedWith(
+            when (filterKey) {
+                ExerciseLibraryFilter.Recent.key -> compareByDescending<ExerciseLibraryItem> { it.lastPerformedAt ?: 0L }
+                ExerciseLibraryFilter.Scored.key -> compareByDescending { it.score }
+                else -> compareBy { it.exercise.name }
+            },
+        )
+        .toList()
 }
 
 @Composable

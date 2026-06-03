@@ -1,6 +1,8 @@
 package com.trainiq.data.migration
 
 import com.google.gson.Gson
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import com.trainiq.core.database.ActiveWorkoutCollapsedExerciseEntity
 import com.trainiq.core.database.ActiveWorkoutDraftEntity
 import com.trainiq.core.database.ActiveWorkoutSessionEntity
@@ -35,7 +37,7 @@ class JsonRoomImportPlanner(
     private val gson: Gson = Gson(),
 ) {
     fun plan(sourceJson: String): JsonRoomImportPlan {
-        val state = gson.fromJson(sourceJson, TrainIqStorageState::class.java) ?: TrainIqStorageState()
+        val state = gson.fromJson(extractTrainIqStateJson(sourceJson), TrainIqStorageState::class.java) ?: TrainIqStorageState()
         return JsonRoomImportPlan(
             profile = state.profile?.normalized(),
             routines = state.routines.map { it.normalized() },
@@ -56,6 +58,7 @@ class JsonRoomImportPlanner(
                     proteinPer100g = it.proteinPer100g,
                     carbsPer100g = it.carbsPer100g,
                     fatPer100g = it.fatPer100g,
+                    defaultServingGrams = it.defaultServingGrams.takeIf { grams -> grams.isFinite() && grams > 0.0 } ?: 100.0,
                     sourceType = enumNameOrDefault({ it.sourceType.name }, "MANUAL"),
                     createdAt = it.createdAt,
                     updatedAt = it.updatedAt,
@@ -271,6 +274,18 @@ class JsonRoomImportPlanner(
 
     private fun enumNameOrDefault(block: () -> String, default: String): String =
         runCatching(block).getOrNull().orEmpty().ifBlank { default }
+
+    private fun extractTrainIqStateJson(sourceJson: String): String {
+        val root = JsonParser.parseString(sourceJson)
+        val rootObject = root as? JsonObject ?: error("Importbestand moet een JSON-object zijn.")
+        val format = rootObject.get("format")?.asString
+        return if (format == null) {
+            sourceJson
+        } else {
+            require(format == TrainIqJsonExportFormat) { "Onbekend TrainIQ exportformaat: $format." }
+            rootObject.get("data")?.toString() ?: error("Importbestand mist het data-blok.")
+        }
+    }
 }
 
 data class JsonRoomImportPlan(
@@ -324,8 +339,8 @@ class RoomJsonImportSink(
     ): RoomMirrorImportReport =
         database.withTransaction {
             val dao = database.dao()
-            val staleRows = if (mirrorRun == null) 0 else dao.mirrorRowCount()
-            if (mirrorRun != null) dao.clearMirrorTables()
+            val staleRows = dao.mirrorRowCount()
+            dao.clearMirrorTables()
             plan.profile?.let { dao.upsertUserProfile(it) }
             dao.insertRoutines(plan.routines)
             dao.insertWorkoutDays(plan.days)
@@ -436,7 +451,8 @@ fun JsonRoomImportPlan.importedRowCount(): Int =
         workoutLogEventSets.size +
         measurements.size
 
-private const val TrainIqDatabaseVersion = 14
+private const val TrainIqDatabaseVersion = 15
+internal const val TrainIqJsonExportFormat = "trainiq-json-export"
 
 sealed interface JsonRoomImportOutcome {
     val roomTrusted: Boolean

@@ -23,6 +23,7 @@ data class AiPreferences(
     val preferredProvider: AiProviderPreference = AiProviderPreference.GEMINI_FIRST,
     val geminiApiKey: String = apiKey,
     val openAiApiKey: String = "",
+    val allowCrossProviderFallback: Boolean = false,
 )
 
 data class WorkoutFeedbackPreferences(

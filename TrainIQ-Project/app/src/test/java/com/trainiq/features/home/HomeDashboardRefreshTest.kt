@@ -130,6 +130,17 @@ class HomeDashboardRefreshTest {
     }
 
     @Test
+    fun repositoryDashboardRefreshUsesHealthConnectStatusAsSingleStepSource() {
+        val source = File("src/main/java/com/trainiq/data/repository/TrainIqRepository.kt").readText()
+        val refreshBody = source.substringAfter("suspend fun refreshDashboardData()")
+            .substringBefore("fun observeWorkoutOverview()")
+
+        assertTrue(refreshBody.contains("healthConnectDataSource.getStatus()"))
+        assertTrue(refreshBody.contains("status.metrics?.stepsToday"))
+        assertFalse(refreshBody.contains("getTodayStepsLive()"))
+    }
+
+    @Test
     fun nextWorkoutIntensityLabel_whenPlannedRpeExists_usesRoutineData() {
         val result = nextWorkoutIntensityLabel(
             workoutDay(

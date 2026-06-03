@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -59,13 +60,13 @@ import com.trainiq.core.ui.PermissionManagerCard
 import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.AppCard
 import com.trainiq.core.ui.AppChip
+import com.trainiq.core.ui.CompactMetricCard
 import com.trainiq.core.ui.PrimaryActionButton
 import com.trainiq.core.ui.SecondaryActionButton
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.core.util.EnergyBalanceCard
 import com.trainiq.core.util.MacroBreakdownCard
-import com.trainiq.core.util.MetricCard
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
 import com.trainiq.domain.model.HomeDashboard
@@ -366,15 +367,16 @@ fun HomeScreen(
                             )
                         }
                         item {
-                            MetricCard(
+                            CompactMetricCard(
                                 title = "Reeks",
                                 value = "${dashboard.streak} dagen",
                                 subtitle = if (dashboard.streak > 0) "Je ritme staat stevig" else "Log een training of maaltijd om momentum op te bouwen",
-                                modifier = Modifier.height(170.dp),
+                                modifier = Modifier.defaultMinSize(minHeight = 150.dp),
+                                accent = MaterialTheme.trainIqColors.amber,
                             )
                         }
                         item {
-                            MetricCard(
+                            CompactMetricCard(
                                 title = "Stappen",
                                 value = when (healthConnectStatus.state) {
                                     HealthConnectState.CONNECTED -> "${healthConnectStatus.stepsToday ?: 0}"
@@ -386,7 +388,8 @@ fun HomeScreen(
                                     averageHeartRateBpm = healthConnectStatus.averageHeartRateBpm,
                                     todaysWorkoutCalories = dashboard.todaysWorkoutCalories,
                                 ),
-                                modifier = Modifier.height(170.dp),
+                                modifier = Modifier.defaultMinSize(minHeight = 150.dp),
+                                accent = MaterialTheme.trainIqColors.mint,
                             )
                         }
                         item(span = { GridItemSpan(gridColumns) }) {

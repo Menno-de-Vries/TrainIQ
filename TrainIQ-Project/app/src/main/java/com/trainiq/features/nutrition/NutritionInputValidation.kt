@@ -15,8 +15,9 @@ internal data class FoodFieldErrors(
     val protein: String? = null,
     val carbs: String? = null,
     val fat: String? = null,
+    val defaultServingGrams: String? = null,
 ) {
-    val hasErrors: Boolean get() = listOf(name, calories, protein, carbs, fat).any { it != null }
+    val hasErrors: Boolean get() = listOf(name, calories, protein, carbs, fat, defaultServingGrams).any { it != null }
 }
 
 internal data class RecipeFieldErrors(
@@ -100,12 +101,14 @@ internal fun validateFoodInput(
     protein: String,
     carbs: String,
     fat: String,
+    defaultServingGrams: String = "100",
 ): FoodFieldErrors = FoodFieldErrors(
     name = requiredNameError(name),
     calories = nutritionNumberError(calories, max = MAX_CALORIES_PER_100G, allowZero = true),
     protein = nutritionNumberError(protein, max = MAX_MACRO_PER_100G, allowZero = true),
     carbs = nutritionNumberError(carbs, max = MAX_MACRO_PER_100G, allowZero = true),
     fat = nutritionNumberError(fat, max = MAX_MACRO_PER_100G, allowZero = true),
+    defaultServingGrams = requiredPositiveGramError(defaultServingGrams),
 )
 
 internal fun validateRecipeInput(

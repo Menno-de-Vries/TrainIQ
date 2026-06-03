@@ -87,6 +87,7 @@ class AiProviderRouterTest {
                 preferredProvider = AiProviderPreference.OPENAI_FIRST,
                 geminiApiKey = "gemini-key",
                 openAiApiKey = "openai-key",
+                allowCrossProviderFallback = true,
             ),
             request = weeklyRequest(),
             clientFor = { provider -> if (provider == AiProvider.GEMINI) gemini else openAi },
@@ -99,6 +100,29 @@ class AiProviderRouterTest {
     }
 
     @Test
+    fun routeAiProviderRequest_doesNotCrossProviderFallbackWithoutExplicitConsent() = runTest {
+        val openAi = FakeAiModelClient(AiProvider.OPENAI, error = rateLimitError())
+        val gemini = FakeAiModelClient(AiProvider.GEMINI)
+
+        val error = runCatching {
+            routeAiProviderRequest(
+                settings = aiSettings(
+                    preferredProvider = AiProviderPreference.OPENAI_FIRST,
+                    geminiApiKey = "gemini-key",
+                    openAiApiKey = "openai-key",
+                ),
+                request = weeklyRequest(),
+                clientFor = { provider -> if (provider == AiProvider.GEMINI) gemini else openAi },
+            )
+        }.exceptionOrNull()
+
+        assertTrue(error is AiProviderUnavailableException)
+        assertEquals(listOf("OPENAI:AiRateLimitException"), (error as AiProviderUnavailableException).failures)
+        assertEquals(listOf("openai-key", "openai-key"), openAi.apiKeys)
+        assertTrue(gemini.apiKeys.isEmpty())
+    }
+
+    @Test
     fun routeAiProviderRequest_reusesThrottleToSkipRecentlyRateLimitedProvider() = runTest {
         val openAiThrottle = AiFeatureThrottle(nowMillis = { 1_000L })
         val gemini = FakeAiModelClient(AiProvider.GEMINI)
@@ -107,6 +131,7 @@ class AiProviderRouterTest {
             preferredProvider = AiProviderPreference.OPENAI_FIRST,
             geminiApiKey = "gemini-key",
             openAiApiKey = "openai-key",
+            allowCrossProviderFallback = true,
         )
 
         routeAiProviderRequest(
@@ -237,6 +262,7 @@ class AiProviderRouterTest {
         preferredProvider: AiProviderPreference,
         geminiApiKey: String,
         openAiApiKey: String,
+        allowCrossProviderFallback: Boolean = false,
     ): AiPreferences =
         AiPreferences(
             enabled = true,
@@ -244,6 +270,7 @@ class AiProviderRouterTest {
             geminiApiKey = geminiApiKey,
             openAiApiKey = openAiApiKey,
             preferredProvider = preferredProvider,
+            allowCrossProviderFallback = allowCrossProviderFallback,
         )
 
     private fun weeklyRequest(): AiRouteRequest =

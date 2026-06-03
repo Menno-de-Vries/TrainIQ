@@ -3,6 +3,7 @@ package com.trainiq.features.coach
 import com.trainiq.domain.model.BiologicalSex
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -201,5 +202,18 @@ class GoalAdviceInputTest {
         assertTrue(weeklySourceLabels.contains("WeeklyReportSource.GEMINI_2_5_FLASH -> \"Gemini 2.5 Flash\""))
         assertTrue(weeklySourceLabels.contains("WeeklyReportSource.OPENAI -> \"OpenAI\""))
         assertTrue(weeklySourceLabels.contains("WeeklyReportSource.LOCAL_FALLBACK -> \"Lokale analyse\""))
+    }
+
+    @Test
+    fun goalAdviceCardUsesWrappingWarmSectionsForMetricOutput() {
+        val source = File("src/main/java/com/trainiq/features/coach/CoachScreen.kt").readText()
+        val goalAdviceCard = source.substringAfter("private fun GoalAdviceCard(").substringBefore("@Composable\nprivate fun AdviceSurface")
+        val adviceSurface = source.substringAfter("private fun AdviceSurface(").substringBefore("@Composable\nprivate fun WeekReportCard")
+
+        assertTrue(goalAdviceCard.contains("FlowRow("))
+        assertTrue(goalAdviceCard.contains("MetricPill(\"Eiwit\""))
+        assertTrue(goalAdviceCard.contains("MetricPill(\"Onderhoud\""))
+        assertFalse(goalAdviceCard.contains("horizontalArrangement = Arrangement.SpaceBetween"))
+        assertTrue(adviceSurface.contains("MaterialTheme.trainIqColors.amber"))
     }
 }

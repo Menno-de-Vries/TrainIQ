@@ -137,6 +137,7 @@ interface NutritionRepository {
         proteinPer100g: Double,
         carbsPer100g: Double,
         fatPer100g: Double,
+        defaultServingGrams: Double,
         sourceType: FoodSourceType,
     ): FoodItem
     suspend fun saveRecipe(
