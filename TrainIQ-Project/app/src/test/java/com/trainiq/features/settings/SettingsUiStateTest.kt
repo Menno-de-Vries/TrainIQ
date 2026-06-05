@@ -1,6 +1,7 @@
 package com.trainiq.features.settings
 
 import com.trainiq.core.datastore.AiPreferences
+import com.trainiq.core.datastore.ReminderPreferences
 import com.trainiq.core.datastore.WorkoutFeedbackPreferences
 import com.trainiq.core.theme.ThemeMode
 import com.trainiq.core.ui.UiMessage
@@ -23,6 +24,7 @@ class SettingsUiStateTest {
             aiPreferences = AiPreferences(enabled = true, apiKey = "abcd1234wxyz"),
             telemetryOptIn = true,
             workoutFeedbackPreferences = WorkoutFeedbackPreferences(restTimerSoundEnabled = true),
+            reminderPreferences = ReminderPreferences(enabled = true),
             profile = null,
             healthStatus = HealthConnectStatus(
                 state = HealthConnectState.CONNECTED,
@@ -37,6 +39,7 @@ class SettingsUiStateTest {
                 aiPreferences = AiPreferences(enabled = true, apiKey = "abcd1234wxyz"),
                 telemetryOptIn = true,
                 workoutFeedbackPreferences = WorkoutFeedbackPreferences(restTimerSoundEnabled = true),
+                reminderPreferences = ReminderPreferences(enabled = true),
                 profile = null,
                 healthStatus = HealthConnectStatus(
                     state = HealthConnectState.CONNECTED,
@@ -155,7 +158,7 @@ class SettingsUiStateTest {
         assertEquals("Themamodus: Donker", themeModeAccessibilityLabel(ThemeMode.DARK))
 
         val source = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
-        val displaySection = source.substringAfter("SectionCard(title = \"Weergave\")").substringBefore("SectionCard(title = \"Workoutfeedback\")")
+        val displaySection = source.substringAfter("SectionCard(title = \"Weergave\")").substringBefore("SectionCard(title = \"Voorkeuren\")")
         assertTrue(displaySection.contains("FlowRow("))
         assertTrue(displaySection.contains(".settingsActionLabel(themeModeAccessibilityLabel(mode))"))
     }
@@ -172,6 +175,20 @@ class SettingsUiStateTest {
         assertTrue(source.contains("onCheckedChange = null"))
         assertTrue(source.contains(".sizeIn(minWidth = 48.dp, minHeight = 48.dp)"))
         assertTrue(source.contains("settingsActionLabel(settingsToggleAccessibilityLabel(title, checked))"))
+    }
+
+    @Test
+    fun settingsCombinesFeedbackRemindersAndTelemetryIntoPreferencesCard() {
+        val source = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
+        val preferencesSection = source.substringAfter("SectionCard(title = \"Voorkeuren\")")
+            .substringBefore("SectionCard(title = \"AI / Providers\")")
+
+        assertTrue(preferencesSection.contains("Rusttimer-geluid"))
+        assertTrue(preferencesSection.contains("TrainIQ-reminders"))
+        assertTrue(preferencesSection.contains("Technische telemetrie delen"))
+        assertFalse(source.contains("SectionCard(title = \"Workoutfeedback\")"))
+        assertFalse(source.contains("SectionCard(title = \"Reminders\")"))
+        assertFalse(source.contains("SectionCard(title = \"Privacy en telemetrie\")"))
     }
 
     @Test

@@ -4,6 +4,7 @@ import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
+import androidx.health.connect.client.records.WeightRecord
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -19,6 +20,16 @@ class HealthConnectReadPermissionsTest {
         assertFalse(
             HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class) in HealthConnectReadPermissions,
         )
+    }
+
+    @Test
+    fun readPermissionsDoNotRequestWeightByDefault() {
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+
+        assertFalse(HealthPermission.getReadPermission(WeightRecord::class) in HealthConnectReadPermissions)
+        assertFalse(manifest.contains("android.permission.health.READ_WEIGHT"))
+        assertFalse(HealthConnectPermissionCopyBySignal.any { it.label == "Gewicht" })
+        assertFalse(HealthConnectRationaleReasons.any { it.title == "Gewicht" })
     }
 
     @Test

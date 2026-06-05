@@ -14,7 +14,7 @@ import retrofit2.Response
 class AiProviderRouterTest {
     @Test
     fun openAiStrictSchema_addsAdditionalPropertiesFalseToNestedObjects() {
-        val schema = GeminiJsonSchemas.routineGenerator.toOpenAiStrictSchema()
+        val schema = AiJsonSchemas.routineGenerator.toOpenAiStrictSchema()
         val days = ((schema["properties"] as Map<*, *>)["days"] as Map<*, *>)
         val day = days["items"] as Map<*, *>
 
@@ -48,7 +48,7 @@ class AiProviderRouterTest {
                 feature = AiFeature.WEEKLY_REPORT,
                 prompt = "Geef JSON",
                 schemaName = "weekly_report",
-                responseJsonSchema = GeminiJsonSchemas.weeklyReport,
+                responseJsonSchema = AiJsonSchemas.weeklyReport,
                 thinkingBudget = 1000,
             ),
         )
@@ -278,7 +278,7 @@ class AiProviderRouterTest {
             feature = AiFeature.WEEKLY_REPORT,
             prompt = "Geef JSON",
             schemaName = "weekly_report",
-            responseJsonSchema = GeminiJsonSchemas.weeklyReport,
+            responseJsonSchema = AiJsonSchemas.weeklyReport,
             thinkingBudget = 1000,
         )
 

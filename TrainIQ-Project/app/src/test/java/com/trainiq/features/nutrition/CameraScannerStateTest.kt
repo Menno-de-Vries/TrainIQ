@@ -57,6 +57,10 @@ class CameraScannerStateTest {
 
         assertTrue(numberBody.contains(".semantics(mergeDescendants = true) { contentDescription = label }"))
         assertTrue(fieldBody.contains(".semantics(mergeDescendants = true) { contentDescription = label }"))
+        assertTrue(numberBody.contains("TrainIqFormField("))
+        assertTrue(fieldBody.contains("TrainIqFormField("))
+        assertTrue(numberBody.contains("TrainIqFormFieldContext.Nutrition"))
+        assertTrue(fieldBody.contains("TrainIqFormFieldContext.Nutrition"))
         assertTrue(source.contains("label = \"Productnaam\""))
         assertTrue(source.contains("label = \"Barcode (optioneel)\""))
         assertTrue(source.contains("Open Food Facts"))

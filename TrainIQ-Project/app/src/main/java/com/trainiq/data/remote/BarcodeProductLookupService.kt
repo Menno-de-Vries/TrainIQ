@@ -2,6 +2,7 @@ package com.trainiq.data.remote
 
 import com.google.gson.JsonParser
 import com.trainiq.domain.model.BarcodeProductLookupResult
+import java.io.Reader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -33,7 +34,7 @@ internal suspend fun lookupOpenFoodFactsProduct(
         }
         try {
             connection.inputStream.bufferedReader().use { reader ->
-                parseOpenFoodFactsProduct(cleanBarcode, reader.readText())
+                parseOpenFoodFactsProduct(cleanBarcode, reader.readText(MaxOpenFoodFactsResponseChars))
             }
         } finally {
             connection.disconnect()
@@ -77,4 +78,20 @@ private fun com.google.gson.JsonObject.safeOpenFoodFactsNumber(
     return parsed.takeIf { it.isFinite() && it in range }
 }
 
+private fun Reader.readText(maxChars: Int): String {
+    val buffer = CharArray(DEFAULT_BUFFER_SIZE)
+    val output = StringBuilder()
+    while (true) {
+        val read = read(buffer)
+        if (read == -1) return output.toString()
+        if (output.length + read > maxChars) {
+            throw OpenFoodFactsResponseTooLargeException()
+        }
+        output.append(buffer, 0, read)
+    }
+}
+
+private class OpenFoodFactsResponseTooLargeException : RuntimeException()
+
+private const val MaxOpenFoodFactsResponseChars = 256 * 1024
 private const val OpenFoodFactsBaseUrl = "https://world.openfoodfacts.org/api/v2/product/"

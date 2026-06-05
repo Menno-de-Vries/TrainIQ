@@ -11,7 +11,6 @@ import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
-import androidx.health.connect.client.records.WeightRecord
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -31,7 +30,6 @@ internal val HealthConnectReadPermissions = setOf(
     HealthPermission.getReadPermission(HeartRateRecord::class),
     HealthPermission.getReadPermission(SleepSessionRecord::class),
     HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class),
-    HealthPermission.getReadPermission(WeightRecord::class),
     HealthPermission.getReadPermission(ExerciseSessionRecord::class),
 )
 
@@ -40,7 +38,6 @@ internal val HealthConnectPermissionCopyBySignal = listOf(
     HealthConnectPermissionCopy(HealthPermission.getReadPermission(HeartRateRecord::class), "Hartslag"),
     HealthConnectPermissionCopy(HealthPermission.getReadPermission(SleepSessionRecord::class), "Slaap"),
     HealthConnectPermissionCopy(HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class), "Actieve calorieen"),
-    HealthConnectPermissionCopy(HealthPermission.getReadPermission(WeightRecord::class), "Gewicht"),
     HealthConnectPermissionCopy(HealthPermission.getReadPermission(ExerciseSessionRecord::class), "Workouts"),
 )
 
@@ -60,10 +57,6 @@ internal val HealthConnectRationaleReasons = listOf(
     HealthConnectRationaleReason(
         title = "Actieve calorieen",
         description = "Actieve calorieen geven context voor energieverbruik bovenop rustverbruik en helpen training en voeding realistischer naast elkaar te zetten.",
-    ),
-    HealthConnectRationaleReason(
-        title = "Gewicht",
-        description = "Gewichtstrends geven voortgang context. TrainIQ gebruikt ze om prestaties en voeding te verbinden aan echte lichaamsverandering.",
     ),
     HealthConnectRationaleReason(
         title = "Workouts",

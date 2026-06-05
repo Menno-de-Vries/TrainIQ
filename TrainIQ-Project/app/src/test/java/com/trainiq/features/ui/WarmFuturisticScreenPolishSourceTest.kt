@@ -33,11 +33,26 @@ class WarmFuturisticScreenPolishSourceTest {
     }
 
     @Test
-    fun homeMetricsUseSharedWarmMetricCards() {
+    fun homeMomentumUsesSingleWarmCardWithStackedMetricRows() {
         val home = ownedScreenSources()["home"]!!
+        val momentumBlock = home.substringAfter("private fun HomeMomentumCard(")
+            .substringBefore("internal fun homeStreakValue")
 
-        assertTrue(home.contains("CompactMetricCard("))
+        assertTrue(momentumBlock.contains("HomeMomentumMetricRow("))
+        assertFalse(momentumBlock.contains("CompactMetricCard("))
         assertFalse(home.contains("com.trainiq.core.util.MetricCard"))
+    }
+
+    @Test
+    fun homeMetricsSpanFullRowsOnCompactScreens() {
+        val home = ownedScreenSources()["home"]!!
+        val metricBlock = home.substringAfter("HomeMomentumCard(")
+            .substringBefore("HealthConnectSyncCard(")
+
+        assertTrue(metricBlock.contains("GridItemSpan(gridColumns)"))
+        assertTrue(home.contains("private fun HomeMomentumCard("))
+        assertTrue(home.contains("private fun HomeMomentumMetricRow("))
+        assertTrue(home.contains(".fillMaxWidth()"))
     }
 
     private fun ownedScreenSources(): Map<String, String> = mapOf(

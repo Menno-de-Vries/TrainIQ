@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -72,6 +73,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -88,6 +90,7 @@ import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -102,6 +105,19 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.max
 import kotlin.math.min
+
+data class CompactSectionTabItem(
+    val key: String,
+    val label: String,
+)
+
+enum class TrainIqFormFieldContext {
+    Default,
+    Goal,
+    Progress,
+    Nutrition,
+    Settings,
+}
 
 @Composable
 fun AppScaffold(
@@ -501,32 +517,91 @@ fun AppCard(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = MaterialTheme.trainIqColors
+    val shape = RoundedCornerShape(MaterialTheme.radii.card)
+    val baseColor = if (elevated) colors.cardElevated else colors.card
+    val tintAlpha = if (elevated) 0.10f else 0.045f
+    val cardBrush = Brush.linearGradient(
+        listOf(
+            lerp(baseColor, colors.amber, tintAlpha),
+            baseColor,
+            lerp(baseColor, accent, tintAlpha),
+        ),
+    )
     Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(MaterialTheme.radii.card),
+        modifier = modifier
+            .fillMaxWidth()
+            .background(cardBrush, shape),
+        shape = shape,
         border = BorderStroke(1.dp, colors.cardBorder.copy(alpha = if (elevated) 0.86f else 0.72f)),
         colors = CardDefaults.cardColors(
-            containerColor = if (elevated) colors.cardElevated else colors.card,
+            containerColor = Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onSurface,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.linearGradient(
-                        listOf(
-                            colors.amber.copy(alpha = if (elevated) 0.10f else 0.045f),
-                            Color.Transparent,
-                            accent.copy(alpha = if (elevated) 0.10f else 0.045f),
-                        ),
-                    ),
-                )
+                .fillMaxWidth()
                 .padding(contentPadding),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
             content = content,
         )
+    }
+}
+
+@Composable
+fun CompactSectionTabs(
+    selectedKey: String,
+    tabs: List<CompactSectionTabItem>,
+    onSelectTab: (CompactSectionTabItem) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.trainIqColors.cardElevated,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val chipColors = FilterChipDefaults.filterChipColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+            tabs.forEach { tab ->
+                val labelStyle = if (tab.label.length >= 10) {
+                    MaterialTheme.typography.labelSmall
+                } else {
+                    MaterialTheme.typography.labelMedium
+                }
+                FilterChip(
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 42.dp),
+                    selected = selectedKey == tab.key,
+                    onClick = { onSelectTab(tab) },
+                    label = {
+                        Text(
+                            text = tab.label,
+                            modifier = Modifier.fillMaxWidth(),
+                            style = labelStyle,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
+                        )
+                    },
+                    colors = chipColors,
+                )
+            }
+        }
     }
 }
 
@@ -668,7 +743,22 @@ fun CompactMetricCard(
             overflow = TextOverflow.Ellipsis,
             softWrap = true,
         )
-        AppPill(label = subtitle, accent = accent)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(MaterialTheme.radii.chip),
+            color = accent.copy(alpha = 0.14f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ) {
+            Text(
+                text = subtitle,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                softWrap = true,
+            )
+        }
     }
 }
 
@@ -834,6 +924,67 @@ fun AppTextField(
             unfocusedBorderColor = MaterialTheme.trainIqColors.cardBorder,
             focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.50f),
             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+        ),
+    )
+}
+
+@Composable
+fun TrainIqFormField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    context: TrainIqFormFieldContext = TrainIqFormFieldContext.Default,
+    singleLine: Boolean = true,
+    isError: Boolean = false,
+    errorText: String? = null,
+    supportingText: String? = null,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    imeSettledDelayMillis: Long = 320L,
+) {
+    val colors = MaterialTheme.trainIqColors
+    val accent = when (context) {
+        TrainIqFormFieldContext.Goal -> colors.amber
+        TrainIqFormFieldContext.Progress -> colors.mint
+        TrainIqFormFieldContext.Nutrition -> colors.amber
+        TrainIqFormFieldContext.Settings -> MaterialTheme.colorScheme.primary
+        TrainIqFormFieldContext.Default -> MaterialTheme.colorScheme.primary
+    }
+    val containerAlpha = when (context) {
+        TrainIqFormFieldContext.Settings -> 0.26f
+        TrainIqFormFieldContext.Nutrition -> 0.32f
+        TrainIqFormFieldContext.Progress -> 0.34f
+        TrainIqFormFieldContext.Goal -> 0.36f
+        TrainIqFormFieldContext.Default -> 0.30f
+    }
+    val activeSupportingText = errorText?.takeIf { isError } ?: supportingText
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        modifier = modifier
+            .semantics(mergeDescendants = true) { contentDescription = label }
+            .bringIntoViewOnFocus(imeSettledDelayMillis = imeSettledDelayMillis),
+        singleLine = singleLine,
+        isError = isError,
+        supportingText = activeSupportingText?.let {
+            { Text(it) }
+        },
+        keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
+        visualTransformation = visualTransformation,
+        shape = RoundedCornerShape(MaterialTheme.radii.card),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = accent,
+            unfocusedBorderColor = colors.cardBorder,
+            errorBorderColor = MaterialTheme.colorScheme.error,
+            focusedContainerColor = accent.copy(alpha = containerAlpha),
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = containerAlpha),
+            errorContainerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.22f),
+            focusedLabelColor = accent,
+            cursorColor = accent,
         ),
     )
 }

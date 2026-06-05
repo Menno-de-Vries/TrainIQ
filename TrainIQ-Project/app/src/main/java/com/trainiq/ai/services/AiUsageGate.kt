@@ -42,8 +42,11 @@ class AiUsageGate @Inject constructor(
         return settings.geminiApiKey.takeIf { settings.enabled && it.isNotBlank() }
     }
 
-    suspend fun saveApiKey(apiKey: String): Boolean =
-        geminiKeyMigration.saveKey(apiKey)
+    suspend fun saveApiKey(apiKey: String): Boolean {
+        val saved = geminiKeyMigration.saveKey(apiKey)
+        if (saved) preferencesRepository.clearGeminiApiKey()
+        return saved
+    }
 
     suspend fun saveOpenAiApiKey(apiKey: String): Boolean =
         openAiKeyStore.saveKey(apiKey)
@@ -54,6 +57,7 @@ class AiUsageGate @Inject constructor(
 
     suspend fun clearEncryptedApiKey() {
         geminiKeyMigration.clearEncryptedKey()
+        preferencesRepository.clearGeminiApiKey()
     }
 
     suspend fun clearOpenAiApiKey() {
@@ -63,5 +67,6 @@ class AiUsageGate @Inject constructor(
     suspend fun clearAllAiKeys() {
         geminiKeyMigration.clearEncryptedKey()
         openAiKeyStore.clearEncryptedKey()
+        preferencesRepository.clearGeminiApiKey()
     }
 }

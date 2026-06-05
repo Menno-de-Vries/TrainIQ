@@ -4,7 +4,7 @@ import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.GoalAdvice
 import java.util.Locale
 
-object GeminiPrompts {
+object AiPrompts {
     fun workoutDebrief(
         totalVolume: Double,
         progression: Double?,

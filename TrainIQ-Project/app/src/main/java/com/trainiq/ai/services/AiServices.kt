@@ -4,7 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import com.google.gson.Gson
 import com.google.gson.JsonParser
-import com.trainiq.ai.prompts.GeminiPrompts
+import com.trainiq.ai.prompts.AiPrompts
 import com.trainiq.data.remote.GeminiApi
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.BodyMeasurementPhotoResult
@@ -90,9 +90,9 @@ class MealAnalysisService internal constructor(
             aiJsonGenerator.generateJson(
                 AiRouteRequest(
                     feature = AiFeature.MEAL_SCAN,
-                    prompt = GeminiPrompts.mealScanner(scanContext),
+                    prompt = AiPrompts.mealScanner(scanContext),
                     schemaName = "meal_scan",
-                    responseJsonSchema = GeminiJsonSchemas.mealScan,
+                    responseJsonSchema = AiJsonSchemas.mealScan,
                     thinkingBudget = 0,
                     imageJpegBytes = imageBytes,
                 ),
@@ -111,11 +111,12 @@ class MealAnalysisService internal constructor(
         contextOverrides: MealContextOverrides = MealContextOverrides(),
     ): MealAnalysisResult {
         if (text.isBlank()) throw MealAnalysisUnavailableException()
+        if (text.length > MaxAiRawResponseChars) throw MealAnalysisUnavailableException()
         return runCatching {
             val root = JsonParser.parseString(text).asJsonObject
-            val items = root.getAsJsonArray("items")?.mapNotNull { element ->
+            val items = root.getAsJsonArray("items")?.take(MaxMealScanItems)?.mapNotNull { element ->
                 val obj = element.asJsonObject
-                val name = obj.get("name")?.asString?.trim().orEmpty()
+                val name = obj.get("name").boundedString(MaxMealScanNameChars).orEmpty()
                 if (name.isBlank()) return@mapNotNull null
                 val estimatedGrams = obj.safeNumber("estimatedGrams", default = 100.0, min = 1.0, max = MaxMealScanGrams)
                     ?: return@mapNotNull null
@@ -136,8 +137,8 @@ class MealAnalysisService internal constructor(
                         carbs = carbs,
                         fat = fat,
                     ),
-                    confidence = obj.get("confidence")?.asString,
-                    notes = obj.get("notes")?.asString,
+                    confidence = obj.get("confidence").boundedString(MaxMealScanMetaChars),
+                    notes = obj.get("notes").boundedString(MaxMealScanNotesChars),
                 )
             }.orEmpty()
             val normalizedItems = applyMealContextOverrides(items, contextOverrides)
@@ -154,7 +155,7 @@ class MealAnalysisService internal constructor(
                     ?.uppercase()
                     ?.let { raw -> MealType.entries.firstOrNull { it.name == raw } }
                     ?: fallbackMealType,
-                notes = listOfNotNull(root.get("notes")?.asString, reviewNotes)
+                notes = listOfNotNull(root.get("notes").boundedString(MaxMealScanNotesChars), reviewNotes)
                     .joinToString(" ")
                     .ifBlank { null },
                 rawResponse = text,
@@ -188,9 +189,9 @@ class BodyMeasurementPhotoService @Inject constructor(
             val routed = aiJsonGenerator.generateJson(
                 AiRouteRequest(
                     feature = AiFeature.BODY_MEASUREMENT_PHOTO,
-                    prompt = GeminiPrompts.bodyMeasurementPhoto(sanitizedContext),
+                    prompt = AiPrompts.bodyMeasurementPhoto(sanitizedContext),
                     schemaName = "body_measurement_photo",
-                    responseJsonSchema = GeminiJsonSchemas.bodyMeasurementPhoto,
+                    responseJsonSchema = AiJsonSchemas.bodyMeasurementPhoto,
                     thinkingBudget = 0,
                     imageJpegBytes = imageBytes,
                 ),
@@ -461,24 +462,29 @@ private fun MealType.promptLabel(): String = when (this) {
 private const val MaxMealScanGrams = 100_000.0
 private const val MaxMealScanCalories = 100_000.0
 private const val MaxMealScanMacro = 100_000.0
+private const val MaxMealScanItems = 20
+private const val MaxMealScanNameChars = 120
+private const val MaxMealScanMetaChars = 40
+private const val MaxMealScanNotesChars = 600
 private const val MaxMealScanContextChars = 2_000
 private const val MaxBodyMeasurementContextChars = 1_000
 private const val MaxMealImageSourceBytes = 6L * 1024L * 1024L
 private const val MaxMealImageUploadBytes = 1_500_000
 private const val MaxMealImageDimensionPx = 1_280
+private const val MaxAiRawResponseChars = 64_000
 
 internal fun prepareMealScanImageBytes(file: File): ByteArray? {
     if (!file.exists() || file.length() <= 0L || file.length() > MaxMealImageSourceBytes) return null
     val raw = file.readBytes()
     if (raw.size <= MaxMealImageUploadBytes) {
-        return runCatching { compressMealImageForGemini(raw) }.getOrDefault(raw)
+        return runCatching { compressMealImageForAiUpload(raw) }.getOrDefault(raw)
     }
-    return runCatching { compressMealImageForGemini(raw) }
+    return runCatching { compressMealImageForAiUpload(raw) }
         .getOrNull()
         ?.takeIf { it.size <= MaxMealImageUploadBytes }
 }
 
-private fun compressMealImageForGemini(raw: ByteArray): ByteArray {
+private fun compressMealImageForAiUpload(raw: ByteArray): ByteArray {
     val source = BitmapFactory.decodeByteArray(raw, 0, raw.size) ?: return raw
     val scale = minOf(
         1f,
@@ -510,6 +516,12 @@ private fun com.google.gson.JsonObject.safeNumber(
     val parsed = runCatching { value.asDouble }.getOrNull() ?: return null
     return parsed.takeIf { it.isFinite() && it in min..max }
 }
+
+private fun com.google.gson.JsonElement?.boundedString(maxChars: Int): String? =
+    this
+        ?.takeIf { !it.isJsonNull }
+        ?.let { element -> runCatching { element.asString.trim().take(maxChars) }.getOrNull() }
+        ?.takeIf { it.isNotBlank() }
 
 @Singleton
 class WorkoutDebriefService internal constructor(
@@ -547,9 +559,9 @@ class WorkoutDebriefService internal constructor(
                 AiRouteRequest(
                     feature = AiFeature.WORKOUT_DEBRIEF,
                     schemaName = "workout_debrief",
-                    responseJsonSchema = GeminiJsonSchemas.workoutDebrief,
+                    responseJsonSchema = AiJsonSchemas.workoutDebrief,
                     thinkingBudget = 1000,
-                    prompt = GeminiPrompts.workoutDebrief(
+                    prompt = AiPrompts.workoutDebrief(
                                         totalVolume = totalVolume,
                                         progression = progression,
                                         comparisonSummary = comparisonSummary,
@@ -613,9 +625,9 @@ class GoalAdvisorService internal constructor(
                 AiRouteRequest(
                     feature = AiFeature.GOAL_ADVICE,
                     schemaName = "goal_advice",
-                    responseJsonSchema = GeminiJsonSchemas.goalAdvice,
+                    responseJsonSchema = AiJsonSchemas.goalAdvice,
                     thinkingBudget = 1000,
-                    prompt = GeminiPrompts.goalAdvisor(
+                    prompt = AiPrompts.goalAdvisor(
                                         height = height,
                                         weight = weight,
                                         bodyFat = bodyFat,
@@ -751,9 +763,9 @@ class WeeklyReportService @Inject constructor(
             val routed = aiJsonGenerator.generateJson(
                 AiRouteRequest(
                     feature = AiFeature.WEEKLY_REPORT,
-                    prompt = GeminiPrompts.weeklyReport(volume, weightTrend, adherence),
+                    prompt = AiPrompts.weeklyReport(volume, weightTrend, adherence),
                     schemaName = "weekly_report",
-                    responseJsonSchema = GeminiJsonSchemas.weeklyReport,
+                    responseJsonSchema = AiJsonSchemas.weeklyReport,
                     thinkingBudget = 1000,
                 ),
             )

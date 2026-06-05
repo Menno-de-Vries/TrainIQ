@@ -1,7 +1,7 @@
 package com.trainiq.ai.services
 
 import com.google.gson.Gson
-import com.trainiq.ai.prompts.GeminiPrompts
+import com.trainiq.ai.prompts.AiPrompts
 import com.trainiq.data.model.GeminiRequest
 import com.trainiq.data.model.GeminiResponse
 import com.trainiq.data.remote.GeminiApi
@@ -31,7 +31,7 @@ class AiServicesTest {
                 contents = listOf(GeminiRequest.Content(parts = listOf(GeminiRequest.Part(text = "Geef JSON")))),
                 generationConfig = GeminiRequest.GenerationConfig(
                     responseMimeType = "application/json",
-                    responseJsonSchema = GeminiJsonSchemas.workoutDebrief,
+                    responseJsonSchema = AiJsonSchemas.workoutDebrief,
                     thinkingConfig = GeminiRequest.ThinkingConfig(
                         includeThoughts = false,
                         thinkingBudget = 1000,
@@ -55,13 +55,18 @@ class AiServicesTest {
 
     @Test
     fun geminiSchemas_requireOnlyStableCoreFieldsAndLeaveLowConfidenceNotesOptional() {
-        val mealScanRequired = GeminiJsonSchemas.mealScan["required"] as List<*>
-        val mealItemSchema = ((GeminiJsonSchemas.mealScan["properties"] as Map<*, *>)["items"] as Map<*, *>)["items"] as Map<*, *>
+        val mealScanRequired = AiJsonSchemas.mealScan["required"] as List<*>
+        val mealItemsSchema = (AiJsonSchemas.mealScan["properties"] as Map<*, *>)["items"] as Map<*, *>
+        val mealItemSchema = mealItemsSchema["items"] as Map<*, *>
+        val mealItemProperties = mealItemSchema["properties"] as Map<*, *>
+        val mealItemNameSchema = mealItemProperties["name"] as Map<*, *>
         val mealItemRequired = mealItemSchema["required"] as List<*>
-        val weeklyRequired = GeminiJsonSchemas.weeklyReport["required"] as List<*>
-        val goalProperties = GeminiJsonSchemas.goalAdvice["properties"] as Map<*, *>
+        val weeklyRequired = AiJsonSchemas.weeklyReport["required"] as List<*>
+        val goalProperties = AiJsonSchemas.goalAdvice["properties"] as Map<*, *>
 
         assertEquals(listOf("items", "suggestedMealType"), mealScanRequired)
+        assertEquals(20, mealItemsSchema["maxItems"])
+        assertEquals(120, mealItemNameSchema["maxLength"])
         assertFalse("Top-level scan notes are optional", "notes" in mealScanRequired)
         assertFalse("Per-item confidence is optional", "confidence" in mealItemRequired)
         assertFalse("Per-item notes are optional", "notes" in mealItemRequired)
@@ -227,6 +232,32 @@ class AiServicesTest {
         assertTrue(prompt.contains("Voorgesteld maaltijdtype: Snack."))
         assertFalse(prompt.contains("User took this photo"))
         assertFalse(prompt.contains("Suggested meal type"))
+    }
+
+    @Test
+    fun analyzeMealImage_capsModelItemCountBeforeUiState() = runTest {
+        val items = (1..25).joinToString(",") { index ->
+            """
+                {
+                  "name": "Product $index",
+                  "estimatedGrams": 100,
+                  "calories": 120,
+                  "protein": 8,
+                  "carbs": 12,
+                  "fat": 4
+                }
+            """.trimIndent()
+        }
+        val api = FakeGeminiApi(
+            response = mealScanResponse("""{"items":[$items],"suggestedMealType":"LUNCH"}"""),
+        )
+        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+
+        val result = service.analyzeMealImage(tempImagePath(), "", 43_200_000L)
+
+        assertEquals(20, result.items.size)
+        assertEquals("Product 1", result.items.first().name)
+        assertEquals("Product 20", result.items.last().name)
     }
 
     @Test
@@ -518,7 +549,7 @@ class AiServicesTest {
         assertEquals("gemini-2.5-flash", api.lastModel)
         assertEquals(GEMINI_FLASH_MODEL, api.lastModel)
         assertEquals("application/json", api.lastRequest?.generationConfig?.responseMimeType)
-        assertEquals(GeminiJsonSchemas.workoutDebrief, api.lastRequest?.generationConfig?.responseJsonSchema)
+        assertEquals(AiJsonSchemas.workoutDebrief, api.lastRequest?.generationConfig?.responseJsonSchema)
         assertEquals(1000, api.lastRequest?.generationConfig?.thinkingConfig?.thinkingBudget)
         val prompt = api.lastRequest?.contents?.single()?.parts?.single()?.text.orEmpty()
         assertTrue(prompt.contains("Antwoord altijd in het Nederlands volgens locale nl-NL."))
@@ -527,7 +558,7 @@ class AiServicesTest {
 
     @Test
     fun workoutDebriefPrompt_defaultsToDutchLocaleAndStructuredShortFields() {
-        val prompt = GeminiPrompts.workoutDebrief(
+        val prompt = AiPrompts.workoutDebrief(
             totalVolume = 1_500.0,
             progression = 2.0,
             distribution = "Borst 2, Rug 2",
@@ -651,7 +682,7 @@ class AiServicesTest {
         assertEquals("Houd dit doel eerst stabiel en stuur op gewichtstrend.", result.advice)
         assertEquals("Redelijk: profiel compleet, maar geen gevalideerde TDEE.", result.dataQuality)
         assertEquals(GoalAdviceSource.GEMINI_2_5_FLASH, result.source)
-        assertEquals(GeminiJsonSchemas.goalAdvice, api.lastRequest?.generationConfig?.responseJsonSchema)
+        assertEquals(AiJsonSchemas.goalAdvice, api.lastRequest?.generationConfig?.responseJsonSchema)
         val prompt = api.lastRequest?.contents?.single()?.parts?.single()?.text.orEmpty()
         assertTrue(prompt.contains("Antwoord altijd in het Nederlands volgens locale nl-NL."))
         assertTrue(prompt.contains("\"korteSamenvatting\""))

@@ -1,8 +1,11 @@
 package com.trainiq.features.settings
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.Box
@@ -30,7 +33,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -57,6 +59,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.trainiq.core.theme.spacing
 import androidx.health.connect.client.HealthConnectClient
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -69,15 +72,18 @@ import com.trainiq.ai.services.hasAnyReadyProvider
 import com.trainiq.ai.services.AiUsageGate
 import com.trainiq.ai.services.GoalAdvisorService
 import com.trainiq.core.datastore.AiPreferences
+import com.trainiq.core.datastore.ReminderPreferences
 import com.trainiq.core.datastore.WorkoutFeedbackPreferences
 import com.trainiq.core.health.HealthConnectRefreshOnResume
 import com.trainiq.core.health.rememberHealthConnectPermissionRequester
+import com.trainiq.core.reminders.TrainIqReminderScheduler
 import com.trainiq.core.ui.MessageCard
 import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.SectionCard
 import com.trainiq.core.ui.ShimmerCardPlaceholder
+import com.trainiq.core.ui.TrainIqFormField
+import com.trainiq.core.ui.TrainIqFormFieldContext
 import com.trainiq.core.ui.UiMessage
-import com.trainiq.core.ui.bringIntoViewOnFocus
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.theme.ThemeMode
@@ -120,6 +126,7 @@ sealed interface SettingsUiState {
         val aiPreferences: AiPreferences,
         val telemetryOptIn: Boolean,
         val workoutFeedbackPreferences: WorkoutFeedbackPreferences,
+        val reminderPreferences: ReminderPreferences,
         val profile: UserProfile?,
         val healthStatus: HealthConnectStatus,
         val importPreview: AppDataImportPreview? = null,
@@ -135,8 +142,17 @@ private data class SettingsUiInputs(
     val aiPreferences: AiPreferences,
     val telemetryOptIn: Boolean,
     val workoutFeedbackPreferences: WorkoutFeedbackPreferences,
+    val reminderPreferences: ReminderPreferences,
     val profile: UserProfile?,
     val healthStatus: HealthConnectStatus,
+)
+
+private data class SettingsPreferenceInputs(
+    val themeMode: ThemeMode,
+    val aiPreferences: AiPreferences,
+    val telemetryOptIn: Boolean,
+    val workoutFeedbackPreferences: WorkoutFeedbackPreferences,
+    val reminderPreferences: ReminderPreferences,
 )
 
 @HiltViewModel
@@ -152,6 +168,7 @@ class SettingsViewModel @Inject constructor(
     private val exportAppDataUseCase: ExportAppDataUseCase,
     private val previewAppDataImportUseCase: PreviewAppDataImportUseCase,
     private val importAppDataUseCase: ImportAppDataUseCase,
+    private val reminderScheduler: TrainIqReminderScheduler,
 ) : ViewModel() {
     private val themeMode: StateFlow<ThemeMode> = preferencesRepository.themeMode
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ThemeMode.SYSTEM)
@@ -166,6 +183,8 @@ class SettingsViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
     private val workoutFeedbackPreferences: StateFlow<WorkoutFeedbackPreferences> = preferencesRepository.workoutFeedbackPreferences
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WorkoutFeedbackPreferences())
+    private val reminderPreferences: StateFlow<ReminderPreferences> = preferencesRepository.reminderPreferences
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReminderPreferences())
     private val profile: StateFlow<UserProfile?> = observeUserProfileUseCase()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
@@ -181,13 +200,29 @@ class SettingsViewModel @Inject constructor(
     private val _importPreview = MutableStateFlow<AppDataImportPreview?>(null)
     private val _isImporting = MutableStateFlow(false)
     private var pendingImportJson: String? = null
+    private val settingsPreferenceInputs = combine(
+        themeMode,
+        aiPreferences,
+        telemetryOptIn,
+        workoutFeedbackPreferences,
+        reminderPreferences,
+    ) { theme, ai, telemetry, feedback, reminders ->
+        SettingsPreferenceInputs(
+            themeMode = theme,
+            aiPreferences = ai,
+            telemetryOptIn = telemetry,
+            workoutFeedbackPreferences = feedback,
+            reminderPreferences = reminders,
+        )
+    }
     val uiState: StateFlow<SettingsUiState> = combine(
-        combine(themeMode, aiPreferences, telemetryOptIn, workoutFeedbackPreferences, profile) { theme, ai, telemetry, feedback, userProfile ->
+        combine(settingsPreferenceInputs, profile) { preferences, userProfile ->
             SettingsUiInputs(
-                themeMode = theme,
-                aiPreferences = ai,
-                telemetryOptIn = telemetry,
-                workoutFeedbackPreferences = feedback,
+                themeMode = preferences.themeMode,
+                aiPreferences = preferences.aiPreferences,
+                telemetryOptIn = preferences.telemetryOptIn,
+                workoutFeedbackPreferences = preferences.workoutFeedbackPreferences,
+                reminderPreferences = preferences.reminderPreferences,
                 profile = userProfile,
                 healthStatus = healthStatus.value,
             )
@@ -202,6 +237,7 @@ class SettingsViewModel @Inject constructor(
             aiPreferences = inputs.aiPreferences,
             telemetryOptIn = inputs.telemetryOptIn,
             workoutFeedbackPreferences = inputs.workoutFeedbackPreferences,
+            reminderPreferences = inputs.reminderPreferences,
             profile = inputs.profile,
             healthStatus = health,
             importPreview = importPreview,
@@ -312,6 +348,27 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             preferencesRepository.setWorkoutHapticsEnabled(enabled)
             emitMessage(if (enabled) "Workouttrillingen ingeschakeld." else "Workouttrillingen uitgeschakeld.")
+        }
+    }
+
+    fun setRemindersEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setRemindersEnabled(enabled)
+            if (enabled) {
+                reminderScheduler.schedule()
+                emitMessage("TrainIQ-reminders ingeschakeld.")
+            } else {
+                reminderScheduler.cancel()
+                emitMessage("TrainIQ-reminders uitgeschakeld.")
+            }
+        }
+    }
+
+    fun onReminderPermissionDenied() {
+        viewModelScope.launch {
+            preferencesRepository.setRemindersEnabled(false)
+            reminderScheduler.cancel()
+            emitMessage("Notificatietoestemming ontbreekt. Reminders blijven uit.")
         }
     }
 
@@ -520,6 +577,13 @@ fun SettingsRoute(
         }
     }
     HealthConnectRefreshOnResume(viewModel::refreshHealthConnectStatus, refreshOnFirstResume = false)
+    val requestNotificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            viewModel.setRemindersEnabled(true)
+        } else {
+            viewModel.onReminderPermissionDenied()
+        }
+    }
 
     when (val state = uiState) {
         SettingsUiState.Loading -> SettingsLoadingScreen()
@@ -530,6 +594,7 @@ fun SettingsRoute(
                 aiPreferences = state.aiPreferences,
                 telemetryOptIn = state.telemetryOptIn,
                 workoutFeedbackPreferences = state.workoutFeedbackPreferences,
+                reminderPreferences = state.reminderPreferences,
                 maskedApiKey = state.maskedApiKey,
                 profile = state.profile,
                 healthStatus = state.healthStatus,
@@ -541,6 +606,15 @@ fun SettingsRoute(
                 onToggleTelemetry = viewModel::setTelemetryOptIn,
                 onToggleRestTimerSound = viewModel::setRestTimerSoundEnabled,
                 onToggleWorkoutHaptics = viewModel::setWorkoutHapticsEnabled,
+                onToggleReminders = { enabled ->
+                    if (!enabled) {
+                        viewModel.setRemindersEnabled(false)
+                    } else if (canPostNotifications(context)) {
+                        viewModel.setRemindersEnabled(true)
+                    } else {
+                        requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                },
                 onProviderPreferenceSelected = viewModel::setAiProviderPreference,
                 onSaveApiKey = viewModel::saveGeminiKey,
                 onSaveOpenAiKey = viewModel::saveOpenAiKey,
@@ -630,6 +704,7 @@ fun SettingsScreen(
     aiPreferences: AiPreferences,
     telemetryOptIn: Boolean,
     workoutFeedbackPreferences: WorkoutFeedbackPreferences,
+    reminderPreferences: ReminderPreferences,
     maskedApiKey: String,
     profile: UserProfile?,
     healthStatus: HealthConnectStatus,
@@ -641,6 +716,7 @@ fun SettingsScreen(
     onToggleTelemetry: (Boolean) -> Unit,
     onToggleRestTimerSound: (Boolean) -> Unit,
     onToggleWorkoutHaptics: (Boolean) -> Unit,
+    onToggleReminders: (Boolean) -> Unit,
     onProviderPreferenceSelected: (AiProviderPreference) -> Unit,
     onSaveApiKey: (String) -> Unit,
     onSaveOpenAiKey: (String) -> Unit,
@@ -721,7 +797,7 @@ fun SettingsScreen(
             }
         }
         item {
-            SectionCard(title = "Workoutfeedback") {
+            SectionCard(title = "Voorkeuren") {
                 FeedbackToggleRow(
                     title = "Rusttimer-geluid",
                     body = "Speel een kort geluid wanneer de rusttijd voorbij is.",
@@ -734,10 +810,21 @@ fun SettingsScreen(
                     checked = workoutFeedbackPreferences.workoutHapticsEnabled,
                     onCheckedChange = onToggleWorkoutHaptics,
                 )
-            }
-        }
-        item {
-            SectionCard(title = "Privacy en telemetrie") {
+                FeedbackToggleRow(
+                    title = "TrainIQ-reminders",
+                    body = "Stuur lokale notificaties voor gemiste food-logs en krachttraining. Alleen na jouw toestemming.",
+                    checked = reminderPreferences.enabled,
+                    onCheckedChange = onToggleReminders,
+                )
+                Text(
+                    if (reminderPreferences.enabled) {
+                        "Voeding wordt ongeveer elke 4 uur gecheckt. Krachttraining krijgt na 2 dagen zonder sessie een rustige reminder."
+                    } else {
+                        "Reminders staan uit. TrainIQ vraagt geen notificaties zolang je dit niet inschakelt."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 FeedbackToggleRow(
                     title = "Technische telemetrie delen",
                     body = "Deel alleen privacyveilige technische events en prestatie-samenvattingen. Gezondheidsdata, notities en sleutels worden nooit geupload.",
@@ -788,11 +875,12 @@ fun SettingsScreen(
                     }
                 }
                 Text("Gemini sleutel: $maskedApiKey")
-                OutlinedTextField(
+                TrainIqFormField(
                     value = apiKey,
                     onValueChange = { apiKey = it },
-                    label = { Text("Gemini API-sleutel") },
-                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                    label = "Gemini API-sleutel",
+                    modifier = Modifier.fillMaxWidth(),
+                    context = TrainIqFormFieldContext.Settings,
                     visualTransformation = if (shouldMaskGeminiApiKeyInput()) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     singleLine = true,
@@ -818,11 +906,12 @@ fun SettingsScreen(
                     }) { Text(if (aiPreferences.apiKey.isBlank()) "Sleutel opslaan" else "Sleutel bijwerken") }
                 }
                 Text("OpenAI sleutel: ${maskedSettingsApiKey(aiPreferences.openAiApiKey)}")
-                OutlinedTextField(
+                TrainIqFormField(
                     value = openAiKey,
                     onValueChange = { openAiKey = it },
-                    label = { Text("OpenAI API-sleutel") },
-                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                    label = "OpenAI API-sleutel",
+                    modifier = Modifier.fillMaxWidth(),
+                    context = TrainIqFormFieldContext.Settings,
                     visualTransformation = if (shouldMaskGeminiApiKeyInput()) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     singleLine = true,
@@ -1103,6 +1192,7 @@ internal fun settingsUiState(
     aiPreferences: AiPreferences,
     telemetryOptIn: Boolean,
     workoutFeedbackPreferences: WorkoutFeedbackPreferences,
+    reminderPreferences: ReminderPreferences,
     profile: UserProfile?,
     healthStatus: HealthConnectStatus,
     importPreview: AppDataImportPreview? = null,
@@ -1113,12 +1203,17 @@ internal fun settingsUiState(
     aiPreferences = aiPreferences,
     telemetryOptIn = telemetryOptIn,
     workoutFeedbackPreferences = workoutFeedbackPreferences,
+    reminderPreferences = reminderPreferences,
     profile = profile,
     healthStatus = healthStatus,
     importPreview = importPreview,
     isImporting = isImporting,
     message = message,
 )
+
+internal fun canPostNotifications(context: Context): Boolean =
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
 internal fun importPreviewSummary(preview: AppDataImportPreview): String =
     buildString {

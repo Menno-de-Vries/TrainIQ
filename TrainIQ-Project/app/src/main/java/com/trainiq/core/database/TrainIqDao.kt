@@ -383,6 +383,12 @@ interface TrainIqDao {
     @Query("SELECT * FROM meals ORDER BY date DESC")
     fun observeMeals(): Flow<List<MealEntity>>
 
+    @Query("SELECT MAX(date) FROM meals")
+    suspend fun latestMealDate(): Long?
+
+    @Query("SELECT MAX(date) FROM workout_sessions WHERE completed = 1 AND status = 'COMPLETED'")
+    suspend fun latestCompletedWorkoutDate(): Long?
+
     @Query("SELECT * FROM body_measurements ORDER BY date ASC")
     fun observeMeasurements(): Flow<List<BodyMeasurementEntity>>
 

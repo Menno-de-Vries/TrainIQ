@@ -223,6 +223,8 @@ class NutritionInputValidationTest {
 
         assertTrue(source.contains("foodEditorSheetState"))
         assertTrue(source.contains("if (showFoodEditor)"))
+        assertTrue(source.contains("recipeEditorSheetState"))
+        assertTrue(source.contains("if (showRecipeEditor)"))
         assertTrue(source.contains("ProductPickerSheet"))
         assertTrue(source.contains("RecipeIngredientEditorSheet"))
         assertTrue(source.contains("selectedRecipeIngredientFoodId"))
@@ -230,6 +232,20 @@ class NutritionInputValidationTest {
         assertTrue(source.contains("onOpenIngredientEditor = { showIngredientEditor = true }"))
         assertTrue(source.contains("showIngredientEditor = false"))
         assertFalse(source.contains("if (showFoodEditor) item"))
+    }
+
+    @Test
+    fun productEditorSheetKeepsDefaultServingFieldImeVisible() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val foodEditorSheet = source.substringAfter("if (showFoodEditor)")
+            .substringBefore("if (showIngredientPicker)")
+        val defaultServingField = source.substringAfter("label = \"Standaard hoeveelheid (gram)\"")
+            .substringBefore("WrappingNutritionActions")
+
+        assertTrue(foodEditorSheet.contains(".verticalScroll(rememberScrollState())"))
+        assertTrue(foodEditorSheet.contains(".navigationBarsPadding()"))
+        assertTrue(foodEditorSheet.contains(".imePadding()"))
+        assertTrue(defaultServingField.contains("imeSettledDelayMillis = 560L"))
     }
 
     @Test
@@ -402,6 +418,38 @@ class NutritionInputValidationTest {
     }
 
     @Test
+    fun recipesTab_isListFirstAndRecipeEditorLivesInSheet() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val recipesTab = source.substringAfter("3 -> {").substringBefore("4 -> {")
+        val recipeSheet = source.substringAfter("if (showRecipeEditor) {").substringBefore("if (showIngredientPicker)")
+
+        assertFalse(recipesTab.contains("RecipeEditorCard("))
+        assertTrue(recipesTab.contains("RecipesHeaderCard("))
+        assertTrue(recipesTab.contains("SavedRecipesCard("))
+        assertTrue(recipesTab.contains("showRecipeEditor = true"))
+        assertTrue(recipeSheet.contains("ModalBottomSheet("))
+        assertTrue(recipeSheet.contains("RecipeEditorCard("))
+        assertTrue(recipeSheet.contains("resetRecipeEditor()"))
+        assertTrue(source.contains("fun openNewRecipeEditor()"))
+    }
+
+    @Test
+    fun nutritionSearchAndSavedItemsUseContextualPolishedComponents() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val searchField = source.substringAfter("private fun ProductSearchField(").substringBefore("@Composable\nprivate fun RecipeIngredientEditorSheet")
+        val savedFoodsCard = source.substringAfter("private fun SavedFoodsCard(").substringBefore("@Composable\nprivate fun ProductPickerSheet")
+        val savedRecipesCard = source.substringAfter("private fun SavedRecipesCard(").substringBefore("@Composable\nprivate fun MealDraftReviewCard")
+
+        assertTrue(searchField.contains("NutritionTextField("))
+        assertFalse(searchField.contains("OutlinedTextField("))
+        assertTrue(source.contains("private fun NutritionSavedItemCard("))
+        assertTrue(savedFoodsCard.contains("NutritionSavedItemCard("))
+        assertTrue(savedRecipesCard.contains("NutritionSavedItemCard("))
+        assertTrue(source.contains("primaryLabel = \"Aan maaltijd toevoegen\""))
+        assertTrue(source.contains("detailLine = \"Standaard portie:"))
+    }
+
+    @Test
     fun savedProductsUseDefaultServingGramsForQuickMealAdd() {
         val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
         val savedFoodAdd = source.substringAfter("onQuickAdd = { food ->").substringBefore("onDelete = { pendingDelete = PendingNutritionDelete.Food")
@@ -471,7 +519,7 @@ class NutritionInputValidationTest {
     fun savedRecipeEditFlow_reusesSelectedRecipeIdAndShowsEditSaveCopy() {
         val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
         val selectedRecipeEffect = source.substringAfter("LaunchedEffect(selectedRecipe?.id) {").substringBefore("LaunchedEffect(scanResult)")
-        val recipeEditor = source.substringAfter("RecipeEditorCard(").substringBefore("onScanBarcodeForRecipe =")
+        val recipeEditor = source.substringAfter("if (showRecipeEditor) {").substringBefore("onScanBarcodeForRecipe =")
         val savedRecipesCard = source.substringAfter("SavedRecipesCard(").substringBefore("onUseInMeal = { recipe ->")
         val savedRecipesBody = source.substringAfter("private fun SavedRecipesCard(").substringBefore("@Composable\nprivate fun MealDraftReviewCard")
         val recipeEditorBody = source.substringAfter("private fun RecipeEditorCard(").substringBefore("@Composable\nprivate fun RecipeTotalsCard")
@@ -481,9 +529,10 @@ class NutritionInputValidationTest {
         assertTrue(selectedRecipeEffect.contains("recipeDraft.addAll"))
         assertTrue(recipeEditor.contains("isEditing = selectedRecipeId != null"))
         assertTrue(recipeEditor.contains("onSaveRecipe(selectedRecipeId, recipeName, recipeNotes, recipeCookedGrams, recipeDraft.toList())"))
-        assertTrue(recipeEditor.contains("selectedRecipeId = null"))
-        assertTrue(savedRecipesCard.contains("onSelect = { selectedRecipeId = it }"))
-        assertTrue(savedRecipesBody.contains("Text(if (selectedRecipeId == recipe.id) \"Bewerken\" else \"Bewerk\")"))
+        assertTrue(recipeEditor.contains("resetRecipeEditor()"))
+        assertTrue(savedRecipesCard.contains("selectedRecipeId = it"))
+        assertTrue(savedRecipesCard.contains("showRecipeEditor = true"))
+        assertTrue(savedRecipesBody.contains("editLabel = if (selectedRecipeId == recipe.id) \"Bewerken\" else \"Bewerk\""))
         assertTrue(recipeEditorBody.contains("if (isEditing) \"Wijzigingen opslaan\" else \"Recept opslaan\""))
     }
 

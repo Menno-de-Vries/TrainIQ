@@ -490,7 +490,7 @@ private fun TrainIqNavHost(
                 .getStateFlow(BarcodeScanResultKey, "")
                 .collectAsStateWithLifecycle()
             NutritionRoute(
-                onOpenAiScanner = { contextHint -> navController.navigate(CameraScanner(contextHint)) },
+                onAiScanner = { contextHint -> navController.navigate(CameraScanner(contextHint)) },
                 onOpenBarcodeScanner = { navController.navigate(CameraScanner(scannerMode = ScannerMode.BARCODE)) },
                 pendingBarcode = pendingBarcode.takeIf { it.isNotEmpty() },
                 onBarcodeClear = { entry.clearBarcodeScanResult() },

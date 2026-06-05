@@ -24,7 +24,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -50,10 +49,13 @@ import androidx.lifecycle.viewModelScope
 import com.trainiq.core.theme.spacing
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.core.ui.AppCard
+import com.trainiq.core.ui.CompactSectionTabItem
+import com.trainiq.core.ui.CompactSectionTabs
 import com.trainiq.core.ui.MessageCard
 import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.ShimmerCardPlaceholder
-import com.trainiq.core.ui.bringIntoViewOnFocus
+import com.trainiq.core.ui.TrainIqFormField
+import com.trainiq.core.ui.TrainIqFormFieldContext
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.features.profile.ProfileActivityLevels
 import com.trainiq.features.profile.ProfileInputField
@@ -559,28 +561,30 @@ fun CoachScreen(
                         AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
                                 Text("Doeladvies", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.amber, fontWeight = FontWeight.SemiBold)
                                 Text("Profiel en doelen", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-                                OutlinedTextField(
+                                TrainIqFormField(
                                     value = name,
                                     onValueChange = {
                                         name = it
                                         profileInputError = null
                                     },
-                                    label = { Text("Naam") },
+                                    label = "Naam",
+                                    context = TrainIqFormFieldContext.Goal,
                                     isError = profileInputError.isFor(ProfileInputField.Name),
-                                    supportingText = profileInputError.supportingTextFor(ProfileInputField.Name),
-                                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                                    errorText = profileInputError.errorTextFor(ProfileInputField.Name),
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
-                                OutlinedTextField(
+                                TrainIqFormField(
                                     value = age,
                                     onValueChange = {
                                         age = it
                                         profileInputError = null
                                     },
-                                    label = { Text("Leeftijd") },
+                                    label = "Leeftijd",
+                                    context = TrainIqFormFieldContext.Goal,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     isError = profileInputError.isFor(ProfileInputField.Age),
-                                    supportingText = profileInputError.supportingTextFor(ProfileInputField.Age),
-                                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                                    errorText = profileInputError.errorTextFor(ProfileInputField.Age),
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                                 Text("Biologische sekse", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                 Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
@@ -596,41 +600,44 @@ fun CoachScreen(
                                         )
                                     }
                                 }
-                                OutlinedTextField(
+                                TrainIqFormField(
                                     value = height,
                                     onValueChange = {
                                         height = it
                                         profileInputError = null
                                     },
-                                    label = { Text("Lengte (cm)") },
+                                    label = "Lengte (cm)",
+                                    context = TrainIqFormFieldContext.Goal,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                     isError = profileInputError.isFor(ProfileInputField.Height),
-                                    supportingText = profileInputError.supportingTextFor(ProfileInputField.Height),
-                                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                                    errorText = profileInputError.errorTextFor(ProfileInputField.Height),
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
-                                OutlinedTextField(
+                                TrainIqFormField(
                                     value = weight,
                                     onValueChange = {
                                         weight = it
                                         profileInputError = null
                                     },
-                                    label = { Text("Gewicht (kg)") },
+                                    label = "Gewicht (kg)",
+                                    context = TrainIqFormFieldContext.Goal,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                     isError = profileInputError.isFor(ProfileInputField.Weight),
-                                    supportingText = profileInputError.supportingTextFor(ProfileInputField.Weight),
-                                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                                    errorText = profileInputError.errorTextFor(ProfileInputField.Weight),
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
-                                OutlinedTextField(
+                                TrainIqFormField(
                                     value = bodyFat,
                                     onValueChange = {
                                         bodyFat = it
                                         profileInputError = null
                                     },
-                                    label = { Text("Vetpercentage %") },
+                                    label = "Vetpercentage %",
+                                    context = TrainIqFormFieldContext.Goal,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                     isError = profileInputError.isFor(ProfileInputField.BodyFat),
-                                    supportingText = profileInputError.supportingTextFor(ProfileInputField.BodyFat),
-                                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                                    errorText = profileInputError.errorTextFor(ProfileInputField.BodyFat),
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                                 Text("Activiteitsniveau", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                 Row(
@@ -654,16 +661,17 @@ fun CoachScreen(
                                 profileInputError.takeIf { it.isFor(ProfileInputField.ActivityLevel) }?.let { error ->
                                     Text(error.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                                 }
-                                OutlinedTextField(
+                                TrainIqFormField(
                                     value = goal,
                                     onValueChange = {
                                         goal = it
                                         profileInputError = null
                                     },
-                                    label = { Text("Doel") },
+                                    label = "Doel",
+                                    context = TrainIqFormFieldContext.Goal,
                                     isError = profileInputError.isFor(ProfileInputField.Goal),
-                                    supportingText = profileInputError.supportingTextFor(ProfileInputField.Goal),
-                                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                                    errorText = profileInputError.errorTextFor(ProfileInputField.Goal),
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                                 Button(
                                     onClick = {
@@ -748,34 +756,11 @@ private fun CoachSectionTabSwitcher(
     selectedTab: String,
     onSelectTab: (CoachSectionTab) -> Unit,
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.trainIqColors.cardElevated,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val chipColors = FilterChipDefaults.filterChipColors(
-                containerColor = MaterialTheme.colorScheme.surface,
-                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-            CoachSectionTab.entries.forEach { tab ->
-                FilterChip(
-                    selected = selectedTab == tab.key,
-                    onClick = { onSelectTab(tab) },
-                    label = { Text(tab.label) },
-                    colors = chipColors,
-                )
-            }
-        }
-    }
+    CompactSectionTabs(
+        selectedKey = selectedTab,
+        tabs = CoachSectionTab.entries.map { CompactSectionTabItem(it.key, it.label) },
+        onSelectTab = { selected -> CoachSectionTab.entries.firstOrNull { it.key == selected.key }?.let(onSelectTab) },
+    )
 }
 
 @Composable
@@ -942,7 +927,7 @@ private fun BiologicalSex.displayLabel(): String = when (this) {
     BiologicalSex.FEMALE -> "Vrouw"
 }
 
-private fun ProfileInputValidationError?.supportingTextFor(field: ProfileInputField): (@Composable () -> Unit)? {
+private fun ProfileInputValidationError?.errorTextFor(field: ProfileInputField): String? {
     val error = takeIf { it.isFor(field) } ?: return null
-    return { Text(error.message) }
+    return error.message
 }

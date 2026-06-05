@@ -22,7 +22,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -51,10 +50,13 @@ import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.ShimmerCardPlaceholder
 import com.trainiq.core.ui.AppCard
 import com.trainiq.core.ui.AppChip
+import com.trainiq.core.ui.CompactSectionTabItem
+import com.trainiq.core.ui.CompactSectionTabs
 import com.trainiq.core.ui.EmptyStateCard
 import com.trainiq.core.ui.PrimaryActionButton
+import com.trainiq.core.ui.TrainIqFormField
+import com.trainiq.core.ui.TrainIqFormFieldContext
 import com.trainiq.core.ui.UiMessage
-import com.trainiq.core.ui.bringIntoViewOnFocus
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.theme.spacing
 import com.trainiq.core.theme.trainIqColors
@@ -568,34 +570,11 @@ private fun ProgressSectionTabSwitcher(
     selectedTab: String,
     onSelectTab: (ProgressSectionTab) -> Unit,
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.trainIqColors.cardElevated,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val chipColors = FilterChipDefaults.filterChipColors(
-                containerColor = MaterialTheme.colorScheme.surface,
-                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-            ProgressSectionTab.entries.forEach { tab ->
-                FilterChip(
-                    selected = selectedTab == tab.key,
-                    onClick = { onSelectTab(tab) },
-                    label = { Text(tab.label) },
-                    colors = chipColors,
-                )
-            }
-        }
-    }
+    CompactSectionTabs(
+        selectedKey = selectedTab,
+        tabs = ProgressSectionTab.entries.map { CompactSectionTabItem(it.key, it.label) },
+        onSelectTab = { selected -> ProgressSectionTab.entries.firstOrNull { it.key == selected.key }?.let(onSelectTab) },
+    )
 }
 
 @Composable
@@ -606,15 +585,16 @@ private fun MeasurementTextField(
     error: ProgressMeasurementValidationError?,
     modifier: Modifier = Modifier,
 ) {
-    OutlinedTextField(
+    TrainIqFormField(
         value = value,
         onValueChange = onValueChange,
-        label = { Text(label) },
-        modifier = modifier.bringIntoViewOnFocus(),
+        label = label,
+        modifier = modifier,
+        context = TrainIqFormFieldContext.Progress,
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         isError = error != null,
-        supportingText = error?.let { { Text(it.message) } },
+        errorText = error?.message,
     )
 }
 

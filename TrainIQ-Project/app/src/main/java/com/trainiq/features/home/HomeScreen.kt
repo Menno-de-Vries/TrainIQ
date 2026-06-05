@@ -30,6 +30,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -60,7 +61,6 @@ import com.trainiq.core.ui.PermissionManagerCard
 import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.AppCard
 import com.trainiq.core.ui.AppChip
-import com.trainiq.core.ui.CompactMetricCard
 import com.trainiq.core.ui.PrimaryActionButton
 import com.trainiq.core.ui.SecondaryActionButton
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
@@ -366,30 +366,11 @@ fun HomeScreen(
                                 modifier = Modifier,
                             )
                         }
-                        item {
-                            CompactMetricCard(
-                                title = "Reeks",
-                                value = "${dashboard.streak} dagen",
-                                subtitle = if (dashboard.streak > 0) "Je ritme staat stevig" else "Log een training of maaltijd om momentum op te bouwen",
-                                modifier = Modifier.defaultMinSize(minHeight = 150.dp),
-                                accent = MaterialTheme.trainIqColors.amber,
-                            )
-                        }
-                        item {
-                            CompactMetricCard(
-                                title = "Stappen",
-                                value = when (healthConnectStatus.state) {
-                                    HealthConnectState.CONNECTED -> "${healthConnectStatus.stepsToday ?: 0}"
-                                    HealthConnectState.NO_DATA -> "Geen data"
-                                    else -> "Offline"
-                                },
-                                subtitle = buildHomeRecoverySubtitle(
-                                    stepsToday = healthConnectStatus.stepsToday,
-                                    averageHeartRateBpm = healthConnectStatus.averageHeartRateBpm,
-                                    todaysWorkoutCalories = dashboard.todaysWorkoutCalories,
-                                ),
-                                modifier = Modifier.defaultMinSize(minHeight = 150.dp),
-                                accent = MaterialTheme.trainIqColors.mint,
+                        item(span = { GridItemSpan(gridColumns) }) {
+                            HomeMomentumCard(
+                                streak = dashboard.streak,
+                                healthStatus = healthConnectStatus,
+                                todaysWorkoutCalories = dashboard.todaysWorkoutCalories,
                             )
                         }
                         item(span = { GridItemSpan(gridColumns) }) {
@@ -465,6 +446,116 @@ internal fun buildHomeRecoverySubtitle(
         append(" - ")
     }
     append("Training $todaysWorkoutCalories kcal")
+}
+
+@Composable
+private fun HomeMomentumCard(
+    streak: Int,
+    healthStatus: HealthConnectStatus,
+    todaysWorkoutCalories: Int,
+) {
+    AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
+        Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium)) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Momentum", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                Text(
+                    homeMomentumEncouragement(streak, healthStatus),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.trainIqColors.mutedText,
+                )
+            }
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+            ) {
+                HomeMomentumMetricRow(
+                    title = "Reeks",
+                    value = homeStreakValue(streak),
+                    subtitle = homeStreakSubtitle(streak),
+                    accent = MaterialTheme.trainIqColors.amber,
+                )
+                HomeMomentumMetricRow(
+                    title = "Stappen",
+                    value = homeStepsValue(healthStatus),
+                    subtitle = buildHomeRecoverySubtitle(
+                        stepsToday = healthStatus.stepsToday,
+                        averageHeartRateBpm = healthStatus.averageHeartRateBpm,
+                        todaysWorkoutCalories = todaysWorkoutCalories,
+                    ),
+                    accent = MaterialTheme.trainIqColors.mint,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeMomentumMetricRow(
+    title: String,
+    value: String,
+    subtitle: String,
+    accent: Color,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 96.dp),
+        shape = MaterialTheme.shapes.large,
+        color = accent.copy(alpha = 0.10f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = BorderStroke(1.dp, MaterialTheme.trainIqColors.cardBorder.copy(alpha = 0.72f)),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = MaterialTheme.spacing.medium, vertical = MaterialTheme.spacing.small),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                title,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.trainIqColors.mutedText,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                value,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.ExtraBold,
+            )
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
+}
+
+internal fun homeStreakValue(streak: Int): String = "$streak dagen"
+
+internal fun homeStreakSubtitle(streak: Int): String =
+    if (streak > 0) "Ritme staat aan" else "Start vandaag"
+
+internal fun homeStepsValue(status: HealthConnectStatus): String = when (status.state) {
+    HealthConnectState.CONNECTED -> "${status.stepsToday ?: 0}"
+    HealthConnectState.NO_DATA -> "Geen data"
+    else -> "Offline"
+}
+
+internal fun homeMomentumEncouragement(streak: Int, status: HealthConnectStatus): String {
+    val stepsToday = status.stepsToday
+    return when {
+        streak <= 0 && status.state == HealthConnectState.NO_DATA ->
+            "Start klein: log vandaag een maaltijd of pak je eerste wandeling. Dan wordt je coach direct scherper."
+        streak <= 0 && stepsToday == null ->
+            "Begin lokaal met een maaltijd of training. Je hoeft niet te wachten op Health Connect-data."
+        stepsToday != null && stepsToday > 0 ->
+            "Je beweging staat erin. Houd je voeding en training erbij, dan blijft het beeld compleet."
+        streak > 0 ->
+            "Je ritme staat aan. Blijf kleine logs toevoegen zodat je coach scherp blijft."
+        else ->
+            "Kleine logs houden je coach scherp."
+    }
 }
 
 @Composable

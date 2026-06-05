@@ -6,6 +6,18 @@ Refresh date: 2026-05-10, current worktree
 
 Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emulator smoke, Health Connect, Gemini/AI, Room/data, UI/UX/accessibility, release readiness.
 
+## 2026-06-04 Steps Accuracy + Home/Product Portion Regression Fix
+
+- status: done for the Health Connect-only step-count correction path, Home streak/steps metric readability fix, and product default-serving editor IME visibility fix.
+- files changed: Health Connect daily steps now aggregate `StepsRecord.COUNT_TOTAL` over a local `LocalDateTime` day range without `DataOrigin` filtering; shared warm cards use a measured background layer instead of unbounded `fillMaxSize()`; Home streak/steps metric cards span full rows on compact width and use full-width readable subtitle surfaces; the product editor bottom sheet is scrollable with navigation/IME padding, and the default serving field requests a later post-IME bring-into-view pass.
+- verification evidence:
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests com.trainiq.data.datasource.HealthConnectPermissionPolicyTest --tests com.trainiq.features.home.HomeDashboardRefreshTest --tests com.trainiq.features.nutrition.NutritionInputValidationTest --tests com.trainiq.core.ui.WarmFuturisticUiSourceTest --tests com.trainiq.features.ui.WarmFuturisticScreenPolishSourceTest --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 7639`, and AndroidRuntime crash buffer was empty.
+  - PASS: emulator Home UI dump showed `TrainIQ`, `Start`, `Training`, and `Voeding`.
+- external sources used: Android Health Connect aggregate/time-range docs for `StepsRecord.COUNT_TOTAL` and local `TimeRangeFilter` day ranges; Samsung Health support docs for the product limitation that Samsung Health "All steps" can combine phone and wearable sources that may not all be present in Health Connect.
+- remaining risk: exact parity with Samsung Health "All steps" still depends on Samsung Health syncing the same phone/wearable sources into Health Connect. A direct Samsung Health SDK source remains out of scope for this Health Connect-only fix.
+
 ## 2026-06-03 JSON Import + Health Connect Steps Correctness
 
 - status: done for safe local JSON import preview/confirm and the reported Health Connect step mismatch class.

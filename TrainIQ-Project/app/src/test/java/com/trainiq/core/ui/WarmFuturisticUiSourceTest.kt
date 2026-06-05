@@ -1,6 +1,7 @@
 package com.trainiq.core.ui
 
 import java.io.File
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -30,12 +31,15 @@ class WarmFuturisticUiSourceTest {
     }
 
     @Test
-    fun `app card gradient fills the whole card surface`() {
+    fun `app card gradient is drawn on the full card bounds without unbounded sizing`() {
         val appDesign = testSourceFile("core/ui/AppDesign.kt").readText()
         val appCardBody = appDesign.substringAfter("fun AppCard(").substringBefore("@Composable\nfun WarmGlassCard(")
 
-        assertTrue(appCardBody.contains(".fillMaxSize()"))
+        assertTrue(appCardBody.contains(".background(cardBrush, shape)"))
+        assertTrue(appCardBody.contains("containerColor = Color.Transparent"))
         assertTrue(appCardBody.contains("Brush.linearGradient"))
+        assertFalse(appCardBody.contains(".matchParentSize()"))
+        assertFalse(appCardBody.contains(".fillMaxSize()"))
     }
 }
 

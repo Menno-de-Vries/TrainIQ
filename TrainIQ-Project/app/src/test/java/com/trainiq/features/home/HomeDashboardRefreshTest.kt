@@ -1,6 +1,9 @@
 package com.trainiq.features.home
 
 import com.trainiq.domain.model.Exercise
+import com.trainiq.domain.model.HealthConnectMetrics
+import com.trainiq.domain.model.HealthConnectState
+import com.trainiq.domain.model.HealthConnectStatus
 import com.trainiq.domain.model.RoutineSet
 import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutExercisePlan
@@ -105,6 +108,46 @@ class HomeDashboardRefreshTest {
         )
 
         assertTrue(result == "Stappen offline - Training 180 kcal")
+    }
+
+    @Test
+    fun homeMomentumCopy_formatsStreakAndConnectedSteps() {
+        val status = HealthConnectStatus(
+            state = HealthConnectState.CONNECTED,
+            message = "Verbonden",
+            metrics = HealthConnectMetrics(stepsToday = 7200),
+        )
+
+        assertEquals("3 dagen", homeStreakValue(3))
+        assertEquals("Ritme staat aan", homeStreakSubtitle(3))
+        assertEquals("7200", homeStepsValue(status))
+        assertTrue(homeMomentumEncouragement(3, status).contains("beweging"))
+    }
+
+    @Test
+    fun homeMomentumCopy_formatsEmptyAndOfflineStates() {
+        val status = HealthConnectStatus(
+            state = HealthConnectState.PERMISSION_REQUIRED,
+            message = "Toegang nodig",
+        )
+
+        assertEquals("0 dagen", homeStreakValue(0))
+        assertEquals("Start vandaag", homeStreakSubtitle(0))
+        assertEquals("Offline", homeStepsValue(status))
+        assertTrue(homeMomentumEncouragement(0, status).contains("Begin lokaal"))
+    }
+
+    @Test
+    fun homeMomentumCopy_whenNoDataAndNoStreak_usesStrongerStartEncouragement() {
+        val status = HealthConnectStatus(
+            state = HealthConnectState.NO_DATA,
+            message = "Nog geen data",
+        )
+
+        val encouragement = homeMomentumEncouragement(0, status)
+
+        assertTrue(encouragement.contains("Start klein"))
+        assertTrue(encouragement.contains("coach direct scherper"))
     }
 
     @Test

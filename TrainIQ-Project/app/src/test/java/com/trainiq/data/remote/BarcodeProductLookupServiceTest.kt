@@ -97,6 +97,7 @@ class BarcodeProductLookupServiceTest {
         assertTrue(lookupBody.contains("runCatching"))
         assertTrue(lookupBody.contains("connectTimeout = 5_000"))
         assertTrue(lookupBody.contains("readTimeout = 5_000"))
+        assertTrue(lookupBody.contains("MaxOpenFoodFactsResponseChars"))
         assertTrue(lookupBody.contains("getOrNull()"))
     }
 
@@ -121,6 +122,16 @@ class BarcodeProductLookupServiceTest {
         assertEquals(5_000, connection.connectTimeout)
         assertEquals(5_000, connection.readTimeout)
         assertEquals("application/json", connection.capturedRequestProperties["Accept"])
+    }
+
+    @Test
+    fun lookupOpenFoodFactsProduct_withOversizedResponseReturnsNullAndDisconnects() = runTest {
+        val connection = FakeHttpConnection(" ".repeat(300_000))
+
+        val result = lookupOpenFoodFactsProduct("3017620422003") { connection }
+
+        assertNull(result)
+        assertTrue(connection.disconnected)
     }
 
     @Test

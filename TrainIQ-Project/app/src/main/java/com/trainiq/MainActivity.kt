@@ -17,6 +17,7 @@ import com.trainiq.core.diagnostics.DiagnosticsTracker
 import com.trainiq.core.diagnostics.PerformanceSessionMonitor
 import com.trainiq.core.diagnostics.TelemetryExporter
 import com.trainiq.core.health.HealthConnectBackgroundSyncScheduler
+import com.trainiq.core.reminders.TrainIqReminderScheduler
 import com.trainiq.core.theme.TrainIqTheme
 import com.trainiq.navigation.TrainIqWindowWidthClass
 import com.trainiq.navigation.TrainIqApp
@@ -30,6 +31,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var performanceSessionMonitor: PerformanceSessionMonitor
     @Inject lateinit var diagnosticsTracker: DiagnosticsTracker
     @Inject lateinit var healthConnectBackgroundSyncScheduler: HealthConnectBackgroundSyncScheduler
+    @Inject lateinit var reminderScheduler: TrainIqReminderScheduler
     @Inject lateinit var telemetryExporter: TelemetryExporter
 
     private val viewModel: MainViewModel by viewModels()
@@ -57,6 +59,7 @@ class MainActivity : ComponentActivity() {
             performanceSessionMonitor.start(this)
             lifecycleScope.launch(Dispatchers.IO) {
                 healthConnectBackgroundSyncScheduler.scheduleIfBackgroundReadAvailable()
+                reminderScheduler.syncScheduleWithPreferences()
             }
         }, StartupDiagnosticsDelayMillis)
     }

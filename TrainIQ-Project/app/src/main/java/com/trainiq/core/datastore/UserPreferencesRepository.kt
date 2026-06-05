@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.trainiq.ai.services.AiProviderPreference
@@ -38,6 +39,12 @@ data class HealthConnectSyncPreferences(
     val changesTokensJson: String = "",
 )
 
+data class ReminderPreferences(
+    val enabled: Boolean = false,
+    val lastMealReminderAt: Long = 0L,
+    val lastWorkoutReminderAt: Long = 0L,
+)
+
 @Singleton
 class UserPreferencesRepository @Inject constructor(
     @param:ApplicationContext private val context: Context,
@@ -54,6 +61,9 @@ class UserPreferencesRepository @Inject constructor(
     private val healthMetricChangesTokensKey = stringPreferencesKey("health_connect_metric_changes_tokens")
     private val healthCacheStateKey = stringPreferencesKey("health_connect_cache_state")
     private val healthLastSyncedAtKey = stringPreferencesKey("health_connect_last_synced_at")
+    private val remindersEnabledKey = booleanPreferencesKey("reminders_enabled")
+    private val lastMealReminderAtKey = longPreferencesKey("last_meal_reminder_at")
+    private val lastWorkoutReminderAtKey = longPreferencesKey("last_workout_reminder_at")
 
     val streakCount: Flow<Int> = context.dataStore.data.map { preferences -> preferences[streakKey] ?: 0 }
     val themeMode: Flow<ThemeMode> = context.dataStore.data.map { preferences ->
@@ -75,6 +85,13 @@ class UserPreferencesRepository @Inject constructor(
         WorkoutFeedbackPreferences(
             restTimerSoundEnabled = preferences[restTimerSoundEnabledKey] ?: true,
             workoutHapticsEnabled = preferences[workoutHapticsEnabledKey] ?: true,
+        )
+    }
+    val reminderPreferences: Flow<ReminderPreferences> = context.dataStore.data.map { preferences ->
+        ReminderPreferences(
+            enabled = preferences[remindersEnabledKey] ?: false,
+            lastMealReminderAt = preferences[lastMealReminderAtKey] ?: 0L,
+            lastWorkoutReminderAt = preferences[lastWorkoutReminderAtKey] ?: 0L,
         )
     }
 
@@ -108,6 +125,28 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun setWorkoutHapticsEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences -> preferences[workoutHapticsEnabledKey] = enabled }
+    }
+
+    suspend fun setRemindersEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[remindersEnabledKey] = enabled }
+    }
+
+    suspend fun getReminderPreferences(): ReminderPreferences = context.dataStore.data
+        .map { preferences ->
+            ReminderPreferences(
+                enabled = preferences[remindersEnabledKey] ?: false,
+                lastMealReminderAt = preferences[lastMealReminderAtKey] ?: 0L,
+                lastWorkoutReminderAt = preferences[lastWorkoutReminderAtKey] ?: 0L,
+            )
+        }
+        .first()
+
+    suspend fun markMealReminderShown(atMillis: Long) {
+        context.dataStore.edit { preferences -> preferences[lastMealReminderAtKey] = atMillis }
+    }
+
+    suspend fun markWorkoutReminderShown(atMillis: Long) {
+        context.dataStore.edit { preferences -> preferences[lastWorkoutReminderAtKey] = atMillis }
     }
 
     suspend fun getHealthConnectSyncPreferences(): HealthConnectSyncPreferences {

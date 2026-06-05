@@ -157,6 +157,8 @@ import com.trainiq.core.ui.ShimmerCardPlaceholder
 import com.trainiq.core.ui.AppCard
 import com.trainiq.core.ui.AppChip
 import com.trainiq.core.ui.AppLinearProgress
+import com.trainiq.core.ui.CompactSectionTabItem
+import com.trainiq.core.ui.CompactSectionTabs
 import com.trainiq.core.ui.clearFocusOnTapOutside
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.ui.EmptyStateCard
@@ -1802,34 +1804,11 @@ private fun WorkoutOverviewTabSwitcher(
     selectedTab: String,
     onSelectTab: (WorkoutOverviewTab) -> Unit,
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.trainIqColors.cardElevated,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val chipColors = FilterChipDefaults.filterChipColors(
-                containerColor = MaterialTheme.colorScheme.surface,
-                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-            WorkoutOverviewTab.entries.forEach { tab ->
-                FilterChip(
-                    selected = selectedTab == tab.key,
-                    onClick = { onSelectTab(tab) },
-                    label = { Text(tab.label) },
-                    colors = chipColors,
-                )
-            }
-        }
-    }
+    CompactSectionTabs(
+        selectedKey = selectedTab,
+        tabs = WorkoutOverviewTab.entries.map { CompactSectionTabItem(it.key, it.label) },
+        onSelectTab = { selected -> WorkoutOverviewTab.entries.firstOrNull { it.key == selected.key }?.let(onSelectTab) },
+    )
 }
 
 @Composable
@@ -2491,40 +2470,19 @@ private fun RoutineDetailTabSwitcher(
     onInfoClick: () -> Unit,
     onSessionsClick: () -> Unit,
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.trainIqColors.cardElevated,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val chipColors = FilterChipDefaults.filterChipColors(
-                containerColor = MaterialTheme.colorScheme.surface,
-                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-            FilterChip(
-                selected = selectedTab == "info",
-                onClick = onInfoClick,
-                label = { Text("Info") },
-                colors = chipColors,
-            )
-            FilterChip(
-                selected = selectedTab == "sessions",
-                onClick = onSessionsClick,
-                label = { Text("Sessies") },
-                colors = chipColors,
-            )
-        }
-    }
+    CompactSectionTabs(
+        selectedKey = selectedTab,
+        tabs = listOf(
+            CompactSectionTabItem("info", "Info"),
+            CompactSectionTabItem("sessions", "Sessies"),
+        ),
+        onSelectTab = { selected ->
+            when (selected.key) {
+                "info" -> onInfoClick()
+                "sessions" -> onSessionsClick()
+            }
+        },
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)

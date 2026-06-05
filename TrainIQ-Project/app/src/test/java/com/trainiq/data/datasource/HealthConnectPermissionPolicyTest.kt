@@ -4,6 +4,7 @@ import com.trainiq.core.datastore.HealthConnectSyncPreferences
 import com.trainiq.data.mapper.toDomainMetrics
 import com.trainiq.domain.model.HealthMetricSyncState
 import com.trainiq.domain.model.HealthMetricType
+import java.time.LocalDateTime
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -65,7 +66,7 @@ class HealthConnectPermissionPolicyTest {
     @Test
     fun successfulMetricReadsRemainSyncedWhenUnrelatedMetricFails() {
         val statuses = buildHealthMetricSyncStatuses(
-            metrics = HealthMetricType.entries,
+            metrics = HealthConnectSyncMetricTypes,
             failedMetrics = mapOf(
                 HealthMetricType.HEART_RATE to "Hartslag kan nu niet worden gelezen.",
             ),
@@ -158,9 +159,10 @@ class HealthConnectPermissionPolicyTest {
             lastSyncedAt = 321L,
         )
 
-        val tokens = storedState.resolvedMetricChangesTokens(HealthMetricType.entries)
+        val tokens = storedState.resolvedMetricChangesTokens(HealthConnectSyncMetricTypes)
 
-        assertTrue(HealthMetricType.entries.all { tokens[it] == "legacy-all-metrics-token" })
+        assertTrue(HealthConnectSyncMetricTypes.all { tokens[it] == "legacy-all-metrics-token" })
+        assertFalse(tokens.containsKey(HealthMetricType.WEIGHT))
     }
 
     @Test
@@ -227,5 +229,26 @@ class HealthConnectPermissionPolicyTest {
         ).toDomainMetrics()
 
         assertEquals(12820, metrics.stepsToday)
+    }
+
+    @Test
+    fun todayStepAggregateRangeUsesLocalDateTimeDayBoundaries() {
+        val now = LocalDateTime.of(2026, 6, 4, 18, 45, 30)
+        val range = healthConnectTodayLocalDateTimeRange(now)
+
+        assertEquals(LocalDateTime.of(2026, 6, 4, 0, 0), range.start)
+        assertEquals(now, range.end)
+    }
+
+    @Test
+    fun stepAggregateDoesNotFilterToSingleDataOrigin() {
+        val source = java.io.File("src/main/java/com/trainiq/data/datasource/HealthConnectDataSource.kt").readText()
+        val aggregateBody = source.substringAfter("private suspend fun aggregateStepsToday")
+            .substringBefore("private suspend fun performFullSync")
+
+        assertTrue(aggregateBody.contains("StepsRecord.COUNT_TOTAL"))
+        assertTrue(aggregateBody.contains("healthConnectTodayLocalDateTimeRange"))
+        assertFalse(aggregateBody.contains("DataOrigin"))
+        assertFalse(aggregateBody.contains("dataOriginFilter"))
     }
 }
