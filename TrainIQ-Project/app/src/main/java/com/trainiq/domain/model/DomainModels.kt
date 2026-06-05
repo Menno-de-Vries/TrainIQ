@@ -654,6 +654,15 @@ enum class HealthMetricSyncState {
     SYNCED,
 }
 
+enum class HealthConnectStepDataFreshness {
+    UNKNOWN,
+    FRESH,
+    STALE_CACHE,
+    PERMISSION_MISSING,
+    UNAVAILABLE,
+    ERROR,
+}
+
 data class HealthMetricStatus(
     val metric: HealthMetricType,
     val state: HealthMetricSyncState,
@@ -679,6 +688,8 @@ data class HealthConnectStatus(
     val message: String,
     val lastSyncedAt: Long? = null,
     val metricStatuses: List<HealthMetricStatus> = emptyList(),
+    val stepDataFreshness: HealthConnectStepDataFreshness = HealthConnectStepDataFreshness.UNKNOWN,
+    val stepDataUpdatedAt: Long? = lastSyncedAt,
 ) {
     val stepsToday: Int?
         get() = metrics?.stepsToday

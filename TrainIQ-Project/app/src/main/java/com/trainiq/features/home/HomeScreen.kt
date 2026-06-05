@@ -69,6 +69,7 @@ import com.trainiq.core.util.EnergyBalanceCard
 import com.trainiq.core.util.MacroBreakdownCard
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
+import com.trainiq.domain.model.HealthConnectStepDataFreshness
 import com.trainiq.domain.model.HomeDashboard
 import com.trainiq.domain.usecase.BuildHomeDashboardUseCase
 import com.trainiq.domain.usecase.GetHealthConnectStatusUseCase
@@ -136,7 +137,6 @@ class HomeViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            delay(8_000L)
             refreshHealthConnectStatus()
         }
     }
@@ -585,6 +585,11 @@ private fun HealthConnectSyncCard(
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.trainIqColors.mutedText,
             )
+            Text(
+                homeHealthStepDiagnostic(status),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.trainIqColors.mutedText,
+            )
             refreshMessage?.let {
                 Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             }
@@ -599,6 +604,21 @@ internal fun homeHealthStatusSummary(status: HealthConnectStatus): String = when
     HealthConnectState.PROVIDER_MISSING -> "Health Connect moet worden geïnstalleerd of bijgewerkt."
     HealthConnectState.UNSUPPORTED -> "Health Connect wordt niet ondersteund op dit apparaat."
     HealthConnectState.ERROR -> "Health Connect kan nu niet worden gelezen."
+}
+
+internal fun homeHealthStepDiagnostic(status: HealthConnectStatus): String = when (status.stepDataFreshness) {
+    HealthConnectStepDataFreshness.FRESH ->
+        "Live uit Health Connect: aggregate stappen bijgewerkt om ${formatHomeLastSync(status.stepDataUpdatedAt)}."
+    HealthConnectStepDataFreshness.STALE_CACHE ->
+        "Laatste bekende stappen uit Health Connect-cache. Open Samsung Health, sync met Samsung Cloud en controleer Health Connect > App-permissies als Samsung Health meer stappen toont."
+    HealthConnectStepDataFreshness.PERMISSION_MISSING ->
+        "Stappentoegang ontbreekt. Geef READ_STEPS via Health Connect zodat TrainIQ dezelfde bron kan lezen."
+    HealthConnectStepDataFreshness.UNAVAILABLE ->
+        "Health Connect is niet beschikbaar of moet worden bijgewerkt voordat stappen live kunnen matchen."
+    HealthConnectStepDataFreshness.ERROR ->
+        "Stappen konden nu niet live worden gelezen. Laatste bekende data blijft zichtbaar wanneer die bestaat."
+    HealthConnectStepDataFreshness.UNKNOWN ->
+        "Stappenstatus wordt opgehaald via Health Connect."
 }
 
 internal fun formatHomeLastSync(lastSyncedAt: Long?): String {

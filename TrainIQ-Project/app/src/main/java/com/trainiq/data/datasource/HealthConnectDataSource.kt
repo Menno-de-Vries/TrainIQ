@@ -32,6 +32,7 @@ import com.trainiq.data.mapper.toDomainMetrics
 import com.trainiq.domain.model.HealthConnectMetrics
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
+import com.trainiq.domain.model.HealthConnectStepDataFreshness
 import com.trainiq.domain.model.HealthMetricStatus
 import com.trainiq.domain.model.HealthMetricSyncState
 import com.trainiq.domain.model.HealthMetricType
@@ -113,6 +114,7 @@ class HealthConnectDataSource @Inject constructor(
                     state = HealthConnectState.UNSUPPORTED,
                     message = "Health Connect wordt niet ondersteund op dit apparaat.",
                     metricStatuses = unavailableMetricStatuses("Health Connect wordt niet ondersteund op dit apparaat."),
+                    stepDataFreshness = HealthConnectStepDataFreshness.UNAVAILABLE,
                 )
             }
 
@@ -122,6 +124,7 @@ class HealthConnectDataSource @Inject constructor(
                     state = HealthConnectState.PROVIDER_MISSING,
                     message = "Installeer of update Health Connect voordat TrainIQ stappen, hartslag, slaap, calorieën en workouts kan lezen.",
                     metricStatuses = unavailableMetricStatuses("Health Connect-provider ontbreekt of moet worden bijgewerkt."),
+                    stepDataFreshness = HealthConnectStepDataFreshness.UNAVAILABLE,
                 )
             }
 
@@ -130,6 +133,7 @@ class HealthConnectDataSource @Inject constructor(
                 state = HealthConnectState.ERROR,
                 message = "Health Connect-status kan nu niet worden bepaald.",
                 metricStatuses = failedMetricStatuses("Health Connect-status kan nu niet worden bepaald."),
+                stepDataFreshness = HealthConnectStepDataFreshness.ERROR,
             )
         }
     }
@@ -153,6 +157,7 @@ class HealthConnectDataSource @Inject constructor(
                         requiredPermissionsByMetric = requiredPermissionsByMetric,
                         lastSyncedAt = null,
                     ),
+                    stepDataFreshness = HealthConnectStepDataFreshness.PERMISSION_MISSING,
                 )
             } else {
                 val syncPayload = syncTrackedMetrics(client, grantedMetrics)
@@ -185,6 +190,7 @@ class HealthConnectDataSource @Inject constructor(
                 state = HealthConnectState.ERROR,
                 message = throwable.message ?: "Health Connect kan nu niet worden gelezen.",
                 metricStatuses = failedMetricStatuses("Health Connect kan nu niet worden gelezen."),
+                stepDataFreshness = HealthConnectStepDataFreshness.ERROR,
             )
         }
     }
@@ -518,13 +524,40 @@ class HealthConnectDataSource @Inject constructor(
     ): HealthConnectStatus {
         val metrics = cacheState.toDomainMetrics()
         val state = if (metrics.hasAnyData()) HealthConnectState.CONNECTED else HealthConnectState.NO_DATA
+        val freshness = stepDataFreshness(metrics, metricStatuses)
         return HealthConnectStatus(
             state = state,
             metrics = metrics,
             message = buildMessage(metrics, state, isPartialPermission),
             lastSyncedAt = lastSyncedAt,
             metricStatuses = metricStatuses,
+            stepDataFreshness = freshness,
+            stepDataUpdatedAt = lastSyncedAt.takeIf {
+                freshness == HealthConnectStepDataFreshness.FRESH ||
+                    freshness == HealthConnectStepDataFreshness.STALE_CACHE
+            },
         )
+    }
+
+    private fun stepDataFreshness(
+        metrics: HealthConnectMetrics,
+        metricStatuses: List<HealthMetricStatus>,
+    ): HealthConnectStepDataFreshness {
+        val stepStatus = metricStatuses.firstOrNull { it.metric == HealthMetricType.STEPS }
+            ?: return HealthConnectStepDataFreshness.PERMISSION_MISSING
+        return when (stepStatus.state) {
+            HealthMetricSyncState.SYNCED,
+            HealthMetricSyncState.SYNCING,
+            HealthMetricSyncState.STALE -> HealthConnectStepDataFreshness.FRESH
+            HealthMetricSyncState.DENIED,
+            HealthMetricSyncState.PARTIALLY_GRANTED -> HealthConnectStepDataFreshness.PERMISSION_MISSING
+            HealthMetricSyncState.UNAVAILABLE -> HealthConnectStepDataFreshness.UNAVAILABLE
+            HealthMetricSyncState.FAILED -> if (metrics.stepsToday > 0) {
+                HealthConnectStepDataFreshness.STALE_CACHE
+            } else {
+                HealthConnectStepDataFreshness.ERROR
+            }
+        }
     }
 
     private fun List<HealthMetricStatus>.withDeniedMetrics(

@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
             val telemetryOptIn by viewModel.telemetryOptIn.collectAsStateWithLifecycle()
+            val onboardingPreferences by viewModel.onboardingPreferences.collectAsStateWithLifecycle()
             val windowSizeClass = calculateWindowSizeClass(this)
             LaunchedEffect(telemetryOptIn) {
                 telemetryExporter.setUserOptIn(telemetryOptIn)
@@ -52,6 +53,7 @@ class MainActivity : ComponentActivity() {
                 TrainIqApp(
                     diagnosticsTracker = diagnosticsTracker,
                     windowWidthClass = windowSizeClass.widthSizeClass.toTrainIqWidthClass(),
+                    onboardingCompleted = onboardingPreferences.completed,
                 )
             }
         }

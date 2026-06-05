@@ -1,0 +1,3 @@
+﻿{"phase":"discovery","candidate_id":"CAND-003","status":"reportable","evidence":"Reminder notifications used full body/BigText without public redaction."}
+{"phase":"validation","candidate_id":"CAND-003","status":"fixed","evidence":"Notification builder now uses VISIBILITY_PRIVATE and redacted public version."}
+{"phase":"attack_path","candidate_id":"CAND-003","status":"closed","severity":"Low","evidence":"Public notification body no longer reveals meal/workout behavior."}

@@ -6,6 +6,17 @@ Refresh date: 2026-05-10, current worktree
 
 Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emulator smoke, Health Connect, Gemini/AI, Room/data, UI/UX/accessibility, release readiness.
 
+## 2026-06-05 Steps Accuracy Foreground Refresh + First-Run Onboarding
+
+- status: done for immediate Home foreground Health Connect step refresh, user-facing step freshness diagnostics, first-run onboarding, and Settings resume/reopen support.
+- files changed: Home no longer waits behind the prior initial Health Connect delay before requesting status refresh; Health Connect status now carries step freshness and last-step-update state without logging raw health payloads; daily steps stay on `StepsRecord.COUNT_TOTAL` aggregate over the local day range without a `DataOrigin` filter; onboarding preferences are persisted in DataStore separately from profile fields; type-safe navigation gates first launch through `Onboarding`; Settings can reopen onboarding and shows skipped setup actions.
+- verification evidence:
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "*HealthConnect*" --tests "*Home*" --tests "*Onboarding*" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: emulator `emulator-5554` fresh appdata smoke with `:app:installDebug`; cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 5682`; first screen showed `Welkom bij TrainIQ`; tapping `Overslaan` reached Start/Home; Settings showed `Onboarding`, `Nog open`, `Health Connect koppelen`, and `AI-coach instellen`; `Onboarding openen` reopened `Eerste setup`; filtered logcat had no `FATAL EXCEPTION`.
+- external sources rechecked: Android Health Connect aggregate docs for `StepsRecord.COUNT_TOTAL` and `TimeRangeFilter`; Android Health Connect sync docs for changes-token direction; Samsung Health Connect FAQ/blog for Samsung Health-to-Health Connect permissions, sync timing, and the `All steps` to `StepsRecord` mapping.
+- remaining risk: exact parity with Samsung Health still depends on Samsung Health and Galaxy Watch data being synced into Health Connect and TrainIQ having `READ_STEPS`; direct Samsung Health SDK access remains out of scope.
+
 ## 2026-06-04 Steps Accuracy + Home/Product Portion Regression Fix
 
 - status: done for the Health Connect-only step-count correction path, Home streak/steps metric readability fix, and product default-serving editor IME visibility fix.

@@ -1,0 +1,3 @@
+﻿{"phase":"discovery","candidate_id":"CAND-001","status":"reportable","evidence":"AiUsageGate save/clear paths did not clear legacy DataStore before fix."}
+{"phase":"validation","candidate_id":"CAND-001","status":"fixed","evidence":"AiUsageGate now clears preferencesRepository.clearGeminiApiKey() after encrypted save and clear paths."}
+{"phase":"attack_path","candidate_id":"CAND-001","status":"closed","severity":"Medium","evidence":"No stale plaintext key remains through current save/clear paths after fix."}

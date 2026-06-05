@@ -72,6 +72,7 @@ import com.trainiq.ai.services.hasAnyReadyProvider
 import com.trainiq.ai.services.AiUsageGate
 import com.trainiq.ai.services.GoalAdvisorService
 import com.trainiq.core.datastore.AiPreferences
+import com.trainiq.core.datastore.OnboardingPreferences
 import com.trainiq.core.datastore.ReminderPreferences
 import com.trainiq.core.datastore.WorkoutFeedbackPreferences
 import com.trainiq.core.health.HealthConnectRefreshOnResume
@@ -103,8 +104,10 @@ import com.trainiq.domain.usecase.GetHealthConnectStatusUseCase
 import com.trainiq.domain.usecase.ImportAppDataUseCase
 import com.trainiq.domain.usecase.ObserveUserProfileUseCase
 import com.trainiq.domain.usecase.PreviewAppDataImportUseCase
+import com.trainiq.domain.usecase.ReopenOnboardingUseCase
 import com.trainiq.domain.usecase.ResetProfileUseCase
 import com.trainiq.domain.usecase.SaveUserProfileUseCase
+import com.trainiq.features.onboarding.onboardingSetupItems
 import com.trainiq.navigation.TrainIqWindowWidthClass
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -127,6 +130,7 @@ sealed interface SettingsUiState {
         val telemetryOptIn: Boolean,
         val workoutFeedbackPreferences: WorkoutFeedbackPreferences,
         val reminderPreferences: ReminderPreferences,
+        val onboardingPreferences: OnboardingPreferences = OnboardingPreferences(),
         val profile: UserProfile?,
         val healthStatus: HealthConnectStatus,
         val importPreview: AppDataImportPreview? = null,
@@ -143,6 +147,7 @@ private data class SettingsUiInputs(
     val telemetryOptIn: Boolean,
     val workoutFeedbackPreferences: WorkoutFeedbackPreferences,
     val reminderPreferences: ReminderPreferences,
+    val onboardingPreferences: OnboardingPreferences,
     val profile: UserProfile?,
     val healthStatus: HealthConnectStatus,
 )
@@ -153,6 +158,7 @@ private data class SettingsPreferenceInputs(
     val telemetryOptIn: Boolean,
     val workoutFeedbackPreferences: WorkoutFeedbackPreferences,
     val reminderPreferences: ReminderPreferences,
+    val onboardingPreferences: OnboardingPreferences,
 )
 
 @HiltViewModel
@@ -168,6 +174,7 @@ class SettingsViewModel @Inject constructor(
     private val exportAppDataUseCase: ExportAppDataUseCase,
     private val previewAppDataImportUseCase: PreviewAppDataImportUseCase,
     private val importAppDataUseCase: ImportAppDataUseCase,
+    private val reopenOnboardingUseCase: ReopenOnboardingUseCase,
     private val reminderScheduler: TrainIqReminderScheduler,
 ) : ViewModel() {
     private val themeMode: StateFlow<ThemeMode> = preferencesRepository.themeMode
@@ -185,6 +192,8 @@ class SettingsViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WorkoutFeedbackPreferences())
     private val reminderPreferences: StateFlow<ReminderPreferences> = preferencesRepository.reminderPreferences
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReminderPreferences())
+    private val onboardingPreferences: StateFlow<OnboardingPreferences> = preferencesRepository.onboardingPreferences
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), OnboardingPreferences())
     private val profile: StateFlow<UserProfile?> = observeUserProfileUseCase()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
@@ -200,7 +209,7 @@ class SettingsViewModel @Inject constructor(
     private val _importPreview = MutableStateFlow<AppDataImportPreview?>(null)
     private val _isImporting = MutableStateFlow(false)
     private var pendingImportJson: String? = null
-    private val settingsPreferenceInputs = combine(
+    private val settingsPreferenceInputsBase = combine(
         themeMode,
         aiPreferences,
         telemetryOptIn,
@@ -213,7 +222,11 @@ class SettingsViewModel @Inject constructor(
             telemetryOptIn = telemetry,
             workoutFeedbackPreferences = feedback,
             reminderPreferences = reminders,
+            onboardingPreferences = OnboardingPreferences(),
         )
+    }
+    private val settingsPreferenceInputs = combine(settingsPreferenceInputsBase, onboardingPreferences) { preferences, onboarding ->
+        preferences.copy(onboardingPreferences = onboarding)
     }
     val uiState: StateFlow<SettingsUiState> = combine(
         combine(settingsPreferenceInputs, profile) { preferences, userProfile ->
@@ -223,6 +236,7 @@ class SettingsViewModel @Inject constructor(
                 telemetryOptIn = preferences.telemetryOptIn,
                 workoutFeedbackPreferences = preferences.workoutFeedbackPreferences,
                 reminderPreferences = preferences.reminderPreferences,
+                onboardingPreferences = preferences.onboardingPreferences,
                 profile = userProfile,
                 healthStatus = healthStatus.value,
             )
@@ -238,6 +252,7 @@ class SettingsViewModel @Inject constructor(
             telemetryOptIn = inputs.telemetryOptIn,
             workoutFeedbackPreferences = inputs.workoutFeedbackPreferences,
             reminderPreferences = inputs.reminderPreferences,
+            onboardingPreferences = inputs.onboardingPreferences,
             profile = inputs.profile,
             healthStatus = health,
             importPreview = importPreview,
@@ -519,6 +534,13 @@ class SettingsViewModel @Inject constructor(
         _importPreview.value = null
     }
 
+    fun reopenOnboarding() {
+        viewModelScope.launch {
+            reopenOnboardingUseCase()
+            emitMessage("Onboarding opnieuw geopend.")
+        }
+    }
+
     fun setExportMessage(success: Boolean) {
         emitMessage(if (success) {
             "TrainIQ-data geexporteerd als JSON."
@@ -540,6 +562,7 @@ class SettingsViewModel @Inject constructor(
 @Composable
 fun SettingsRoute(
     windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
+    onOpenOnboarding: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -595,6 +618,7 @@ fun SettingsRoute(
                 telemetryOptIn = state.telemetryOptIn,
                 workoutFeedbackPreferences = state.workoutFeedbackPreferences,
                 reminderPreferences = state.reminderPreferences,
+                onboardingPreferences = state.onboardingPreferences,
                 maskedApiKey = state.maskedApiKey,
                 profile = state.profile,
                 healthStatus = state.healthStatus,
@@ -646,6 +670,10 @@ fun SettingsRoute(
                 },
                 onConfirmImport = viewModel::confirmImport,
                 onDismissImportPreview = viewModel::dismissImportPreview,
+                onOpenOnboarding = {
+                    viewModel.reopenOnboarding()
+                    onOpenOnboarding()
+                },
             )
         }
     }
@@ -705,6 +733,7 @@ fun SettingsScreen(
     telemetryOptIn: Boolean,
     workoutFeedbackPreferences: WorkoutFeedbackPreferences,
     reminderPreferences: ReminderPreferences,
+    onboardingPreferences: OnboardingPreferences,
     maskedApiKey: String,
     profile: UserProfile?,
     healthStatus: HealthConnectStatus,
@@ -733,12 +762,14 @@ fun SettingsScreen(
     onImportData: () -> Unit,
     onConfirmImport: () -> Unit,
     onDismissImportPreview: () -> Unit,
+    onOpenOnboarding: () -> Unit,
 ) {
     var apiKey by rememberSaveable { mutableStateOf("") }
     var openAiKey by rememberSaveable { mutableStateOf("") }
     var pendingDestructiveAction by rememberSaveable { mutableStateOf<PendingDestructiveSettingsAction?>(null) }
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val skippedSetupItems = onboardingSetupItems(onboardingPreferences)
 
     LaunchedEffect(message?.id) {
         val currentMessage = message ?: return@LaunchedEffect
@@ -773,6 +804,48 @@ fun SettingsScreen(
                 Text("Thema: ${themeMode.displayLabel()}")
                 Text("AI: ${if (aiPreferences.enabled && aiPreferences.apiKey.isNotBlank()) "Klaar voor expliciet gebruik" else "Alleen handmatig"}")
                 Text("Health Connect: ${healthStatusLabel(healthStatus)}")
+            }
+        }
+        item {
+            SectionCard(title = "Onboarding") {
+                Text(
+                    if (onboardingPreferences.completed) {
+                        "Intro afgerond. Je kunt de setup opnieuw openen om doelen, Health Connect, AI en reminders rustig langs te lopen."
+                    } else {
+                        "Intro nog niet afgerond. Rond de basissetup af of sla onderdelen bewust over."
+                    },
+                )
+                if (skippedSetupItems.isNotEmpty()) {
+                    Text(
+                        "Nog open",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    skippedSetupItems.take(3).forEach { setupItem ->
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(setupItem.title, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                setupItem.body,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                } else {
+                    Text(
+                        "Alle eerste setup-keuzes zijn vastgelegd.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Button(
+                    onClick = onOpenOnboarding,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .settingsActionLabel("Onboarding opnieuw openen"),
+                ) {
+                    Text("Onboarding openen")
+                }
             }
         }
         item {
@@ -1193,6 +1266,7 @@ internal fun settingsUiState(
     telemetryOptIn: Boolean,
     workoutFeedbackPreferences: WorkoutFeedbackPreferences,
     reminderPreferences: ReminderPreferences,
+    onboardingPreferences: OnboardingPreferences = OnboardingPreferences(),
     profile: UserProfile?,
     healthStatus: HealthConnectStatus,
     importPreview: AppDataImportPreview? = null,
@@ -1204,6 +1278,7 @@ internal fun settingsUiState(
     telemetryOptIn = telemetryOptIn,
     workoutFeedbackPreferences = workoutFeedbackPreferences,
     reminderPreferences = reminderPreferences,
+    onboardingPreferences = onboardingPreferences,
     profile = profile,
     healthStatus = healthStatus,
     importPreview = importPreview,

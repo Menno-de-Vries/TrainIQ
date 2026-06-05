@@ -70,6 +70,7 @@ import com.trainiq.features.home.HomeRoute
 import com.trainiq.features.nutrition.CameraScannerRoute
 import com.trainiq.features.nutrition.NutritionRoute
 import com.trainiq.features.nutrition.ScannerMode
+import com.trainiq.features.onboarding.OnboardingRoute
 import com.trainiq.features.progress.ProgressRoute
 import com.trainiq.features.settings.SettingsRoute
 import com.trainiq.features.workout.ActiveWorkoutRoute
@@ -87,6 +88,9 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data object Home
+
+@Serializable
+data object Onboarding
 
 @Serializable
 data object Train
@@ -136,6 +140,7 @@ private data class TopLevelDestination(
 fun TrainIqApp(
     diagnosticsTracker: DiagnosticsTracker,
     windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
+    onboardingCompleted: Boolean = true,
 ) {
     val navController = rememberNavController()
     val haptics = LocalHapticFeedback.current
@@ -154,6 +159,7 @@ fun TrainIqApp(
         currentDestination?.hierarchy?.any { it.hasRoute(screen.routeClass) } == true
     }.takeIf { it >= 0 }
     val isNutritionDestination = currentDestination?.hierarchy?.any { it.hasRoute(Nutrition::class) } == true
+    val isOnboardingDestination = currentDestination?.hierarchy?.any { it.hasRoute(Onboarding::class) } == true
     val density = LocalDensity.current
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
     val useNavigationRail = shouldUseNavigationRail(windowWidthClass)
@@ -190,7 +196,7 @@ fun TrainIqApp(
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Row(modifier = Modifier.fillMaxSize()) {
-            if (useNavigationRail && currentTopLevelIndex != null && !imeVisible && !trainDetailMode) {
+            if (useNavigationRail && currentTopLevelIndex != null && !imeVisible && !trainDetailMode && !isOnboardingDestination) {
                 Surface(
                     modifier = Modifier
                         .fillMaxHeight()
@@ -235,7 +241,7 @@ fun TrainIqApp(
                 .weight(1f)
                 .fillMaxSize(),
             bottomBar = {
-                if (!useNavigationRail && currentTopLevelIndex != null && !imeVisible && !trainDetailMode) {
+                if (!useNavigationRail && currentTopLevelIndex != null && !imeVisible && !trainDetailMode && !isOnboardingDestination) {
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -307,6 +313,7 @@ fun TrainIqApp(
                 navController = navController,
                 topLevelDestinations = items,
                 windowWidthClass = windowWidthClass,
+                onboardingCompleted = onboardingCompleted,
                 onTrainDetailModeChanged = { trainDetailMode = it },
                 modifier = Modifier
                     .padding(padding)
@@ -460,14 +467,25 @@ private fun TrainIqNavHost(
     navController: NavHostController,
     topLevelDestinations: List<TopLevelDestination>,
     windowWidthClass: TrainIqWindowWidthClass,
+    onboardingCompleted: Boolean,
     onTrainDetailModeChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     NavHost(
         navController = navController,
-        startDestination = Home,
+        startDestination = if (onboardingCompleted) Home else Onboarding,
         modifier = modifier,
     ) {
+        composable<Onboarding> {
+            OnboardingRoute(
+                onFinished = {
+                    navController.navigate(Home) {
+                        popUpTo<Onboarding> { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
         composable<Home> {
             HomeRoute(
                 onStartWorkout = { dayId -> navController.navigateToActiveWorkout(dayId) },
@@ -524,6 +542,11 @@ private fun TrainIqNavHost(
         composable<Settings> {
             SettingsRoute(
                 windowWidthClass = windowWidthClass,
+                onOpenOnboarding = {
+                    navController.navigate(Onboarding) {
+                        launchSingleTop = true
+                    }
+                },
             )
         }
         composable<CameraScanner> { entry ->

@@ -39,6 +39,22 @@ data class HealthConnectSyncPreferences(
     val changesTokensJson: String = "",
 )
 
+data class OnboardingPreferences(
+    val completed: Boolean = false,
+    val goal: String = "",
+    val experience: String = "",
+    val trainingDays: Int = 3,
+    val equipment: String = "",
+    val sessionLengthMinutes: Int = 60,
+    val constraints: String = "",
+    val healthConnectAccepted: Boolean = false,
+    val healthConnectSkipped: Boolean = false,
+    val aiAccepted: Boolean = false,
+    val aiSkipped: Boolean = false,
+    val remindersEnabled: Boolean = false,
+    val privacyAcknowledged: Boolean = false,
+)
+
 data class ReminderPreferences(
     val enabled: Boolean = false,
     val lastMealReminderAt: Long = 0L,
@@ -64,6 +80,19 @@ class UserPreferencesRepository @Inject constructor(
     private val remindersEnabledKey = booleanPreferencesKey("reminders_enabled")
     private val lastMealReminderAtKey = longPreferencesKey("last_meal_reminder_at")
     private val lastWorkoutReminderAtKey = longPreferencesKey("last_workout_reminder_at")
+    private val onboardingCompletedKey = booleanPreferencesKey("onboarding_completed")
+    private val onboardingGoalKey = stringPreferencesKey("onboarding_goal")
+    private val onboardingExperienceKey = stringPreferencesKey("onboarding_experience")
+    private val onboardingTrainingDaysKey = intPreferencesKey("onboarding_training_days")
+    private val onboardingEquipmentKey = stringPreferencesKey("onboarding_equipment")
+    private val onboardingSessionLengthMinutesKey = intPreferencesKey("onboarding_session_length_minutes")
+    private val onboardingConstraintsKey = stringPreferencesKey("onboarding_constraints")
+    private val onboardingHealthConnectAcceptedKey = booleanPreferencesKey("onboarding_health_connect_accepted")
+    private val onboardingHealthConnectSkippedKey = booleanPreferencesKey("onboarding_health_connect_skipped")
+    private val onboardingAiAcceptedKey = booleanPreferencesKey("onboarding_ai_accepted")
+    private val onboardingAiSkippedKey = booleanPreferencesKey("onboarding_ai_skipped")
+    private val onboardingRemindersEnabledKey = booleanPreferencesKey("onboarding_reminders_enabled")
+    private val onboardingPrivacyAcknowledgedKey = booleanPreferencesKey("onboarding_privacy_acknowledged")
 
     val streakCount: Flow<Int> = context.dataStore.data.map { preferences -> preferences[streakKey] ?: 0 }
     val themeMode: Flow<ThemeMode> = context.dataStore.data.map { preferences ->
@@ -92,6 +121,23 @@ class UserPreferencesRepository @Inject constructor(
             enabled = preferences[remindersEnabledKey] ?: false,
             lastMealReminderAt = preferences[lastMealReminderAtKey] ?: 0L,
             lastWorkoutReminderAt = preferences[lastWorkoutReminderAtKey] ?: 0L,
+        )
+    }
+    val onboardingPreferences: Flow<OnboardingPreferences> = context.dataStore.data.map { preferences ->
+        OnboardingPreferences(
+            completed = preferences[onboardingCompletedKey] ?: false,
+            goal = preferences[onboardingGoalKey].orEmpty(),
+            experience = preferences[onboardingExperienceKey].orEmpty(),
+            trainingDays = preferences[onboardingTrainingDaysKey] ?: 3,
+            equipment = preferences[onboardingEquipmentKey].orEmpty(),
+            sessionLengthMinutes = preferences[onboardingSessionLengthMinutesKey] ?: 60,
+            constraints = preferences[onboardingConstraintsKey].orEmpty(),
+            healthConnectAccepted = preferences[onboardingHealthConnectAcceptedKey] ?: false,
+            healthConnectSkipped = preferences[onboardingHealthConnectSkippedKey] ?: false,
+            aiAccepted = preferences[onboardingAiAcceptedKey] ?: false,
+            aiSkipped = preferences[onboardingAiSkippedKey] ?: false,
+            remindersEnabled = preferences[onboardingRemindersEnabledKey] ?: false,
+            privacyAcknowledged = preferences[onboardingPrivacyAcknowledgedKey] ?: false,
         )
     }
 
@@ -147,6 +193,37 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun markWorkoutReminderShown(atMillis: Long) {
         context.dataStore.edit { preferences -> preferences[lastWorkoutReminderAtKey] = atMillis }
+    }
+
+    suspend fun getOnboardingPreferences(): OnboardingPreferences = onboardingPreferences.first()
+
+    suspend fun saveOnboardingPreferences(onboardingPreferences: OnboardingPreferences) {
+        context.dataStore.edit { preferences ->
+            preferences[onboardingCompletedKey] = onboardingPreferences.completed
+            preferences[onboardingGoalKey] = onboardingPreferences.goal
+            preferences[onboardingExperienceKey] = onboardingPreferences.experience
+            preferences[onboardingTrainingDaysKey] = onboardingPreferences.trainingDays
+            preferences[onboardingEquipmentKey] = onboardingPreferences.equipment
+            preferences[onboardingSessionLengthMinutesKey] = onboardingPreferences.sessionLengthMinutes
+            preferences[onboardingConstraintsKey] = onboardingPreferences.constraints
+            preferences[onboardingHealthConnectAcceptedKey] = onboardingPreferences.healthConnectAccepted
+            preferences[onboardingHealthConnectSkippedKey] = onboardingPreferences.healthConnectSkipped
+            preferences[onboardingAiAcceptedKey] = onboardingPreferences.aiAccepted
+            preferences[onboardingAiSkippedKey] = onboardingPreferences.aiSkipped
+            preferences[onboardingRemindersEnabledKey] = onboardingPreferences.remindersEnabled
+            preferences[onboardingPrivacyAcknowledgedKey] = onboardingPreferences.privacyAcknowledged
+            if (onboardingPreferences.remindersEnabled) {
+                preferences[remindersEnabledKey] = true
+            }
+        }
+    }
+
+    suspend fun completeOnboarding(onboardingPreferences: OnboardingPreferences) {
+        saveOnboardingPreferences(onboardingPreferences.copy(completed = true, privacyAcknowledged = true))
+    }
+
+    suspend fun reopenOnboarding() {
+        context.dataStore.edit { preferences -> preferences[onboardingCompletedKey] = false }
     }
 
     suspend fun getHealthConnectSyncPreferences(): HealthConnectSyncPreferences {

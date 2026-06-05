@@ -36,6 +36,7 @@ import com.trainiq.domain.repository.NutritionRepository
 import com.trainiq.domain.repository.ProgressRepository
 import com.trainiq.domain.repository.WorkoutRepository
 import com.trainiq.core.datastore.UserPreferencesRepository
+import com.trainiq.core.datastore.OnboardingPreferences
 import com.trainiq.core.diagnostics.PerformanceSessionStore
 import com.trainiq.ai.services.AiUsageGate
 import com.trainiq.data.local.TrainIqLocalStore
@@ -70,6 +71,24 @@ class GetHealthConnectStatusUseCase @Inject constructor(private val repository: 
 
 class RefreshDashboardDataUseCase @Inject constructor(private val repository: HomeRepository) {
     suspend operator fun invoke() = repository.refreshDashboardData()
+}
+
+class ObserveOnboardingPreferencesUseCase @Inject constructor(private val preferencesRepository: UserPreferencesRepository) {
+    operator fun invoke() = preferencesRepository.onboardingPreferences
+}
+
+class SaveOnboardingPreferencesUseCase @Inject constructor(private val preferencesRepository: UserPreferencesRepository) {
+    suspend operator fun invoke(preferences: OnboardingPreferences) =
+        preferencesRepository.saveOnboardingPreferences(preferences)
+}
+
+class CompleteOnboardingUseCase @Inject constructor(private val preferencesRepository: UserPreferencesRepository) {
+    suspend operator fun invoke(preferences: OnboardingPreferences) =
+        preferencesRepository.completeOnboarding(preferences)
+}
+
+class ReopenOnboardingUseCase @Inject constructor(private val preferencesRepository: UserPreferencesRepository) {
+    suspend operator fun invoke() = preferencesRepository.reopenOnboarding()
 }
 
 class ObserveWorkoutOverviewUseCase @Inject constructor(private val repository: WorkoutRepository) {

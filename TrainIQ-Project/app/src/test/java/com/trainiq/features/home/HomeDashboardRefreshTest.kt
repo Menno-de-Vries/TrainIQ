@@ -4,6 +4,7 @@ import com.trainiq.domain.model.Exercise
 import com.trainiq.domain.model.HealthConnectMetrics
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
+import com.trainiq.domain.model.HealthConnectStepDataFreshness
 import com.trainiq.domain.model.RoutineSet
 import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutExercisePlan
@@ -27,6 +28,19 @@ class HomeDashboardRefreshTest {
             "Home periodic refresh must be lifecycle-scoped from HomeRoute, not retained forever in HomeViewModel.",
             viewModelBody.contains("while (true)") &&
                 viewModelBody.contains("refreshDashboardDataUseCase()"),
+        )
+    }
+
+    @Test
+    fun homeViewModelTriggersInitialHealthRefreshImmediatelyWithoutStartupDelay() {
+        val source = File("src/main/java/com/trainiq/features/home/HomeScreen.kt").readText()
+        val viewModelBody = source.substringAfter("class HomeViewModel @Inject constructor(")
+            .substringBefore("internal data class HomeHealthRefreshUiState")
+
+        assertTrue(viewModelBody.contains("refreshHealthConnectStatus()"))
+        assertFalse(
+            "Home must not wait 8 seconds before the first Health Connect aggregate refresh.",
+            viewModelBody.contains("delay(8_000L)") || viewModelBody.contains("delay(8000L)"),
         )
     }
 
@@ -148,6 +162,32 @@ class HomeDashboardRefreshTest {
 
         assertTrue(encouragement.contains("Start klein"))
         assertTrue(encouragement.contains("coach direct scherper"))
+    }
+
+    @Test
+    fun healthConnectStepDiagnosticCopyNamesFreshStaleMissingAndSamsungSyncStates() {
+        val fresh = HealthConnectStatus(
+            state = HealthConnectState.CONNECTED,
+            message = "Verbonden",
+            metrics = HealthConnectMetrics(stepsToday = 10_400),
+            lastSyncedAt = 1_800_000L,
+            stepDataFreshness = HealthConnectStepDataFreshness.FRESH,
+            stepDataUpdatedAt = 1_800_000L,
+        )
+        val stale = fresh.copy(
+            stepDataFreshness = HealthConnectStepDataFreshness.STALE_CACHE,
+            stepDataUpdatedAt = 600_000L,
+        )
+        val missing = HealthConnectStatus(
+            state = HealthConnectState.PERMISSION_REQUIRED,
+            message = "Toegang nodig",
+            stepDataFreshness = HealthConnectStepDataFreshness.PERMISSION_MISSING,
+        )
+
+        assertTrue(homeHealthStepDiagnostic(fresh).contains("Live uit Health Connect"))
+        assertTrue(homeHealthStepDiagnostic(stale).contains("Laatste bekende stappen"))
+        assertTrue(homeHealthStepDiagnostic(stale).contains("Samsung Health"))
+        assertTrue(homeHealthStepDiagnostic(missing).contains("Stappentoegang ontbreekt"))
     }
 
     @Test
