@@ -45,9 +45,16 @@ internal fun shouldSendWorkoutReminder(
 
 internal fun mealReminderContent(nowMillis: Long): ReminderContent {
     val options = listOf(
-        "Even checken: iets gegeten of gedronken? Log het kort, dan blijft je plan scherp.",
-        "Kleine food-log nu, betere coaching straks. Zet je maaltijd of snack erin.",
-        "Als je iets hebt gepakt: registreer het even. Je hoeft het niet perfect te maken.",
+        "🥗 Kleine log, scherpe coaching. Zet je maaltijd of snack erin.",
+        "🍽️ Iets gegeten? Leg het kort vast, perfect hoeft niet.",
+        "💧 Ook drankjes tellen mee. Check je dag even bij.",
+        "✨ Eén minuut loggen, de rest van je dag blijft helder.",
+        "📌 Snack of maaltijd gehad? Zet hem erin voordat je het vergeet.",
+        "⚡ Korte food-check. Je macro’s blijven zo lekker scherp.",
+        "🧭 Even bijwerken: wat zat er sinds je laatste log in?",
+        "✅ Klaar in een tik: registreer wat je net hebt gepakt.",
+        "🌿 Houd je plan rustig op koers met een snelle voedingslog.",
+        "🔥 Klein momentje: voeding bijwerken en door.",
     )
     return ReminderContent(
         type = ReminderType.MEAL,
@@ -58,9 +65,16 @@ internal fun mealReminderContent(nowMillis: Long): ReminderContent {
 
 internal fun workoutReminderContent(nowMillis: Long): ReminderContent {
     val options = listOf(
-        "Kom op, pak je krachttraining weer op. Je kan dit.",
-        "Twee dagen geen krachttraining gezien. Plan een korte sessie en bouw rustig door.",
-        "Je bent lekker bezig. Tijd om je volgende sterke sessie neer te zetten.",
+        "💪 Tijd voor je volgende sterke sessie. Kort mag ook.",
+        "⚡ Twee dagen stil? Plan een korte training en bouw door.",
+        "🏋️ Pak je routine weer op. Eén goede oefening telt al.",
+        "🔥 Je hoeft niet maximaal te gaan. Start gewoon slim.",
+        "✅ Krachtprikkel erin vandaag? Je momentum bedankt je straks.",
+        "🧭 Even checken: welke sessie past vandaag het best?",
+        "🌿 Rustig opbouwen is ook winnen. Zet je training klaar.",
+        "📌 Plan je volgende setmoment voordat de dag volloopt.",
+        "🚀 Kleine sessie, grote lijn. Houd je ritme levend.",
+        "✨ Klaar voor progressie? Open TrainIQ en start beheerst.",
     )
     return ReminderContent(
         type = ReminderType.WORKOUT,

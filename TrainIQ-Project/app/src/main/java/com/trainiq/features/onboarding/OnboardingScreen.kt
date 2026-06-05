@@ -68,10 +68,10 @@ import kotlinx.coroutines.launch
 
 enum class OnboardingStep(val title: String, val subtitle: String) {
     WELCOME("Welkom bij TrainIQ", "Een rustige coachlaag boven je Health Connect-, training- en voedingsdata."),
-    GOAL_TRAINING("Doel en training", "Kies genoeg context voor een eerste lokale coachingbasis."),
+    GOAL_TRAINING("Doel en training", "Kies context voor je eerste training, coaching en voedingsdoelen."),
     HEALTH_CONNECT("Health Connect", "Stappen blijven Health Connect-first en worden live ververst zodra Home opent."),
     AI_PRIVACY("AI en privacy", "AI blijft opt-in, lokaal beheerd en alleen actief na jouw expliciete actie."),
-    REMINDERS("Afronden", "Rond af met reminders en privacyverwachtingen. Alles blijft later aanpasbaar."),
+    REMINDERS("Afronden", "Kies reminders en rond af; open setup-taken blijven later zichtbaar."),
 }
 
 data class OnboardingDraft(
@@ -85,6 +85,7 @@ data class OnboardingDraft(
     val healthConnectSkipped: Boolean = false,
     val aiAccepted: Boolean = false,
     val aiSkipped: Boolean = false,
+    val aiSetupDeferred: Boolean = false,
     val remindersEnabled: Boolean = false,
     val privacyAcknowledged: Boolean = false,
 )
@@ -92,6 +93,9 @@ data class OnboardingDraft(
 data class OnboardingContentState(
     val step: OnboardingStep = OnboardingStep.WELCOME,
     val draft: OnboardingDraft = OnboardingDraft(),
+    val completed: Boolean = false,
+    val guidedTourCompleted: Boolean = false,
+    val guidedTourSkipped: Boolean = false,
 ) {
     val canGoBack: Boolean = step.ordinal > 0
     val canComplete: Boolean = draft.privacyAcknowledged
@@ -117,6 +121,8 @@ sealed interface OnboardingEvent {
     data object SkipHealthConnect : OnboardingEvent
     data object AcceptAi : OnboardingEvent
     data object SkipAi : OnboardingEvent
+    data object DeferAiSetup : OnboardingEvent
+    data object ContinueWithoutAi : OnboardingEvent
     data class SetRemindersEnabled(val enabled: Boolean) : OnboardingEvent
     data object AcceptPrivacy : OnboardingEvent
     data object SkipAll : OnboardingEvent
@@ -136,8 +142,10 @@ fun reduceOnboardingState(
     is OnboardingEvent.SetConstraints -> state.copy(draft = state.draft.copy(constraints = event.constraints.take(240)))
     OnboardingEvent.AcceptHealthConnect -> state.copy(draft = state.draft.copy(healthConnectAccepted = true, healthConnectSkipped = false))
     OnboardingEvent.SkipHealthConnect -> state.copy(draft = state.draft.copy(healthConnectAccepted = false, healthConnectSkipped = true))
-    OnboardingEvent.AcceptAi -> state.copy(draft = state.draft.copy(aiAccepted = true, aiSkipped = false))
-    OnboardingEvent.SkipAi -> state.copy(draft = state.draft.copy(aiAccepted = false, aiSkipped = true))
+    OnboardingEvent.AcceptAi,
+    OnboardingEvent.DeferAiSetup -> state.copy(draft = state.draft.copy(aiAccepted = true, aiSkipped = false, aiSetupDeferred = true))
+    OnboardingEvent.SkipAi,
+    OnboardingEvent.ContinueWithoutAi -> state.copy(draft = state.draft.copy(aiAccepted = false, aiSkipped = true, aiSetupDeferred = false))
     is OnboardingEvent.SetRemindersEnabled -> state.copy(draft = state.draft.copy(remindersEnabled = event.enabled))
     OnboardingEvent.AcceptPrivacy -> state.copy(draft = state.draft.copy(privacyAcknowledged = true))
     OnboardingEvent.SkipAll -> state.copy(
@@ -145,6 +153,7 @@ fun reduceOnboardingState(
         draft = state.draft.copy(
             healthConnectSkipped = state.draft.healthConnectSkipped || !state.draft.healthConnectAccepted,
             aiSkipped = state.draft.aiSkipped || !state.draft.aiAccepted,
+            aiSetupDeferred = false,
             privacyAcknowledged = true,
         ),
     )
@@ -153,6 +162,9 @@ fun reduceOnboardingState(
 fun OnboardingPreferences.toOnboardingContentState(): OnboardingContentState =
     OnboardingContentState(
         step = OnboardingStep.WELCOME,
+        completed = completed,
+        guidedTourCompleted = guidedTourCompleted,
+        guidedTourSkipped = guidedTourSkipped,
         draft = OnboardingDraft(
             goal = goal,
             experience = experience,
@@ -164,12 +176,13 @@ fun OnboardingPreferences.toOnboardingContentState(): OnboardingContentState =
             healthConnectSkipped = healthConnectSkipped,
             aiAccepted = aiAccepted,
             aiSkipped = aiSkipped,
+            aiSetupDeferred = aiSetupDeferred,
             remindersEnabled = remindersEnabled,
             privacyAcknowledged = privacyAcknowledged,
         ),
     )
 
-fun OnboardingContentState.toPreferences(completed: Boolean = false): OnboardingPreferences =
+fun OnboardingContentState.toPreferences(completed: Boolean = this.completed): OnboardingPreferences =
     OnboardingPreferences(
         completed = completed,
         goal = draft.goal,
@@ -182,8 +195,11 @@ fun OnboardingContentState.toPreferences(completed: Boolean = false): Onboarding
         healthConnectSkipped = draft.healthConnectSkipped,
         aiAccepted = draft.aiAccepted,
         aiSkipped = draft.aiSkipped,
+        aiSetupDeferred = draft.aiSetupDeferred,
         remindersEnabled = draft.remindersEnabled,
         privacyAcknowledged = draft.privacyAcknowledged,
+        guidedTourCompleted = guidedTourCompleted,
+        guidedTourSkipped = guidedTourSkipped,
     )
 
 data class OnboardingSetupItem(
@@ -193,7 +209,7 @@ data class OnboardingSetupItem(
 
 fun onboardingSetupItems(preferences: OnboardingPreferences): List<OnboardingSetupItem> = buildList {
     if (preferences.goal.isBlank()) {
-        add(OnboardingSetupItem("Doel kiezen", "Leg je trainingsdoel vast voor betere lokale adviezen."))
+        add(OnboardingSetupItem("Profiel en calorie doel", "Leg je doel vast en kies later in Coach eventueel je eigen kcal-doel met auto macro's."))
     }
     if (preferences.healthConnectSkipped || !preferences.healthConnectAccepted) {
         add(OnboardingSetupItem("Health Connect koppelen", "Lees stappen, slaap en training wanneer jij toestemming geeft."))
@@ -204,7 +220,13 @@ fun onboardingSetupItems(preferences: OnboardingPreferences): List<OnboardingSet
     if (!preferences.remindersEnabled) {
         add(OnboardingSetupItem("Herinneringen kiezen", "Laat TrainIQ je rustig herinneren aan food-logs en trainingen."))
     }
+    if (shouldShowGuidedTour(preferences)) {
+        add(OnboardingSetupItem("App-rondleiding afronden", "Loop Start, Training, Voeding, Voortgang, Coach en Instellingen rustig langs."))
+    }
 }
+
+fun shouldShowGuidedTour(preferences: OnboardingPreferences): Boolean =
+    preferences.completed && !preferences.guidedTourCompleted && !preferences.guidedTourSkipped
 
 @HiltViewModel
 class OnboardingViewModel @Inject constructor(
@@ -370,7 +392,8 @@ private fun WelcomeStep() {
         accent = MaterialTheme.trainIqColors.amber,
     ) {
         Text("TrainIQ blijft local-first: jij logt training en voeding, Health Connect levert passieve signalen, en AI blijft opt-in.")
-        Text("Deze setup is volledig skippable. Overgeslagen onderdelen blijven later zichtbaar in Instellingen.")
+        Text("Na deze setup loopt TrainIQ kort met je door Start, Training, Voeding, Voortgang, Coach en Instellingen.")
+        Text("Alles wat je overslaat blijft later zichtbaar als open setup-taak.")
     }
 }
 
@@ -440,13 +463,13 @@ private fun HealthConnectStep(
         subtitle = OnboardingStep.HEALTH_CONNECT.subtitle,
         accent = MaterialTheme.trainIqColors.mint,
     ) {
-        Text("TrainIQ leest stappen via Health Connect aggregate steps. Als Samsung Health meer stappen toont, moet Samsung Health die data eerst naar Health Connect synchroniseren.")
+        Text("TrainIQ leest het dagtotaal uit Health Connect. Samsung Health All steps telt pas mee zodra Samsung Health telefoon- en horlogedata naar Health Connect synchroniseert.")
         Text("Je kunt later altijd via Instellingen terug naar Health Connect en app-permissies.")
         PrimaryActionButton(onClick = onRequestHealthConnect, modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.mint) {
             Text(if (draft.healthConnectAccepted) "Health Connect opnieuw openen" else "Health Connect koppelen")
         }
         SecondaryActionButton(onClick = { onEvent(OnboardingEvent.SkipHealthConnect) }, modifier = Modifier.fillMaxWidth()) {
-            Text(if (draft.healthConnectSkipped) "Overgeslagen" else "Nu overslaan")
+            Text(if (draft.healthConnectSkipped) "Later koppelen gekozen" else "Later koppelen")
         }
     }
 }
@@ -462,13 +485,13 @@ private fun AiPrivacyStep(
         subtitle = OnboardingStep.AI_PRIVACY.subtitle,
         accent = MaterialTheme.colorScheme.tertiary,
     ) {
-        Text("AI staat standaard uit. Als je later een sleutel opslaat, starten verzoeken alleen door expliciete acties zoals advies, rapporten of scans.")
+        Text("AI staat standaard uit. Als je later in Instellingen een sleutel opslaat, starten verzoeken alleen door expliciete acties zoals advies, rapporten of scans.")
         Text("TrainIQ gebruikt JSON-contracten en lokale fallback wanneer AI uitstaat, offline is of geen geldige output geeft.")
-        PrimaryActionButton(onClick = { onEvent(OnboardingEvent.AcceptAi) }, modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.tertiary) {
-            Text(if (draft.aiAccepted) "AI later instellen gekozen" else "AI later instellen")
+        PrimaryActionButton(onClick = { onEvent(OnboardingEvent.DeferAiSetup) }, modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.tertiary) {
+            Text(if (draft.aiSetupDeferred) "Later in Instellingen gekozen" else "Later in Instellingen instellen")
         }
-        SecondaryActionButton(onClick = { onEvent(OnboardingEvent.SkipAi) }, modifier = Modifier.fillMaxWidth()) {
-            Text(if (draft.aiSkipped) "AI overgeslagen" else "AI overslaan")
+        SecondaryActionButton(onClick = { onEvent(OnboardingEvent.ContinueWithoutAi) }, modifier = Modifier.fillMaxWidth()) {
+            Text(if (draft.aiSkipped) "Zonder AI doorgaan gekozen" else "Zonder AI doorgaan")
         }
     }
 }
@@ -597,7 +620,7 @@ private fun OnboardingActions(
                 },
                 modifier = Modifier.weight(1f),
             ) {
-                Text(if (state.step == OnboardingStep.REMINDERS) "Skip en afronden" else "Overslaan")
+                Text("Later afronden")
             }
         }
     }

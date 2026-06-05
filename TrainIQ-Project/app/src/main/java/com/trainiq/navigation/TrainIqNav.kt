@@ -1,12 +1,15 @@
 package com.trainiq.navigation
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -31,6 +34,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -38,8 +42,10 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -65,12 +71,14 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.trainiq.core.datastore.OnboardingPreferences
 import com.trainiq.features.coach.CoachRoute
 import com.trainiq.features.home.HomeRoute
 import com.trainiq.features.nutrition.CameraScannerRoute
 import com.trainiq.features.nutrition.NutritionRoute
 import com.trainiq.features.nutrition.ScannerMode
 import com.trainiq.features.onboarding.OnboardingRoute
+import com.trainiq.features.onboarding.shouldShowGuidedTour
 import com.trainiq.features.progress.ProgressRoute
 import com.trainiq.features.settings.SettingsRoute
 import com.trainiq.features.workout.ActiveWorkoutRoute
@@ -136,11 +144,20 @@ private data class TopLevelDestination(
     val icon: ImageVector,
 )
 
+private data class GuidedTourStep(
+    val destination: TopLevelDestination,
+    val title: String,
+    val body: String,
+    val action: String,
+)
+
 @Composable
 fun TrainIqApp(
     diagnosticsTracker: DiagnosticsTracker,
     windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
-    onboardingCompleted: Boolean = true,
+    onboardingPreferences: OnboardingPreferences = OnboardingPreferences(completed = true, guidedTourCompleted = true),
+    markGuidedTourCompleted: () -> Unit = {},
+    markGuidedTourSkipped: () -> Unit = {},
 ) {
     val navController = rememberNavController()
     val haptics = LocalHapticFeedback.current
@@ -177,6 +194,13 @@ fun TrainIqApp(
     }.takeIf { it >= 0 }
     var navVisible by remember { mutableStateOf(true) }
     var trainDetailMode by remember { mutableStateOf(false) }
+    var guidedTourIndex by remember(
+        onboardingPreferences.completed,
+        onboardingPreferences.guidedTourCompleted,
+        onboardingPreferences.guidedTourSkipped,
+    ) { mutableStateOf(0) }
+    val guidedTourSteps = remember(items) { guidedTourSteps(items) }
+    val showGuidedTour = shouldShowGuidedTour(onboardingPreferences) && !isOnboardingDestination
     val navOffset by animateDpAsState(
         targetValue = if (navVisible) 0.dp else 28.dp,
         animationSpec = tween(durationMillis = 420),
@@ -191,6 +215,12 @@ fun TrainIqApp(
         val isTrainDestination = currentDestination?.hierarchy?.any { it.hasRoute(Train::class) } == true
         if (shouldClearTrainDetailMode(isTrainDestination, currentTopLevelIndex != null)) {
             trainDetailMode = false
+        }
+    }
+    LaunchedEffect(showGuidedTour, guidedTourIndex) {
+        if (!showGuidedTour) return@LaunchedEffect
+        guidedTourSteps.getOrNull(guidedTourIndex)?.let { step ->
+            navController.navigateTopLevel(step.destination)
         }
     }
 
@@ -313,7 +343,7 @@ fun TrainIqApp(
                 navController = navController,
                 topLevelDestinations = items,
                 windowWidthClass = windowWidthClass,
-                onboardingCompleted = onboardingCompleted,
+                onboardingPreferences = onboardingPreferences,
                 onTrainDetailModeChanged = { trainDetailMode = it },
                 modifier = Modifier
                     .padding(padding)
@@ -334,6 +364,26 @@ fun TrainIqApp(
                     ),
             )
         }
+        }
+        if (showGuidedTour) {
+            val step = guidedTourSteps[guidedTourIndex.coerceIn(0, guidedTourSteps.lastIndex)]
+            GuidedTourOverlay(
+                step = step,
+                index = guidedTourIndex,
+                total = guidedTourSteps.size,
+                onBack = { guidedTourIndex = (guidedTourIndex - 1).coerceAtLeast(0) },
+                onNext = {
+                    if (guidedTourIndex >= guidedTourSteps.lastIndex) {
+                        markGuidedTourCompleted()
+                    } else {
+                        guidedTourIndex += 1
+                    }
+                },
+                onSkip = markGuidedTourSkipped,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 16.dp, vertical = 20.dp),
+            )
         }
     }
 }
@@ -396,6 +446,51 @@ internal fun compactBottomNavigationRouteClasses(): List<KClass<*>> =
 internal fun compactSwipeNavigationRouteClasses(): List<KClass<*>> =
     compactBottomNavigationRouteClasses()
 
+internal fun guidedTourTopLevelRouteClasses(): List<KClass<*>> =
+    listOf(Home::class, Train::class, Nutrition::class, Progress::class, Coach::class, Settings::class)
+
+private fun guidedTourSteps(items: List<TopLevelDestination>): List<GuidedTourStep> {
+    val byRoute = items.associateBy { it.routeClass }
+    return listOf(
+        GuidedTourStep(
+            destination = byRoute.getValue(Home::class),
+            title = "Start",
+            body = "Hier zie je je eerstvolgende training, energie-inname en Health Connect-signalen bij elkaar.",
+            action = "Check je dagstatus en open je volgende actie.",
+        ),
+        GuidedTourStep(
+            destination = byRoute.getValue(Train::class),
+            title = "Training",
+            body = "Hier bouw je routines, start je een workout en bekijk je krachtgeschiedenis.",
+            action = "Maak of start je eerste routine.",
+        ),
+        GuidedTourStep(
+            destination = byRoute.getValue(Nutrition::class),
+            title = "Voeding",
+            body = "Hier log je maaltijden handmatig, met barcode of met AI-fotoherkenning wanneer jij dat kiest.",
+            action = "Leg je eerste maaltijd of product vast.",
+        ),
+        GuidedTourStep(
+            destination = byRoute.getValue(Progress::class),
+            title = "Voortgang",
+            body = "Hier volg je lichaamsmetingen, krachttrend en historie zonder ontbrekende data als nul te behandelen.",
+            action = "Voeg een lichaamsmeting toe of bekijk je trends.",
+        ),
+        GuidedTourStep(
+            destination = byRoute.getValue(Coach::class),
+            title = "Coach",
+            body = "Hier beheer je profiel, calorie doel, auto macro's, weekrapporten en expliciet advies.",
+            action = "Vul je profiel en calorie doel in voor betere coaching.",
+        ),
+        GuidedTourStep(
+            destination = byRoute.getValue(Settings::class),
+            title = "Instellingen",
+            body = "Hier beheer je Health Connect, AI-sleutels, privacy, export/import, thema en reminders.",
+            action = "Controleer Health Connect, AI en reminders wanneer je setup nog openstaat.",
+        ),
+    )
+}
+
 fun adaptiveDashboardGridColumns(widthClass: TrainIqWindowWidthClass): Int = when (widthClass) {
     TrainIqWindowWidthClass.Compact -> 2
     TrainIqWindowWidthClass.Medium -> 3
@@ -428,6 +523,68 @@ private fun androidx.navigation.NavDestination?.screenName(): String = when {
     hierarchy.any { it.hasRoute(WorkoutCompletion::class) } -> "WorkoutCompletion"
     hierarchy.any { it.hasRoute(ExerciseHistory::class) } -> "ExerciseHistory"
     else -> route.orEmpty().ifBlank { "Unknown" }
+}
+
+@Composable
+private fun GuidedTourOverlay(
+    step: GuidedTourStep,
+    index: Int,
+    total: Int,
+    onBack: () -> Unit,
+    onNext: () -> Unit,
+    onSkip: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 176.dp),
+        color = MaterialTheme.trainIqColors.card,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        tonalElevation = 0.dp,
+        shadowElevation = 8.dp,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.trainIqColors.cardBorder),
+        shape = RoundedCornerShape(MaterialTheme.radii.card),
+    ) {
+        Column(
+            modifier = Modifier.padding(MaterialTheme.radii.card),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "Stap ${index + 1} van $total",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(step.title, style = MaterialTheme.typography.titleLarge)
+            Text(step.body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
+            Text(step.action, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedButton(
+                    onClick = onBack,
+                    enabled = index > 0,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Terug")
+                }
+                TextButton(
+                    onClick = onSkip,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Later afronden")
+                }
+                Button(
+                    onClick = onNext,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(if (index == total - 1) "Tour afronden" else "Volgende")
+                }
+            }
+        }
+    }
 }
 
 private fun Modifier.topLevelTabSwipeNavigation(
@@ -467,13 +624,13 @@ private fun TrainIqNavHost(
     navController: NavHostController,
     topLevelDestinations: List<TopLevelDestination>,
     windowWidthClass: TrainIqWindowWidthClass,
-    onboardingCompleted: Boolean,
+    onboardingPreferences: OnboardingPreferences,
     onTrainDetailModeChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     NavHost(
         navController = navController,
-        startDestination = if (onboardingCompleted) Home else Onboarding,
+        startDestination = if (onboardingPreferences.completed) Home else Onboarding,
         modifier = modifier,
     ) {
         composable<Onboarding> {

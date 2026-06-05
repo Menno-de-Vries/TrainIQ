@@ -331,6 +331,22 @@ class NutritionInputValidationTest {
     }
 
     @Test
+    fun mealEntryRowGivesLongNamesFullWidthAndMovesCaloriesIntoMacroArea() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val mealEntryRow = source.substringAfter("private fun MealEntryRow(").substringBefore("if (showActions)")
+
+        assertTrue(mealEntryRow.contains("Text(meal.name"))
+        assertFalse(mealEntryRow.contains("horizontalArrangement = Arrangement.SpaceBetween"))
+        assertFalse(mealEntryRow.contains("Text(\"\${formatNumber(meal.totalNutrition.calories)} kcal\", color = MaterialTheme.colorScheme.primary)"))
+        assertTrue(mealEntryRow.contains("NutritionMetricPill("))
+        assertTrue(mealEntryRow.contains("Kcal"))
+        assertTrue(mealEntryRow.contains("Eiwit"))
+        assertTrue(mealEntryRow.contains("Kh"))
+        assertTrue(mealEntryRow.contains("Vet"))
+        assertTrue(mealEntryRow.contains("maxLines = 2"))
+    }
+
+    @Test
     fun nutritionBrowsingList_doesNotClearFocusOnInitialDrag() {
         val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
         val browsingList = source.substringAfter("state = nutritionListState,").substringBefore("contentPadding = PaddingValues(")

@@ -87,11 +87,12 @@ fun buildGoalBaseline(
     sex: BiologicalSex,
     activityLevel: String,
     goal: String,
+    manualCalorieTarget: Int? = null,
 ): GoalBaseline {
     val bmr = mifflinStJeorBmr(weightKg = weightKg, heightCm = heightCm, age = age, sex = sex)
     val activityMultiplier = activityLevel.toActivityMultiplier()
     val maintenanceCalories = (bmr * activityMultiplier).roundToInt()
-    val targetCalories = when {
+    val calculatedTargetCalories = when {
         goal.contains("cut", ignoreCase = true) || goal.contains("fat", ignoreCase = true) || goal.contains("lose", ignoreCase = true) ->
             (maintenanceCalories * 0.90).roundToInt()
         goal.contains("bulk", ignoreCase = true) || goal.contains("gain", ignoreCase = true) ->
@@ -100,6 +101,7 @@ fun buildGoalBaseline(
             (maintenanceCalories * 0.92).roundToInt()
         else -> maintenanceCalories
     }
+    val targetCalories = manualCalorieTarget ?: calculatedTargetCalories
     val hasUsableBodyFat = bodyFat in 5.0..60.0
     val leanMassKg = if (hasUsableBodyFat) weightKg * (1.0 - bodyFat / 100.0) else weightKg
     val proteinReferenceKg = if (hasUsableBodyFat) leanMassKg else weightKg

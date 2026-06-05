@@ -5,11 +5,18 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -44,17 +51,22 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
             val telemetryOptIn by viewModel.telemetryOptIn.collectAsStateWithLifecycle()
-            val onboardingPreferences by viewModel.onboardingPreferences.collectAsStateWithLifecycle()
+            val onboardingState by viewModel.onboardingState.collectAsStateWithLifecycle()
             val windowSizeClass = calculateWindowSizeClass(this)
             LaunchedEffect(telemetryOptIn) {
                 telemetryExporter.setUserOptIn(telemetryOptIn)
             }
             TrainIqTheme(themeMode = themeMode) {
-                TrainIqApp(
-                    diagnosticsTracker = diagnosticsTracker,
-                    windowWidthClass = windowSizeClass.widthSizeClass.toTrainIqWidthClass(),
-                    onboardingCompleted = onboardingPreferences.completed,
-                )
+                when (val onboardingState = onboardingState) {
+                    MainOnboardingState.Loading -> TrainIqStartupGate()
+                    is MainOnboardingState.Ready -> TrainIqApp(
+                        diagnosticsTracker = diagnosticsTracker,
+                        windowWidthClass = windowSizeClass.widthSizeClass.toTrainIqWidthClass(),
+                        onboardingPreferences = onboardingState.preferences,
+                        markGuidedTourCompleted = viewModel::markGuidedTourCompleted,
+                        markGuidedTourSkipped = viewModel::markGuidedTourSkipped,
+                    )
+                }
             }
         }
         window.decorView.postDelayed({
@@ -86,6 +98,20 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         performanceSessionMonitor.stop()
         super.onDestroy()
+    }
+}
+
+@Composable
+private fun TrainIqStartupGate() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "TrainIQ laden",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
     }
 }
 

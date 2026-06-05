@@ -663,6 +663,59 @@ enum class HealthConnectStepDataFreshness {
     ERROR,
 }
 
+enum class HealthConnectStepDiagnosticFreshness {
+    FRESH,
+    STALE,
+}
+
+data class HealthConnectStepDiagnostic(
+    val aggregateStepsToday: Int,
+    val queriedAt: Long,
+    val sourceLabels: List<String> = emptyList(),
+    val latestSamsungSourceSeenAt: Long? = null,
+    val dayStartLabel: String = "",
+    val dayEndLabel: String = "",
+) {
+    val displaySteps: Int
+        get() = aggregateStepsToday
+
+    val sourceSummary: String
+        get() = sourceLabels.distinct().joinToString(", ").ifBlank { "Geen bronlabels zichtbaar" }
+
+    val hasSamsungHealthSource: Boolean
+        get() = sourceLabels.any { it.contains("Samsung", ignoreCase = true) }
+
+    val queryWindowSummary: String
+        get() = if (dayStartLabel.isNotBlank() && dayEndLabel.isNotBlank()) {
+            "$dayStartLabel-$dayEndLabel"
+        } else {
+            "vandaag"
+        }
+
+    val aggregateAuthorityLabel: String
+        get() = "TrainIQ toont de Health Connect aggregate als dagtotaal; bronlabels zijn alleen diagnose."
+
+    fun freshness(nowMillis: Long = System.currentTimeMillis()): HealthConnectStepDiagnosticFreshness =
+        if (nowMillis - queriedAt < StepDiagnosticFreshMillis) {
+            HealthConnectStepDiagnosticFreshness.FRESH
+        } else {
+            HealthConnectStepDiagnosticFreshness.STALE
+        }
+
+    fun samsungHealthSyncGuidance(nowMillis: Long = System.currentTimeMillis()): String = when {
+        !hasSamsungHealthSource ->
+            "Geen Samsung Health-bron gezien in Health Connect. Controleer Samsung Health > Instellingen > Health Connect > App permissions > Samsung Health, open Samsung Health daarna opnieuw en gebruik Sync now."
+        freshness(nowMillis) == HealthConnectStepDiagnosticFreshness.STALE ->
+            "Samsung Health is zichtbaar, maar deze stapcheck is niet vers. Gebruik Sync now en vernieuw TrainIQ als Samsung Health All steps hoger blijft."
+        else ->
+            "Samsung Health-data is zichtbaar in Health Connect."
+    }
+
+    private companion object {
+        const val StepDiagnosticFreshMillis = 15 * 60 * 1000L
+    }
+}
+
 data class HealthMetricStatus(
     val metric: HealthMetricType,
     val state: HealthMetricSyncState,
@@ -690,6 +743,7 @@ data class HealthConnectStatus(
     val metricStatuses: List<HealthMetricStatus> = emptyList(),
     val stepDataFreshness: HealthConnectStepDataFreshness = HealthConnectStepDataFreshness.UNKNOWN,
     val stepDataUpdatedAt: Long? = lastSyncedAt,
+    val stepDiagnostic: HealthConnectStepDiagnostic? = null,
 ) {
     val stepsToday: Int?
         get() = metrics?.stepsToday

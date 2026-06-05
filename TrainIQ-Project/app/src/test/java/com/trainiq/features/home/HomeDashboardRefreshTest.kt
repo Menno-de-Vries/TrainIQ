@@ -4,6 +4,7 @@ import com.trainiq.domain.model.Exercise
 import com.trainiq.domain.model.HealthConnectMetrics
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
+import com.trainiq.domain.model.HealthConnectStepDiagnostic
 import com.trainiq.domain.model.HealthConnectStepDataFreshness
 import com.trainiq.domain.model.RoutineSet
 import com.trainiq.domain.model.WorkoutDay
@@ -188,6 +189,35 @@ class HomeDashboardRefreshTest {
         assertTrue(homeHealthStepDiagnostic(stale).contains("Laatste bekende stappen"))
         assertTrue(homeHealthStepDiagnostic(stale).contains("Samsung Health"))
         assertTrue(homeHealthStepDiagnostic(missing).contains("Stappentoegang ontbreekt"))
+    }
+
+    @Test
+    fun homeHealthConnectFreshDiagnosticStaysCompactAndHidesSamsungDebugGuidance() {
+        val status = HealthConnectStatus(
+            state = HealthConnectState.CONNECTED,
+            message = "Verbonden",
+            metrics = HealthConnectMetrics(stepsToday = 10_400),
+            lastSyncedAt = 1_800_000L,
+            stepDataFreshness = HealthConnectStepDataFreshness.FRESH,
+            stepDataUpdatedAt = 1_800_000L,
+            stepDiagnostic = HealthConnectStepDiagnostic(
+                aggregateStepsToday = 10_400,
+                queriedAt = 1_800_000L - 20 * 60 * 1000L,
+                sourceLabels = listOf("Samsung Health", "Health Connect"),
+                dayStartLabel = "00:00",
+                dayEndLabel = "23:59",
+            ),
+        )
+
+        val copy = homeHealthStepDiagnostic(status)
+
+        assertTrue(copy.contains("Live uit Health Connect"))
+        assertTrue(copy.contains("aggregate stappen bijgewerkt om"))
+        assertTrue(copy.contains("Venster: 00:00-23:59"))
+        assertTrue(copy.contains("Bronnen:"))
+        assertFalse(copy.contains("Sync now"))
+        assertFalse(copy.contains("Samsung Health >"))
+        assertFalse(copy.contains("App permissions"))
     }
 
     @Test

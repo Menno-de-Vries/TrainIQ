@@ -89,11 +89,59 @@ class GoalAdviceInputTest {
             sex = BiologicalSex.MALE,
             activityLevel = "Moderately active",
             goal = "Lean bulk",
+            manualCalorieTarget = "3050",
         )
 
         assertEquals(180.5, input?.height)
         assertEquals(80.2, input?.weight)
         assertEquals(15.5, input?.bodyFat)
+        assertEquals(3050, input?.manualCalorieTarget)
+    }
+
+    @Test
+    fun buildGoalAdviceInput_withBlankManualCalorieTargetKeepsAutomaticMode() {
+        val input = buildGoalAdviceInput(
+            name = "Sam",
+            height = "180",
+            weight = "80",
+            bodyFat = "15",
+            age = "34",
+            sex = BiologicalSex.MALE,
+            activityLevel = "Gemiddeld actief",
+            goal = "Lean bulk",
+            manualCalorieTarget = "",
+        )
+
+        assertNull(input?.manualCalorieTarget)
+    }
+
+    @Test
+    fun buildGoalAdviceInput_withOutOfRangeManualCalorieTargetReturnsNull() {
+        val tooLow = buildGoalAdviceInput(
+            name = "Sam",
+            height = "180",
+            weight = "80",
+            bodyFat = "15",
+            age = "34",
+            sex = BiologicalSex.MALE,
+            activityLevel = "Gemiddeld actief",
+            goal = "Lean bulk",
+            manualCalorieTarget = "900",
+        )
+        val tooHigh = buildGoalAdviceInput(
+            name = "Sam",
+            height = "180",
+            weight = "80",
+            bodyFat = "15",
+            age = "34",
+            sex = BiologicalSex.MALE,
+            activityLevel = "Gemiddeld actief",
+            goal = "Lean bulk",
+            manualCalorieTarget = "6500",
+        )
+
+        assertNull(tooLow)
+        assertNull(tooHigh)
     }
 
     @Test
@@ -212,7 +260,9 @@ class GoalAdviceInputTest {
 
         assertTrue(goalAdviceCard.contains("FlowRow("))
         assertTrue(goalAdviceCard.contains("MetricPill(\"Eiwit\""))
-        assertTrue(goalAdviceCard.contains("MetricPill(\"Onderhoud\""))
+        assertTrue(goalAdviceCard.contains("MetricPill(\"Berekend onderhoud\""))
+        assertTrue(goalAdviceCard.contains("MetricPill(\"Jouw doel\""))
+        assertTrue(goalAdviceCard.contains("Auto macro"))
         assertFalse(goalAdviceCard.contains("horizontalArrangement = Arrangement.SpaceBetween"))
         assertTrue(adviceSurface.contains("MaterialTheme.trainIqColors.amber"))
     }

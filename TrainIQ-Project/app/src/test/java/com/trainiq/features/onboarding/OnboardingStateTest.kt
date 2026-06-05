@@ -34,8 +34,28 @@ class OnboardingStateTest {
         assertTrue(configured.draft.healthConnectSkipped)
         assertFalse(configured.draft.aiAccepted)
         assertTrue(configured.draft.aiSkipped)
+        assertFalse(configured.draft.aiSetupDeferred)
         assertTrue(configured.draft.remindersEnabled)
         assertTrue(configured.canComplete)
+    }
+
+    @Test
+    fun onboardingReducerDistinguishesDeferredAiSetupFromNoAiChoice() {
+        val deferred = reduceOnboardingState(
+            OnboardingContentState(step = OnboardingStep.AI_PRIVACY),
+            OnboardingEvent.DeferAiSetup,
+        )
+        val noAi = reduceOnboardingState(
+            OnboardingContentState(step = OnboardingStep.AI_PRIVACY),
+            OnboardingEvent.ContinueWithoutAi,
+        )
+
+        assertTrue(deferred.draft.aiAccepted)
+        assertTrue(deferred.draft.aiSetupDeferred)
+        assertFalse(deferred.draft.aiSkipped)
+        assertFalse(noAi.draft.aiAccepted)
+        assertFalse(noAi.draft.aiSetupDeferred)
+        assertTrue(noAi.draft.aiSkipped)
     }
 
     @Test
@@ -45,6 +65,7 @@ class OnboardingStateTest {
         assertEquals(OnboardingStep.REMINDERS, skipped.step)
         assertTrue(skipped.draft.healthConnectSkipped)
         assertTrue(skipped.draft.aiSkipped)
+        assertFalse(skipped.draft.aiSetupDeferred)
         assertTrue(skipped.draft.privacyAcknowledged)
         assertTrue(skipped.canComplete)
     }
@@ -66,6 +87,7 @@ class OnboardingStateTest {
             healthConnectSkipped = true,
             aiSkipped = true,
             remindersEnabled = false,
+            guidedTourCompleted = false,
         )
 
         val items = onboardingSetupItems(preferences)
@@ -73,5 +95,14 @@ class OnboardingStateTest {
         assertTrue(items.any { it.title == "Health Connect koppelen" })
         assertTrue(items.any { it.title == "AI-coach instellen" })
         assertTrue(items.any { it.title == "Herinneringen kiezen" })
+        assertTrue(items.any { it.title == "App-rondleiding afronden" })
+    }
+
+    @Test
+    fun onboardingCompletionStartsGuidedTourUntilItIsCompletedOrSkipped() {
+        assertTrue(shouldShowGuidedTour(OnboardingPreferences(completed = true)))
+        assertFalse(shouldShowGuidedTour(OnboardingPreferences(completed = true, guidedTourCompleted = true)))
+        assertFalse(shouldShowGuidedTour(OnboardingPreferences(completed = true, guidedTourSkipped = true)))
+        assertFalse(shouldShowGuidedTour(OnboardingPreferences(completed = false)))
     }
 }

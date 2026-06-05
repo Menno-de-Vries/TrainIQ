@@ -31,6 +31,7 @@ import com.trainiq.data.mapper.toCachedStepRecord
 import com.trainiq.data.mapper.toDomainMetrics
 import com.trainiq.domain.model.HealthConnectMetrics
 import com.trainiq.domain.model.HealthConnectState
+import com.trainiq.domain.model.HealthConnectStepDiagnostic
 import com.trainiq.domain.model.HealthConnectStatus
 import com.trainiq.domain.model.HealthConnectStepDataFreshness
 import com.trainiq.domain.model.HealthMetricStatus
@@ -41,6 +42,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
@@ -247,6 +249,7 @@ class HealthConnectDataSource @Inject constructor(
         initialCacheState: HealthConnectCacheState = HealthConnectCacheState(),
     ): SyncPayload {
         val now = Instant.now()
+        val syncQueriedAt = System.currentTimeMillis()
         val metricFailures = mutableMapOf<HealthMetricType, String>()
         val stepsToday = if (HealthMetricType.STEPS in metricsToSync) readMetricOrDefault(
             HealthMetricType.STEPS,
@@ -255,6 +258,11 @@ class HealthConnectDataSource @Inject constructor(
         ) {
             aggregateStepsToday(client)
         } else initialCacheState.aggregatedStepsToday
+        val stepDiagnostic = if (HealthMetricType.STEPS in metricsToSync) {
+            buildStepDiagnostic(client, stepsToday.toInt(), syncQueriedAt)
+        } else {
+            null
+        }
         val heartRateRecords = if (HealthMetricType.HEART_RATE in metricsToSync) readMetricOrDefault(
             HealthMetricType.HEART_RATE,
             metricFailures,
@@ -312,6 +320,7 @@ class HealthConnectDataSource @Inject constructor(
 
         return SyncPayload(
             cacheState = cacheState,
+            stepDiagnostic = stepDiagnostic,
             nextChangesTokens = nextChangesTokens,
             lastSyncedAt = lastSyncedAt,
             metricStatuses = buildHealthMetricSyncStatuses(
@@ -414,6 +423,11 @@ class HealthConnectDataSource @Inject constructor(
         // older DataStore entries have aggregatedStepsToday == 0 (pre-migration).
         val shouldRefreshSteps = HealthMetricType.STEPS in metricTokens.keys
         val freshSteps = if (shouldRefreshSteps) aggregateStepsToday(client) else initialCacheState.aggregatedStepsToday
+        val stepDiagnostic = if (shouldRefreshSteps) {
+            buildStepDiagnostic(client, freshSteps.toInt(), System.currentTimeMillis())
+        } else {
+            null
+        }
         val hasFreshAggregateData = shouldRefreshSteps && freshSteps != initialCacheState.aggregatedStepsToday
         val lastSyncedAt = if (hasNewUiData || hasFreshAggregateData || metricFailures.isNotEmpty()) {
             System.currentTimeMillis()
@@ -423,6 +437,7 @@ class HealthConnectDataSource @Inject constructor(
 
         return SyncPayload(
             cacheState = normalizedCacheState.copy(aggregatedStepsToday = freshSteps),
+            stepDiagnostic = stepDiagnostic,
             nextChangesTokens = nextMetricTokens,
             lastSyncedAt = lastSyncedAt,
             metricStatuses = buildHealthMetricSyncStatuses(
@@ -536,8 +551,55 @@ class HealthConnectDataSource @Inject constructor(
                 freshness == HealthConnectStepDataFreshness.FRESH ||
                     freshness == HealthConnectStepDataFreshness.STALE_CACHE
             },
+            stepDiagnostic = stepDiagnostic,
         )
     }
+
+    private suspend fun buildStepDiagnostic(
+        client: HealthConnectClient,
+        aggregateStepsToday: Int,
+        queriedAt: Long,
+    ): HealthConnectStepDiagnostic {
+        val todayRange = healthConnectTodayLocalDateTimeRange(LocalDateTime.now())
+        val sourceSnapshot = readStepSourceSnapshotToday(client, todayRange)
+        return HealthConnectStepDiagnostic(
+            aggregateStepsToday = aggregateStepsToday,
+            queriedAt = queriedAt,
+            sourceLabels = sourceSnapshot.labels,
+            latestSamsungSourceSeenAt = sourceSnapshot.latestSamsungSeenAt,
+            dayStartLabel = todayRange.start.format(StepDiagnosticTimeFormatter),
+            dayEndLabel = todayRange.end.format(StepDiagnosticTimeFormatter),
+        )
+    }
+
+    private suspend fun readStepSourceSnapshotToday(
+        client: HealthConnectClient,
+        todayRange: HealthConnectLocalDateTimeRange,
+    ): StepSourceSnapshot = runCatching {
+        var latestSamsungSeenAt: Long? = null
+        val labels = client.readAllRecords(
+            recordType = StepsRecord::class,
+            timeRangeFilter = TimeRangeFilter.between(todayRange.start, todayRange.end),
+        ) { record ->
+            val label = record.metadata.dataOrigin.packageName.toStepSourceLabel()
+            if (label == "Samsung Health") {
+                val endMillis = record.endTime.toEpochMilli()
+                latestSamsungSeenAt = maxOf(latestSamsungSeenAt ?: endMillis, endMillis)
+            }
+            label
+        }.distinct().sorted()
+        StepSourceSnapshot(labels = labels, latestSamsungSeenAt = latestSamsungSeenAt)
+    }.getOrDefault(StepSourceSnapshot())
+
+    private suspend fun readStepSourceLabelsToday(client: HealthConnectClient): List<String> = runCatching {
+        val todayRange = healthConnectTodayLocalDateTimeRange(LocalDateTime.now())
+        client.readAllRecords(
+            recordType = StepsRecord::class,
+            timeRangeFilter = TimeRangeFilter.between(todayRange.start, todayRange.end),
+        ) { record ->
+            record.metadata.dataOrigin.packageName.toStepSourceLabel()
+        }.distinct().sorted()
+    }.getOrDefault(emptyList())
 
     private fun stepDataFreshness(
         metrics: HealthConnectMetrics,
@@ -664,8 +726,14 @@ class HealthConnectDataSource @Inject constructor(
 
     private companion object {
         const val HealthConnectReadPageSize = 100
+        val StepDiagnosticTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
     }
 }
+
+private data class StepSourceSnapshot(
+    val labels: List<String> = emptyList(),
+    val latestSamsungSeenAt: Long? = null,
+)
 
 internal data class HealthConnectLocalDateTimeRange(
     val start: LocalDateTime,
@@ -756,6 +824,7 @@ internal fun HealthConnectCacheState.onlyMetrics(metrics: Set<HealthMetricType>)
 internal data class SyncPayload(
     val cacheState: HealthConnectCacheState,
     val lastSyncedAt: Long,
+    val stepDiagnostic: HealthConnectStepDiagnostic? = null,
     val nextChangesTokens: Map<HealthMetricType, String> = emptyMap(),
     val nextChangesToken: String = nextChangesTokens[HealthMetricType.STEPS].orEmpty(),
     val metricStatuses: List<HealthMetricStatus> = buildHealthMetricSyncStatuses(
@@ -772,6 +841,10 @@ internal fun cachedIncrementalFailurePayload(
 ): SyncPayload = SyncPayload(
     cacheState = cachedState,
     lastSyncedAt = storedState.lastSyncedAt,
+    stepDiagnostic = HealthConnectStepDiagnostic(
+        aggregateStepsToday = cachedState.toDomainMetrics().stepsToday,
+        queriedAt = storedState.lastSyncedAt,
+    ),
     nextChangesTokens = storedState.resolvedMetricChangesTokens(HealthConnectSyncMetricTypes),
     nextChangesToken = storedState.changesToken,
     metricStatuses = buildHealthMetricSyncStatuses(
@@ -788,6 +861,10 @@ internal fun fullSyncTokenFailurePayload(
 ): SyncPayload = SyncPayload(
     cacheState = cacheState,
     lastSyncedAt = lastSyncedAt,
+    stepDiagnostic = HealthConnectStepDiagnostic(
+        aggregateStepsToday = cacheState.toDomainMetrics().stepsToday,
+        queriedAt = lastSyncedAt,
+    ),
     nextChangesTokens = emptyMap(),
     metricStatuses = buildHealthMetricSyncStatuses(
         metrics = HealthConnectSyncMetricTypes,
@@ -830,6 +907,13 @@ internal fun hasHealthConnectPermission(
     grantedPermissions: Set<String>,
     requiredPermission: String,
 ): Boolean = requiredPermission in grantedPermissions
+
+internal fun String.toStepSourceLabel(): String = when {
+    contains("samsung", ignoreCase = true) -> "Samsung Health"
+    this == "android" || contains("healthconnect.phone", ignoreCase = true) -> "Jouw telefoon"
+    isBlank() -> "Onbekende bron"
+    else -> this
+}
 
 internal fun buildHealthMetricPermissionStatuses(
     grantedPermissions: Set<String>,

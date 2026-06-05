@@ -1856,15 +1856,24 @@ private fun ActiveRoutineCard(
                         Text(activeRoutineSetupLabel())
                     }
                 } else {
-                    Button(
-                        onClick = { onStartWorkout(startableDay.id) },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            activeRoutineStartLabel(startableDay.name),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { onStartWorkout(startableDay.id) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                activeRoutineStartLabel(startableDay.name),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = { onOpenDetails(activeRoutine.id) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Rounded.Edit, contentDescription = null)
+                            Text("Routine aanpassen")
+                        }
                     }
                 }
             }
@@ -1971,27 +1980,61 @@ private fun HistoryCard(session: WorkoutSessionSummary, onDelete: (Long) -> Unit
                 }
                 TextButton(onClick = { onDelete(session.id) }) { Text("Verwijderen") }
             }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                AppChip(label = "${session.duration / 60} min", accent = MaterialTheme.trainIqColors.blue)
-                AppChip(label = "${session.totalVolume.toInt()} kg volume", accent = MaterialTheme.trainIqColors.blue)
-                AppChip(label = "${session.exerciseCount} oefeningen", accent = MaterialTheme.trainIqColors.mint)
-                AppChip(label = "${session.setsLogged} sets", accent = MaterialTheme.trainIqColors.mint)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                HistoryMetricTile("Duur", "${session.duration / 60} min", MaterialTheme.trainIqColors.blue)
+                HistoryMetricTile("Oefeningen", session.exerciseCount.toString(), MaterialTheme.trainIqColors.mint)
+                HistoryMetricTile("Sets", session.setsLogged.toString(), MaterialTheme.trainIqColors.mint)
+                HistoryMetricTile("Volume", "${session.totalVolume.toInt()} kg", MaterialTheme.trainIqColors.blue)
                 if (session.strongestSetLabel.isNotBlank()) {
-                    AppChip(label = "Topset ${session.strongestSetLabel}", accent = MaterialTheme.trainIqColors.amber)
+                    HistoryMetricTile("Topset", session.strongestSetLabel, MaterialTheme.trainIqColors.amber)
                 }
                 if (session.debriefRecoveryScore > 0) {
-                    AppChip(label = "Herstel ${session.debriefRecoveryScore}/100", accent = intensityContentColor(session.debriefIntensitySignal))
+                    HistoryMetricTile("Herstel", "${session.debriefRecoveryScore}/100", intensityContentColor(session.debriefIntensitySignal))
                 }
             }
             session.debriefSummary.takeIf { it.isNotBlank() }?.let {
-                AiSummaryLead(text = it)
+                HistoryDebriefBlock(title = "Samenvatting", body = it)
             }
             session.debriefRecommendation.takeIf { it.isNotBlank() }?.let {
-                Text("Advies: $it", style = MaterialTheme.typography.bodyMedium)
+                HistoryDebriefBlock(title = "Advies", body = it)
             }
             session.debriefNextSessionFocus.takeIf { it.isNotBlank() }?.let {
-                Text("Volgende focus: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                HistoryDebriefBlock(title = "Volgende focus", body = it)
             }
+        }
+    }
+}
+
+@Composable
+private fun HistoryMetricTile(label: String, value: String, accent: Color) {
+    Surface(
+        modifier = Modifier
+            .defaultMinSize(minWidth = 132.dp)
+            .heightIn(min = 72.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = accent.copy(alpha = 0.12f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
+private fun HistoryDebriefBlock(title: String, body: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

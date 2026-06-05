@@ -1743,14 +1743,16 @@ private fun DailyMealsDashboard(
                 color = MaterialTheme.trainIqColors.mutedText,
             )
         }
-        sections.forEach { type ->
-            MealSectionCard(
-                mealType = type,
-                meals = overview?.todaysMealsByType?.get(type).orEmpty(),
-                onAdd = { onAddToMeal(type) },
-                onEditMeal = onEditMeal,
-                onDeleteMeal = onDeleteMeal,
-            )
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            sections.forEach { type ->
+                MealSectionCard(
+                    mealType = type,
+                    meals = overview?.todaysMealsByType?.get(type).orEmpty(),
+                    onAdd = { onAddToMeal(type) },
+                    onEditMeal = onEditMeal,
+                    onDeleteMeal = onDeleteMeal,
+                )
+            }
         }
     }
 }
@@ -1774,7 +1776,7 @@ private fun MealSectionCard(
         },
         tonalElevation = 0.dp,
     ) {
-        Column(modifier = Modifier.padding(MaterialTheme.spacing.medium), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(modifier = Modifier.padding(MaterialTheme.spacing.medium), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1832,22 +1834,20 @@ private fun MealEntryRow(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         onClick = { showActions = true },
     ) {
-        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(meal.name, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${formatNumber(meal.totalNutrition.calories)} kcal", color = MaterialTheme.colorScheme.primary)
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(meal.name, modifier = Modifier.fillMaxWidth(), fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                NutritionMetricPill("Kcal", formatNumber(meal.totalNutrition.calories), MaterialTheme.colorScheme.primary)
+                NutritionMetricPill("Eiwit", "${formatNumber(meal.totalNutrition.protein)} g", MaterialTheme.trainIqColors.mint)
+                NutritionMetricPill("Kh", "${formatNumber(meal.totalNutrition.carbs)} g", MaterialTheme.trainIqColors.blue)
+                NutritionMetricPill("Vet", "${formatNumber(meal.totalNutrition.fat)} g", MaterialTheme.trainIqColors.amber)
             }
-            Text(
-                nutritionMacroSummary(meal.totalNutrition.protein, meal.totalNutrition.carbs, meal.totalNutrition.fat),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
             meal.items.forEach { item ->
                 Text(
                     "${item.name} · ${formatNumber(item.gramsUsed)}g x${item.servingCount.coerceAtLeast(1)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.trainIqColors.mutedText,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -1905,6 +1905,24 @@ private fun RecipesHeaderCard(recipeCount: Int, onCreateClick: () -> Unit) {
             IconButton(onClick = onCreateClick) {
                 Icon(Icons.Rounded.Add, contentDescription = "Recept toevoegen")
             }
+        }
+    }
+}
+
+@Composable
+private fun NutritionMetricPill(label: String, value: String, accent: androidx.compose.ui.graphics.Color) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = accent.copy(alpha = 0.12f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
         }
     }
 }

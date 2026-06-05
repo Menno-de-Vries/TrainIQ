@@ -4,6 +4,8 @@ import com.trainiq.core.datastore.HealthConnectSyncPreferences
 import com.trainiq.data.mapper.toDomainMetrics
 import com.trainiq.domain.model.HealthMetricSyncState
 import com.trainiq.domain.model.HealthMetricType
+import com.trainiq.domain.model.HealthConnectStepDiagnostic
+import com.trainiq.domain.model.HealthConnectStepDiagnosticFreshness
 import java.time.LocalDateTime
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
@@ -250,5 +252,63 @@ class HealthConnectPermissionPolicyTest {
         assertTrue(aggregateBody.contains("healthConnectTodayLocalDateTimeRange"))
         assertFalse(aggregateBody.contains("DataOrigin"))
         assertFalse(aggregateBody.contains("dataOriginFilter"))
+    }
+
+    @Test
+    fun stepDiagnosticKeepsAggregateTotalSeparateFromRawSources() {
+        val diagnostic = HealthConnectStepDiagnostic(
+            aggregateStepsToday = 12_345,
+            queriedAt = 123L,
+            sourceLabels = listOf("Samsung Health", "Jouw telefoon"),
+        )
+
+        assertEquals(12_345, diagnostic.displaySteps)
+        assertEquals("Samsung Health, Jouw telefoon", diagnostic.sourceSummary)
+    }
+
+    @Test
+    fun stepDiagnosticGuidesSamsungHealthSyncWhenSamsungSourceIsMissing() {
+        val diagnostic = HealthConnectStepDiagnostic(
+            aggregateStepsToday = 4_200,
+            queriedAt = 123L,
+            sourceLabels = listOf("Jouw telefoon"),
+            dayStartLabel = "00:00",
+            dayEndLabel = "14:30",
+        )
+
+        assertTrue(diagnostic.samsungHealthSyncGuidance().contains("Samsung Health"))
+        assertTrue(diagnostic.samsungHealthSyncGuidance().contains("Sync now"))
+    }
+
+    @Test
+    fun stepDiagnosticIncludesFreshnessWindowAndAggregateAuthorityCopy() {
+        val diagnostic = HealthConnectStepDiagnostic(
+            aggregateStepsToday = 7_200,
+            queriedAt = 1_000L,
+            sourceLabels = listOf("Jouw telefoon"),
+            dayStartLabel = "00:00",
+            dayEndLabel = "12:15",
+        )
+
+        assertEquals(HealthConnectStepDiagnosticFreshness.FRESH, diagnostic.freshness(nowMillis = 61_000L))
+        assertEquals(HealthConnectStepDiagnosticFreshness.STALE, diagnostic.freshness(nowMillis = 901_000L))
+        assertTrue(diagnostic.queryWindowSummary.contains("00:00"))
+        assertTrue(diagnostic.queryWindowSummary.contains("12:15"))
+        assertTrue(diagnostic.aggregateAuthorityLabel.contains("Health Connect aggregate"))
+    }
+
+    @Test
+    fun stepDiagnosticGivesSamsungGuidanceForStaleSamsungSource() {
+        val diagnostic = HealthConnectStepDiagnostic(
+            aggregateStepsToday = 8_400,
+            queriedAt = 1_000L,
+            sourceLabels = listOf("Samsung Health"),
+            latestSamsungSourceSeenAt = 1_000L,
+            dayStartLabel = "00:00",
+            dayEndLabel = "12:15",
+        )
+
+        assertTrue(diagnostic.hasSamsungHealthSource)
+        assertTrue(diagnostic.samsungHealthSyncGuidance(nowMillis = 901_000L).contains("Sync now"))
     }
 }

@@ -44,6 +44,16 @@ class HealthConnectReadPermissionsTest {
     }
 
     @Test
+    fun rationaleActivityCopyMatchesRequestedSignalsAndDoesNotMentionWeight() {
+        val source = File("src/main/java/com/trainiq/core/health/HealthConnectPermissionsRationaleActivity.kt").readText()
+
+        assertFalse(source.contains("zes signalen"))
+        assertFalse(source.contains("Weight("))
+        assertFalse(source.contains("Gewichtstrends"))
+        assertTrue(source.contains("vijf signalen"))
+    }
+
+    @Test
     fun permissionResultMessageReturnsNullWhenAllSignalsAreGranted() {
         assertEquals(
             null,
@@ -78,7 +88,11 @@ class HealthConnectReadPermissionsTest {
     @Test
     fun manifestDeclaresBackgroundReadPermissionUsedBySchedulerGate() {
         val manifest = File("src/main/AndroidManifest.xml").readText()
+        val rationale = File("src/main/java/com/trainiq/core/health/HealthConnectPermissionsRationaleActivity.kt").readText()
+        val settings = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
 
         assertTrue(manifest.contains("""android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"""))
+        assertTrue(rationale.contains("Achtergrondsync"))
+        assertTrue(settings.contains("Achtergrondsync"))
     }
 }

@@ -51,8 +51,11 @@ data class OnboardingPreferences(
     val healthConnectSkipped: Boolean = false,
     val aiAccepted: Boolean = false,
     val aiSkipped: Boolean = false,
+    val aiSetupDeferred: Boolean = false,
     val remindersEnabled: Boolean = false,
     val privacyAcknowledged: Boolean = false,
+    val guidedTourCompleted: Boolean = false,
+    val guidedTourSkipped: Boolean = false,
 )
 
 data class ReminderPreferences(
@@ -91,8 +94,11 @@ class UserPreferencesRepository @Inject constructor(
     private val onboardingHealthConnectSkippedKey = booleanPreferencesKey("onboarding_health_connect_skipped")
     private val onboardingAiAcceptedKey = booleanPreferencesKey("onboarding_ai_accepted")
     private val onboardingAiSkippedKey = booleanPreferencesKey("onboarding_ai_skipped")
+    private val onboardingAiSetupDeferredKey = booleanPreferencesKey("onboarding_ai_setup_deferred")
     private val onboardingRemindersEnabledKey = booleanPreferencesKey("onboarding_reminders_enabled")
     private val onboardingPrivacyAcknowledgedKey = booleanPreferencesKey("onboarding_privacy_acknowledged")
+    private val onboardingGuidedTourCompletedKey = booleanPreferencesKey("onboarding_guided_tour_completed")
+    private val onboardingGuidedTourSkippedKey = booleanPreferencesKey("onboarding_guided_tour_skipped")
 
     val streakCount: Flow<Int> = context.dataStore.data.map { preferences -> preferences[streakKey] ?: 0 }
     val themeMode: Flow<ThemeMode> = context.dataStore.data.map { preferences ->
@@ -136,8 +142,11 @@ class UserPreferencesRepository @Inject constructor(
             healthConnectSkipped = preferences[onboardingHealthConnectSkippedKey] ?: false,
             aiAccepted = preferences[onboardingAiAcceptedKey] ?: false,
             aiSkipped = preferences[onboardingAiSkippedKey] ?: false,
+            aiSetupDeferred = preferences[onboardingAiSetupDeferredKey] ?: false,
             remindersEnabled = preferences[onboardingRemindersEnabledKey] ?: false,
             privacyAcknowledged = preferences[onboardingPrivacyAcknowledgedKey] ?: false,
+            guidedTourCompleted = preferences[onboardingGuidedTourCompletedKey] ?: false,
+            guidedTourSkipped = preferences[onboardingGuidedTourSkippedKey] ?: false,
         )
     }
 
@@ -210,8 +219,11 @@ class UserPreferencesRepository @Inject constructor(
             preferences[onboardingHealthConnectSkippedKey] = onboardingPreferences.healthConnectSkipped
             preferences[onboardingAiAcceptedKey] = onboardingPreferences.aiAccepted
             preferences[onboardingAiSkippedKey] = onboardingPreferences.aiSkipped
+            preferences[onboardingAiSetupDeferredKey] = onboardingPreferences.aiSetupDeferred
             preferences[onboardingRemindersEnabledKey] = onboardingPreferences.remindersEnabled
             preferences[onboardingPrivacyAcknowledgedKey] = onboardingPreferences.privacyAcknowledged
+            preferences[onboardingGuidedTourCompletedKey] = onboardingPreferences.guidedTourCompleted
+            preferences[onboardingGuidedTourSkippedKey] = onboardingPreferences.guidedTourSkipped
             if (onboardingPreferences.remindersEnabled) {
                 preferences[remindersEnabledKey] = true
             }
@@ -223,7 +235,24 @@ class UserPreferencesRepository @Inject constructor(
     }
 
     suspend fun reopenOnboarding() {
-        context.dataStore.edit { preferences -> preferences[onboardingCompletedKey] = false }
+        context.dataStore.edit { preferences ->
+            preferences[onboardingGuidedTourCompletedKey] = false
+            preferences[onboardingGuidedTourSkippedKey] = false
+        }
+    }
+
+    suspend fun markGuidedTourCompleted() {
+        context.dataStore.edit { preferences ->
+            preferences[onboardingGuidedTourCompletedKey] = true
+            preferences[onboardingGuidedTourSkippedKey] = false
+        }
+    }
+
+    suspend fun markGuidedTourSkipped() {
+        context.dataStore.edit { preferences ->
+            preferences[onboardingGuidedTourCompletedKey] = false
+            preferences[onboardingGuidedTourSkippedKey] = true
+        }
     }
 
     suspend fun getHealthConnectSyncPreferences(): HealthConnectSyncPreferences {

@@ -1,8 +1,8 @@
 package com.trainiq.features.settings
 
-import com.trainiq.core.datastore.AiPreferences
 import com.trainiq.core.datastore.ReminderPreferences
 import com.trainiq.core.datastore.WorkoutFeedbackPreferences
+import com.trainiq.ai.services.AiProviderPreference
 import com.trainiq.core.theme.ThemeMode
 import com.trainiq.core.ui.UiMessage
 import com.trainiq.domain.model.HealthConnectState
@@ -21,7 +21,14 @@ class SettingsUiStateTest {
     fun settingsUiState_usesSingleSuccessStateWithMaskedKey() {
         val state = settingsUiState(
             themeMode = ThemeMode.DARK,
-            aiPreferences = AiPreferences(enabled = true, apiKey = "abcd1234wxyz"),
+            aiStatus = SettingsAiStatus(
+                enabled = true,
+                preferredProvider = AiProviderPreference.GEMINI_FIRST,
+                hasGeminiKey = true,
+                hasOpenAiKey = false,
+                maskedGeminiKey = "abcd****wxyz",
+                maskedOpenAiKey = "Niet ingesteld",
+            ),
             telemetryOptIn = true,
             workoutFeedbackPreferences = WorkoutFeedbackPreferences(restTimerSoundEnabled = true),
             reminderPreferences = ReminderPreferences(enabled = true),
@@ -36,7 +43,14 @@ class SettingsUiStateTest {
         assertEquals(
             SettingsUiState.Success(
                 themeMode = ThemeMode.DARK,
-                aiPreferences = AiPreferences(enabled = true, apiKey = "abcd1234wxyz"),
+                aiStatus = SettingsAiStatus(
+                    enabled = true,
+                    preferredProvider = AiProviderPreference.GEMINI_FIRST,
+                    hasGeminiKey = true,
+                    hasOpenAiKey = false,
+                    maskedGeminiKey = "abcd****wxyz",
+                    maskedOpenAiKey = "Niet ingesteld",
+                ),
                 telemetryOptIn = true,
                 workoutFeedbackPreferences = WorkoutFeedbackPreferences(restTimerSoundEnabled = true),
                 reminderPreferences = ReminderPreferences(enabled = true),
@@ -46,10 +60,21 @@ class SettingsUiStateTest {
                     message = "Verbonden.",
                 ),
                 message = UiMessage("Instellingen opgeslagen.", id = 1L),
-                maskedApiKey = "abcd****wxyz",
             ),
             state,
         )
+    }
+
+    @Test
+    fun settingsUiStateDoesNotRetainPlaintextAiKeys() {
+        val source = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
+        val successBody = source.substringAfter("data class Success(").substringBefore(") : SettingsUiState")
+        val settingsScreenBody = source.substringAfter("fun SettingsScreen(").substringBefore("val listState")
+
+        assertFalse(successBody.contains("AiPreferences"))
+        assertFalse(successBody.contains("apiKey"))
+        assertFalse(settingsScreenBody.contains("var apiKey by rememberSaveable"))
+        assertFalse(settingsScreenBody.contains("var openAiKey by rememberSaveable"))
     }
 
     @Test
@@ -91,7 +116,7 @@ class SettingsUiStateTest {
     @Test
     fun healthConnectSettingsMessageUsesCompactCopyForLowerSettingsSection() {
         assertEquals(
-            "Geef toegang om stappen, hartslag, slaap, calorieen, gewicht en workouts te synchroniseren.",
+            "Geef toegang om stappen, hartslag, slaap, actieve calorieen en workouts te synchroniseren.",
             healthConnectSettingsMessage(
                 HealthConnectStatus(
                     state = HealthConnectState.PERMISSION_REQUIRED,
@@ -149,6 +174,25 @@ class SettingsUiStateTest {
         assertTrue(source.contains("Health Connect-instellingen openen"))
         assertTrue(source.contains("Health Connect installeren of bijwerken"))
         assertTrue(source.contains("settingsActionLabel"))
+    }
+
+    @Test
+    fun reopeningOnboardingFromSettingsDoesNotMarkFirstRunIncomplete() {
+        val source = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
+        val onboardingOpenBody = source.substringAfter("onOpenOnboarding = {")
+            .substringBefore("},")
+
+        assertFalse(onboardingOpenBody.contains("viewModel.reopenOnboarding()"))
+        assertTrue(source.contains("onOpenOnboarding()"))
+    }
+
+    @Test
+    fun settingsShowsStepSourceDiagnosticForSamsungHealthTroubleshooting() {
+        val source = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
+
+        assertTrue(source.contains("stepDiagnostic"))
+        assertTrue(source.contains("Samsung Health"))
+        assertTrue(source.contains("Sync now"))
     }
 
     @Test

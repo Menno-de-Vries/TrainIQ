@@ -607,8 +607,12 @@ internal fun homeHealthStatusSummary(status: HealthConnectStatus): String = when
 }
 
 internal fun homeHealthStepDiagnostic(status: HealthConnectStatus): String = when (status.stepDataFreshness) {
-    HealthConnectStepDataFreshness.FRESH ->
-        "Live uit Health Connect: aggregate stappen bijgewerkt om ${formatHomeLastSync(status.stepDataUpdatedAt)}."
+    HealthConnectStepDataFreshness.FRESH -> {
+        val diagnostic = status.stepDiagnostic
+        val sourceCopy = diagnostic?.let { " Bronnen: ${it.sourceSummary}." }.orEmpty()
+        val windowCopy = diagnostic?.let { " Venster: ${it.queryWindowSummary}." }.orEmpty()
+        "Live uit Health Connect: aggregate stappen bijgewerkt om ${formatHomeLastSync(status.stepDataUpdatedAt)}.$windowCopy$sourceCopy"
+    }
     HealthConnectStepDataFreshness.STALE_CACHE ->
         "Laatste bekende stappen uit Health Connect-cache. Open Samsung Health, sync met Samsung Cloud en controleer Health Connect > App-permissies als Samsung Health meer stappen toont."
     HealthConnectStepDataFreshness.PERMISSION_MISSING ->

@@ -148,8 +148,8 @@ class RoomCoachRepository @Inject constructor(
     private val delegate: TrainIqDataCoordinator,
 ) : CoachRepository {
     override fun observeCoachOverview() = delegate.observeCoachOverview()
-    override suspend fun generateGoalAdvice(height: Double, weight: Double, bodyFat: Double, age: Int, sex: BiologicalSex, activityLevel: String, goal: String): GoalAdvice =
-        delegate.generateGoalAdvice(height, weight, bodyFat, age, sex, activityLevel, goal)
+    override suspend fun generateGoalAdvice(height: Double, weight: Double, bodyFat: Double, age: Int, sex: BiologicalSex, activityLevel: String, goal: String, manualCalorieTarget: Int?): GoalAdvice =
+        delegate.generateGoalAdvice(height, weight, bodyFat, age, sex, activityLevel, goal, manualCalorieTarget)
     override suspend fun generateWeeklyReport(): WeeklyReportResult = delegate.generateWeeklyReport()
     override fun observeUserProfile(): Flow<UserProfile?> = delegate.observeUserProfile()
     override suspend fun saveProfile(profile: UserProfile) = delegate.saveProfile(profile)

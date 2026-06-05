@@ -1,6 +1,7 @@
 package com.trainiq.core.reminders
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -71,5 +72,37 @@ class ReminderPolicyTest {
                 lastReminderAtMillis = now - WorkoutReminderCooldown.toMillis() - 1L,
             ),
         )
+    }
+
+    @Test
+    fun reminderContent_rotatesThroughVariedSubtleEmojiMealMessages() {
+        val contents = (0 until 10)
+            .map { index -> mealReminderContent(index * MealReminderInterval.toMillis()).body }
+
+        assertTrue(contents.toSet().size >= 8)
+        assertTrue(contents.any { it.contains("🥗") || it.contains("🍽️") || it.contains("💧") })
+        contents.forEach { body ->
+            assertTrue("Reminder body should stay concise: $body", body.length <= 110)
+            assertFalse(body.contains("!!!"))
+        }
+    }
+
+    @Test
+    fun reminderContent_rotatesThroughVariedSubtleEmojiWorkoutMessages() {
+        val contents = (0 until 10)
+            .map { index -> workoutReminderContent(index * WorkoutReminderCooldown.toMillis()).body }
+
+        assertTrue(contents.toSet().size >= 8)
+        assertTrue(contents.any { it.contains("💪") || it.contains("⚡") || it.contains("🏋️") })
+        contents.forEach { body ->
+            assertTrue("Reminder body should stay concise: $body", body.length <= 110)
+            assertFalse(body.contains("!!!"))
+        }
+    }
+
+    @Test
+    fun reminderContent_keepsTitlesStableForNotificationGrouping() {
+        assertEquals("Voeding bijwerken", mealReminderContent(0L).title)
+        assertEquals("Krachttraining reminder", workoutReminderContent(0L).title)
     }
 }

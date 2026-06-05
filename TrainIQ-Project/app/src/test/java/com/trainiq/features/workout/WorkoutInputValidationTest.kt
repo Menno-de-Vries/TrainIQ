@@ -68,6 +68,33 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun activeRoutineCardOffersEditActionWhenRoutineCanStart() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val activeRoutineCard = workoutScreen.substringAfter("private fun ActiveRoutineCard(").substringBefore("@Composable\nprivate fun SectionHeader")
+        val startableBranch = activeRoutineCard.substringAfter("} else {").substringBefore("}\n            }\n        }")
+
+        assertTrue(startableBranch.contains("onStartWorkout(startableDay.id)"))
+        assertTrue(startableBranch.contains("onOpenDetails(activeRoutine.id)"))
+        assertTrue(startableBranch.contains("Routine aanpassen") || startableBranch.contains("Routine bewerken"))
+    }
+
+    @Test
+    fun workoutHistoryCardUsesReadableMetricTilesAndSeparateAdviceSections() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val historyCard = workoutScreen.substringAfter("private fun HistoryCard(").substringBefore("@OptIn(ExperimentalMaterial3Api::class)")
+
+        assertTrue(historyCard.contains("HistoryMetricTile("))
+        assertTrue(historyCard.contains("Duur"))
+        assertTrue(historyCard.contains("Oefeningen"))
+        assertTrue(historyCard.contains("Sets"))
+        assertTrue(historyCard.contains("Volume"))
+        assertTrue(historyCard.contains("Topset"))
+        assertTrue(historyCard.contains("Herstel"))
+        assertTrue(historyCard.contains("HistoryDebriefBlock("))
+        assertFalse(historyCard.contains("AppChip(label = \"\${session.duration / 60} min\""))
+    }
+
+    @Test
     fun `critical headers and set labels allow wrapping except short screen header condensation`() {
         val appDesign = testSourceFile("core/ui/AppDesign.kt").readText()
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()

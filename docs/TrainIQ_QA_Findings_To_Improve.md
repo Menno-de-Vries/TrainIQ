@@ -6,6 +6,34 @@ Refresh date: 2026-05-10, current worktree
 
 Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emulator smoke, Health Connect, Gemini/AI, Room/data, UI/UX/accessibility, release readiness.
 
+## 2026-06-05 Home/Reminder/Training/Nutrition/Sleep Polish
+
+- status: done for compact Home Health Connect copy, varied opt-in reminders, active-routine edit access, clearer Training history layout, less cramped Nutrition day rows, and main-session recent sleep display.
+- files changed: Home now keeps Samsung/Health Connect troubleshooting off the Start card while preserving last-sync, aggregate update time, day window, and source labels; reminder content rotates through concise, subtle emoji variants without changing WorkManager cadence, channel, or permissions; active routines now expose `Routine aanpassen` even when they can start; workout history uses metric tiles and separate debrief blocks; meal rows give long names full width and move calories into macro pills; Health Connect sleep metrics now choose the likely main recent sleep session instead of summing every cached sleep record; Settings shows multiple Health Connect sleep records as compact context only.
+- verification evidence:
+  - RED: targeted tests failed before implementation for compact Home copy, reminder variety, active routine edit action, Training history metric tiles, Nutrition meal-row layout, and main-sleep mapping.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.home.HomeDashboardRefreshTest" --tests "com.trainiq.core.reminders.ReminderPolicyTest" --tests "com.trainiq.features.workout.WorkoutInputValidationTest.activeRoutineCardOffersEditActionWhenRoutineCanStart" --tests "com.trainiq.features.workout.WorkoutInputValidationTest.workoutHistoryCardUsesReadableMetricTilesAndSeparateAdviceSections" --tests "com.trainiq.features.nutrition.NutritionInputValidationTest.mealEntryRowGivesLongNamesFullWidthAndMovesCaloriesIntoMacroArea" --tests "com.trainiq.data.mapper.MappersTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
+  - PASS: `git diff --check` returned only existing CRLF conversion warnings.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 2945`, rendered Home/Start navigation, and filtered AndroidRuntime crash buffer was empty.
+- external sources used: Android Health Connect sleep-session docs and `SleepSessionRecord` API reference for interval-record behavior; Android notification creation and mobile notification guidance for concise user-controlled reminder notifications; Material onboarding/communication guidance for concise, useful user-facing copy.
+- remaining risk: sleep display now avoids inflated totals from multiple records, but provider-specific duplicate/fragment behavior still needs real Samsung Health Connect device verification with fresh sleep data.
+
+## 2026-06-05 Steps Diagnostic + Onboarding/Coach Target Polish
+
+- status: done for the requested tour copy cleanup, Samsung Health diagnostic polish, exact calorie target override, auto macro recalculation, and AI prompt constraint.
+- files changed: guided tour copy now keeps routines in Training and gives Coach only profile/calorie/macro/advice wording; onboarding copy now explains setup, optional Health Connect/AI/reminders, skipped setup follow-up, and the post-setup tour more concretely; Health Connect step diagnostics now include aggregate authority copy, local query window, freshness, Samsung source presence, latest Samsung source timestamp, and Samsung sync guidance while keeping displayed steps on `StepsRecord.COUNT_TOTAL`; Coach Doelen now accepts optional exact `Jouw calorie doel`, saves final calorie/protein/carbs/fat targets in `UserProfile`, and feeds fixed targets to Home/Nutrition/Coach/AI context through the existing profile/advice paths.
+- verification evidence:
+  - RED: targeted tests failed before implementation on missing manual calorie target APIs, missing richer `HealthConnectStepDiagnostic` fields/freshness behavior, and incorrect guided-tour copy expectations.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.navigation.OnboardingNavigationTest" --tests "com.trainiq.features.coach.GoalAdviceInputTest" --tests "com.trainiq.domain.model.EnergyMathTest" --tests "com.trainiq.ai.services.AiServicesTest.generateGoalAdvice_withManualCalorieTargetPassesFixedTargetsToGeminiPrompt" --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 2762`, rendered Home/Start navigation, and filtered AndroidRuntime crash buffer was empty.
+  - PASS: `git diff --check` returned only existing CRLF conversion warnings.
+- external sources used: Android Health Connect steps/aggregate/sync docs for `StepsRecord`, aggregate `StepsRecord.COUNT_TOTAL`, no displayed-total `dataOriginFilter`, local time ranges, and changes-token direction; Samsung Health Connect FAQ and Samsung step support docs for Samsung Health-to-Health Connect permissions, `Sync now`, Galaxy Watch phone sync, and `All steps` combining phone/watch sources; Android Health Connect UX/onboarding guidance for clarity/transparency around permissions; USDA MyPlate and National Academies DRI references for personalized calorie planning and macro distribution context.
+- remaining risk: exact parity with Samsung Health remains limited by what Samsung Health has synchronized into Health Connect; no Samsung private SDK/API or manual step correction was added. Manual Health Connect edge-state QA for missing/provider/partial-permission/stale real Samsung sync states still needs a physical-device pass.
+
 ## 2026-06-05 Steps Accuracy Foreground Refresh + First-Run Onboarding
 
 - status: done for immediate Home foreground Health Connect step refresh, user-facing step freshness diagnostics, first-run onboarding, and Settings resume/reopen support.
@@ -16,6 +44,18 @@ Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emula
   - PASS: emulator `emulator-5554` fresh appdata smoke with `:app:installDebug`; cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 5682`; first screen showed `Welkom bij TrainIQ`; tapping `Overslaan` reached Start/Home; Settings showed `Onboarding`, `Nog open`, `Health Connect koppelen`, and `AI-coach instellen`; `Onboarding openen` reopened `Eerste setup`; filtered logcat had no `FATAL EXCEPTION`.
 - external sources rechecked: Android Health Connect aggregate docs for `StepsRecord.COUNT_TOTAL` and `TimeRangeFilter`; Android Health Connect sync docs for changes-token direction; Samsung Health Connect FAQ/blog for Samsung Health-to-Health Connect permissions, sync timing, and the `All steps` to `StepsRecord` mapping.
 - remaining risk: exact parity with Samsung Health still depends on Samsung Health and Galaxy Watch data being synced into Health Connect and TrainIQ having `READ_STEPS`; direct Samsung Health SDK access remains out of scope.
+
+## 2026-06-05 Onboarding Tour + Samsung Steps Diagnostic Follow-up
+
+- status: done for no-flash onboarding startup gating, setup-plus-tour flow, clearer AI/Health Connect onboarding choices, Settings reopen preservation, and Samsung Health step-source diagnostics.
+- files changed: Main startup now waits for a real DataStore onboarding emission before rendering `TrainIqApp`; onboarding preferences now persist guided-tour completion/skipped state and deferred-AI intent; Settings onboarding open no longer marks first-run incomplete; top-level navigation hosts a guided tour across Start, Training, Voeding, Voortgang, Coach, and Instellingen; Health Connect status now carries aggregate step diagnostics with raw source labels used only for troubleshooting.
+- verification evidence:
+  - RED: targeted onboarding/tour/diagnostic test run failed before implementation on missing `MainOnboardingState`, `HealthConnectStepDiagnostic`, guided-tour helpers, and distinct AI events.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.MainOnboardingStateTest" --tests "com.trainiq.navigation.OnboardingNavigationTest" --tests "com.trainiq.features.onboarding.OnboardingStateTest" --tests "com.trainiq.core.datastore.OnboardingPreferencesSourceTest" --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
+- external sources used: Android Health Connect read/steps/sync docs for aggregate-first step totals, no `DataOrigin` filtering for displayed totals, and changes-token behavior; Samsung Health Connect FAQ and Samsung step-count support docs for Samsung Health All steps, phone/watch sync behavior, and Health Connect synchronization dependency.
+- remaining risk: Samsung Health All steps can only match when Samsung Health has synchronized the same phone/watch data into Health Connect; no direct Samsung Health private SDK integration was added.
 
 ## 2026-06-04 Steps Accuracy + Home/Product Portion Regression Fix
 

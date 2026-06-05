@@ -132,6 +132,7 @@ object AiPrompts {
         activityLevel: String,
         goal: String,
         baseline: GoalAdvice,
+        manualCalorieTarget: Int? = null,
     ) = """
         Je bent een senior strength en longevity-specialist voor TrainIQ.
         Antwoord altijd in het Nederlands volgens locale nl-NL.
@@ -147,6 +148,7 @@ object AiPrompts {
         - Eiwit: ${baseline.proteinTarget} g
         - Koolhydraten: ${baseline.carbsTarget} g
         - Vet: ${baseline.fatTarget} g
+        Calorie-doelmodus: ${if (manualCalorieTarget != null) "Jouw calorie doel is handmatig ingesteld op ${baseline.calorieTarget} kcal; auto macro's zijn hieromheen herberekend." else "Automatisch berekend vanuit profiel, activiteit en doel."}
         Wijzig deze calorie- en macrocijfers niet. Gebruik ze als vaste output en leg kort uit waarom ze bij het doel passen.
         Leg activiteit eenvoudig uit: onderhoud = BMR x activiteitsfactor. Noem onzekerheid zonder extra data te verzinnen.
         Gebruik geen Engels. Vertaal activiteitsniveau en doel natuurlijk naar het Nederlands als de invoer Engels is.

@@ -68,7 +68,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.trainiq.BuildConfig
 import com.trainiq.ai.services.AiProviderPreference
-import com.trainiq.ai.services.hasAnyReadyProvider
 import com.trainiq.ai.services.AiUsageGate
 import com.trainiq.ai.services.GoalAdvisorService
 import com.trainiq.core.datastore.AiPreferences
@@ -126,7 +125,7 @@ sealed interface SettingsUiState {
     data object Loading : SettingsUiState
     data class Success(
         val themeMode: ThemeMode,
-        val aiPreferences: AiPreferences,
+        val aiStatus: SettingsAiStatus,
         val telemetryOptIn: Boolean,
         val workoutFeedbackPreferences: WorkoutFeedbackPreferences,
         val reminderPreferences: ReminderPreferences,
@@ -136,14 +135,22 @@ sealed interface SettingsUiState {
         val importPreview: AppDataImportPreview? = null,
         val isImporting: Boolean = false,
         val message: UiMessage? = null,
-        val maskedApiKey: String = maskedSettingsApiKey(aiPreferences.apiKey),
     ) : SettingsUiState
     data class Error(val message: String) : SettingsUiState
 }
 
+data class SettingsAiStatus(
+    val enabled: Boolean,
+    val preferredProvider: AiProviderPreference,
+    val hasGeminiKey: Boolean,
+    val hasOpenAiKey: Boolean,
+    val maskedGeminiKey: String,
+    val maskedOpenAiKey: String,
+)
+
 private data class SettingsUiInputs(
     val themeMode: ThemeMode,
-    val aiPreferences: AiPreferences,
+    val aiStatus: SettingsAiStatus,
     val telemetryOptIn: Boolean,
     val workoutFeedbackPreferences: WorkoutFeedbackPreferences,
     val reminderPreferences: ReminderPreferences,
@@ -154,7 +161,7 @@ private data class SettingsUiInputs(
 
 private data class SettingsPreferenceInputs(
     val themeMode: ThemeMode,
-    val aiPreferences: AiPreferences,
+    val aiStatus: SettingsAiStatus,
     val telemetryOptIn: Boolean,
     val workoutFeedbackPreferences: WorkoutFeedbackPreferences,
     val reminderPreferences: ReminderPreferences,
@@ -218,7 +225,7 @@ class SettingsViewModel @Inject constructor(
     ) { theme, ai, telemetry, feedback, reminders ->
         SettingsPreferenceInputs(
             themeMode = theme,
-            aiPreferences = ai,
+            aiStatus = ai.toSettingsAiStatus(),
             telemetryOptIn = telemetry,
             workoutFeedbackPreferences = feedback,
             reminderPreferences = reminders,
@@ -232,7 +239,7 @@ class SettingsViewModel @Inject constructor(
         combine(settingsPreferenceInputs, profile) { preferences, userProfile ->
             SettingsUiInputs(
                 themeMode = preferences.themeMode,
-                aiPreferences = preferences.aiPreferences,
+                aiStatus = preferences.aiStatus,
                 telemetryOptIn = preferences.telemetryOptIn,
                 workoutFeedbackPreferences = preferences.workoutFeedbackPreferences,
                 reminderPreferences = preferences.reminderPreferences,
@@ -248,7 +255,7 @@ class SettingsViewModel @Inject constructor(
     ) { inputs, health, importPreview, isImporting, message ->
         settingsUiState(
             themeMode = inputs.themeMode,
-            aiPreferences = inputs.aiPreferences,
+            aiStatus = inputs.aiStatus,
             telemetryOptIn = inputs.telemetryOptIn,
             workoutFeedbackPreferences = inputs.workoutFeedbackPreferences,
             reminderPreferences = inputs.reminderPreferences,
@@ -614,12 +621,11 @@ fun SettingsRoute(
         is SettingsUiState.Success -> {
             SettingsScreen(
                 themeMode = state.themeMode,
-                aiPreferences = state.aiPreferences,
+                aiStatus = state.aiStatus,
                 telemetryOptIn = state.telemetryOptIn,
                 workoutFeedbackPreferences = state.workoutFeedbackPreferences,
                 reminderPreferences = state.reminderPreferences,
                 onboardingPreferences = state.onboardingPreferences,
-                maskedApiKey = state.maskedApiKey,
                 profile = state.profile,
                 healthStatus = state.healthStatus,
                 importPreview = state.importPreview,
@@ -671,7 +677,6 @@ fun SettingsRoute(
                 onConfirmImport = viewModel::confirmImport,
                 onDismissImportPreview = viewModel::dismissImportPreview,
                 onOpenOnboarding = {
-                    viewModel.reopenOnboarding()
                     onOpenOnboarding()
                 },
             )
@@ -729,12 +734,11 @@ private fun SettingsErrorScreen(message: String) {
 @Composable
 fun SettingsScreen(
     themeMode: ThemeMode,
-    aiPreferences: AiPreferences,
+    aiStatus: SettingsAiStatus,
     telemetryOptIn: Boolean,
     workoutFeedbackPreferences: WorkoutFeedbackPreferences,
     reminderPreferences: ReminderPreferences,
     onboardingPreferences: OnboardingPreferences,
-    maskedApiKey: String,
     profile: UserProfile?,
     healthStatus: HealthConnectStatus,
     importPreview: AppDataImportPreview?,
@@ -764,9 +768,15 @@ fun SettingsScreen(
     onDismissImportPreview: () -> Unit,
     onOpenOnboarding: () -> Unit,
 ) {
-    var apiKey by rememberSaveable { mutableStateOf("") }
-    var openAiKey by rememberSaveable { mutableStateOf("") }
+    var geminiKeyInput by remember { mutableStateOf("") }
+    var openAiKeyInput by remember { mutableStateOf("") }
     var pendingDestructiveAction by rememberSaveable { mutableStateOf<PendingDestructiveSettingsAction?>(null) }
+    DisposableEffect(Unit) {
+        onDispose {
+            geminiKeyInput = ""
+            openAiKeyInput = ""
+        }
+    }
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
     val skippedSetupItems = onboardingSetupItems(onboardingPreferences)
@@ -802,7 +812,7 @@ fun SettingsScreen(
             SectionCard(title = settingsOverflowSectionTitle()) {
                 Text(settingsOverflowSectionBody())
                 Text("Thema: ${themeMode.displayLabel()}")
-                Text("AI: ${if (aiPreferences.enabled && aiPreferences.apiKey.isNotBlank()) "Klaar voor expliciet gebruik" else "Alleen handmatig"}")
+                Text("AI: ${if (aiStatus.enabled && (aiStatus.hasGeminiKey || aiStatus.hasOpenAiKey)) "Klaar voor expliciet gebruik" else "Alleen handmatig"}")
                 Text("Health Connect: ${healthStatusLabel(healthStatus)}")
             }
         }
@@ -929,7 +939,7 @@ fun SettingsScreen(
                         Text("Alleen expliciete acties zoals maaltijdanalyse, doeladvies, AI-rapport en workoutterugblik kunnen verzoeken starten.")
                     }
                     Switch(
-                        checked = aiPreferences.enabled,
+                        checked = aiStatus.enabled,
                         onCheckedChange = onToggleAi,
                         modifier = Modifier.settingsActionLabel("AI-functies inschakelen"),
                     )
@@ -941,16 +951,16 @@ fun SettingsScreen(
                 ) {
                     AiProviderPreference.entries.forEach { preference ->
                         FilterChip(
-                            selected = aiPreferences.preferredProvider == preference,
+                            selected = aiStatus.preferredProvider == preference,
                             onClick = { onProviderPreferenceSelected(preference) },
                             label = { Text(preference.label) },
                         )
                     }
                 }
-                Text("Gemini sleutel: $maskedApiKey")
+                Text("Gemini sleutel: ${aiStatus.maskedGeminiKey}")
                 TrainIqFormField(
-                    value = apiKey,
-                    onValueChange = { apiKey = it },
+                    value = geminiKeyInput,
+                    onValueChange = { geminiKeyInput = it },
                     label = "Gemini API-sleutel",
                     modifier = Modifier.fillMaxWidth(),
                     context = TrainIqFormFieldContext.Settings,
@@ -974,14 +984,14 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
                 ) {
                     Button(onClick = {
-                        onSaveApiKey(apiKey)
-                        apiKey = ""
-                    }) { Text(if (aiPreferences.apiKey.isBlank()) "Sleutel opslaan" else "Sleutel bijwerken") }
+                        onSaveApiKey(geminiKeyInput)
+                        geminiKeyInput = ""
+                    }) { Text(if (!aiStatus.hasGeminiKey) "Sleutel opslaan" else "Sleutel bijwerken") }
                 }
-                Text("OpenAI sleutel: ${maskedSettingsApiKey(aiPreferences.openAiApiKey)}")
+                Text("OpenAI sleutel: ${aiStatus.maskedOpenAiKey}")
                 TrainIqFormField(
-                    value = openAiKey,
-                    onValueChange = { openAiKey = it },
+                    value = openAiKeyInput,
+                    onValueChange = { openAiKeyInput = it },
                     label = "OpenAI API-sleutel",
                     modifier = Modifier.fillMaxWidth(),
                     context = TrainIqFormFieldContext.Settings,
@@ -1005,14 +1015,14 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
                 ) {
                     Button(onClick = {
-                        onSaveOpenAiKey(openAiKey)
-                        openAiKey = ""
-                    }) { Text(if (aiPreferences.openAiApiKey.isBlank()) "OpenAI opslaan" else "OpenAI bijwerken") }
+                        onSaveOpenAiKey(openAiKeyInput)
+                        openAiKeyInput = ""
+                    }) { Text(if (!aiStatus.hasOpenAiKey) "OpenAI opslaan" else "OpenAI bijwerken") }
                     TextButton(onClick = { pendingDestructiveAction = PendingDestructiveSettingsAction.CLEAR_API_KEY }) { Text("AI-sleutels verwijderen") }
                 }
                 Text("Gemini en OpenAI kunnen API-kosten veroorzaken. Laat AI uitgeschakeld tenzij je het wilt gebruiken.")
                 Text("Gebruikt door: maaltijdanalyse, workoutterugblik, wekelijks AI-rapport en doeladviseur.")
-                Text("Status: ${aiProviderStatusLabel(aiPreferences)}")
+                Text("Status: ${aiProviderStatusLabel(aiStatus)}")
             }
         }
         item {
@@ -1023,11 +1033,40 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Text(
+                    "Achtergrondsync: TrainIQ plant alleen periodieke Health Connect-sync als Android achtergrondtoegang beschikbaar is en jij die in Health Connect hebt toegestaan.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 healthStatus.lastSyncedAt?.let {
                     Text("Laatst gecontroleerd: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it))}")
                 }
                 healthStatus.stepsToday?.let { steps ->
                     Text(if (steps > 0) "Stappen vandaag beschikbaar: $steps" else "Verbonden, maar er is vandaag nog geen stapdata teruggekomen.")
+                }
+                healthStatus.stepDiagnostic?.let { stepDiagnostic ->
+                    Text(
+                        "Bronnen vandaag: ${stepDiagnostic.sourceSummary}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "Venster: ${stepDiagnostic.queryWindowSummary}. ${stepDiagnostic.aggregateAuthorityLabel}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "Samsung Health All steps: open Samsung Health > Instellingen > Health Connect en gebruik Sync now als TrainIQ lager blijft.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (!stepDiagnostic.hasSamsungHealthSource || stepDiagnostic.freshness() == com.trainiq.domain.model.HealthConnectStepDiagnosticFreshness.STALE) {
+                        Text(
+                            stepDiagnostic.samsungHealthSyncGuidance(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
                 healthStatus.averageHeartRateBpm?.let { bpm ->
                     Text("Gemiddelde hartslag vandaag: $bpm bpm")
@@ -1036,7 +1075,12 @@ fun SettingsScreen(
                     Text("Laatste hartslagmeting: $bpm bpm")
                 }
                 healthStatus.sleepMinutes?.takeIf { it > 0 }?.let { minutes ->
-                    Text("Recente slaap: ${minutes / 60}u ${minutes % 60}m over ${healthStatus.sleepSessionCount} sessie(s)")
+                    val recordContext = if (healthStatus.sleepSessionCount > 1) {
+                        " · meerdere Health Connect-records gezien"
+                    } else {
+                        ""
+                    }
+                    Text("Recente slaap: ${minutes / 60}u ${minutes % 60}m$recordContext")
                 }
                 when (healthStatus.state) {
                     HealthConnectState.PERMISSION_REQUIRED -> Text("Geef toegang zodat TrainIQ je dagelijkse stappen, hartslag en slaap kan lezen.")
@@ -1108,7 +1152,7 @@ fun SettingsScreen(
         item {
             SectionCard(title = "Over") {
                 Text("Appversie: ${BuildConfig.VERSION_NAME}")
-                Text("AI ingeschakeld: ${if (aiPreferences.enabled) "Ja" else "Nee"}")
+                Text("AI ingeschakeld: ${if (aiStatus.enabled) "Ja" else "Nee"}")
                 Text("Health Connect: ${healthStatusLabel(healthStatus)}")
                 Text("Ontworpen als handmatige training- en voedings-MVP.")
             }
@@ -1244,7 +1288,7 @@ internal fun healthConnectSettingsMessage(status: HealthConnectStatus): String =
     else -> when (status.state) {
         HealthConnectState.UNSUPPORTED -> "Health Connect wordt niet ondersteund op dit apparaat."
         HealthConnectState.PROVIDER_MISSING -> "Installeer of update Health Connect en vernieuw daarna de status."
-        HealthConnectState.PERMISSION_REQUIRED -> "Geef toegang om stappen, hartslag, slaap, calorieen, gewicht en workouts te synchroniseren."
+        HealthConnectState.PERMISSION_REQUIRED -> "Geef toegang om stappen, hartslag, slaap, actieve calorieen en workouts te synchroniseren."
         HealthConnectState.CONNECTED -> "Verbonden. TrainIQ synchroniseert toegestane metrics wanneer data beschikbaar is."
         HealthConnectState.NO_DATA -> "Verbonden, maar er is nog geen recente Health Connect-data gevonden."
         HealthConnectState.ERROR -> "Health Connect kan nu niet worden gelezen. Vernieuw straks opnieuw."
@@ -1262,7 +1306,7 @@ internal fun HealthConnectStatus.hasPartialHealthConnectAccess(): Boolean {
 
 internal fun settingsUiState(
     themeMode: ThemeMode,
-    aiPreferences: AiPreferences,
+    aiStatus: SettingsAiStatus,
     telemetryOptIn: Boolean,
     workoutFeedbackPreferences: WorkoutFeedbackPreferences,
     reminderPreferences: ReminderPreferences,
@@ -1274,7 +1318,7 @@ internal fun settingsUiState(
     message: UiMessage?,
 ): SettingsUiState = SettingsUiState.Success(
     themeMode = themeMode,
-    aiPreferences = aiPreferences,
+    aiStatus = aiStatus,
     telemetryOptIn = telemetryOptIn,
     workoutFeedbackPreferences = workoutFeedbackPreferences,
     reminderPreferences = reminderPreferences,
@@ -1340,11 +1384,21 @@ internal fun openAiApiKeySourceUrl(): String = "https://platform.openai.com/api-
 internal fun openAiApiKeySetupHelpText(): String =
     "Maak of bekijk je sleutel in het OpenAI Platform, plak hem hier en zet AI aan. Deel je sleutel niet en commit hem nooit."
 
-internal fun aiProviderStatusLabel(aiPreferences: AiPreferences): String = when {
-    !aiPreferences.enabled -> "Uitgeschakeld"
-    aiPreferences.hasAnyReadyProvider() -> buildString {
-        append("Klaar: ${aiPreferences.preferredProvider.label}")
-        if (aiPreferences.geminiApiKey.isNotBlank() && aiPreferences.openAiApiKey.isNotBlank()) {
+internal fun AiPreferences.toSettingsAiStatus(): SettingsAiStatus =
+    SettingsAiStatus(
+        enabled = enabled,
+        preferredProvider = preferredProvider,
+        hasGeminiKey = geminiApiKey.isNotBlank(),
+        hasOpenAiKey = openAiApiKey.isNotBlank(),
+        maskedGeminiKey = maskedSettingsApiKey(geminiApiKey),
+        maskedOpenAiKey = maskedSettingsApiKey(openAiApiKey),
+    )
+
+internal fun aiProviderStatusLabel(aiStatus: SettingsAiStatus): String = when {
+    !aiStatus.enabled -> "Uitgeschakeld"
+    aiStatus.hasGeminiKey || aiStatus.hasOpenAiKey -> buildString {
+        append("Klaar: ${aiStatus.preferredProvider.label}")
+        if (aiStatus.hasGeminiKey && aiStatus.hasOpenAiKey) {
             append(", tweede provider opgeslagen")
         }
     }

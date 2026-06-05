@@ -111,9 +111,9 @@ class MealAnalysisService internal constructor(
         contextOverrides: MealContextOverrides = MealContextOverrides(),
     ): MealAnalysisResult {
         if (text.isBlank()) throw MealAnalysisUnavailableException()
-        if (text.length > MaxAiRawResponseChars) throw MealAnalysisUnavailableException()
+        val boundedText = requireAiRawResponseWithinLimit(text)
         return runCatching {
-            val root = JsonParser.parseString(text).asJsonObject
+            val root = JsonParser.parseString(boundedText).asJsonObject
             val items = root.getAsJsonArray("items")?.take(MaxMealScanItems)?.mapNotNull { element ->
                 val obj = element.asJsonObject
                 val name = obj.get("name").boundedString(MaxMealScanNameChars).orEmpty()
@@ -158,7 +158,7 @@ class MealAnalysisService internal constructor(
                 notes = listOfNotNull(root.get("notes").boundedString(MaxMealScanNotesChars), reviewNotes)
                     .joinToString(" ")
                     .ifBlank { null },
-                rawResponse = text,
+                rawResponse = boundedText,
                 source = provider.toMealAnalysisSource(),
             )
         }.getOrElse { error ->
@@ -208,7 +208,8 @@ class BodyMeasurementPhotoService @Inject constructor(
         provider: AiProvider,
         contextOverrides: BodyMeasurementContextOverrides = BodyMeasurementContextOverrides(),
     ): BodyMeasurementPhotoResult {
-        val root = JsonParser.parseString(text).asJsonObject
+        val boundedText = requireAiRawResponseWithinLimit(text)
+        val root = JsonParser.parseString(boundedText).asJsonObject
         val weight = contextOverrides.weight
             ?: root.safeNumber("weight", default = 0.0, min = 30.0, max = 300.0)
             ?: 0.0
@@ -222,7 +223,7 @@ class BodyMeasurementPhotoService @Inject constructor(
         if (weight <= 0.0) {
             return fallbackBodyMeasurementPhoto(
                 notes = root.get("notes")?.asString ?: "AI kon het gewicht niet betrouwbaar uitlezen. Voeg het gewicht als context toe of vul het handmatig in.",
-                rawResponse = text,
+                rawResponse = boundedText,
                 source = source,
             )
         }
@@ -232,7 +233,7 @@ class BodyMeasurementPhotoService @Inject constructor(
             muscleMass = muscleMass,
             confidence = root.get("confidence")?.asString,
             notes = buildBodyMeasurementNotes(root.get("notes")?.asString, contextOverrides),
-            rawResponse = text,
+            rawResponse = boundedText,
             source = source,
         )
     }
@@ -473,6 +474,13 @@ private const val MaxMealImageUploadBytes = 1_500_000
 private const val MaxMealImageDimensionPx = 1_280
 private const val MaxAiRawResponseChars = 64_000
 
+internal class AiRawResponseTooLargeException : RuntimeException("AI-antwoord is te groot.")
+
+internal fun requireAiRawResponseWithinLimit(text: String): String {
+    if (text.length > MaxAiRawResponseChars) throw AiRawResponseTooLargeException()
+    return text
+}
+
 internal fun prepareMealScanImageBytes(file: File): ByteArray? {
     if (!file.exists() || file.length() <= 0L || file.length() > MaxMealImageSourceBytes) return null
     val raw = file.readBytes()
@@ -609,6 +617,7 @@ class GoalAdvisorService internal constructor(
         sex: BiologicalSex,
         activityLevel: String,
         goal: String,
+        manualCalorieTarget: Int? = null,
     ): GoalAdvice =
         runCatching {
             val baseline = deterministicGoalAdvice(
@@ -619,6 +628,7 @@ class GoalAdvisorService internal constructor(
                 sex = sex,
                 activityLevel = activityLevel,
                 goal = goal,
+                manualCalorieTarget = manualCalorieTarget,
             )
             if (!isAiReady()) return baseline
             val routed = aiJsonGenerator.generateJson(
@@ -636,6 +646,7 @@ class GoalAdvisorService internal constructor(
                                         activityLevel = activityLevel,
                                         goal = goal,
                                         baseline = baseline,
+                                        manualCalorieTarget = manualCalorieTarget,
                                     ),
                 ),
             )
@@ -650,12 +661,14 @@ class GoalAdvisorService internal constructor(
                 sex = sex,
                 activityLevel = activityLevel,
                 goal = goal,
+                manualCalorieTarget = manualCalorieTarget,
             )
         }
 
     private fun parseGoalAdvice(text: String, baseline: GoalAdvice, provider: AiProvider): GoalAdvice =
         runCatching {
-            val root = JsonParser.parseString(text).asJsonObject
+            val boundedText = requireAiRawResponseWithinLimit(text)
+            val root = JsonParser.parseString(boundedText).asJsonObject
             val textFields = listOf(
                 root.get("trainingFocus")?.asString.orEmpty(),
                 root.get("korteSamenvatting")?.asString ?: root.get("summary")?.asString.orEmpty(),
@@ -679,7 +692,7 @@ class GoalAdvisorService internal constructor(
                 advice = root.get("advies")?.asString ?: baseline.advice,
                 dataQuality = root.get("dataKwaliteit")?.asString ?: baseline.dataQuality,
                 source = provider.toGoalAdviceSource(),
-                rawResponse = text,
+                rawResponse = boundedText,
             )
         }.getOrElse { baseline }
 
@@ -691,6 +704,7 @@ class GoalAdvisorService internal constructor(
         sex: BiologicalSex,
         activityLevel: String,
         goal: String,
+        manualCalorieTarget: Int? = null,
     ): GoalAdvice {
         val baseline = buildGoalBaseline(
             heightCm = height,
@@ -700,6 +714,7 @@ class GoalAdvisorService internal constructor(
             sex = sex,
             activityLevel = activityLevel,
             goal = goal,
+            manualCalorieTarget = manualCalorieTarget,
         )
         val trainingFocus = when {
             goal.contains("bulk", ignoreCase = true) -> "Progressieve overload op compoundoefeningen"
@@ -717,9 +732,13 @@ class GoalAdvisorService internal constructor(
             carbsTarget = baseline.carbsTarget,
             fatTarget = baseline.fatTarget,
             trainingFocus = trainingFocus,
-            summary = "Lokale berekening: onderhoud ${baseline.maintenanceCalories} kcal en doel ${baseline.targetCalories} kcal op basis van je profiel.",
+            summary = if (manualCalorieTarget != null) {
+                "Lokale berekening: onderhoud ${baseline.maintenanceCalories} kcal en jouw calorie doel ${baseline.targetCalories} kcal op basis van je profiel."
+            } else {
+                "Lokale berekening: onderhoud ${baseline.maintenanceCalories} kcal en doel ${baseline.targetCalories} kcal op basis van je profiel."
+            },
             calorieAdvice = buildCalorieAdvice(baseline),
-            macroAdvice = "Macro's sluiten aan op ${baseline.targetCalories} kcal: ${baseline.proteinTarget} g eiwit, ${baseline.carbsTarget} g koolhydraten en ${baseline.fatTarget} g vet.",
+            macroAdvice = "Auto macro's sluiten aan op ${baseline.targetCalories} kcal: ${baseline.proteinTarget} g eiwit, ${baseline.carbsTarget} g koolhydraten en ${baseline.fatTarget} g vet.",
             activityExplanation = "Activiteitsfactor ${formatActivityMultiplierNl(baseline.activityMultiplier)} betekent dat onderhoud is berekend als BMR x activiteit: ${baseline.bmr} x ${formatActivityMultiplierNl(baseline.activityMultiplier)} = ${baseline.maintenanceCalories} kcal.",
             attentionPoints = buildGoalAttentionPoints(bodyFat = bodyFat, activityLevel = activityLevel),
             advice = buildGoalAdviceText(baseline, goal),
@@ -782,7 +801,8 @@ internal fun parseWeeklyReportResponse(text: String, adherence: Int): WeeklyRepo
 
 internal fun parseWeeklyReportResponse(text: String, adherence: Int, provider: AiProvider): WeeklyReportResult =
     runCatching {
-        val root = JsonParser.parseString(text).asJsonObject
+        val boundedText = requireAiRawResponseWithinLimit(text)
+        val root = JsonParser.parseString(boundedText).asJsonObject
         val summary = root.get("summary")?.asString?.trim().orEmpty()
         if (summary.isBlank()) return fallbackWeeklyReport(adherence)
         val wins = root.getAsJsonArray("wins")?.map { it.asString }.orEmpty()
@@ -802,7 +822,7 @@ internal fun parseWeeklyReportResponse(text: String, adherence: Int, provider: A
             nextWeekFocus = nextWeekFocus,
             rationaleBullets = rationaleBullets,
             source = provider.toWeeklyReportSource(),
-            rawResponse = text,
+            rawResponse = boundedText,
         )
     }.getOrElse { fallbackWeeklyReport(adherence) }
 
@@ -830,7 +850,8 @@ internal fun parseWorkoutDebriefResponse(
     progression: Double?,
     provider: AiProvider,
 ): WorkoutDebrief = runCatching {
-    val root = JsonParser.parseString(text).asJsonObject
+    val boundedText = requireAiRawResponseWithinLimit(text)
+    val root = JsonParser.parseString(boundedText).asJsonObject
     val summary = root.get("summary")?.asString ?: "Training opgeslagen."
     val progressionFeedback = root.get("progressionFeedback")?.asString ?: "Progressie bleef stabiel."
     val recommendation = root.get("recommendation")?.asString

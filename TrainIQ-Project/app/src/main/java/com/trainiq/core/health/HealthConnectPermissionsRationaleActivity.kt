@@ -106,7 +106,7 @@ internal fun HealthConnectPermissionsRationaleContent(
                         style = MaterialTheme.typography.headlineSmall,
                     )
                     Text(
-                        "TrainIQ leest zes signalen om training, herstel en voeding beter te duiden. Elke toestemming verklaart een ander deel van je belasting en herstel, zodat het dashboard niet doet alsof ontbrekende data bekend is.",
+                        "TrainIQ leest vijf signalen om training, herstel en voeding beter te duiden. Elke toestemming verklaart een ander deel van je belasting en herstel, zodat het dashboard niet doet alsof ontbrekende data bekend is.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -152,6 +152,10 @@ internal fun HealthConnectPermissionsRationaleContent(
                         "Health Connect beheert toestemmingen op een centrale plek. TrainIQ vraagt alleen leestoegang om het dashboard te synchroniseren en coaching beter te onderbouwen.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                    Text(
+                        "Achtergrondsync wordt alleen ingepland als Android en Health Connect die aparte achtergrondtoegang beschikbaar maken en jij die toegang in Health Connect hebt toegestaan.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                     Button(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = onRequestPermission,
@@ -168,31 +172,4 @@ internal fun HealthConnectPermissionsRationaleContent(
             }
         }
     }
-}
-
-private enum class PermissionReason(val title: String, val description: String) {
-    Steps(
-        title = "Stappen",
-        description = "Stappen tonen bewegingsvolume en consistentie, zodat TrainIQ een actieve week kan onderscheiden van alleen korte zware trainingsmomenten.",
-    ),
-    HeartRate(
-        title = "Hartslag",
-        description = "Hartslag geeft een signaal voor intensiteit en herstel, zodat adviezen minder hoeven te gokken naar stress, conditie en vermoeidheid.",
-    ),
-    Sleep(
-        title = "Slaap",
-        description = "Slaap helpt TrainIQ inschatten hoe hersteld je bent en maakt readiness, deload-signalen en sessieadvies concreter.",
-    ),
-    Calories(
-        title = "Actieve calorieën",
-        description = "Actieve calorieën geven context voor energieverbruik bovenop rustverbruik en helpen training en voeding realistischer naast elkaar te zetten.",
-    ),
-    Weight(
-        title = "Gewicht",
-        description = "Gewichtstrends geven voortgang context. TrainIQ gebruikt ze om prestaties en voeding te verbinden aan echte lichaamsverandering.",
-    ),
-    Workouts(
-        title = "Workouts",
-        description = "Workouts geven duur en trainingscontext, zodat TrainIQ Health Connect-data kan koppelen aan je trainingsbelasting.",
-    ),
 }

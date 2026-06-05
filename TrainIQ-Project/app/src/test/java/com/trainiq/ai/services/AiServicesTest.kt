@@ -197,6 +197,15 @@ class AiServicesTest {
     }
 
     @Test
+    fun aiRawResponseGuardRejectsOversizedModelOutput() {
+        val error = runCatching {
+            requireAiRawResponseWithinLimit("x".repeat(64_001))
+        }.exceptionOrNull()
+
+        assertTrue(error is AiRawResponseTooLargeException)
+    }
+
+    @Test
     fun analyzeMealImage_withStructuredItems_returnsApiResult() = runTest {
         val api = FakeGeminiApi(
             response = mealScanResponse(
@@ -692,6 +701,46 @@ class AiServicesTest {
     }
 
     @Test
+    fun generateGoalAdvice_withManualCalorieTargetPassesFixedTargetsToGeminiPrompt() = runTest {
+        val api = FakeGeminiApi(
+            response = mealScanResponse(
+                """
+                    {
+                      "trainingFocus": "Rustige opbouw met stabiele voedingsinname.",
+                      "korteSamenvatting": "Je gebruikt bewust een hoger calorie doel.",
+                      "calorieAdvies": "Houd dit doel twee weken vast en evalueer trend en training.",
+                      "macroAdvies": "Auto macro's verdelen extra energie vooral over koolhydraten.",
+                      "activiteitUitleg": "Onderhoud blijft berekend vanuit BMR en activiteit.",
+                      "aandachtspunten": ["Gebruik gewichtstrend om bij te sturen."],
+                      "advies": "Stuur pas bij na voldoende meetdagen.",
+                      "dataKwaliteit": "Redelijk: profiel compleet met handmatig calorie doel."
+                    }
+                """.trimIndent(),
+            ),
+        )
+        val service = GoalAdvisorService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+
+        val result = service.generateGoalAdvice(
+            height = 195.0,
+            weight = 107.2,
+            bodyFat = 25.0,
+            age = 30,
+            sex = BiologicalSex.MALE,
+            activityLevel = "Licht actief",
+            goal = "fat loss",
+            manualCalorieTarget = 3_050,
+        )
+
+        assertEquals(3_050, result.calorieTarget)
+        assertEquals(177, result.proteinTarget)
+        assertEquals(GoalAdviceSource.GEMINI_2_5_FLASH, result.source)
+        val prompt = api.lastRequest?.contents?.single()?.parts?.single()?.text.orEmpty()
+        assertTrue(prompt.contains("3050 kcal"))
+        assertTrue(prompt.contains("Jouw calorie doel is handmatig ingesteld"))
+        assertTrue(prompt.contains("Wijzig deze calorie- en macrocijfers niet"))
+    }
+
+    @Test
     fun generateGoalAdvice_withEnglishJsonReturnsLocalDutchFallback() = runTest {
         val api = FakeGeminiApi(
             response = mealScanResponse(
@@ -746,6 +795,41 @@ class AiServicesTest {
         assertTrue(result.activityExplanation.contains("Activiteitsfactor"))
         assertTrue(result.dataQuality.contains("schatting"))
         assertTrue(result.attentionPoints.isNotEmpty())
+    }
+
+    @Test
+    fun generateGoalAdvice_withOversizedJsonReturnsLocalFallbackWithoutRetainingRawResponse() = runTest {
+        val longDutch = "Trainingsweek blijft stabiel en herstel blijft leidend. ".repeat(1_400)
+        val api = FakeGeminiApi(
+            response = mealScanResponse(
+                """
+                    {
+                      "trainingFocus": "$longDutch",
+                      "korteSamenvatting": "Je onderhoud is lokaal berekend.",
+                      "calorieAdvies": "Houd je vaste doel stabiel.",
+                      "macroAdvies": "Auto macro's blijven leidend.",
+                      "activiteitUitleg": "Activiteit blijft een schatting.",
+                      "aandachtspunten": ["Gebruik trenddata voorzichtig."],
+                      "advies": "Evalueer pas na voldoende meetdagen.",
+                      "dataKwaliteit": "Redelijk."
+                    }
+                """.trimIndent(),
+            ),
+        )
+        val service = GoalAdvisorService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+
+        val result = service.generateGoalAdvice(
+            height = 180.0,
+            weight = 90.0,
+            bodyFat = 20.0,
+            age = 35,
+            sex = BiologicalSex.MALE,
+            activityLevel = "Licht actief",
+            goal = "spiermassa",
+        )
+
+        assertEquals(GoalAdviceSource.LOCAL_CALCULATION, result.source)
+        assertEquals(null, result.rawResponse)
     }
 
     @Test
@@ -820,6 +904,46 @@ class AiServicesTest {
 
         assertEquals(WeeklyReportSource.LOCAL_FALLBACK, result.source)
         assertTrue(result.summary.contains("Lokale samenvatting"))
+    }
+
+    @Test
+    fun parseWeeklyReportResponse_withOversizedJsonReturnsLocalFallbackWithoutRawResponse() {
+        val longDutch = "Herstel blijft leidend en training blijft stabiel. ".repeat(1_500)
+
+        val result = parseWeeklyReportResponse(
+            text = """
+                {
+                  "summary": "$longDutch",
+                  "wins": ["Je hield drie sessies vast."],
+                  "risks": ["Slaapdata blijft beperkt."],
+                  "nextWeekFocus": "Houd volume gelijk."
+                }
+            """.trimIndent(),
+            adherence = 82,
+        )
+
+        assertEquals(WeeklyReportSource.LOCAL_FALLBACK, result.source)
+        assertEquals(null, result.rawResponse)
+    }
+
+    @Test
+    fun parseWorkoutDebriefResponse_withOversizedJsonReturnsLocalFallback() {
+        val longDutch = "Training opgeslagen en herstel blijft de eerste limiter. ".repeat(1_500)
+
+        val result = parseWorkoutDebriefResponse(
+            text = """
+                {
+                  "summary": "$longDutch",
+                  "progressionFeedback": "Volume bleef stabiel.",
+                  "recommendation": "Herhaal de sessie rustig.",
+                  "nextSessionFocus": "Techniek vasthouden"
+                }
+            """.trimIndent(),
+            totalVolume = 4_000.0,
+            progression = 1.0,
+        )
+
+        assertEquals(com.trainiq.domain.model.WorkoutDebriefSource.LOCAL_FALLBACK, result.source)
     }
 
     private class FakeGeminiApi(

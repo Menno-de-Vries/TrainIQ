@@ -1204,6 +1204,7 @@ class TrainIqDataCoordinator @Inject constructor(
         sex: BiologicalSex,
         activityLevel: String,
         goal: String,
+        manualCalorieTarget: Int?,
     ): GoalAdvice = goalAdvisorService.generateGoalAdvice(
         height = height,
         weight = weight,
@@ -1212,6 +1213,7 @@ class TrainIqDataCoordinator @Inject constructor(
         sex = sex,
         activityLevel = activityLevel,
         goal = goal,
+        manualCalorieTarget = manualCalorieTarget,
     )
 
     suspend fun generateWeeklyReport(): WeeklyReportResult {

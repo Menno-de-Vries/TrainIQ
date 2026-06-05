@@ -33,6 +33,8 @@ import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.WeightRecord
 import java.time.Duration
+import java.time.Instant
+import java.time.ZoneId
 import kotlin.math.roundToInt
 
 fun UserProfileEntity.toDomain() = UserProfile(
@@ -190,10 +192,28 @@ internal fun HealthConnectCacheState.toDomainMetrics(): HealthConnectMetrics = H
     latestHeartRateBpm = heartRateRecords
         .maxByOrNull { it.latestSampleTimeMillis ?: Long.MIN_VALUE }
         ?.latestBeatsPerMinute,
-    sleepMinutes = sleepSessionRecords.sumOf(CachedSleepSessionRecord::durationMinutes),
+    sleepMinutes = sleepSessionRecords.mainRecentSleepSession()?.durationMinutes ?: 0L,
     sleepSessionCount = sleepSessionRecords.size,
     caloriesBurnedToday = caloriesBurnedRecords.takeIf { it.isNotEmpty() }?.sumOf(CachedCaloriesBurnedRecord::kcal),
     latestWeightKg = weightRecords.maxByOrNull(CachedWeightRecord::timeMillis)?.weightKg,
     workoutSessionCountToday = exerciseSessionRecords.size,
     workoutMinutesToday = exerciseSessionRecords.sumOf(CachedExerciseSessionRecord::durationMinutes),
 )
+
+internal fun List<CachedSleepSessionRecord>.mainRecentSleepSession(): CachedSleepSessionRecord? {
+    if (isEmpty()) return null
+    val preferred = filter { it.isLikelyOvernightSleep() }.ifEmpty { this }
+    return preferred.maxWithOrNull(
+        compareBy<CachedSleepSessionRecord> { it.durationMinutes }
+            .thenBy { it.endTimeMillis },
+    )
+}
+
+private fun CachedSleepSessionRecord.isLikelyOvernightSleep(): Boolean {
+    val zone = ZoneId.systemDefault()
+    val start = Instant.ofEpochMilli(startTimeMillis).atZone(zone).toLocalDateTime()
+    val end = Instant.ofEpochMilli(endTimeMillis).atZone(zone).toLocalDateTime()
+    return start.toLocalDate() != end.toLocalDate() ||
+        start.hour >= 18 ||
+        end.hour <= 12
+}

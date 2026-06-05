@@ -150,9 +150,10 @@ class CoachViewModel @Inject constructor(
         sex: BiologicalSex,
         activityLevel: String,
         goal: String,
+        manualCalorieTarget: String,
     ) {
         val input = when (
-            val result = validateGoalAdviceInput(name, height, weight, bodyFat, age, sex, activityLevel, goal)
+            val result = validateGoalAdviceInput(name, height, weight, bodyFat, age, sex, activityLevel, goal, manualCalorieTarget)
         ) {
             is GoalAdviceInputValidationResult.Valid -> result.input
             is GoalAdviceInputValidationResult.Invalid -> {
@@ -170,7 +171,7 @@ class CoachViewModel @Inject constructor(
                 )
             }
             val result = runCatching {
-                generateGoalAdviceUseCase(input.height, input.weight, input.bodyFat, input.age, input.sex, input.activityLevel, input.goal)
+                generateGoalAdviceUseCase(input.height, input.weight, input.bodyFat, input.age, input.sex, input.activityLevel, input.goal, input.manualCalorieTarget)
             }
             ephemeral.update {
                 it.copy(
@@ -206,9 +207,10 @@ class CoachViewModel @Inject constructor(
         sex: BiologicalSex,
         activityLevel: String,
         goal: String,
+        manualCalorieTarget: String,
     ) {
         val input = when (
-            val result = validateGoalAdviceInput(name, height, weight, bodyFat, age, sex, activityLevel, goal)
+            val result = validateGoalAdviceInput(name, height, weight, bodyFat, age, sex, activityLevel, goal, manualCalorieTarget)
         ) {
             is GoalAdviceInputValidationResult.Valid -> result.input
             is GoalAdviceInputValidationResult.Invalid -> {
@@ -268,6 +270,7 @@ private fun GoalAdviceInput.toDeterministicGoalAdvice(): GoalAdvice {
         sex = sex,
         activityLevel = activityLevel,
         goal = goal,
+        manualCalorieTarget = manualCalorieTarget,
     )
     val trainingFocus = when {
         goal.contains("bulk", ignoreCase = true) -> "Progressieve overload op compoundoefeningen"
@@ -363,6 +366,7 @@ internal data class GoalAdviceInput(
     val sex: BiologicalSex,
     val activityLevel: String,
     val goal: String,
+    val manualCalorieTarget: Int? = null,
 )
 
 private sealed interface GoalAdviceInputValidationResult {
@@ -379,8 +383,10 @@ internal fun buildGoalAdviceInput(
     sex: BiologicalSex,
     activityLevel: String,
     goal: String,
+    manualCalorieTarget: String = "",
 ): GoalAdviceInput? {
     val input = buildValidatedProfileInput(name, height, weight, bodyFat, age, sex, activityLevel, goal) ?: return null
+    val parsedManualCalorieTarget = parseManualCalorieTarget(manualCalorieTarget) ?: return null
 
     return GoalAdviceInput(
         name = input.name,
@@ -391,6 +397,7 @@ internal fun buildGoalAdviceInput(
         sex = input.sex,
         activityLevel = input.activityLevel,
         goal = input.goal,
+        manualCalorieTarget = parsedManualCalorieTarget.value,
     )
 }
 
@@ -403,23 +410,41 @@ private fun validateGoalAdviceInput(
     sex: BiologicalSex,
     activityLevel: String,
     goal: String,
-): GoalAdviceInputValidationResult = when (
-    val result = validateProfileInput(name, height, weight, bodyFat, age, sex, activityLevel, goal)
-) {
-    is ProfileInputValidationResult.Valid -> GoalAdviceInputValidationResult.Valid(
-        GoalAdviceInput(
-            name = result.input.name,
-            height = result.input.height,
-            weight = result.input.weight,
-            bodyFat = result.input.bodyFat,
-            age = result.input.age,
-            sex = result.input.sex,
-            activityLevel = result.input.activityLevel,
-            goal = result.input.goal,
-        ),
-    )
-    is ProfileInputValidationResult.Invalid -> GoalAdviceInputValidationResult.Invalid(result.error.message)
+    manualCalorieTarget: String = "",
+): GoalAdviceInputValidationResult {
+    return when (val result = validateProfileInput(name, height, weight, bodyFat, age, sex, activityLevel, goal)) {
+        is ProfileInputValidationResult.Valid -> {
+            val parsedManualCalorieTarget = parseManualCalorieTarget(manualCalorieTarget)
+                ?: return GoalAdviceInputValidationResult.Invalid(ManualCalorieTargetErrorMessage)
+            GoalAdviceInputValidationResult.Valid(
+            GoalAdviceInput(
+                name = result.input.name,
+                height = result.input.height,
+                weight = result.input.weight,
+                bodyFat = result.input.bodyFat,
+                age = result.input.age,
+                sex = result.input.sex,
+                activityLevel = result.input.activityLevel,
+                goal = result.input.goal,
+                manualCalorieTarget = parsedManualCalorieTarget.value,
+            ),
+            )
+        }
+        is ProfileInputValidationResult.Invalid -> GoalAdviceInputValidationResult.Invalid(result.error.message)
+    }
 }
+
+private data class ParsedManualCalorieTarget(val value: Int?)
+
+private fun parseManualCalorieTarget(value: String): ParsedManualCalorieTarget? {
+    val trimmed = value.trim()
+    if (trimmed.isBlank()) return ParsedManualCalorieTarget(null)
+    val parsed = trimmed.toIntOrNull() ?: return null
+    return parsed.takeIf { it in ManualCalorieTargetRange }?.let(::ParsedManualCalorieTarget)
+}
+
+private val ManualCalorieTargetRange = 1_200..6_000
+private const val ManualCalorieTargetErrorMessage = "Calorie doel moet leeg zijn of tussen 1200 en 6000 kcal liggen."
 
 @Composable
 fun CoachRoute(
@@ -439,9 +464,9 @@ fun CoachRoute(
 @Composable
 fun CoachScreen(
     uiState: CoachUiState,
-    onGenerateAdvice: (String, String, String, String, String, BiologicalSex, String, String) -> Unit,
+    onGenerateAdvice: (String, String, String, String, String, BiologicalSex, String, String, String) -> Unit,
     onGenerateWeeklyReport: () -> Unit,
-    onSaveProfile: (String, String, String, String, String, BiologicalSex, String, String) -> Unit,
+    onSaveProfile: (String, String, String, String, String, BiologicalSex, String, String, String) -> Unit,
     onDismissMessage: () -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
@@ -452,6 +477,8 @@ fun CoachScreen(
     var bodyFat by remember { mutableStateOf("") }
     var activityLevel by remember { mutableStateOf("Gemiddeld actief") }
     var goal by remember { mutableStateOf("") }
+    var manualCalorieTarget by remember { mutableStateOf("") }
+    var manualCalorieTargetError by remember { mutableStateOf<String?>(null) }
     var profileInputError by remember { mutableStateOf<ProfileInputValidationError?>(null) }
     var selectedCoachTab by rememberSaveable { mutableStateOf(CoachSectionTab.Week.key) }
     val haptics = LocalHapticFeedback.current
@@ -476,6 +503,8 @@ fun CoachScreen(
             bodyFat = it.bodyFat.toString()
             activityLevel = it.activityLevel.toDutchActivityLevelLabel()
             goal = it.goal
+            manualCalorieTarget = it.calorieTarget.takeIf { target -> target > 0 }?.toString().orEmpty()
+            manualCalorieTargetError = null
         }
     }
 
@@ -673,19 +702,44 @@ fun CoachScreen(
                                     errorText = profileInputError.errorTextFor(ProfileInputField.Goal),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
+                                TrainIqFormField(
+                                    value = manualCalorieTarget,
+                                    onValueChange = {
+                                        manualCalorieTarget = it.take(4)
+                                        manualCalorieTargetError = null
+                                        profileInputError = null
+                                    },
+                                    label = "Jouw calorie doel (kcal, optioneel)",
+                                    context = TrainIqFormFieldContext.Nutrition,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    isError = manualCalorieTargetError != null,
+                                    errorText = manualCalorieTargetError,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                Text(
+                                    "Laat leeg voor automatisch. Vul bijvoorbeeld 2900 in als je bewust hoger wilt eten; TrainIQ berekent macro's automatisch mee.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                                 Button(
                                     onClick = {
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        when (
-                                            val result = validateProfileInput(name, height, weight, bodyFat, age, sex, activityLevel, goal)
-                                        ) {
-                                            is ProfileInputValidationResult.Valid -> {
-                                                profileInputError = null
-                                                onGenerateAdvice(name, height, weight, bodyFat, age, sex, activityLevel, goal)
-                                            }
-                                            is ProfileInputValidationResult.Invalid -> {
-                                                profileInputError = result.error
-                                                onDismissMessage()
+                                        if (parseManualCalorieTarget(manualCalorieTarget) == null) {
+                                            manualCalorieTargetError = ManualCalorieTargetErrorMessage
+                                            onDismissMessage()
+                                        } else {
+                                            manualCalorieTargetError = null
+                                            when (
+                                                val result = validateProfileInput(name, height, weight, bodyFat, age, sex, activityLevel, goal)
+                                            ) {
+                                                is ProfileInputValidationResult.Valid -> {
+                                                    profileInputError = null
+                                                    onGenerateAdvice(name, height, weight, bodyFat, age, sex, activityLevel, goal, manualCalorieTarget)
+                                                }
+                                                is ProfileInputValidationResult.Invalid -> {
+                                                    profileInputError = result.error
+                                                    onDismissMessage()
+                                                }
                                             }
                                         }
                                     },
@@ -701,16 +755,22 @@ fun CoachScreen(
                                     Button(
                                         onClick = {
                                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            when (
-                                                val result = validateProfileInput(name, height, weight, bodyFat, age, sex, activityLevel, goal)
-                                            ) {
-                                                is ProfileInputValidationResult.Valid -> {
-                                                    profileInputError = null
-                                                    onSaveProfile(name, height, weight, bodyFat, age, sex, activityLevel, goal)
-                                                }
-                                                is ProfileInputValidationResult.Invalid -> {
-                                                    profileInputError = result.error
-                                                    onDismissMessage()
+                                            if (parseManualCalorieTarget(manualCalorieTarget) == null) {
+                                                manualCalorieTargetError = ManualCalorieTargetErrorMessage
+                                                onDismissMessage()
+                                            } else {
+                                                manualCalorieTargetError = null
+                                                when (
+                                                    val result = validateProfileInput(name, height, weight, bodyFat, age, sex, activityLevel, goal)
+                                                ) {
+                                                    is ProfileInputValidationResult.Valid -> {
+                                                        profileInputError = null
+                                                        onSaveProfile(name, height, weight, bodyFat, age, sex, activityLevel, goal, manualCalorieTarget)
+                                                    }
+                                                    is ProfileInputValidationResult.Invalid -> {
+                                                        profileInputError = result.error
+                                                        onDismissMessage()
+                                                    }
                                                 }
                                             }
                                         },
@@ -807,8 +867,8 @@ private fun GoalAdviceCard(advice: GoalAdvice, activityLevel: String) {
             Text("Calorieën", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
                 MetricPill("BMR", "${advice.bmr} kcal", accent = MaterialTheme.trainIqColors.amber)
-                MetricPill("Onderhoud", "${advice.maintenanceCalories} kcal", accent = MaterialTheme.trainIqColors.amber)
-                MetricPill("Doel", "${advice.calorieTarget} kcal", accent = MaterialTheme.trainIqColors.amber)
+                MetricPill("Berekend onderhoud", "${advice.maintenanceCalories} kcal", accent = MaterialTheme.trainIqColors.amber)
+                MetricPill("Jouw doel", "${advice.calorieTarget} kcal", accent = MaterialTheme.trainIqColors.amber)
                 MetricPill(goalAdviceEnergyDifferenceLabel(difference), "${kotlin.math.abs(difference)} kcal", accent = MaterialTheme.trainIqColors.amber)
             }
             compactSentences(advice.calorieAdvice.ifBlank { "Doelcalorieën zijn afgeleid van onderhoud en doel." }, maxSentences = 2).forEach {
@@ -822,7 +882,7 @@ private fun GoalAdviceCard(advice: GoalAdvice, activityLevel: String) {
                 MetricPill("Koolhydraten", "${advice.carbsTarget} g", accent = MaterialTheme.trainIqColors.amber)
                 MetricPill("Vet", "${advice.fatTarget} g", accent = MaterialTheme.trainIqColors.amber)
             }
-            Text("Samen ongeveer $macroCalories kcal.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Auto macro's: samen ongeveer $macroCalories kcal.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             compactSentences(advice.macroAdvice.ifBlank { "Koolhydraten vullen de resterende calorieën aan als trainingsbrandstof." }, maxSentences = 2).forEach {
                 Text(it, style = MaterialTheme.typography.bodyMedium)
             }

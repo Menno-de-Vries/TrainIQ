@@ -199,6 +199,7 @@ interface CoachRepository {
         sex: BiologicalSex,
         activityLevel: String,
         goal: String,
+        manualCalorieTarget: Int? = null,
     ): GoalAdvice
     suspend fun generateWeeklyReport(): WeeklyReportResult
     fun observeUserProfile(): Flow<UserProfile?>

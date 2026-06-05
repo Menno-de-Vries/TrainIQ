@@ -21,11 +21,25 @@ class OnboardingPreferencesSourceTest {
         assertTrue(source.contains("onboarding_health_connect_skipped"))
         assertTrue(source.contains("onboarding_ai_accepted"))
         assertTrue(source.contains("onboarding_ai_skipped"))
+        assertTrue(source.contains("onboarding_ai_setup_deferred"))
         assertTrue(source.contains("onboarding_reminders_enabled"))
         assertTrue(source.contains("onboarding_privacy_acknowledged"))
+        assertTrue(source.contains("onboarding_guided_tour_completed"))
+        assertTrue(source.contains("onboarding_guided_tour_skipped"))
         assertTrue(source.contains("val onboardingPreferences: Flow<OnboardingPreferences>"))
         assertTrue(source.contains("suspend fun saveOnboardingPreferences"))
         assertTrue(source.contains("suspend fun completeOnboarding"))
         assertTrue(source.contains("suspend fun reopenOnboarding"))
+    }
+
+    @Test
+    fun reopenOnboardingDoesNotMarkCompletedOnboardingIncomplete() {
+        val source = File("src/main/java/com/trainiq/core/datastore/UserPreferencesRepository.kt").readText()
+        val reopenBody = source.substringAfter("suspend fun reopenOnboarding()")
+            .substringBefore("suspend fun getHealthConnectSyncPreferences")
+
+        assertTrue(reopenBody.contains("onboardingGuidedTourCompletedKey"))
+        assertTrue(reopenBody.contains("onboardingGuidedTourSkippedKey"))
+        assertTrue("Reopening setup must not trigger the first-run route on next launch.", !reopenBody.contains("onboardingCompletedKey] = false"))
     }
 }

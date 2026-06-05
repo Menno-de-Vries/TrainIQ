@@ -91,6 +91,14 @@ class ReopenOnboardingUseCase @Inject constructor(private val preferencesReposit
     suspend operator fun invoke() = preferencesRepository.reopenOnboarding()
 }
 
+class MarkGuidedTourCompletedUseCase @Inject constructor(private val preferencesRepository: UserPreferencesRepository) {
+    suspend operator fun invoke() = preferencesRepository.markGuidedTourCompleted()
+}
+
+class MarkGuidedTourSkippedUseCase @Inject constructor(private val preferencesRepository: UserPreferencesRepository) {
+    suspend operator fun invoke() = preferencesRepository.markGuidedTourSkipped()
+}
+
 class ObserveWorkoutOverviewUseCase @Inject constructor(private val repository: WorkoutRepository) {
     operator fun invoke() = repository.observeWorkoutOverview()
 }
@@ -469,7 +477,8 @@ class GenerateGoalAdviceUseCase @Inject constructor(private val repository: Coac
         sex: BiologicalSex,
         activityLevel: String,
         goal: String,
-    ) = repository.generateGoalAdvice(height, weight, bodyFat, age, sex, activityLevel, goal)
+        manualCalorieTarget: Int? = null,
+    ) = repository.generateGoalAdvice(height, weight, bodyFat, age, sex, activityLevel, goal, manualCalorieTarget)
 }
 
 class GenerateWeeklyReportUseCase @Inject constructor(private val repository: CoachRepository) {

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -75,6 +76,7 @@ import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
+import com.trainiq.BuildConfig
 import com.trainiq.ai.services.AiUsageGate
 import com.trainiq.ai.services.hasAnyReadyProvider
 import com.trainiq.core.datastore.AiPreferences
@@ -237,61 +239,70 @@ class CameraScannerViewModel @Inject constructor(
                     message = "AI-scan niet ingesteld. Zet AI aan en voeg een Gemini of OpenAI API-sleutel toe in Instellingen.",
                 )
             }
+            deleteScannerTemporaryImage(path)
             return
         }
         viewModelScope.launch {
             ephemeral.update { it.copy(phase = Phase.Processing, message = null) }
             if (scannerMode == ScannerMode.AI_SCALE) {
-                runCatching { analyzeBodyMeasurementPhotoUseCase(path, contextHint) }
+                try {
+                    runCatching { analyzeBodyMeasurementPhotoUseCase(path, contextHint) }
+                        .onSuccess { result ->
+                            ephemeral.update {
+                                if (result.source == BodyMeasurementPhotoSource.LOCAL_FALLBACK || result.weight <= 0.0) {
+                                    it.copy(phase = Phase.LocalFallback, message = result.notes)
+                                } else {
+                                    it.copy(phase = Phase.CompletedScale, bodyMeasurement = result, message = result.notes)
+                                }
+                            }
+                        }
+                        .onFailure {
+                            ephemeral.update { it.copy(phase = Phase.Error, message = "Weegfoto analyseren mislukt. Probeer opnieuw.") }
+                        }
+                } finally {
+                    deleteScannerTemporaryImage(path)
+                }
+                return@launch
+            }
+            try {
+                runCatching { analyzeMealUseCase(path, contextHint, capturedAtMillis) }
                     .onSuccess { result ->
+                        val resultState = classifyMealScanResultForScanner(result, contextHint)
                         ephemeral.update {
-                            if (result.source == BodyMeasurementPhotoSource.LOCAL_FALLBACK || result.weight <= 0.0) {
-                                it.copy(phase = Phase.LocalFallback, message = result.notes)
-                            } else {
-                                it.copy(phase = Phase.CompletedScale, bodyMeasurement = result, message = result.notes)
+                            when (resultState) {
+                                is CameraScannerUiState.Completed -> it.copy(
+                                    phase = Phase.Completed,
+                                    suggestedMealType = resultState.suggestedMealType,
+                                    itemCount = resultState.itemCount,
+                                    message = null,
+                                )
+                                is CameraScannerUiState.Empty -> it.copy(
+                                    phase = Phase.Empty,
+                                    suggestedMealType = result.suggestedMealType,
+                                    itemCount = 0,
+                                    message = resultState.message,
+                                )
+                                is CameraScannerUiState.LocalFallback -> it.copy(
+                                    phase = Phase.LocalFallback,
+                                    suggestedMealType = result.suggestedMealType,
+                                    itemCount = 0,
+                                    message = resultState.message,
+                                )
+                                else -> it
                             }
                         }
                     }
                     .onFailure {
-                        ephemeral.update { it.copy(phase = Phase.Error, message = "Weegfoto analyseren mislukt. Probeer opnieuw.") }
-                    }
-                return@launch
-            }
-            runCatching { analyzeMealUseCase(path, contextHint, capturedAtMillis) }
-                .onSuccess { result ->
-                    val resultState = classifyMealScanResultForScanner(result, contextHint)
-                    ephemeral.update {
-                        when (resultState) {
-                            is CameraScannerUiState.Completed -> it.copy(
-                                phase = Phase.Completed,
-                                suggestedMealType = resultState.suggestedMealType,
-                                itemCount = resultState.itemCount,
-                                message = null,
+                        ephemeral.update {
+                            it.copy(
+                                phase = Phase.Error,
+                                message = "Scan mislukt. Probeer opnieuw.",
                             )
-                            is CameraScannerUiState.Empty -> it.copy(
-                                phase = Phase.Empty,
-                                suggestedMealType = result.suggestedMealType,
-                                itemCount = 0,
-                                message = resultState.message,
-                            )
-                            is CameraScannerUiState.LocalFallback -> it.copy(
-                                phase = Phase.LocalFallback,
-                                suggestedMealType = result.suggestedMealType,
-                                itemCount = 0,
-                                message = resultState.message,
-                            )
-                            else -> it
                         }
                     }
-                }
-                .onFailure {
-                    ephemeral.update {
-                        it.copy(
-                            phase = Phase.Error,
-                            message = "Scan mislukt. Probeer opnieuw.",
-                        )
-                    }
-                }
+            } finally {
+                deleteScannerTemporaryImage(path)
+            }
         }
     }
 
@@ -329,6 +340,14 @@ internal fun classifyMealScanResultForScanner(
             itemCount = result.items.size,
         )
     }
+
+internal fun deleteScannerTemporaryImage(path: String): Boolean {
+    val file = File(path)
+    val isScannerCacheFile = file.name.startsWith("scanner-import-") ||
+        file.name.startsWith("meal-fullscreen-")
+    if (!isScannerCacheFile || !file.name.endsWith(".jpg", ignoreCase = true)) return false
+    return runCatching { file.isFile && file.delete() }.getOrDefault(false)
+}
 
 private fun fallbackScaleScannerResult() = BodyMeasurementPhotoResult(
     weight = 0.0,
@@ -1063,11 +1082,16 @@ private fun takeScannerPhoto(
             }
 
             override fun onError(exception: ImageCaptureException) {
-                android.util.Log.e("TrainIQ", "Camera capture failed", exception)
+                logScannerCaptureFailure(exception)
                 onError("Kan geen foto maken op dit apparaat.")
             }
         },
     )
+}
+
+private fun logScannerCaptureFailure(exception: ImageCaptureException) {
+    if (!BuildConfig.DEBUG) return
+    Log.w(ScannerLogTag, "Camera capture failed (${exception.imageCaptureError})")
 }
 
 internal fun copyScannerImageFromUri(context: Context, uri: Uri): String? =
@@ -1102,4 +1126,5 @@ private fun InputStream.copyToLimit(output: OutputStream, maxBytes: Long) {
 
 private class ScannerImportTooLargeException : RuntimeException()
 
+private const val ScannerLogTag = "TrainIQ"
 private const val MaxScannerImportBytes = 6L * 1024L * 1024L
