@@ -1896,27 +1896,48 @@ private fun ActiveRoutineCard(
                         Text(activeRoutineSetupLabel())
                     }
                 } else {
-                    WrappingActionRow(labels = listOf(activeRoutineStartLabel(startableDay.name), "Routine aanpassen")) { actionModifier ->
-                        PrimaryActionButton(
-                            onClick = { onStartWorkout(startableDay.id) },
-                            modifier = actionModifier,
-                        ) {
-                            Text(
-                                activeRoutineStartLabel(startableDay.name),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        SecondaryActionButton(
-                            onClick = { onOpenDetails(activeRoutine.id) },
-                            modifier = actionModifier,
-                        ) {
-                            Icon(Icons.Rounded.Edit, contentDescription = null)
-                            Text("Routine aanpassen", maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-                        }
-                    }
+                    ActiveRoutineActionRow(
+                        activeRoutineId = activeRoutine.id,
+                        startableDay = startableDay,
+                        onStartWorkout = onStartWorkout,
+                        onOpenDetails = onOpenDetails,
+                    )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ActiveRoutineActionRow(
+    activeRoutineId: Long,
+    startableDay: WorkoutDay,
+    onStartWorkout: (Long) -> Unit,
+    onOpenDetails: (Long) -> Unit,
+) {
+    val startLabel = activeRoutineStartLabel(startableDay.name)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val actionModifier = Modifier.weight(1f).fillMaxWidth().heightIn(min = 48.dp)
+        PrimaryActionButton(
+            onClick = { onStartWorkout(startableDay.id) },
+            modifier = actionModifier,
+        ) {
+            Text(
+                startLabel,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        SecondaryActionButton(
+            onClick = { onOpenDetails(activeRoutineId) },
+            modifier = actionModifier,
+        ) {
+            Icon(Icons.Rounded.Edit, contentDescription = null)
+            Text("Routine aanpassen", maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
         }
     }
 }
@@ -2370,20 +2391,12 @@ private fun RoutineCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                WrappingActionRow(labels = listOf("Details", "Actief maken", "Start")) { actionModifier ->
-                    SecondaryActionButton(onClick = onOpenDetails, modifier = actionModifier) {
-                        Icon(Icons.Rounded.Edit, contentDescription = null)
-                        Text("Details")
-                    }
-                    if (!routine.active) {
-                        SecondaryActionButton(onClick = { onSetActiveRoutine(routine.id) }, modifier = actionModifier) {
-                            Text("Actief maken", maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-                        }
-                    }
-                    routine.firstStartableDay()?.let { day ->
-                        PrimaryActionButton(onClick = { onStartWorkout(day.id) }, modifier = actionModifier) { Text("Start") }
-                    }
-                }
+                RoutineOverviewActionStrip(
+                    routine = routine,
+                    onOpenDetails = onOpenDetails,
+                    onSetActiveRoutine = onSetActiveRoutine,
+                    onStartWorkout = onStartWorkout,
+                )
             }
         }
         return
@@ -2551,6 +2564,45 @@ private fun RoutineCard(
                 }
             }
             }
+        }
+    }
+}
+
+@Composable
+private fun RoutineOverviewActionStrip(
+    routine: WorkoutRoutine,
+    onOpenDetails: () -> Unit,
+    onSetActiveRoutine: (Long) -> Unit,
+    onStartWorkout: (Long) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val actionModifier = Modifier.weight(1f).fillMaxWidth().heightIn(min = 48.dp)
+        SecondaryActionButton(onClick = onOpenDetails, modifier = actionModifier) {
+            Icon(Icons.Rounded.Edit, contentDescription = null)
+            Text("Details", maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        SecondaryActionButton(
+            onClick = { onSetActiveRoutine(routine.id) },
+            modifier = actionModifier,
+        ) {
+            Text(
+                if (routine.active) "Actief" else "Actief maken",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
+        }
+        val startableDay = routine.firstStartableDay()
+        if (startableDay != null) {
+            PrimaryActionButton(onClick = { onStartWorkout(startableDay.id) }, modifier = actionModifier) {
+                Text("Start", maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        } else {
+            Spacer(modifier = actionModifier)
         }
     }
 }

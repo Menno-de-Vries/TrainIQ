@@ -71,11 +71,28 @@ class WorkoutInputValidationTest {
     fun activeRoutineCardOffersEditActionWhenRoutineCanStart() {
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
         val activeRoutineCard = workoutScreen.substringAfter("private fun ActiveRoutineCard(").substringBefore("@Composable\nprivate fun SectionHeader")
+        val activeRoutineActionRow = workoutScreen.substringAfter("private fun ActiveRoutineActionRow(").substringBefore("@Composable\nprivate fun SectionHeader")
         val startableBranch = activeRoutineCard.substringAfter("} else {").substringBefore("}\n            }\n        }")
 
-        assertTrue(startableBranch.contains("onStartWorkout(startableDay.id)"))
-        assertTrue(startableBranch.contains("onOpenDetails(activeRoutine.id)"))
-        assertTrue(startableBranch.contains("Routine aanpassen") || startableBranch.contains("Routine bewerken"))
+        assertTrue(startableBranch.contains("ActiveRoutineActionRow("))
+        assertTrue(activeRoutineActionRow.contains("onStartWorkout(startableDay.id)"))
+        assertTrue(activeRoutineActionRow.contains("onOpenDetails(activeRoutineId)"))
+        assertTrue(activeRoutineActionRow.contains("Routine aanpassen") || activeRoutineActionRow.contains("Routine bewerken"))
+    }
+
+    @Test
+    fun activeRoutineCardUsesStableActionRowForScrollPerformance() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val activeRoutineCard = workoutScreen.substringAfter("private fun ActiveRoutineCard(").substringBefore("@Composable\nprivate fun ActiveRoutineActionRow")
+        val activeRoutineActionRow = workoutScreen.substringAfter("private fun ActiveRoutineActionRow(").substringBefore("@Composable\nprivate fun SectionHeader")
+
+        assertTrue(activeRoutineCard.contains("ActiveRoutineActionRow("))
+        assertFalse(activeRoutineCard.contains("WrappingActionRow("))
+        assertTrue(activeRoutineActionRow.contains("Row("))
+        assertTrue(activeRoutineActionRow.contains("Modifier.weight(1f).fillMaxWidth().heightIn(min = 48.dp)"))
+        assertTrue(activeRoutineActionRow.contains("val startLabel = activeRoutineStartLabel(startableDay.name)"))
+        assertTrue(activeRoutineActionRow.contains("onStartWorkout(startableDay.id)"))
+        assertTrue(activeRoutineActionRow.contains("onOpenDetails(activeRoutineId)"))
     }
 
     @Test
@@ -98,15 +115,19 @@ class WorkoutInputValidationTest {
         val routineCardOverview = workoutScreen
             .substringAfter("if (!detailMode) {")
             .substringBefore("return\n    }")
+        val routineOverviewActionStrip = workoutScreen
+            .substringAfter("private fun RoutineOverviewActionStrip(")
+            .substringBefore("@Composable\nprivate fun RoutineDetailTabSwitcher")
         val routineDetailBody = workoutScreen
             .substringAfter("AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.primary)")
             .substringBefore("HorizontalDivider()")
 
-        assertTrue(routineCardOverview.contains("WrappingActionRow("))
-        assertTrue(routineCardOverview.contains("PrimaryActionButton(onClick = { onStartWorkout(day.id)"))
-        assertTrue(routineCardOverview.contains("SecondaryActionButton(onClick = onOpenDetails"))
-        assertTrue(routineCardOverview.contains("actionModifier ->"))
-        assertTrue(routineCardOverview.contains("modifier = actionModifier"))
+        assertTrue(routineCardOverview.contains("RoutineOverviewActionStrip("))
+        assertTrue(routineOverviewActionStrip.contains("PrimaryActionButton(onClick = { onStartWorkout(startableDay.id)"))
+        assertTrue(routineOverviewActionStrip.contains("SecondaryActionButton(onClick = onOpenDetails"))
+        assertTrue(routineOverviewActionStrip.contains("weight(1f).fillMaxWidth()"))
+        assertTrue(routineOverviewActionStrip.contains("heightIn(min = 48.dp)"))
+        assertFalse(routineCardOverview.contains("WrappingActionRow(labels = listOf(\"Details\", \"Actief maken\", \"Start\"))"))
         assertTrue(routineDetailBody.contains("WrappingActionRow("))
         assertTrue(routineDetailBody.contains("PrimaryActionButton(onClick = { onStartWorkout(startableDay.id)"))
         assertTrue(routineDetailBody.contains("SecondaryActionButton(onClick = { onSetActiveRoutine(routine.id)"))
@@ -523,9 +544,12 @@ class WorkoutInputValidationTest {
         val routineCardOverview = workoutScreen
             .substringAfter("if (!detailMode) {")
             .substringBefore("return\n    }")
+        val routineOverviewActionStrip = workoutScreen
+            .substringAfter("private fun RoutineOverviewActionStrip(")
+            .substringBefore("@Composable\nprivate fun RoutineDetailTabSwitcher")
 
         assertTrue(routineCardOverview.contains("onOpenDetails"))
-        assertTrue(routineCardOverview.contains("Text(\"Details\")"))
+        assertTrue(routineOverviewActionStrip.contains("Text(\"Details\""))
     }
 
     @Test

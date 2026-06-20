@@ -547,6 +547,25 @@ class NutritionInputValidationTest {
     }
 
     @Test
+    fun nutritionLibraryHeaderActionsUseEqualWidthCells() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val recipeHeader = source.substringAfter("private fun RecipesHeaderCard(").substringBefore("@Composable\nprivate fun NutritionMetricStrip")
+        val productHeader = source.substringAfter("private fun ProductsHeaderCard(").substringBefore("@Composable\nprivate fun NutritionNumberField")
+        val equalActions = source.substringAfter("private fun EqualNutritionHeaderActions(").substringBefore("@Composable\nprivate fun NutritionHeaderActionCell")
+
+        assertTrue(source.contains("private fun EqualNutritionHeaderActions("))
+        assertTrue(recipeHeader.contains("EqualNutritionHeaderActions"))
+        assertTrue(productHeader.contains("EqualNutritionHeaderActions"))
+        assertTrue(equalActions.contains("items.chunked(2).forEach"))
+        assertTrue(equalActions.contains("val singleFullWidth = rowItems.size == 1"))
+        assertTrue(equalActions.contains("if (singleFullWidth) Modifier.fillMaxWidth() else Modifier.weight(1f).fillMaxWidth()"))
+        assertTrue(equalActions.contains("Modifier.weight(1f).fillMaxWidth()"))
+        assertFalse(equalActions.contains("Spacer(modifier = Modifier.weight(1f))"))
+        assertFalse(recipeHeader.contains("modifier = Modifier.fillMaxWidth()) {\n                Text(\"Foto/AI ingredi"))
+        assertFalse(productHeader.contains("modifier = Modifier.fillMaxWidth()) {\n                Text(\"Foto/AI product\")"))
+    }
+
+    @Test
     fun aiProductAndRecipeButtonsRouteToHiddenAiResultTargets() {
         val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
         val productHeaderCall = source.substringAfter("ProductsHeaderCard(").substringBefore(")\n                            }\n                            item {\n                                SavedFoodsCard")
@@ -675,6 +694,23 @@ class NutritionInputValidationTest {
         assertTrue(mealHistoryCard.contains("onReuseMeal(meal)"))
         assertTrue(mealHistoryCard.contains("onDeleteMeal(meal.id)"))
         assertTrue(mealHistoryCard.contains("voedingssnapshots"))
+    }
+
+    @Test
+    fun mealHistoryDetailsUseMetricCardsAndAlignedActions() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val mealHistoryCard = source.substringAfter("private fun MealHistoryCard(").substringBefore("@Composable\nprivate fun MealHistoryDetailCard")
+        val detailCard = source.substringAfter("private fun MealHistoryDetailCard(").substringBefore("@Composable\nprivate fun MealHistoryItemRow")
+        val itemRow = source.substringAfter("private fun MealHistoryItemRow(").substringBefore("internal data class NutritionHistoryDay")
+
+        assertTrue(mealHistoryCard.contains("MealHistoryDetailCard("))
+        assertTrue(detailCard.contains("NutritionMetricGrid("))
+        assertTrue(detailCard.contains("AppChip(label = meal.mealType.dutchLabel"))
+        assertTrue(detailCard.contains("MealHistoryItemRow("))
+        assertTrue(detailCard.contains("Button(onClick = { onReuseMeal(meal) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp))"))
+        assertTrue(detailCard.contains("TextButton(onClick = { onDeleteMeal(meal.id) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp))"))
+        assertTrue(itemRow.contains("item.nutritionSnapshot"))
+        assertFalse(detailCard.contains("kcal - ${'$'}{nutritionMacroSummary"))
     }
 
     @Test

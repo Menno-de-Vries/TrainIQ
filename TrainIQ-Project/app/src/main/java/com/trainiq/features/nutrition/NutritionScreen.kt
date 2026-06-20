@@ -1925,17 +1925,13 @@ private fun RecipesHeaderCard(
                 Icon(Icons.Rounded.Add, contentDescription = "Recept toevoegen")
             }
         }
-        WrappingNutritionActions {
-            Button(onClick = onCreateClick, modifier = Modifier.weight(1f).fillMaxWidth()) {
-                Text("Recept maken")
-            }
-            OutlinedButton(onClick = onScanIngredient, modifier = Modifier.weight(1f).fillMaxWidth()) {
-                Text("Ingrediënt scannen")
-            }
-            OutlinedButton(onClick = onPhotoIngredient, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) {
-                Text("Foto/AI ingrediënten")
-            }
-        }
+        EqualNutritionHeaderActions(
+            items = listOf(
+                NutritionHeaderAction("Recept maken", primary = true, onClick = onCreateClick),
+                NutritionHeaderAction("Ingrediënt scannen", onClick = onScanIngredient),
+                NutritionHeaderAction("Foto/AI ingrediënten", enabled = aiEnabled, onClick = onPhotoIngredient),
+            ),
+        )
     }
 }
 
@@ -2106,6 +2102,47 @@ private fun WrappingNutritionActions(content: @Composable FlowRowScope.() -> Uni
     )
 }
 
+private data class NutritionHeaderAction(
+    val label: String,
+    val primary: Boolean = false,
+    val enabled: Boolean = true,
+    val onClick: () -> Unit,
+)
+
+@Composable
+private fun EqualNutritionHeaderActions(items: List<NutritionHeaderAction>) {
+    Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+        items.chunked(2).forEach { rowItems ->
+            Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+                val singleFullWidth = rowItems.size == 1
+                rowItems.forEach { item ->
+                    NutritionHeaderActionCell(
+                        item = item,
+                        modifier = if (singleFullWidth) Modifier.fillMaxWidth() else Modifier.weight(1f).fillMaxWidth(),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NutritionHeaderActionCell(
+    item: NutritionHeaderAction,
+    modifier: Modifier = Modifier,
+) {
+    val buttonModifier = modifier.heightIn(min = 48.dp)
+    if (item.primary) {
+        Button(onClick = item.onClick, enabled = item.enabled, modifier = buttonModifier) {
+            Text(item.label, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        }
+    } else {
+        OutlinedButton(onClick = item.onClick, enabled = item.enabled, modifier = buttonModifier) {
+            Text(item.label, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        }
+    }
+}
+
 @Composable
 private fun ProductsHeaderCard(
     foodCount: Int,
@@ -2129,17 +2166,13 @@ private fun ProductsHeaderCard(
                 Icon(Icons.Rounded.Add, contentDescription = "Product toevoegen")
             }
         }
-        WrappingNutritionActions {
-            Button(onClick = onCreateClick, modifier = Modifier.weight(1f).fillMaxWidth()) {
-                Text("Product maken")
-            }
-            OutlinedButton(onClick = onScanBarcode, modifier = Modifier.weight(1f).fillMaxWidth()) {
-                Text("Barcode scannen")
-            }
-            OutlinedButton(onClick = onPhotoProduct, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) {
-                Text("Foto/AI product")
-            }
-        }
+        EqualNutritionHeaderActions(
+            items = listOf(
+                NutritionHeaderAction("Product maken", primary = true, onClick = onCreateClick),
+                NutritionHeaderAction("Barcode scannen", onClick = onScanBarcode),
+                NutritionHeaderAction("Foto/AI product", enabled = aiEnabled, onClick = onPhotoProduct),
+            ),
+        )
     }
 }
 
@@ -3071,30 +3104,116 @@ private fun MealHistoryCard(
                             }
                             if (expandedHistoryDayKey == day.key) {
                                 day.meals.forEach { meal ->
-                                    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            Text(meal.name, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                            Text(meal.mealType.dutchLabel, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                                            Text("${formatNumber(meal.totalNutrition.calories)} kcal - ${nutritionMacroSummary(meal.totalNutrition.protein, meal.totalNutrition.carbs, meal.totalNutrition.fat)}")
-                                            meal.items.forEach { item ->
-                                                val liveName = when (item.itemType.name) {
-                                                    "FOOD" -> foods.firstOrNull { it.id == item.referenceId }?.name
-                                                    else -> recipes.firstOrNull { it.id == item.referenceId }?.name
-                                                } ?: item.name
-                                                Text("$liveName • ${formatNumber(item.gramsUsed)}g x${item.servingCount.coerceAtLeast(1)}", maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                            }
-                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                                Button(onClick = { onReuseMeal(meal) }, modifier = Modifier.weight(1f)) { Text("Opnieuw gebruiken") }
-                                                TextButton(onClick = { onDeleteMeal(meal.id) }) { Text("Verwijderen") }
-                                            }
-                                        }
-                                    }
+                                    MealHistoryDetailCard(
+                                        meal = meal,
+                                        foods = foods,
+                                        recipes = recipes,
+                                        onReuseMeal = onReuseMeal,
+                                        onDeleteMeal = onDeleteMeal,
+                                    )
                                 }
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun MealHistoryDetailCard(
+    meal: LoggedMeal,
+    foods: List<FoodItem>,
+    recipes: List<Recipe>,
+    onReuseMeal: (LoggedMeal) -> Unit,
+    onDeleteMeal: (Long) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+            ) {
+                Text(
+                    meal.name,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                AppChip(label = meal.mealType.dutchLabel, accent = MaterialTheme.colorScheme.primary)
+            }
+            NutritionMetricGrid(
+                values = listOf(
+                    NutritionMetricValue("Kcal", formatNumber(meal.totalNutrition.calories), MaterialTheme.colorScheme.primary),
+                    NutritionMetricValue("Eiwit", "${formatNumber(meal.totalNutrition.protein)} g", MaterialTheme.trainIqColors.mint),
+                    NutritionMetricValue("Kh", "${formatNumber(meal.totalNutrition.carbs)} g", MaterialTheme.trainIqColors.blue),
+                    NutritionMetricValue("Vet", "${formatNumber(meal.totalNutrition.fat)} g", MaterialTheme.colorScheme.tertiary),
+                ),
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                meal.items.forEach { item ->
+                    val liveName = when (item.itemType) {
+                        LoggedMealItemType.FOOD -> foods.firstOrNull { it.id == item.referenceId }?.name
+                        LoggedMealItemType.RECIPE -> recipes.firstOrNull { it.id == item.referenceId }?.name
+                        LoggedMealItemType.SNAPSHOT -> null
+                    } ?: item.name
+                    MealHistoryItemRow(item = item, itemName = liveName)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = { onReuseMeal(meal) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                    Text("Opnieuw gebruiken", maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                }
+                TextButton(onClick = { onDeleteMeal(meal.id) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                    Text("Verwijderen", maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MealHistoryItemRow(
+    item: LoggedMealItem,
+    itemName: String,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.72f),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(itemName, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    "${formatNumber(item.gramsUsed)} g x${item.servingCount.coerceAtLeast(1)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.trainIqColors.mutedText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(
+                "${formatNumber(item.nutritionSnapshot.calories)} kcal",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.End,
+            )
         }
     }
 }

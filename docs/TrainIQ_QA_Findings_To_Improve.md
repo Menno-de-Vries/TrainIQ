@@ -6,6 +6,50 @@ Refresh date: 2026-05-10, current worktree
 
 Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emulator smoke, Health Connect, Gemini/AI, Room/data, UI/UX/accessibility, release readiness.
 
+## 2026-06-20 Active Routine Scroll Performance Polish
+
+- status: done for reducing active-routine card scroll jank by removing the generic wrapping action layout from the fixed two-button active routine action area.
+- files changed: `ActiveRoutineCard` now delegates start/edit actions to a lightweight `ActiveRoutineActionRow` with stable equal-width buttons and a single computed start label; workout start and routine detail callbacks are unchanged.
+- verification evidence:
+  - RED: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest.activeRoutineCardUsesStableActionRowForScrollPerformance" --console=plain --no-configuration-cache` failed before implementation because the active routine card still used `WrappingActionRow`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest.activeRoutineCardUsesStableActionRowForScrollPerformance" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --tests "com.trainiq.core.ui.ActionButtonLayoutPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 2797`, and filtered AndroidRuntime crash buffer was empty.
+- external sources used: none; local source and the reported scroll behavior were sufficient.
+- remaining risk: install/launch proof confirms no crash; real frame timing can still vary by device and seeded data size.
+
+## 2026-06-20 Nutrition AI Header Action Full-Width Follow-Up
+
+- status: done for making the single third Foto/AI action in Producten and Recepten span the full row width instead of sitting as a half-width orphan below the first button.
+- files changed: shared `EqualNutritionHeaderActions` now keeps paired rows as equal 50/50 cells but renders a single final row item with `Modifier.fillMaxWidth()` and no spacer; Producten and Recepten inherit the same layout.
+- verification evidence:
+  - RED: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest.nutritionLibraryHeaderActionsUseEqualWidthCells" --console=plain --no-configuration-cache` failed before implementation because the helper still used a spacer for odd rows.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest.nutritionLibraryHeaderActionsUseEqualWidthCells" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 2446`, and filtered AndroidRuntime crash buffer was empty.
+- external sources used: none; local screenshot/request context and source guards were sufficient.
+- remaining risk: install/launch proof confirms no crash; runtime visual proof on the exact seeded Producten/Recepten state remains optional because the shared source guard now protects both tabs.
+
+## 2026-06-20 Training/Nutrition Action Alignment Polish
+
+- status: done for small visual alignment polish in Training routine actions, Producten/Recepten header actions, and expanded Nutrition history details without changing persistence, AI routing, scanner routing, meal reuse/delete behavior, or workout start behavior.
+- files changed: inactive routine overview actions now render through a fixed equal-width strip for Details/Actief maken/Start; Producten and Recepten creation/scan/photo actions now share equal-width header cells instead of a full-width odd action; expanded Nutrition history meals now use a detail card with meal-type chip, Kcal/Eiwit/Kh/Vet metric grid, snapshot item rows, and aligned reuse/delete actions.
+- verification evidence:
+  - RED: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest.routineActionsUseWrappingSharedButtons" --tests "com.trainiq.features.nutrition.NutritionInputValidationTest.nutritionLibraryHeaderActionsUseEqualWidthCells" --tests "com.trainiq.features.nutrition.NutritionInputValidationTest.mealHistoryDetailsUseMetricCardsAndAlignedActions" --console=plain --no-configuration-cache` failed before implementation on the missing equal action strip/header cells/history detail components.
+  - FAIL then fixed: the first after-change targeted run failed at compile because `Modifier.weight(...)` was constructed outside the `Row` scope; the modifier is now created inside the row scope.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest.routineActionsUseWrappingSharedButtons" --tests "com.trainiq.features.nutrition.NutritionInputValidationTest.nutritionLibraryHeaderActionsUseEqualWidthCells" --tests "com.trainiq.features.nutrition.NutritionInputValidationTest.mealHistoryDetailsUseMetricCardsAndAlignedActions" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --tests "com.trainiq.core.ui.ActionButtonLayoutPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - PASS: `git diff --check` returned only existing LF-to-CRLF warnings.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 2370`, and filtered AndroidRuntime crash buffer was empty.
+- external sources used: none; local screenshots/request context, Compose source, and existing TrainIQ source guards were sufficient.
+- remaining risk: runtime proof confirms install/launch/no crash; seeded small-screen tap-through of all three polished surfaces can still be added when representative Training/Nutrition data is preloaded.
+
 ## 2026-06-20 Nutrition History Day Summary Polish
 
 - status: done for replacing the per-meal nutrition history list with compact day summaries while preserving meal reuse/delete behavior.
