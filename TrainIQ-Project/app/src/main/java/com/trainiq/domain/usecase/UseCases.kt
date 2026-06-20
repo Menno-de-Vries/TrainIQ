@@ -132,6 +132,10 @@ class GetOrStartActiveWorkoutSessionUseCase @Inject constructor(private val repo
         repository.getOrStartActiveWorkoutSession(dayId, initialDrafts)
 }
 
+class GetCurrentActiveWorkoutSessionUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke() = repository.getCurrentActiveWorkoutSession()
+}
+
 data class StartedWorkoutSession(
     val workout: WorkoutDay,
     val progressionSuggestions: List<ProgressionSuggestion>,
@@ -230,6 +234,10 @@ class GetWorkoutCompletionSummaryUseCase @Inject constructor(private val reposit
 
 class DiscardActiveWorkoutUseCase @Inject constructor(private val repository: WorkoutRepository) {
     suspend operator fun invoke(dayId: Long) = repository.discardActiveWorkout(dayId)
+}
+
+class DiscardActiveWorkoutSessionUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(sessionId: Long) = repository.discardActiveWorkoutSession(sessionId)
 }
 
 class CreateRoutineUseCase @Inject constructor(private val repository: WorkoutRepository) {

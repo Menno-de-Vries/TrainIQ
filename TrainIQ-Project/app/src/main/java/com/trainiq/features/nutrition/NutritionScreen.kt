@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.FlowRowScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -27,6 +28,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -64,8 +67,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -117,6 +122,9 @@ import com.trainiq.domain.usecase.SaveRecipeUseCase
 import com.trainiq.navigation.TrainIqWindowWidthClass
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlin.math.abs
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.CompletableDeferred
@@ -143,6 +151,12 @@ private sealed interface PendingNutritionDelete {
     data class Meal(val id: Long) : PendingNutritionDelete
     data class Food(val id: Long) : PendingNutritionDelete
     data class Recipe(val id: Long) : PendingNutritionDelete
+}
+
+private enum class NutritionAiResultTarget {
+    MealDraft,
+    ProductLibrary,
+    RecipeDraft,
 }
 
 sealed interface NutritionUiState {
@@ -508,7 +522,6 @@ fun NutritionScreen(
     val isDeletePending = NutritionSubmitKey.Delete in pendingSubmits
     val isAiBatchPending = NutritionSubmitKey.AiItems in pendingSubmits
     val haptics = LocalHapticFeedback.current
-    val tabs = nutritionTabTitles()
     val sectionTabs = nutritionSectionTabs()
     val nutritionListStates = List(nutritionInternalTabCount()) { rememberLazyListState() }
     val coroutineScope = rememberCoroutineScope()
@@ -522,7 +535,7 @@ fun NutritionScreen(
     val ingredientEditorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedTab by rememberSaveable { mutableStateOf(0) }
     val nutritionListState = nutritionListStates[selectedTab.coerceIn(nutritionListStates.indices)]
-    var aiScanForRecipe by remember { mutableStateOf(false) }
+    var aiResultTarget by remember { mutableStateOf(NutritionAiResultTarget.MealDraft) }
     var showAddToMealActions by remember { mutableStateOf(false) }
     var showSectionMenu by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<PendingNutritionDelete?>(null) }
@@ -540,6 +553,7 @@ fun NutritionScreen(
     var showIngredientPicker by rememberSaveable { mutableStateOf(false) }
     var showIngredientEditor by rememberSaveable { mutableStateOf(false) }
     var productSearchQuery by rememberSaveable { mutableStateOf("") }
+    var recipeSearchQuery by rememberSaveable { mutableStateOf("") }
     var ingredientSearchQuery by rememberSaveable { mutableStateOf("") }
 
     var foodName by remember { mutableStateOf("") }
@@ -585,7 +599,7 @@ fun NutritionScreen(
             onSetMessage("Foto importeren mislukt. Kies een duidelijke JPG of PNG.")
             return@rememberLauncherForActivityResult
         }
-        val activeContext = if (aiScanForRecipe) recipeAiContext else aiContext
+        val activeContext = if (aiResultTarget == NutritionAiResultTarget.RecipeDraft) recipeAiContext else aiContext
         onAnalyzeImportedPhoto(path, activeContext, System.currentTimeMillis())
         selectedTab = 2
     }
@@ -748,10 +762,43 @@ fun NutritionScreen(
         editableAiItems.clear()
         aiItemErrors = emptyMap()
         pendingAiMealType = null
-        aiScanForRecipe = false
+        aiResultTarget = NutritionAiResultTarget.MealDraft
         selectedTab = 1
         onSetScanResult(null)
         onSetMessage("${batchItems.size} AI-items alleen aan deze maaltijd toegevoegd.")
+    }
+
+    fun saveAiBatchAsProducts(batchItems: List<AiBatchItem>) {
+        startAiFoodBatchSave(
+            batchItems = batchItems,
+            successMessage = { count -> "$count AI-producten opgeslagen." },
+            partialFailureMessage = { success, failed -> "$success AI-producten opgeslagen, $failed mislukt. Controleer de overgebleven items." },
+            onSavedItem = { _, _ -> },
+            onAllSucceeded = {
+                aiResultTarget = NutritionAiResultTarget.MealDraft
+                onSetScanResult(null)
+                selectedTab = 4
+            },
+        )
+    }
+
+    fun saveAiBatchAsRecipeIngredients(batchItems: List<AiBatchItem>) {
+        recipeName = recipeName.ifBlank { "AI-fotorecept" }
+        showRecipeEditor = true
+        startAiFoodBatchSave(
+            batchItems = batchItems,
+            successMessage = { count -> "$count AI-items toegevoegd aan je recept." },
+            partialFailureMessage = { success, failed -> "$success AI-items toegevoegd, $failed mislukt. Controleer de overgebleven items." },
+            onSavedItem = { saved, grams ->
+                recipeDraft += saved.id to grams
+                selectedRecipeIngredientFoodId = saved.id
+            },
+            onAllSucceeded = {
+                aiResultTarget = NutritionAiResultTarget.MealDraft
+                onSetScanResult(null)
+                selectedTab = 3
+            },
+        )
     }
 
     LaunchedEffect(pendingBarcode) {
@@ -832,17 +879,15 @@ fun NutritionScreen(
     LaunchedEffect(scanResult) {
         editableAiItems.clear()
         scanResult?.items?.forEach { editableAiItems += EditableAiItem.from(it) }
-        if (!aiScanForRecipe) {
+        if (aiResultTarget == NutritionAiResultTarget.MealDraft) {
             (pendingAiMealType ?: scanResult?.suggestedMealType)?.let {
                 mealType = it
                 if (mealName in listOf("Breakfast", "Lunch", "Dinner", "Snack", "Ochtend", "Middag", "Avond", "Snacks")) {
                     mealName = it.dutchLabel
                 }
             }
-        } else if (editableAiItems.isNotEmpty()) {
-            selectedTab = 3
         }
-        if (!aiScanForRecipe && editableAiItems.isNotEmpty()) {
+        if (editableAiItems.isNotEmpty()) {
             selectedTab = 2
         }
     }
@@ -1019,69 +1064,63 @@ fun NutritionScreen(
                             }
                         }
                         2 -> {
-                            if (editableAiItems.isNotEmpty() || isAnalyzing) {
-                                item {
-                                AiMealAnalysisCard(
-                                    aiPreferences = aiPreferences,
-                                    aiContext = aiContext,
-                                    editableItems = if (aiScanForRecipe) emptyList() else editableAiItems.toList(),
-                                    itemErrors = aiItemErrors,
-                                    isSaving = isAiSaving,
-                                    isAnalyzing = isAnalyzing,
-                                    onContextChange = { aiContext = it },
-                                    onOpenCamera = {
-                                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        aiScanForRecipe = false
-                                        onAiScanner(aiContext)
-                                    },
-                                    onImportPhoto = {
-                                        aiScanForRecipe = false
-                                        photoImportLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                                    },
-                                    onChangeItem = { index, item ->
-                                        editableAiItems[index] = item
-                                        aiItemErrors = aiItemErrors - index
-                                    },
-                                    onDeleteItem = { index -> editableAiItems.removeAt(index) },
-                                    onSaveToDraft = {
-                                        val errors = editableAiItems.mapIndexedNotNull { index, item ->
-                                            validateEditableAiItem(item).takeIf { it.hasErrors }?.let { index to it }
-                                        }.toMap()
-                                        aiItemErrors = errors
-                                        if (errors.isNotEmpty() || isAiSaving || editableAiItems.isEmpty()) return@AiMealAnalysisCard
-                                        val batchItems = buildValidAiBatchItems(editableAiItems.toList())
-                                        if (batchItems == null || batchItems.isEmpty()) {
-                                            aiItemErrors = aiBatchNutritionErrors(editableAiItems.size)
-                                            return@AiMealAnalysisCard
+                            item {
+                            AiMealAnalysisCard(
+                                aiPreferences = aiPreferences,
+                                target = aiResultTarget,
+                                primaryLabel = when (aiResultTarget) {
+                                    NutritionAiResultTarget.MealDraft -> "Aan maaltijd toevoegen"
+                                    NutritionAiResultTarget.ProductLibrary -> "Producten opslaan"
+                                    NutritionAiResultTarget.RecipeDraft -> "Als ingrediënten toevoegen"
+                                },
+                                aiContext = if (aiResultTarget == NutritionAiResultTarget.RecipeDraft) recipeAiContext else aiContext,
+                                editableItems = editableAiItems.toList(),
+                                itemErrors = aiItemErrors,
+                                isSaving = isAiSaving,
+                                isAnalyzing = isAnalyzing,
+                                onContextChange = {
+                                    if (aiResultTarget == NutritionAiResultTarget.RecipeDraft) {
+                                        recipeAiContext = it
+                                    } else {
+                                        aiContext = it
+                                    }
+                                },
+                                onOpenCamera = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onAiScanner(if (aiResultTarget == NutritionAiResultTarget.RecipeDraft) recipeAiContext else aiContext)
+                                },
+                                onImportPhoto = {
+                                    photoImportLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                },
+                                onChangeItem = { index, item ->
+                                    editableAiItems[index] = item
+                                    aiItemErrors = aiItemErrors - index
+                                },
+                                onDeleteItem = { index -> editableAiItems.removeAt(index) },
+                                onPrimaryAction = {
+                                    val errors = editableAiItems.mapIndexedNotNull { index, item ->
+                                        validateEditableAiItem(item).takeIf { it.hasErrors }?.let { index to it }
+                                    }.toMap()
+                                    aiItemErrors = errors
+                                    if (errors.isNotEmpty() || isAiSaving || editableAiItems.isEmpty()) return@AiMealAnalysisCard
+                                    val batchItems = buildValidAiBatchItems(editableAiItems.toList())
+                                    if (batchItems == null || batchItems.isEmpty()) {
+                                        aiItemErrors = aiBatchNutritionErrors(editableAiItems.size)
+                                        return@AiMealAnalysisCard
+                                    }
+                                    when (aiResultTarget) {
+                                        NutritionAiResultTarget.MealDraft -> {
+                                            addAiBatchItemsAsMealSnapshots(batchItems)
                                         }
-                                        addAiBatchItemsAsMealSnapshots(batchItems)
-                                    },
-                                )
-                                }
-                            } else {
-                                item {
-                                    AiMealAnalysisCard(
-                                        aiPreferences = aiPreferences,
-                                        aiContext = aiContext,
-                                        editableItems = emptyList(),
-                                        itemErrors = emptyMap(),
-                                        isSaving = false,
-                                        isAnalyzing = false,
-                                        onContextChange = { aiContext = it },
-                                        onOpenCamera = {
-                                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            aiScanForRecipe = false
-                                            onAiScanner(aiContext)
-                                        },
-                                        onImportPhoto = {
-                                            aiScanForRecipe = false
-                                            photoImportLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                                        },
-                                        onChangeItem = { _, _ -> },
-                                        onDeleteItem = {},
-                                        onSaveToDraft = {},
-                                    )
-                                }
+                                        NutritionAiResultTarget.ProductLibrary -> {
+                                            saveAiBatchAsProducts(batchItems)
+                                        }
+                                        NutritionAiResultTarget.RecipeDraft -> {
+                                            saveAiBatchAsRecipeIngredients(batchItems)
+                                        }
+                                    }
+                                },
+                            )
                             }
                         }
                         3 -> {
@@ -1089,67 +1128,29 @@ fun NutritionScreen(
                                 RecipesHeaderCard(
                                     recipeCount = overview?.recipes?.size ?: 0,
                                     onCreateClick = { showRecipeActions = true },
+                                    onScanIngredient = {
+                                        if (!showRecipeEditor) openNewRecipeEditor()
+                                        onSetScanTarget(ScanTarget.RECIPE_DRAFT)
+                                        onOpenBarcodeScanner()
+                                    },
+                                    onPhotoIngredient = {
+                                        if (!showRecipeEditor) openNewRecipeEditor()
+                                        aiResultTarget = NutritionAiResultTarget.RecipeDraft
+                                        selectedTab = 2
+                                        onAiScanner(recipeAiContext)
+                                    },
+                                    aiEnabled = aiPreferences.hasAnyReadyProvider(),
                                 )
-                            }
-                            if (aiScanForRecipe && editableAiItems.isNotEmpty()) {
-                                item {
-                                    PhotoFoodReviewCard(
-                                        editableItems = editableAiItems.toList(),
-                                        itemErrors = aiItemErrors,
-                                        isSaving = isAiSaving,
-                                            onChangeItem = { index, item ->
-                                                editableAiItems[index] = item
-                                                aiItemErrors = aiItemErrors - index
-                                            },
-                                            onDeleteItem = { index -> editableAiItems.removeAt(index) },
-                                            onSaveAsRecipe = {
-                                            val errors = editableAiItems.mapIndexedNotNull { index, item ->
-                                                validateEditableAiItem(item).takeIf { it.hasErrors }?.let { index to it }
-                                            }.toMap()
-                                            aiItemErrors = errors
-                                            if (errors.isNotEmpty() || isAiSaving || editableAiItems.isEmpty()) return@PhotoFoodReviewCard
-                                            val batchItems = buildValidAiBatchItems(editableAiItems.toList())
-                                            if (batchItems == null || batchItems.isEmpty()) {
-                                                aiItemErrors = aiBatchNutritionErrors(editableAiItems.size)
-                                                return@PhotoFoodReviewCard
-                                            }
-                                            recipeName = recipeName.ifBlank { "AI-fotorecept" }
-                                            startAiFoodBatchSave(
-                                                batchItems = batchItems,
-                                                successMessage = { count -> "$count AI-items toegevoegd aan je recept." },
-                                                partialFailureMessage = { success, failed -> "$success AI-items toegevoegd, $failed mislukt. Controleer de overgebleven items." },
-                                                onSavedItem = { saved, grams ->
-                                                    recipeDraft += saved.id to grams
-                                                },
-                                                onAllSucceeded = {
-                                                    aiScanForRecipe = false
-                                                    onSetScanResult(null)
-                                                },
-                                            )
-                                        },
-                                        onAddToMeal = {
-                                            val errors = editableAiItems.mapIndexedNotNull { index, item ->
-                                                validateEditableAiItem(item).takeIf { it.hasErrors }?.let { index to it }
-                                            }.toMap()
-                                            aiItemErrors = errors
-                                            if (errors.isNotEmpty() || isAiSaving || editableAiItems.isEmpty()) return@PhotoFoodReviewCard
-                                            val batchItems = buildValidAiBatchItems(editableAiItems.toList())
-                                            if (batchItems == null || batchItems.isEmpty()) {
-                                                aiItemErrors = aiBatchNutritionErrors(editableAiItems.size)
-                                                return@PhotoFoodReviewCard
-                                            }
-                                            addAiBatchItemsAsMealSnapshots(batchItems)
-                                        },
-                                    )
-                                }
                             }
                             item {
                                 SavedRecipesCard(
                                     recipes = overview?.recipes.orEmpty(),
+                                    searchQuery = recipeSearchQuery,
                                     selectedRecipeId = selectedRecipeId,
                                     mealRecipeGrams = mealRecipeGrams,
                                     mealRecipeGramsError = mealRecipeGramsErrors.grams,
                                     isAddPending = isMealSaving,
+                                    onSearchQueryChange = { recipeSearchQuery = it },
                                     onMealRecipeGramsChange = { mealRecipeGrams = it; mealRecipeGramsErrors = QuickAddFieldErrors() },
                                     onSelect = {
                                         selectedRecipeId = it
@@ -1185,6 +1186,12 @@ fun NutritionScreen(
                                         onSetScanTarget(ScanTarget.FOOD_EDITOR)
                                         onOpenBarcodeScanner()
                                     },
+                                    onPhotoProduct = {
+                                        aiResultTarget = NutritionAiResultTarget.ProductLibrary
+                                        selectedTab = 2
+                                        onAiScanner(aiContext)
+                                    },
+                                    aiEnabled = aiPreferences.hasAnyReadyProvider(),
                                 )
                             }
                             item {
@@ -1392,11 +1399,13 @@ fun NutritionScreen(
                         onOpenBarcodeScanner()
                     },
                     onAiVisionForRecipe = {
-                        aiScanForRecipe = true
+                        aiResultTarget = NutritionAiResultTarget.RecipeDraft
+                        selectedTab = 2
                         onAiScanner(recipeAiContext)
                     },
                     onImportPhotoForRecipe = {
-                        aiScanForRecipe = true
+                        aiResultTarget = NutritionAiResultTarget.RecipeDraft
+                        selectedTab = 2
                         photoImportLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     },
                     onCancelEdit = { resetRecipeEditor() },
@@ -1506,14 +1515,9 @@ fun NutritionScreen(
                 onPhotoIngredient = {
                     showRecipeActions = false
                     if (!showRecipeEditor) openNewRecipeEditor()
-                    aiScanForRecipe = true
-                    onAiScanner(recipeAiContext)
-                },
-                onPhotoDirect = {
-                    showRecipeActions = false
+                    aiResultTarget = NutritionAiResultTarget.RecipeDraft
                     selectedTab = 2
-                    aiScanForRecipe = false
-                    onAiScanner(aiContext)
+                    onAiScanner(recipeAiContext)
                 },
                 onExistingRecipeToMeal = {
                     showRecipeActions = false
@@ -1574,7 +1578,8 @@ fun NutritionScreen(
                     mealType = addToMealType
                     pendingAiMealType = addToMealType
                     showAddToMealActions = false
-                    aiScanForRecipe = false
+                    aiResultTarget = NutritionAiResultTarget.MealDraft
+                    selectedTab = 2
                     onAiScanner(aiContext)
                 },
                 onOpenMealDraft = {
@@ -1731,10 +1736,13 @@ private fun DailyMealsDashboard(
             fontWeight = FontWeight.ExtraBold,
             color = MaterialTheme.trainIqColors.amber,
         )
-        Text(
-            nutritionMacroSummary(overview?.todaysProtein ?: 0.0, overview?.todaysCarbs ?: 0.0, overview?.todaysFat ?: 0.0),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.trainIqColors.mutedText,
+        NutritionMetricStrip(
+            values = listOf(
+                NutritionMetricValue("Kcal", formatNumber(overview?.todaysCalories ?: 0.0), MaterialTheme.trainIqColors.amber),
+                NutritionMetricValue("Eiwit", "${formatNumber(overview?.todaysProtein ?: 0.0)} g", MaterialTheme.trainIqColors.mint),
+                NutritionMetricValue("Kh", "${formatNumber(overview?.todaysCarbs ?: 0.0)} g", MaterialTheme.trainIqColors.blue),
+                NutritionMetricValue("Vet", "${formatNumber(overview?.todaysFat ?: 0.0)} g", MaterialTheme.colorScheme.tertiary),
+            ),
         )
         if (!hasMealsToday) {
             Text(
@@ -1802,10 +1810,13 @@ private fun MealSectionCard(
                 fontWeight = FontWeight.ExtraBold,
                 color = MaterialTheme.colorScheme.primary,
             )
-            Text(
-                nutritionMacroSummary(total.protein, total.carbs, total.fat),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.trainIqColors.mutedText,
+            NutritionMetricStrip(
+                values = listOf(
+                    NutritionMetricValue("Kcal", formatNumber(total.calories), MaterialTheme.colorScheme.primary),
+                    NutritionMetricValue("Eiwit", "${formatNumber(total.protein)} g", MaterialTheme.trainIqColors.mint),
+                    NutritionMetricValue("Kh", "${formatNumber(total.carbs)} g", MaterialTheme.trainIqColors.blue),
+                    NutritionMetricValue("Vet", "${formatNumber(total.fat)} g", MaterialTheme.colorScheme.tertiary),
+                ),
             )
             if (meals.isEmpty()) {
                 Text(mealSectionEmptyText(mealType), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.trainIqColors.mutedText)
@@ -1836,12 +1847,14 @@ private fun MealEntryRow(
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(meal.name, modifier = Modifier.fillMaxWidth(), fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                NutritionMetricPill("Kcal", formatNumber(meal.totalNutrition.calories), MaterialTheme.colorScheme.primary)
-                NutritionMetricPill("Eiwit", "${formatNumber(meal.totalNutrition.protein)} g", MaterialTheme.trainIqColors.mint)
-                NutritionMetricPill("Kh", "${formatNumber(meal.totalNutrition.carbs)} g", MaterialTheme.trainIqColors.blue)
-                NutritionMetricPill("Vet", "${formatNumber(meal.totalNutrition.fat)} g", MaterialTheme.trainIqColors.amber)
-            }
+            NutritionMetricGrid(
+                values = listOf(
+                    NutritionMetricValue("Kcal", formatNumber(meal.totalNutrition.calories), MaterialTheme.colorScheme.primary),
+                    NutritionMetricValue("Eiwit", "${formatNumber(meal.totalNutrition.protein)} g", MaterialTheme.trainIqColors.mint),
+                    NutritionMetricValue("Kh", "${formatNumber(meal.totalNutrition.carbs)} g", MaterialTheme.trainIqColors.blue),
+                    NutritionMetricValue("Vet", "${formatNumber(meal.totalNutrition.fat)} g", MaterialTheme.colorScheme.tertiary),
+                ),
+            )
             meal.items.forEach { item ->
                 Text(
                     "${item.name} · ${formatNumber(item.gramsUsed)}g x${item.servingCount.coerceAtLeast(1)}",
@@ -1890,7 +1903,13 @@ private fun MealEntryRow(
 }
 
 @Composable
-private fun RecipesHeaderCard(recipeCount: Int, onCreateClick: () -> Unit) {
+private fun RecipesHeaderCard(
+    recipeCount: Int,
+    onCreateClick: () -> Unit,
+    onScanIngredient: () -> Unit,
+    onPhotoIngredient: () -> Unit,
+    aiEnabled: Boolean,
+) {
     AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1906,23 +1925,90 @@ private fun RecipesHeaderCard(recipeCount: Int, onCreateClick: () -> Unit) {
                 Icon(Icons.Rounded.Add, contentDescription = "Recept toevoegen")
             }
         }
+        WrappingNutritionActions {
+            Button(onClick = onCreateClick, modifier = Modifier.weight(1f).fillMaxWidth()) {
+                Text("Recept maken")
+            }
+            OutlinedButton(onClick = onScanIngredient, modifier = Modifier.weight(1f).fillMaxWidth()) {
+                Text("Ingrediënt scannen")
+            }
+            OutlinedButton(onClick = onPhotoIngredient, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) {
+                Text("Foto/AI ingrediënten")
+            }
+        }
+    }
+}
+
+private data class NutritionMetricValue(
+    val label: String,
+    val value: String,
+    val accent: Color,
+)
+
+@Composable
+private fun NutritionMetricStrip(values: List<NutritionMetricValue>) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        values.forEach { (label, value, accent) ->
+            NutritionMetricPill(label, value, accent, modifier = Modifier.weight(1f).fillMaxWidth())
+        }
     }
 }
 
 @Composable
-private fun NutritionMetricPill(label: String, value: String, accent: androidx.compose.ui.graphics.Color) {
+private fun NutritionMetricGrid(values: List<NutritionMetricValue>) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        values.chunked(2).forEach { rowValues ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                rowValues.forEach { (label, value, accent) ->
+                    NutritionMetricPill(label, value, accent, modifier = Modifier.weight(1f).fillMaxWidth())
+                }
+                if (rowValues.size == 1) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NutritionMetricPill(
+    label: String,
+    value: String,
+    accent: Color,
+    modifier: Modifier = Modifier,
+) {
     Surface(
+        modifier = modifier,
         shape = RoundedCornerShape(12.dp),
         color = accent.copy(alpha = 0.12f),
         contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                value,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }
@@ -1934,7 +2020,6 @@ private fun RecipeActionBottomSheet(
     onManualRecipe: () -> Unit,
     onBarcodeIngredient: () -> Unit,
     onPhotoIngredient: () -> Unit,
-    onPhotoDirect: () -> Unit,
     onExistingRecipeToMeal: () -> Unit,
 ) {
     Column(
@@ -1948,7 +2033,6 @@ private fun RecipeActionBottomSheet(
         Button(onClick = onManualRecipe, modifier = Modifier.fillMaxWidth()) { Text("Recept handmatig maken") }
         OutlinedButton(onClick = onBarcodeIngredient, modifier = Modifier.fillMaxWidth()) { Text("Barcode-product in recept scannen") }
         OutlinedButton(onClick = onPhotoIngredient, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) { Text("Product via foto/AI toevoegen") }
-        OutlinedButton(onClick = onPhotoDirect, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) { Text("Foto naar maaltijdconcept") }
         OutlinedButton(onClick = onExistingRecipeToMeal, modifier = Modifier.fillMaxWidth()) { Text("Bestaand recept aan maaltijd toevoegen") }
         TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Sluiten") }
     }
@@ -2023,33 +2107,12 @@ private fun WrappingNutritionActions(content: @Composable FlowRowScope.() -> Uni
 }
 
 @Composable
-private fun PhotoFoodReviewCard(
-    editableItems: List<EditableAiItem>,
-    itemErrors: Map<Int, AiItemFieldErrors>,
-    isSaving: Boolean,
-    onChangeItem: (Int, EditableAiItem) -> Unit,
-    onDeleteItem: (Int) -> Unit,
-    onSaveAsRecipe: () -> Unit,
-    onAddToMeal: () -> Unit,
-) {
-    AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.tertiary) {
-        Text("Fotocontrole", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Text("AI-waarden zijn schattingen. Controleer en pas ze aan voordat je opslaat.", color = MaterialTheme.trainIqColors.mutedText)
-        editableItems.forEachIndexed { index, item ->
-            EditableAiItemCard(item = item, errors = itemErrors[index] ?: AiItemFieldErrors(), onChange = { onChangeItem(index, it) }, onDelete = { onDeleteItem(index) })
-        }
-        WrappingNutritionActions {
-            Button(onClick = onSaveAsRecipe, enabled = !isSaving, modifier = Modifier.fillMaxWidth()) { Text(if (isSaving) "Opslaan..." else "Opslaan als recept") }
-            OutlinedButton(onClick = onAddToMeal, enabled = !isSaving, modifier = Modifier.fillMaxWidth()) { Text("Aan maaltijd toevoegen") }
-        }
-    }
-}
-
-@Composable
 private fun ProductsHeaderCard(
     foodCount: Int,
     onCreateClick: () -> Unit,
     onScanBarcode: () -> Unit,
+    onPhotoProduct: () -> Unit,
+    aiEnabled: Boolean,
 ) {
     AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
         Row(
@@ -2066,8 +2129,16 @@ private fun ProductsHeaderCard(
                 Icon(Icons.Rounded.Add, contentDescription = "Product toevoegen")
             }
         }
-        OutlinedButton(onClick = onScanBarcode, modifier = Modifier.fillMaxWidth()) {
-            Text("Barcode scannen")
+        WrappingNutritionActions {
+            Button(onClick = onCreateClick, modifier = Modifier.weight(1f).fillMaxWidth()) {
+                Text("Product maken")
+            }
+            OutlinedButton(onClick = onScanBarcode, modifier = Modifier.weight(1f).fillMaxWidth()) {
+                Text("Barcode scannen")
+            }
+            OutlinedButton(onClick = onPhotoProduct, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) {
+                Text("Foto/AI product")
+            }
         }
     }
 }
@@ -2444,9 +2515,8 @@ private fun RecipeIngredientEditorSheet(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.trainIqColors.mutedText,
         )
-        NutritionTextField(value = quickIngredientName, onValueChange = onQuickIngredientNameChange, label = "Ingrediëntnaam", modifier = Modifier.fillMaxWidth(), error = quickIngredientErrors.name)
+        NutritionTextField(value = quickIngredientName, onValueChange = onQuickIngredientNameChange, label = "Productnaam", modifier = Modifier.fillMaxWidth(), error = quickIngredientErrors.name)
         NutritionTextField(value = quickIngredientBarcode, onValueChange = onQuickIngredientBarcodeChange, label = "Barcode (optioneel)", modifier = Modifier.fillMaxWidth())
-        NutritionNumberField(value = ingredientGrams, onValueChange = onIngredientGramsChange, label = "Gram in recept", modifier = Modifier.fillMaxWidth(), error = errors.ingredientGrams)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             NutritionNumberField(value = quickIngredientKcal, onValueChange = onQuickIngredientKcalChange, label = "kcal / 100g", modifier = Modifier.weight(1f), error = quickIngredientErrors.calories)
             NutritionNumberField(value = quickIngredientProtein, onValueChange = onQuickIngredientProteinChange, label = "Eiwit / 100g", modifier = Modifier.weight(1f), error = quickIngredientErrors.protein)
@@ -2455,8 +2525,9 @@ private fun RecipeIngredientEditorSheet(
             NutritionNumberField(value = quickIngredientCarbs, onValueChange = onQuickIngredientCarbsChange, label = "Kh / 100g", modifier = Modifier.weight(1f), error = quickIngredientErrors.carbs)
             NutritionNumberField(value = quickIngredientFat, onValueChange = onQuickIngredientFatChange, label = "Vet / 100g", modifier = Modifier.weight(1f), error = quickIngredientErrors.fat)
         }
+        NutritionNumberField(value = ingredientGrams, onValueChange = onIngredientGramsChange, label = "Gram in recept", modifier = Modifier.fillMaxWidth(), error = errors.ingredientGrams)
         Button(onClick = onSave, enabled = !isSaving, modifier = Modifier.fillMaxWidth()) {
-            Text(if (isSaving) "Opslaan..." else "Ingrediënt opslaan en toevoegen")
+            Text(if (isSaving) "Opslaan..." else "Product opslaan en toevoegen")
         }
         OutlinedButton(onClick = onScanBarcode, modifier = Modifier.fillMaxWidth()) { Text("Barcode scannen") }
         TextButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text("Annuleren") }
@@ -2470,6 +2541,18 @@ private fun List<FoodItem>.filteredByProductQuery(query: String): List<FoodItem>
         food.name.lowercase(Locale.getDefault()).contains(normalized) ||
             food.barcode.orEmpty().lowercase(Locale.getDefault()).contains(normalized) ||
             food.sourceType.name.lowercase(Locale.getDefault()).contains(normalized)
+    }
+}
+
+private fun List<Recipe>.filteredByRecipeQuery(query: String): List<Recipe> {
+    val normalized = query.trim().lowercase(Locale.getDefault())
+    if (normalized.isBlank()) return this
+    return filter { recipe ->
+        recipe.name.lowercase(Locale.getDefault()).contains(normalized) ||
+            recipe.notes.orEmpty().lowercase(Locale.getDefault()).contains(normalized) ||
+            recipe.ingredients.any { ingredient ->
+                ingredient.foodName.lowercase(Locale.getDefault()).contains(normalized)
+            }
     }
 }
 
@@ -2534,8 +2617,34 @@ private fun RecipeEditorCard(
             NutritionNumberField(value = recipeCookedGrams, onValueChange = onRecipeCookedGramsChange, label = "Totaal bereid gewicht (optioneel)", modifier = Modifier.fillMaxWidth(), error = errors.cookedGrams)
             HorizontalDivider()
             Text("Ingrediënten", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-            OutlinedButton(onClick = onChooseIngredient, modifier = Modifier.fillMaxWidth()) {
-                Text(selectedFood?.name ?: "Ingrediënt kiezen uit producten")
+            Text("Ingrediëntbron", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.trainIqColors.mutedText)
+            WrappingNutritionActions {
+                OutlinedButton(onClick = onChooseIngredient, modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    Text("Uit producten")
+                }
+                OutlinedButton(onClick = onOpenIngredientEditor, modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    Text("Nieuw product")
+                }
+                OutlinedButton(onClick = onScanBarcodeForRecipe, modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    Text("Barcode")
+                }
+                OutlinedButton(onClick = onAiVisionForRecipe, enabled = aiEnabled, modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    Text("Foto/AI")
+                }
+            }
+            Text(
+                selectedFood?.name?.let { "Gekozen product: $it" } ?: "Kies een product of maak eerst een nieuw product voor dit recept.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.trainIqColors.mutedText,
+            )
+            if (aiEnabled) {
+                NutritionTextField(value = recipeAiContext, onValueChange = onRecipeAiContextChange, label = "AI-context (optioneel)", modifier = Modifier.fillMaxWidth())
+            } else {
+                Text(
+                    "AI-fotoherkenning is pas beschikbaar nadat je dit aanzet in Instellingen. Product kiezen, nieuw product maken en barcodes blijven werken.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.trainIqColors.mutedText,
+                )
             }
             NutritionNumberField(
                 value = ingredientGrams,
@@ -2547,7 +2656,6 @@ private fun RecipeEditorCard(
             Button(onClick = onAddIngredient, enabled = selectedFood != null, modifier = Modifier.fillMaxWidth()) {
                 Text("Ingrediënt toevoegen")
             }
-            OutlinedButton(onClick = onOpenIngredientEditor, modifier = Modifier.fillMaxWidth()) { Text("+ Ingrediënt handmatig maken") }
             if (draft.isEmpty()) {
                 EmptyStateCard(
                     title = errors.ingredients ?: "Nog geen ingrediënten",
@@ -2578,21 +2686,6 @@ private fun RecipeEditorCard(
             if (isEditing) {
                 TextButton(onClick = onCancelEdit, modifier = Modifier.fillMaxWidth()) { Text("Annuleren en nieuw recept") }
             }
-            HorizontalDivider()
-            Text("Barcode- en fotohulp", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-            if (aiEnabled) {
-                NutritionTextField(value = recipeAiContext, onValueChange = onRecipeAiContextChange, label = "AI-context (optioneel)", modifier = Modifier.fillMaxWidth())
-            } else {
-                Text(
-                    "AI-fotoherkenning is pas beschikbaar nadat je dit aanzet in Instellingen. Handmatig invoeren en barcodes blijven werken.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.trainIqColors.mutedText,
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = onScanBarcodeForRecipe, modifier = Modifier.weight(1f)) { Text("Barcode scannen") }
-                OutlinedButton(onClick = onAiVisionForRecipe, enabled = aiEnabled, modifier = Modifier.weight(1f)) { Text("AI-herkenning gebruiken") }
-            }
             OutlinedButton(onClick = onImportPhotoForRecipe, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) {
                 Text("Foto importeren")
             }
@@ -2620,15 +2713,18 @@ private fun RecipeTotalsCard(title: String = "Recepttotalen", totalNutrition: Nu
 @Composable
 private fun SavedRecipesCard(
     recipes: List<Recipe>,
+    searchQuery: String,
     selectedRecipeId: Long?,
     mealRecipeGrams: String,
     mealRecipeGramsError: String?,
     isAddPending: Boolean,
+    onSearchQueryChange: (String) -> Unit,
     onMealRecipeGramsChange: (String) -> Unit,
     onSelect: (Long) -> Unit,
     onUseInMeal: (Recipe) -> Unit,
     onDelete: (Long) -> Unit,
 ) {
+    val filteredRecipes = recipes.filteredByRecipeQuery(searchQuery)
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -2642,6 +2738,11 @@ private fun SavedRecipesCard(
                     body = "Gebruik + Toevoegen of de maker hieronder om recepten later opnieuw te loggen.",
                 )
             } else {
+                ProductSearchField(
+                    query = searchQuery,
+                    onQueryChange = onSearchQueryChange,
+                    label = "Recept zoeken",
+                )
                 NutritionNumberField(
                     value = mealRecipeGrams,
                     onValueChange = onMealRecipeGramsChange,
@@ -2649,7 +2750,13 @@ private fun SavedRecipesCard(
                     modifier = Modifier.fillMaxWidth(),
                     error = mealRecipeGramsError,
                 )
-                recipes.forEach { recipe ->
+                if (filteredRecipes.isEmpty()) {
+                    EmptyStateCard(
+                        title = "Geen recepten gevonden",
+                        body = "Pas je zoekterm aan of maak een nieuw recept.",
+                    )
+                }
+                filteredRecipes.forEach { recipe ->
                     NutritionSavedItemCard(
                         title = recipe.name,
                         nutritionLine = "${formatNumber(recipe.totalNutrition.calories)} kcal - ${nutritionMacroSummary(recipe.totalNutrition.protein, recipe.totalNutrition.carbs, recipe.totalNutrition.fat)}",
@@ -2807,6 +2914,8 @@ private fun MealDraftReviewCard(
 @Composable
 private fun AiMealAnalysisCard(
     aiPreferences: AiPreferences,
+    target: NutritionAiResultTarget,
+    primaryLabel: String,
     aiContext: String,
     editableItems: List<EditableAiItem>,
     itemErrors: Map<Int, AiItemFieldErrors>,
@@ -2817,7 +2926,7 @@ private fun AiMealAnalysisCard(
     onImportPhoto: () -> Unit,
     onChangeItem: (Int, EditableAiItem) -> Unit,
     onDeleteItem: (Int) -> Unit,
-    onSaveToDraft: () -> Unit,
+    onPrimaryAction: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -2826,11 +2935,21 @@ private fun AiMealAnalysisCard(
     ) {
         Column(modifier = Modifier.padding(MaterialTheme.spacing.medium), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
             Text("Foto / AI-controle", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-            Text("Maaltijd scannen", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text(
+                when (target) {
+                    NutritionAiResultTarget.MealDraft -> "Maaltijd scannen"
+                    NutritionAiResultTarget.ProductLibrary -> "Product scannen"
+                    NutritionAiResultTarget.RecipeDraft -> "Receptingrediënten scannen"
+                },
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
             Text(
                 when {
                     !aiPreferences.enabled -> "AI staat uit in Instellingen. Handmatig voeding loggen blijft werken."
                     !aiPreferences.hasAnyReadyProvider() -> "Voeg een Gemini of OpenAI API-sleutel toe in Instellingen om maaltijdanalyse te gebruiken."
+                    target == NutritionAiResultTarget.ProductLibrary -> "Controleer de AI-inschatting en sla de overgebleven items op als producten."
+                    target == NutritionAiResultTarget.RecipeDraft -> "Controleer de AI-inschatting en voeg de overgebleven items toe als receptingrediënten."
                     else -> "Geef context mee als je weet wat erin zit. TrainIQ gebruikt je tekst als waarheid en de foto voor ontbrekende details."
                 },
                 style = MaterialTheme.typography.bodyMedium,
@@ -2852,7 +2971,7 @@ private fun AiMealAnalysisCard(
                 EditableAiItemCard(item = item, errors = itemErrors[index] ?: AiItemFieldErrors(), onChange = { onChangeItem(index, it) }, onDelete = { onDeleteItem(index) })
             }
             if (editableItems.isNotEmpty()) {
-                Button(onClick = onSaveToDraft, enabled = !isSaving) { Text(if (isSaving) "Toevoegen..." else "Alleen aan maaltijd toevoegen") }
+                Button(onClick = onPrimaryAction, enabled = !isSaving) { Text(if (isSaving) "Toevoegen..." else primaryLabel) }
             }
         }
     }
@@ -2895,6 +3014,8 @@ private fun MealHistoryCard(
     onReuseMeal: (LoggedMeal) -> Unit,
     onDeleteMeal: (Long) -> Unit,
 ) {
+    val historyDays = meals.groupedHistoryDays()
+    var expandedHistoryDayKey by rememberSaveable { mutableStateOf<String?>(historyDays.firstOrNull()?.key) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -2902,29 +3023,73 @@ private fun MealHistoryCard(
     ) {
         Column(modifier = Modifier.padding(MaterialTheme.spacing.medium), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
             Text("Voedingshistorie", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text("Eerder gelogde maaltijden blijven voedingssnapshots, zodat latere product- of receptwijzigingen oude logs niet aanpassen.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
-            if (meals.isEmpty()) {
+            Text("Eerder gelogde maaltijden blijven voedingssnapshots en staan per dag samengevat.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
+            if (historyDays.isEmpty()) {
                 EmptyStateCard(
                     title = "Nog geen gelogde maaltijden",
-                    body = "Maaltijden uit Ochtend, Middag, Avond of Snacks verschijnen hier om te controleren en hergebruiken.",
+                    body = "Geloge maaltijden verschijnen hier per dag als samenvatting.",
                 )
             } else {
-                meals.forEach { meal ->
+                historyDays.forEach { day ->
                     Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest)) {
-                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(meal.name, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text(meal.mealType.dutchLabel, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                            Text("${formatNumber(meal.totalNutrition.calories)} kcal - ${nutritionMacroSummary(meal.totalNutrition.protein, meal.totalNutrition.carbs, meal.totalNutrition.fat)}")
-                            meal.items.forEach { item ->
-                                val liveName = when (item.itemType.name) {
-                                    "FOOD" -> foods.firstOrNull { it.id == item.referenceId }?.name
-                                    else -> recipes.firstOrNull { it.id == item.referenceId }?.name
-                                } ?: item.name
-                                Text("$liveName • ${formatNumber(item.gramsUsed)}g x${item.servingCount.coerceAtLeast(1)}", maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.Top,
+                            ) {
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(day.dateLabel, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(
+                                        "${day.mealCount} maaltijden • ${day.itemCount} items • ${day.mealTypeSummary}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.trainIqColors.mutedText,
+                                    )
+                                }
+                                IconButton(onClick = {
+                                    expandedHistoryDayKey = if (expandedHistoryDayKey == day.key) null else day.key
+                                }) {
+                                    Icon(
+                                        if (expandedHistoryDayKey == day.key) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                                        contentDescription = if (expandedHistoryDayKey == day.key) "Verbergen" else "Maaltijden bekijken",
+                                    )
+                                }
                             }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                Button(onClick = { onReuseMeal(meal) }, modifier = Modifier.weight(1f)) { Text("Opnieuw gebruiken") }
-                                TextButton(onClick = { onDeleteMeal(meal.id) }) { Text("Verwijderen") }
+                            NutritionMetricStrip(
+                                values = listOf(
+                                    NutritionMetricValue("Kcal", formatNumber(day.totalNutrition.calories), MaterialTheme.colorScheme.primary),
+                                    NutritionMetricValue("Eiwit", "${formatNumber(day.totalNutrition.protein)} g", MaterialTheme.trainIqColors.mint),
+                                    NutritionMetricValue("Kh", "${formatNumber(day.totalNutrition.carbs)} g", MaterialTheme.trainIqColors.blue),
+                                    NutritionMetricValue("Vet", "${formatNumber(day.totalNutrition.fat)} g", MaterialTheme.colorScheme.tertiary),
+                                ),
+                            )
+                            TextButton(
+                                onClick = { expandedHistoryDayKey = if (expandedHistoryDayKey == day.key) null else day.key },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(if (expandedHistoryDayKey == day.key) "Verbergen" else "Maaltijden bekijken")
+                            }
+                            if (expandedHistoryDayKey == day.key) {
+                                day.meals.forEach { meal ->
+                                    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Text(meal.name, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                            Text(meal.mealType.dutchLabel, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                                            Text("${formatNumber(meal.totalNutrition.calories)} kcal - ${nutritionMacroSummary(meal.totalNutrition.protein, meal.totalNutrition.carbs, meal.totalNutrition.fat)}")
+                                            meal.items.forEach { item ->
+                                                val liveName = when (item.itemType.name) {
+                                                    "FOOD" -> foods.firstOrNull { it.id == item.referenceId }?.name
+                                                    else -> recipes.firstOrNull { it.id == item.referenceId }?.name
+                                                } ?: item.name
+                                                Text("$liveName • ${formatNumber(item.gramsUsed)}g x${item.servingCount.coerceAtLeast(1)}", maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                            }
+                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                                Button(onClick = { onReuseMeal(meal) }, modifier = Modifier.weight(1f)) { Text("Opnieuw gebruiken") }
+                                                TextButton(onClick = { onDeleteMeal(meal.id) }) { Text("Verwijderen") }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -2932,6 +3097,41 @@ private fun MealHistoryCard(
             }
         }
     }
+}
+
+internal data class NutritionHistoryDay(
+    val key: String,
+    val dateLabel: String,
+    val meals: List<LoggedMeal>,
+    val totalNutrition: NutritionFacts,
+    val mealCount: Int,
+    val itemCount: Int,
+    val mealTypeSummary: String,
+)
+
+internal fun List<LoggedMeal>.groupedHistoryDays(): List<NutritionHistoryDay> {
+    val formatter = DateTimeFormatter.ofPattern("dd MMM yyyy", Locale.forLanguageTag("nl-NL"))
+    val zone = ZoneId.systemDefault()
+    return sortedByDescending { it.timestamp }
+        .groupBy { meal ->
+            Instant.ofEpochMilli(meal.timestamp).atZone(zone).toLocalDate()
+        }
+        .map { (date, dayMeals) ->
+            val sortedMeals = dayMeals.sortedBy { it.timestamp }
+            val totalNutrition = sortedMeals.fold(NutritionFacts.Zero) { acc, meal -> acc + meal.totalNutrition }.rounded()
+            val mealTypes = listOf(MealType.BREAKFAST, MealType.LUNCH, MealType.DINNER, MealType.SNACK)
+                .filter { type -> sortedMeals.any { it.mealType == type } }
+                .joinToString(", ") { it.dutchLabel }
+            NutritionHistoryDay(
+                key = date.toString(),
+                dateLabel = date.format(formatter),
+                meals = sortedMeals,
+                totalNutrition = totalNutrition,
+                mealCount = sortedMeals.size,
+                itemCount = sortedMeals.sumOf { it.items.size },
+                mealTypeSummary = mealTypes.ifBlank { "Geen maaltijdtype" },
+            )
+        }
 }
 
 @Composable
@@ -3058,16 +3258,15 @@ internal fun mealSectionAddContentDescription(mealType: MealType): String =
 internal fun aiMealAnalyzingLabel(): String = "Maaltijd analyseren..."
 
 internal fun nutritionTabTitles(): List<String> =
-    listOf("Vandaag", "AI-resultaat", "Recepten", "Producten", "Historie")
+    listOf("Vandaag", "Producten", "Recepten", "Historie")
 
 private data class NutritionSectionTab(val title: String, val index: Int)
 
 private fun nutritionSectionTabs(): List<NutritionSectionTab> =
     listOf(
         NutritionSectionTab("Vandaag", 0),
-        NutritionSectionTab("AI-resultaat", 2),
-        NutritionSectionTab("Recepten", 3),
         NutritionSectionTab("Producten", 4),
+        NutritionSectionTab("Recepten", 3),
         NutritionSectionTab("Historie", 5),
     )
 

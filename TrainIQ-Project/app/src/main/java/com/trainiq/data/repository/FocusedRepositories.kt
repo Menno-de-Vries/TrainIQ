@@ -58,6 +58,7 @@ class RoomWorkoutRepository @Inject constructor(
     override suspend fun getWorkoutDay(dayId: Long): WorkoutDay? = delegate.getWorkoutDay(dayId)
     override suspend fun getProgressionSuggestions(dayId: Long): List<ProgressionSuggestion> = delegate.getProgressionSuggestions(dayId)
     override suspend fun getNextWorkoutDay(): WorkoutDay? = delegate.getNextWorkoutDay()
+    override suspend fun getCurrentActiveWorkoutSession(): ActiveWorkoutSession? = delegate.getCurrentActiveWorkoutSession()
     override suspend fun getOrStartActiveWorkoutSession(dayId: Long, initialDrafts: Map<Long, ActiveWorkoutSetDraft>): ActiveWorkoutSession =
         delegate.getOrStartActiveWorkoutSession(dayId, initialDrafts)
     override suspend fun updateActiveWorkoutDraft(exerciseId: Long, draft: ActiveWorkoutSetDraft): ActiveWorkoutSession? =
@@ -77,6 +78,7 @@ class RoomWorkoutRepository @Inject constructor(
     override suspend fun finishActiveWorkout(dayId: Long): WorkoutCompletionResult = delegate.finishActiveWorkout(dayId)
     override suspend fun getWorkoutCompletionSummary(sessionId: Long): WorkoutCompletionSummary? = delegate.getWorkoutCompletionSummary(sessionId)
     override suspend fun discardActiveWorkout(dayId: Long) = delegate.discardActiveWorkout(dayId)
+    override suspend fun discardActiveWorkoutSession(sessionId: Long) = delegate.discardActiveWorkoutSession(sessionId)
     override suspend fun setActiveRoutine(routineId: Long) = delegate.setActiveRoutine(routineId)
     override suspend fun finishWorkout(dayId: Long, durationSeconds: Long, loggedSets: List<LoggedSet>): WorkoutDebrief =
         delegate.finishWorkout(dayId, durationSeconds, loggedSets)

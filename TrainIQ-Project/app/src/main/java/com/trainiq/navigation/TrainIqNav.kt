@@ -405,12 +405,25 @@ private fun NavHostController.navigateTopLevelAfterCompletedWorkout(screen: TopL
 }
 
 private fun NavHostController.navigateToActiveWorkout(dayId: Long) {
-    val alreadyActiveWorkout = currentBackStackEntry?.destination?.hierarchy?.any { it.hasRoute(ActiveWorkout::class) } == true
-    if (alreadyActiveWorkout) return
+    val currentActiveWorkoutDayId = currentBackStackEntry
+        ?.takeIf { entry -> entry.destination.hierarchy.any { it.hasRoute(ActiveWorkout::class) } }
+        ?.toRoute<ActiveWorkout>()
+        ?.dayId
+    if (!shouldNavigateToActiveWorkout(currentActiveWorkoutDayId, dayId)) return
+    val currentActiveWorkoutDestinationId = currentBackStackEntry
+        ?.takeIf { currentActiveWorkoutDayId != null }
+        ?.destination
+        ?.id
     navigate(ActiveWorkout(dayId)) {
+        currentActiveWorkoutDestinationId?.let { activeDestinationId ->
+            popUpTo(activeDestinationId) { inclusive = true }
+        }
         launchSingleTop = true
     }
 }
+
+internal fun shouldNavigateToActiveWorkout(currentActiveWorkoutDayId: Long?, requestedDayId: Long): Boolean =
+    currentActiveWorkoutDayId != requestedDayId
 
 internal fun shouldClearTrainDetailMode(isTrainDestination: Boolean, isTopLevelDestination: Boolean): Boolean =
     !isTrainDestination && isTopLevelDestination
@@ -726,6 +739,7 @@ private fun TrainIqNavHost(
             ActiveWorkoutRoute(
                 dayId = route.dayId,
                 onBack = { navController.popBackStack() },
+                onSwitchActiveWorkout = { nextDayId -> navController.navigateToActiveWorkout(nextDayId) },
                 onOpenExerciseHistory = { exerciseId -> navController.navigate(ExerciseHistory(exerciseId)) },
                 onWorkoutCompleted = { sessionId ->
                     val activeDestinationId = navController.currentBackStackEntry?.destination?.id

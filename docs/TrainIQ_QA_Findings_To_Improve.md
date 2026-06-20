@@ -6,6 +6,78 @@ Refresh date: 2026-05-10, current worktree
 
 Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emulator smoke, Health Connect, Gemini/AI, Room/data, UI/UX/accessibility, release readiness.
 
+## 2026-06-20 Nutrition History Day Summary Polish
+
+- status: done for replacing the per-meal nutrition history list with compact day summaries while preserving meal reuse/delete behavior.
+- files changed: Nutrition history now groups logged meals by local day using existing `LoggedMeal.timestamp`; each day card shows Kcal/Eiwit/Kh/Vet with the shared centered metric strip, meal/item counts, and meal-type summary; individual meal snapshots are available behind `Maaltijden bekijken` / `Verbergen`, where `Opnieuw gebruiken` and `Verwijderen` remain available.
+- verification evidence:
+  - RED: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --console=plain --no-configuration-cache` failed before implementation because `groupedHistoryDays` and day-summary properties did not exist.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - PASS: `git diff --check` returned only existing LF-to-CRLF warnings.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 2570`, and filtered AndroidRuntime crash buffer was empty.
+- external sources used: none; local source, tests, screenshot/request context, and emulator smoke were sufficient.
+- remaining risk: runtime smoke confirms install/launch/no crash; a seeded tap-through of expanding multiple history day cards can be added if visual QA data is required.
+
+## 2026-06-20 Hidden Nutrition AI Result Routing Polish
+
+- status: done for hiding the Nutrition `AI-resultaat` section from manual navigation while keeping it as an internal result surface for meal, product, and recipe AI/photo flows.
+- files changed: `AI-resultaat` is no longer listed in the visible Voeding section menu; internal tab index `2` and the existing AI result rendering remain available for automatic routing; Producten now offers `Foto/AI product`; Recepten and recipe-editor AI/photo actions route to the same hidden result surface; the AI result card now uses target-specific copy and primary actions for `Aan maaltijd toevoegen`, `Producten opslaan`, and `Als ingrediënten toevoegen`; AI product saves reuse the existing `FoodSourceType.AI` batch-save path.
+- verification evidence:
+  - RED: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --console=plain --no-configuration-cache` failed before implementation on hidden AI-result tab, product AI action, target enum/routing, and target-specific AI actions.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --tests "com.trainiq.features.ui.CompactSectionTabsSourceTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - PASS: `git diff --check` returned only existing LF-to-CRLF warnings.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 3162`, and filtered AndroidRuntime crash buffer was empty.
+- external sources used: none; local source, tests, requested screenshot/context, and emulator smoke were sufficient.
+- remaining risk: runtime proof confirms install/launch/no crash; a seeded end-to-end AI scan proof still needs a configured AI provider and test photo/camera input.
+
+## 2026-06-20 Nutrition Product/Recipe Creation Flow Polish
+
+- status: done for aligning Producten/Recepten creation and add flows without changing nutrition persistence, AI contracts, barcode routes, or meal-draft data behavior.
+- files changed: Nutrition section menu now shows `Producten` before `Recepten` while preserving internal tab indexes for scanner/barcode routing; Producten and Recepten header actions now use comparable primary/secondary controls; the Recepten action sheet no longer mixes in the direct meal-photo concept flow; the recipe editor now groups ingredient sources as `Uit producten`, `Nieuw product`, `Barcode`, and `Foto/AI`; recipe ingredient creation now mirrors the product field order and labels itself as saving a product into the recipe; saved recipes now have search/filtering similar to saved products.
+- verification evidence:
+  - RED: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --console=plain --no-configuration-cache` failed before implementation on `nutritionTabTitles_keepOverviewEntryAndAiResultSeparated`, `nutritionScreen_usesSectionMenuInsteadOfPersistentTabRow`, `recipeCreationFlowMirrorsProductFlowWithoutMealConceptShortcut`, and `savedRecipesCanBeSearchedLikeProducts`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --tests "com.trainiq.features.ui.CompactSectionTabsSourceTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - PASS: `git diff --check` returned only existing LF-to-CRLF warnings.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 4183`, and filtered AndroidRuntime crash buffer was empty.
+- external sources used: none; local source, tests, app screenshots/request context, and emulator smoke were sufficient.
+- remaining risk: runtime proof confirms install/launch/no crash; a seeded end-to-end tap-through for creating a recipe from product, barcode, and AI-photo sources remains a useful follow-up when seeded nutrition data and scanner inputs are available.
+
+## 2026-06-20 Training Action Overlap + Nutrition Metric Strip Polish
+
+- status: done for source-guarded Training routine action overlap prevention and Nutrition day/meal-section metric strip polish.
+- files changed: shared `ActionButtonRow`/`WrappingActionRow` now passes a safe per-action modifier instead of rendering all child buttons inside one measured box; medium phone widths stack long Dutch routine labels earlier; Training routine action rows apply the shared modifier to primary, secondary, and text actions; Nutrition day and meal-section totals now use centered 1x4 Kcal/Eiwit/Kh/Vet metric strips; logged meal 2x2 nutrition pills now center their label/value content.
+- verification evidence:
+  - RED: targeted tests failed before implementation for medium-phone routine edit label stacking, shared action-row per-action modifier structure, Training action modifier usage, and Nutrition 1x4 centered metric strips.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.core.ui.ActionButtonLayoutPolicyTest" --tests "com.trainiq.core.ui.WarmFuturisticUiSourceTest" --tests "com.trainiq.features.workout.WorkoutInputValidationTest.routineActionsUseWrappingSharedButtons" --tests "com.trainiq.features.nutrition.NutritionInputValidationTest.dailyAndMealSectionTotalsUseCenteredOneByFourMetricStrip" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.core.ui.ActionButtonLayoutPolicyTest" --tests "com.trainiq.core.ui.WarmFuturisticUiSourceTest" --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --tests "com.trainiq.features.ui.WarmFuturisticScreenPolishSourceTest" --tests "com.trainiq.navigation.TrainDetailModeChromeTest" --tests "com.trainiq.domain.usecase.StartWorkoutSessionUseCaseTest" --tests "com.trainiq.data.repository.ActiveWorkoutSessionMutationsTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 4280`, and filtered AndroidRuntime crash buffer was empty.
+- external sources used: none; local screenshots, source, tests, and emulator smoke were sufficient.
+- remaining risk: the emulator stayed on setup-gated Start during quick tab taps, so Training/Voeding visual proof is source/unit guarded and launch-smoked but not fully runtime-click verified in seeded data state for this pass.
+
+## 2026-06-20 Active Workout Conflict + Routine/Nutrition Polish
+
+- status: done for explicit active-workout start conflict handling, routine action wrapping, and fixed 2x2 logged-meal nutrition values.
+- files changed: active-workout start now detects a different unfinished active session and shows explicit `Oude training hervatten`, `Nieuwe training starten`, and `Annuleren` actions; replacing the conflict discards the old active session by `sessionId` through the targeted Room discard path before loading the requested routine; active-workout navigation now only suppresses same-day duplicate navigation; routine actions use shared wrapping action buttons; logged meal Kcal/Eiwit/Kh/Vet values render in a fixed 2x2 grid.
+- verification evidence:
+  - RED: targeted tests failed before implementation for missing discard-by-session use case, active-workout route helper, conflict dialog, routine wrapping actions, and nutrition 2x2 grid.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --tests "com.trainiq.navigation.TrainDetailModeChromeTest" --tests "com.trainiq.domain.usecase.StartWorkoutSessionUseCaseTest" --tests "com.trainiq.data.repository.ActiveWorkoutSessionMutationsTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 4242`, and filtered AndroidRuntime crash buffer was empty.
+  - PASS: `git diff --check` returned only existing LF-to-CRLF warnings.
+- external sources used: none; local source, tests, and emulator smoke were sufficient.
+- remaining risk: the explicit conflict dialog is source/unit guarded and app-launch smoked; a full end-to-end seeded UI interaction for replacing an active workout can still be added to connected tests if this path becomes release-critical.
+
 ## 2026-06-05 Home/Reminder/Training/Nutrition/Sleep Polish
 
 - status: done for compact Home Health Connect copy, varied opt-in reminders, active-routine edit access, clearer Training history layout, less cramped Nutrition day rows, and main-session recent sleep display.

@@ -79,6 +79,42 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun activeWorkoutStartConflictUsesExplicitDialogActions() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val conflictDialog = workoutScreen.substringAfter("private fun ActiveWorkoutStartConflictDialog(")
+            .substringBefore("@OptIn(ExperimentalMaterial3Api::class)\n@Composable\nfun ActiveWorkoutScreen")
+
+        assertTrue(workoutScreen.contains("data class ActiveWorkoutStartConflict("))
+        assertTrue(workoutScreen.contains("pendingStartConflict"))
+        assertTrue(conflictDialog.contains("Oude training open"))
+        assertTrue(conflictDialog.contains("Oude training hervatten"))
+        assertTrue(conflictDialog.contains("Nieuwe training starten"))
+        assertTrue(conflictDialog.contains("Annuleren"))
+    }
+
+    @Test
+    fun routineActionsUseWrappingSharedButtons() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val routineCardOverview = workoutScreen
+            .substringAfter("if (!detailMode) {")
+            .substringBefore("return\n    }")
+        val routineDetailBody = workoutScreen
+            .substringAfter("AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.primary)")
+            .substringBefore("HorizontalDivider()")
+
+        assertTrue(routineCardOverview.contains("WrappingActionRow("))
+        assertTrue(routineCardOverview.contains("PrimaryActionButton(onClick = { onStartWorkout(day.id)"))
+        assertTrue(routineCardOverview.contains("SecondaryActionButton(onClick = onOpenDetails"))
+        assertTrue(routineCardOverview.contains("actionModifier ->"))
+        assertTrue(routineCardOverview.contains("modifier = actionModifier"))
+        assertTrue(routineDetailBody.contains("WrappingActionRow("))
+        assertTrue(routineDetailBody.contains("PrimaryActionButton(onClick = { onStartWorkout(startableDay.id)"))
+        assertTrue(routineDetailBody.contains("SecondaryActionButton(onClick = { onSetActiveRoutine(routine.id)"))
+        assertTrue(routineDetailBody.contains("actionModifier ->"))
+        assertTrue(routineDetailBody.contains("modifier = actionModifier"))
+    }
+
+    @Test
     fun workoutHistoryCardUsesReadableMetricTilesAndSeparateAdviceSections() {
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
         val historyCard = workoutScreen.substringAfter("private fun HistoryCard(").substringBefore("@OptIn(ExperimentalMaterial3Api::class)")

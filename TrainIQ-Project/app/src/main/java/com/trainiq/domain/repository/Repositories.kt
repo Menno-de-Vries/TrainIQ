@@ -48,6 +48,7 @@ interface WorkoutRepository {
     suspend fun getWorkoutDay(dayId: Long): WorkoutDay?
     suspend fun getProgressionSuggestions(dayId: Long): List<ProgressionSuggestion>
     suspend fun getNextWorkoutDay(): WorkoutDay?
+    suspend fun getCurrentActiveWorkoutSession(): ActiveWorkoutSession?
     suspend fun getOrStartActiveWorkoutSession(dayId: Long, initialDrafts: Map<Long, ActiveWorkoutSetDraft>): ActiveWorkoutSession
     suspend fun updateActiveWorkoutDraft(exerciseId: Long, draft: ActiveWorkoutSetDraft): ActiveWorkoutSession?
     suspend fun logActiveWorkoutSet(dayId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int): ActiveWorkoutSession
@@ -60,6 +61,7 @@ interface WorkoutRepository {
     suspend fun finishActiveWorkout(dayId: Long): WorkoutCompletionResult
     suspend fun getWorkoutCompletionSummary(sessionId: Long): WorkoutCompletionSummary?
     suspend fun discardActiveWorkout(dayId: Long)
+    suspend fun discardActiveWorkoutSession(sessionId: Long)
     suspend fun setActiveRoutine(routineId: Long)
     suspend fun finishWorkout(dayId: Long, durationSeconds: Long, loggedSets: List<LoggedSet>): WorkoutDebrief
     suspend fun createRoutine(name: String, description: String)

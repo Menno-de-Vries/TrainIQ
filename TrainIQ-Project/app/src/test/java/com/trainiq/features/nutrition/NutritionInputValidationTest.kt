@@ -4,8 +4,14 @@ import com.trainiq.domain.repository.MealEntryRequest
 import com.trainiq.domain.repository.MealEntrySnapshot
 import com.trainiq.domain.repository.MealEntryType
 import com.trainiq.domain.model.EnergyBalanceSnapshot
+import com.trainiq.domain.model.LoggedMeal
+import com.trainiq.domain.model.LoggedMealItem
+import com.trainiq.domain.model.LoggedMealItemType
 import com.trainiq.domain.model.MealType
+import com.trainiq.domain.model.NutritionFacts
 import java.io.File
+import java.time.LocalDate
+import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -186,7 +192,7 @@ class NutritionInputValidationTest {
     @Test
     fun nutritionTabTitles_keepOverviewEntryAndAiResultSeparated() {
         assertEquals(
-            listOf("Vandaag", "AI-resultaat", "Recepten", "Producten", "Historie"),
+            listOf("Vandaag", "Producten", "Recepten", "Historie"),
             nutritionTabTitles(),
         )
     }
@@ -212,9 +218,24 @@ class NutritionInputValidationTest {
         assertTrue(source.contains("showSectionMenu"))
         assertTrue(source.contains("nutritionSectionMenuButtonDescription()"))
         assertTrue(source.contains("Icons.Rounded.Menu"))
-        assertTrue(source.contains("NutritionSectionTab(\"AI-resultaat\", 2)"))
+        assertTrue(source.indexOf("NutritionSectionTab(\"Producten\", 4)") < source.indexOf("NutritionSectionTab(\"Recepten\", 3)"))
+        assertFalse(source.contains("NutritionSectionTab(\"AI-resultaat\", 2)"))
         assertTrue(source.contains("NutritionSectionTab(\"Recepten\", 3)"))
         assertFalse(source.contains("\"Toevoegen\", 1"))
+    }
+
+    @Test
+    fun aiResultTab_isHiddenFromSectionsButKeptAsInternalRoute() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val screenBody = source.substringAfter("fun NutritionScreen(\n    uiState: NutritionUiState,").substringBefore("SnackbarHost(")
+        val aiTabBody = source.substringAfter("2 -> {").substringBefore("3 -> {")
+        val sectionTabs = source.substringAfter("private fun nutritionSectionTabs(): List<NutritionSectionTab> =").substringBefore("private fun nutritionInternalTabCount()")
+
+        assertTrue(source.contains("private enum class NutritionAiResultTarget"))
+        assertTrue(source.contains("private fun nutritionInternalTabCount(): Int = 6"))
+        assertTrue(screenBody.contains("selectedTab = 2"))
+        assertTrue(aiTabBody.contains("AiMealAnalysisCard("))
+        assertFalse(sectionTabs.contains("AI-resultaat"))
     }
 
     @Test
@@ -338,12 +359,42 @@ class NutritionInputValidationTest {
         assertTrue(mealEntryRow.contains("Text(meal.name"))
         assertFalse(mealEntryRow.contains("horizontalArrangement = Arrangement.SpaceBetween"))
         assertFalse(mealEntryRow.contains("Text(\"\${formatNumber(meal.totalNutrition.calories)} kcal\", color = MaterialTheme.colorScheme.primary)"))
-        assertTrue(mealEntryRow.contains("NutritionMetricPill("))
+        assertTrue(mealEntryRow.contains("NutritionMetricGrid("))
         assertTrue(mealEntryRow.contains("Kcal"))
         assertTrue(mealEntryRow.contains("Eiwit"))
         assertTrue(mealEntryRow.contains("Kh"))
         assertTrue(mealEntryRow.contains("Vet"))
         assertTrue(mealEntryRow.contains("maxLines = 2"))
+    }
+
+    @Test
+    fun mealEntryRowUsesFixedTwoByTwoNutritionGrid() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val mealEntryRow = source.substringAfter("private fun MealEntryRow(").substringBefore("if (showActions)")
+        val gridBody = source.substringAfter("private fun NutritionMetricGrid(").substringBefore("@Composable\nprivate fun NutritionMetricPill")
+
+        assertTrue(mealEntryRow.contains("NutritionMetricGrid("))
+        assertTrue(gridBody.contains("chunked(2)"))
+        assertTrue(gridBody.contains("Modifier.weight(1f)"))
+        assertTrue(gridBody.contains("NutritionMetricPill(label, value, accent, modifier = Modifier.weight(1f).fillMaxWidth())"))
+    }
+
+    @Test
+    fun dailyAndMealSectionTotalsUseCenteredOneByFourMetricStrip() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val dashboard = source.substringAfter("private fun DailyMealsDashboard(").substringBefore("@Composable\nprivate fun MealSectionCard")
+        val mealSection = source.substringAfter("private fun MealSectionCard(").substringBefore("@Composable\n@OptIn")
+        val stripBody = source.substringAfter("private fun NutritionMetricStrip(").substringBefore("@Composable\nprivate fun NutritionMetricGrid")
+        val pillBody = source.substringAfter("private fun NutritionMetricPill(").substringBefore("@Composable\nprivate fun Recipes")
+
+        assertTrue(dashboard.contains("NutritionMetricStrip("))
+        assertTrue(mealSection.contains("NutritionMetricStrip("))
+        assertFalse(dashboard.contains("nutritionMacroSummary(overview?.todaysProtein"))
+        assertFalse(mealSection.contains("nutritionMacroSummary(total.protein"))
+        assertTrue(stripBody.contains("values.forEach"))
+        assertTrue(stripBody.contains("Modifier.weight(1f).fillMaxWidth()"))
+        assertTrue(pillBody.contains("horizontalAlignment = Alignment.CenterHorizontally"))
+        assertTrue(pillBody.contains("textAlign = TextAlign.Center"))
     }
 
     @Test
@@ -383,8 +434,7 @@ class NutritionInputValidationTest {
         val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
         val addSheet = source.substringAfter("AddToMealActionSheet(").substringBefore("pendingDelete?.let")
         val contextualTargetHelper = source.substringAfter("fun preserveContextualMealTarget()").substringBefore("fun finishAiBatchItem")
-        val aiMealSave = source.substringAfter("onSaveToDraft = {").substringBefore("},\n                                )")
-        val photoMealSave = source.substringAfter("onAddToMeal = {").substringBefore("},\n                                    )")
+        val aiMealSave = source.substringAfter("NutritionAiResultTarget.MealDraft -> {").substringBefore("NutritionAiResultTarget.ProductLibrary ->")
         val aiSnapshotHelper = source.substringAfter("fun addAiBatchItemsAsMealSnapshots(").substringBefore("LaunchedEffect(pendingBarcode)")
         val savedRecipeAdd = source.substringAfter("onUseInMeal = { recipe ->").substringBefore("onDelete = { pendingDelete = PendingNutritionDelete.Recipe")
         val savedFoodAdd = source.substringAfter("onQuickAdd = { food ->").substringBefore("onDelete = { pendingDelete = PendingNutritionDelete.Food")
@@ -392,9 +442,9 @@ class NutritionInputValidationTest {
 
         assertTrue(addSheet.contains("mealType = addToMealType"))
         assertTrue(addSheet.contains("pendingAiMealType = addToMealType"))
+        assertTrue(addSheet.contains("aiResultTarget = NutritionAiResultTarget.MealDraft"))
         assertTrue(contextualTargetHelper.contains("mealType = addToMealType"))
         assertTrue(aiMealSave.contains("addAiBatchItemsAsMealSnapshots(batchItems)"))
-        assertTrue(photoMealSave.contains("addAiBatchItemsAsMealSnapshots(batchItems)"))
         assertTrue(aiSnapshotHelper.contains("selectedTab = 1"))
         assertTrue(savedRecipeAdd.contains("preserveContextualMealTarget()"))
         assertTrue(savedRecipeAdd.contains("selectedTab = 1"))
@@ -466,6 +516,76 @@ class NutritionInputValidationTest {
     }
 
     @Test
+    fun recipeCreationFlowMirrorsProductFlowWithoutMealConceptShortcut() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val recipeHeader = source.substringAfter("private fun RecipesHeaderCard(").substringBefore("@Composable\nprivate fun NutritionMetricStrip")
+        val productHeader = source.substringAfter("private fun ProductsHeaderCard(").substringBefore("@Composable\nprivate fun NutritionNumberField")
+        val recipeSheet = source.substringAfter("private fun RecipeActionBottomSheet(").substringBefore("@Composable\nprivate fun AddToMealActionSheet")
+        val recipeEditor = source.substringAfter("private fun RecipeEditorCard(").substringBefore("@Composable\nprivate fun RecipeTotalsCard")
+        val ingredientEditor = source.substringAfter("private fun RecipeIngredientEditorSheet(").substringBefore("private fun List<FoodItem>.filteredByProductQuery")
+
+        assertTrue(recipeHeader.contains("onScanIngredient"))
+        assertTrue(recipeHeader.contains("onPhotoIngredient"))
+        assertTrue(recipeHeader.contains("Recept maken"))
+        assertTrue(recipeHeader.contains("Ingrediënt scannen"))
+        assertTrue(recipeHeader.contains("Foto/AI ingrediënten"))
+        assertTrue(productHeader.contains("Product maken"))
+        assertTrue(productHeader.contains("Barcode scannen"))
+        assertTrue(productHeader.contains("onPhotoProduct"))
+        assertTrue(productHeader.contains("Foto/AI product"))
+        assertFalse(recipeSheet.contains("Foto naar maaltijdconcept"))
+        assertFalse(recipeSheet.contains("onPhotoDirect"))
+        assertTrue(recipeEditor.contains("Ingrediëntbron"))
+        assertTrue(recipeEditor.contains("Uit producten"))
+        assertTrue(recipeEditor.contains("Nieuw product"))
+        assertTrue(recipeEditor.contains("Barcode"))
+        assertTrue(recipeEditor.contains("Foto/AI"))
+        assertTrue(ingredientEditor.indexOf("label = \"Productnaam\"") < ingredientEditor.indexOf("label = \"Barcode (optioneel)\""))
+        assertTrue(ingredientEditor.indexOf("label = \"Barcode (optioneel)\"") < ingredientEditor.indexOf("label = \"kcal / 100g\""))
+        assertTrue(ingredientEditor.indexOf("label = \"Vet / 100g\"") < ingredientEditor.indexOf("label = \"Gram in recept\""))
+        assertTrue(ingredientEditor.contains("Product opslaan en toevoegen"))
+    }
+
+    @Test
+    fun aiProductAndRecipeButtonsRouteToHiddenAiResultTargets() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val productHeaderCall = source.substringAfter("ProductsHeaderCard(").substringBefore(")\n                            }\n                            item {\n                                SavedFoodsCard")
+        val recipeHeaderCall = source.substringAfter("RecipesHeaderCard(").substringBefore(")\n                            }\n                            if")
+        val recipeEditorCall = source.substringAfter("RecipeEditorCard(").substringBefore("onCancelEdit =")
+        val aiTabBody = source.substringAfter("2 -> {").substringBefore("3 -> {")
+
+        assertTrue(productHeaderCall.contains("onPhotoProduct = {"))
+        assertTrue(productHeaderCall.contains("aiResultTarget = NutritionAiResultTarget.ProductLibrary"))
+        assertTrue(productHeaderCall.contains("selectedTab = 2"))
+        assertTrue(recipeHeaderCall.contains("aiResultTarget = NutritionAiResultTarget.RecipeDraft"))
+        assertTrue(recipeHeaderCall.contains("selectedTab = 2"))
+        assertTrue(recipeEditorCall.contains("aiResultTarget = NutritionAiResultTarget.RecipeDraft"))
+        assertTrue(recipeEditorCall.contains("selectedTab = 2"))
+        assertTrue(aiTabBody.contains("NutritionAiResultTarget.MealDraft ->"))
+        assertTrue(aiTabBody.contains("NutritionAiResultTarget.ProductLibrary ->"))
+        assertTrue(aiTabBody.contains("NutritionAiResultTarget.RecipeDraft ->"))
+        assertTrue(aiTabBody.contains("Producten opslaan"))
+        assertTrue(aiTabBody.contains("Als ingrediënten toevoegen"))
+        assertTrue(aiTabBody.contains("Aan maaltijd toevoegen"))
+    }
+
+    @Test
+    fun savedRecipesCanBeSearchedLikeProducts() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val recipeState = source.substringAfter("var productSearchQuery by rememberSaveable").substringBefore("var selectedFoodId by rememberSaveable")
+        val savedRecipesCall = source.substringAfter("SavedRecipesCard(").substringBefore("onUseInMeal = { recipe ->")
+        val savedRecipesCard = source.substringAfter("private fun SavedRecipesCard(").substringBefore("@Composable\nprivate fun MealDraftReviewCard")
+
+        assertTrue(source.contains("private fun List<Recipe>.filteredByRecipeQuery(query: String): List<Recipe>"))
+        assertTrue(recipeState.contains("var recipeSearchQuery by rememberSaveable"))
+        assertTrue(savedRecipesCall.contains("searchQuery = recipeSearchQuery"))
+        assertTrue(savedRecipesCall.contains("onSearchQueryChange = { recipeSearchQuery = it }"))
+        assertTrue(savedRecipesCard.contains("ProductSearchField("))
+        assertTrue(savedRecipesCard.contains("val filteredRecipes = recipes.filteredByRecipeQuery(searchQuery)"))
+        assertTrue(savedRecipesCard.contains("filteredRecipes.forEach"))
+    }
+
+    @Test
     fun savedProductsUseDefaultServingGramsForQuickMealAdd() {
         val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
         val savedFoodAdd = source.substringAfter("onQuickAdd = { food ->").substringBefore("onDelete = { pendingDelete = PendingNutritionDelete.Food")
@@ -510,6 +630,50 @@ class NutritionInputValidationTest {
         assertTrue(reuseMeal.contains("notes = it.notes"))
         assertTrue(reuseMeal.contains("selectedTab = 1"))
         assertTrue(mealHistoryCard.contains("Opnieuw gebruiken"))
+        assertTrue(mealHistoryCard.contains("voedingssnapshots"))
+    }
+
+    @Test
+    fun mealHistoryGroupsMealsByLocalDayAndSumsNutrition() {
+        val zone = ZoneId.systemDefault()
+        val todayStart = LocalDate.of(2026, 6, 20).atStartOfDay(zone).toInstant().toEpochMilli()
+        val yesterdayStart = LocalDate.of(2026, 6, 19).atStartOfDay(zone).toInstant().toEpochMilli()
+        val meals = listOf(
+            sampleLoggedMeal(id = 1, timestamp = todayStart + 8 * 60 * 60 * 1000L, mealType = MealType.BREAKFAST, calories = 180.0, protein = 12.0, carbs = 24.0, fat = 4.0),
+            sampleLoggedMeal(id = 2, timestamp = todayStart + 13 * 60 * 60 * 1000L, mealType = MealType.LUNCH, calories = 320.0, protein = 20.0, carbs = 36.0, fat = 9.0),
+            sampleLoggedMeal(id = 3, timestamp = yesterdayStart + 19 * 60 * 60 * 1000L, mealType = MealType.DINNER, calories = 410.0, protein = 28.0, carbs = 40.0, fat = 13.0),
+        )
+
+        val days = meals.groupedHistoryDays()
+
+        assertEquals(2, days.size)
+        assertEquals(2, days.first().mealCount)
+        assertEquals(2, days.first().itemCount)
+        assertEquals(500.0, days.first().totalNutrition.calories, 0.0)
+        assertEquals(32.0, days.first().totalNutrition.protein, 0.0)
+        assertEquals("Ochtend, Middag", days.first().mealTypeSummary)
+        assertEquals(1, days.last().mealCount)
+        assertEquals("Avond", days.last().mealTypeSummary)
+    }
+
+    @Test
+    fun mealHistoryCardUsesDaySummariesWithExpandableMealDetails() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val mealHistoryCard = source.substringAfter("private fun MealHistoryCard(").substringBefore("@Composable\nprivate fun EditableAiItemCard")
+
+        assertTrue(mealHistoryCard.contains("val historyDays = meals.groupedHistoryDays()"))
+        assertTrue(mealHistoryCard.contains("historyDays.forEach { day ->"))
+        assertFalse(mealHistoryCard.contains("\n                meals.forEach { meal ->"))
+        assertTrue(mealHistoryCard.contains("NutritionMetricStrip("))
+        assertTrue(mealHistoryCard.contains("day.mealCount"))
+        assertTrue(mealHistoryCard.contains("day.itemCount"))
+        assertTrue(mealHistoryCard.contains("day.mealTypeSummary"))
+        assertTrue(mealHistoryCard.contains("Maaltijden bekijken"))
+        assertTrue(mealHistoryCard.contains("Verbergen"))
+        assertTrue(mealHistoryCard.contains("day.meals.forEach { meal ->"))
+        assertTrue(mealHistoryCard.contains("Opnieuw gebruiken"))
+        assertTrue(mealHistoryCard.contains("onReuseMeal(meal)"))
+        assertTrue(mealHistoryCard.contains("onDeleteMeal(meal.id)"))
         assertTrue(mealHistoryCard.contains("voedingssnapshots"))
     }
 
@@ -566,5 +730,35 @@ class NutritionInputValidationTest {
 
         assertEquals("Netto calorieën 600 kcal tekort", nutritionEnergyBalanceSummary(balance))
         assertEquals("TEF 140 kcal - NEAT 160 kcal - Training 100 kcal", nutritionEnergyBreakdownText(balance))
+    }
+
+    private fun sampleLoggedMeal(
+        id: Long,
+        timestamp: Long,
+        mealType: MealType,
+        calories: Double,
+        protein: Double,
+        carbs: Double,
+        fat: Double,
+    ): LoggedMeal {
+        val nutrition = NutritionFacts(calories = calories, protein = protein, carbs = carbs, fat = fat)
+        return LoggedMeal(
+            id = id,
+            timestamp = timestamp,
+            mealType = mealType,
+            name = "Meal $id",
+            items = listOf(
+                LoggedMealItem(
+                    id = id * 10,
+                    mealId = id,
+                    itemType = LoggedMealItemType.SNAPSHOT,
+                    referenceId = 0L,
+                    name = "Item $id",
+                    gramsUsed = 100.0,
+                    nutritionSnapshot = nutrition,
+                ),
+            ),
+            totalNutrition = nutrition,
+        )
     }
 }

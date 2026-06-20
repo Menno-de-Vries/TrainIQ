@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -448,7 +449,7 @@ enum class ActionButtonLayout {
 
 internal fun actionButtonLayoutForWidth(widthDp: Int, labels: List<String>): ActionButtonLayout {
     val longestLabel = labels.maxOfOrNull { it.length } ?: 0
-    return if (widthDp < 360 && longestLabel > 12) {
+    return if (widthDp < 420 && longestLabel > 12) {
         ActionButtonLayout.Stacked
     } else {
         ActionButtonLayout.Inline
@@ -804,24 +805,25 @@ fun ActionButtonRow(
     modifier: Modifier = Modifier,
     horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(MaterialTheme.spacing.small),
     verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(MaterialTheme.spacing.small),
-    content: @Composable () -> Unit,
+    content: @Composable (Modifier) -> Unit,
 ) {
     val layout = actionButtonLayoutForWidth(LocalConfiguration.current.screenWidthDp, labels)
+    val actionModifier = if (layout == ActionButtonLayout.Stacked) {
+        Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 48.dp)
+    } else {
+        Modifier
+            .widthIn(min = 96.dp)
+            .defaultMinSize(minHeight = 48.dp)
+    }
     FlowRow(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = horizontalArrangement,
         verticalArrangement = verticalArrangement,
         maxItemsInEachRow = if (layout == ActionButtonLayout.Stacked) 1 else Int.MAX_VALUE,
     ) {
-        Box(
-            modifier = if (layout == ActionButtonLayout.Stacked) {
-                Modifier.fillMaxWidth()
-            } else {
-                Modifier.widthIn(min = 96.dp)
-            },
-        ) {
-            content()
-        }
+        content(actionModifier)
     }
 }
 
@@ -831,7 +833,7 @@ fun WrappingActionRow(
     modifier: Modifier = Modifier,
     horizontalSpacing: Dp = MaterialTheme.spacing.small,
     verticalSpacing: Dp = MaterialTheme.spacing.small,
-    content: @Composable () -> Unit,
+    content: @Composable (Modifier) -> Unit,
 ) {
     ActionButtonRow(
         labels = labels,

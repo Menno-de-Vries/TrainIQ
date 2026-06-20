@@ -166,6 +166,7 @@ import com.trainiq.core.ui.PrimaryActionButton
 import com.trainiq.core.ui.lineChartContentDescription
 import com.trainiq.core.ui.SecondaryActionButton
 import com.trainiq.core.ui.TapOnlyOutlinedTextField
+import com.trainiq.core.ui.WrappingActionRow
 import com.trainiq.core.ui.bringIntoViewOnFocus
 import com.trainiq.core.audio.RestTimerSoundPlayer
 import com.trainiq.core.datastore.UserPreferencesRepository
@@ -211,8 +212,10 @@ import com.trainiq.domain.usecase.DeleteRoutineUseCase
 import com.trainiq.domain.usecase.DeleteWorkoutSessionUseCase
 import com.trainiq.domain.usecase.DeleteActiveWorkoutSetUseCase
 import com.trainiq.domain.usecase.DiscardActiveWorkoutUseCase
+import com.trainiq.domain.usecase.DiscardActiveWorkoutSessionUseCase
 import com.trainiq.domain.usecase.FinishActiveWorkoutUseCase
 import com.trainiq.domain.usecase.GenerateAiRoutineUseCase
+import com.trainiq.domain.usecase.GetCurrentActiveWorkoutSessionUseCase
 import com.trainiq.domain.usecase.GetProgressionSuggestionsUseCase
 import com.trainiq.domain.usecase.GetWorkoutCompletionSummaryUseCase
 import com.trainiq.domain.usecase.GetWorkoutDayUseCase
@@ -281,6 +284,13 @@ data class SetInputFieldErrors(
     val rpe: String? = null,
 )
 
+data class ActiveWorkoutStartConflict(
+    val requestedDayId: Long,
+    val activeDayId: Long,
+    val activeSessionId: Long,
+    val loggedSetCount: Int,
+)
+
 data class ActiveWorkoutUiState(
     val workout: WorkoutDay? = null,
     val activeSession: ActiveWorkoutSession? = null,
@@ -303,6 +313,7 @@ data class ActiveWorkoutUiState(
     val needsFinishConfirmation: Boolean = false,
     val loggingSummary: WorkoutLoggingSummary = WorkoutLoggingSummary(),
     val activeFocusTarget: ActiveWorkoutFocusTarget? = null,
+    val pendingStartConflict: ActiveWorkoutStartConflict? = null,
     val message: String? = null,
 )
 
@@ -364,6 +375,7 @@ private val BuilderActionWidth = 48.dp
 private val BuilderRowActionWidth = 48.dp
 private val RoutineSessionHorizontalPadding = 12.dp
 private val RoutineExerciseHorizontalPadding = 8.dp
+private const val ActiveWorkoutStartBlockedMessage = "Rond je actieve training af of verwijder die voordat je een andere training start."
 private val RoutineSetHorizontalPadding = 6.dp
 private val ActiveSetActionWidth = 104.dp
 private val ActiveSetLeadingWidth = 76.dp
@@ -402,6 +414,7 @@ class WorkoutViewModel @Inject constructor(
     private val getWorkoutDayUseCase: GetWorkoutDayUseCase,
     private val getProgressionSuggestionsUseCase: GetProgressionSuggestionsUseCase,
     private val startWorkoutSessionUseCase: StartWorkoutSessionUseCase,
+    private val getCurrentActiveWorkoutSessionUseCase: GetCurrentActiveWorkoutSessionUseCase,
     private val updateActiveWorkoutDraftUseCase: UpdateActiveWorkoutDraftUseCase,
     private val logActiveWorkoutSetUseCase: LogActiveWorkoutSetUseCase,
     private val updateActiveWorkoutSetUseCase: UpdateActiveWorkoutSetUseCase,
@@ -412,6 +425,7 @@ class WorkoutViewModel @Inject constructor(
     private val updateActiveWorkoutRestTimerUseCase: UpdateActiveWorkoutRestTimerUseCase,
     private val finishActiveWorkoutUseCase: FinishActiveWorkoutUseCase,
     private val discardActiveWorkoutUseCase: DiscardActiveWorkoutUseCase,
+    private val discardActiveWorkoutSessionUseCase: DiscardActiveWorkoutSessionUseCase,
     private val deleteWorkoutSessionUseCase: DeleteWorkoutSessionUseCase,
     private val createRoutineUseCase: CreateRoutineUseCase,
     private val updateRoutineUseCase: UpdateRoutineUseCase,
@@ -467,6 +481,7 @@ class WorkoutViewModel @Inject constructor(
     private val _pendingCorrectionSetIds = MutableStateFlow<Map<Long, Long>>(emptyMap())
     private val _exerciseRestOverrides = MutableStateFlow<Map<Long, Int>>(emptyMap())
 
+    private val _pendingStartConflict = MutableStateFlow<ActiveWorkoutStartConflict?>(null)
     private val _message = MutableStateFlow<String?>(null)
     private val message: StateFlow<String?> = _message.asStateFlow()
 
@@ -528,6 +543,8 @@ class WorkoutViewModel @Inject constructor(
         state.copy(loggingSummary = loggingSummary)
     }.combine(_activeFocusTarget) { state, activeFocusTarget ->
         state.copy(activeFocusTarget = activeFocusTarget)
+    }.combine(_pendingStartConflict) { state, pendingStartConflict ->
+        state.copy(pendingStartConflict = pendingStartConflict)
     }.combine(_message) { state, message ->
         state.copy(message = message)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ActiveWorkoutUiState())
@@ -574,9 +591,20 @@ class WorkoutViewModel @Inject constructor(
         viewModelScope.launch {
             _debrief.value = null
             _message.value = null
+            _pendingStartConflict.value = null
             val started = runCatching { startWorkoutSessionUseCase(dayId) }
                 .getOrElse {
-                    _message.value = it.message ?: "Rond je actieve training af of verwijder die voordat je een andere training start."
+                    val currentActive = getCurrentActiveWorkoutSessionUseCase()
+                    if (currentActive != null && currentActive.dayId != dayId) {
+                        _pendingStartConflict.value = ActiveWorkoutStartConflict(
+                            requestedDayId = dayId,
+                            activeDayId = currentActive.dayId,
+                            activeSessionId = currentActive.sessionId,
+                            loggedSetCount = currentActive.loggedSets.size,
+                        )
+                    } else {
+                        _message.value = it.message ?: ActiveWorkoutStartBlockedMessage
+                    }
                     return@launch
                 }
             val workout = started.workout
@@ -601,6 +629,18 @@ class WorkoutViewModel @Inject constructor(
                 _message.value = "Actieve training hersteld."
             }
             startSessionTicker()
+        }
+    }
+
+    fun dismissStartConflict() {
+        _pendingStartConflict.value = null
+    }
+
+    fun replaceConflictingActiveWorkout(conflict: ActiveWorkoutStartConflict) {
+        viewModelScope.launch {
+            discardActiveWorkoutSessionUseCase(conflict.activeSessionId)
+            _pendingStartConflict.value = null
+            loadWorkout(conflict.requestedDayId)
         }
     }
 
@@ -1856,10 +1896,10 @@ private fun ActiveRoutineCard(
                         Text(activeRoutineSetupLabel())
                     }
                 } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
+                    WrappingActionRow(labels = listOf(activeRoutineStartLabel(startableDay.name), "Routine aanpassen")) { actionModifier ->
+                        PrimaryActionButton(
                             onClick = { onStartWorkout(startableDay.id) },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = actionModifier,
                         ) {
                             Text(
                                 activeRoutineStartLabel(startableDay.name),
@@ -1867,12 +1907,12 @@ private fun ActiveRoutineCard(
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        OutlinedButton(
+                        SecondaryActionButton(
                             onClick = { onOpenDetails(activeRoutine.id) },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = actionModifier,
                         ) {
                             Icon(Icons.Rounded.Edit, contentDescription = null)
-                            Text("Routine aanpassen")
+                            Text("Routine aanpassen", maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
                         }
                     }
                 }
@@ -2330,16 +2370,18 @@ private fun RoutineCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SecondaryActionButton(onClick = onOpenDetails, modifier = Modifier.weight(1f)) {
+                WrappingActionRow(labels = listOf("Details", "Actief maken", "Start")) { actionModifier ->
+                    SecondaryActionButton(onClick = onOpenDetails, modifier = actionModifier) {
                         Icon(Icons.Rounded.Edit, contentDescription = null)
                         Text("Details")
                     }
                     if (!routine.active) {
-                        TextButton(onClick = { onSetActiveRoutine(routine.id) }) { Text("Actief maken") }
+                        SecondaryActionButton(onClick = { onSetActiveRoutine(routine.id) }, modifier = actionModifier) {
+                            Text("Actief maken", maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                        }
                     }
                     routine.firstStartableDay()?.let { day ->
-                        PrimaryActionButton(onClick = { onStartWorkout(day.id) }) { Text("Start") }
+                        PrimaryActionButton(onClick = { onStartWorkout(day.id) }, modifier = actionModifier) { Text("Start") }
                     }
                 }
             }
@@ -2412,29 +2454,35 @@ private fun RoutineCard(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        routine.firstStartableDay()?.let { startableDay ->
-                            PrimaryActionButton(onClick = { onStartWorkout(startableDay.id) }) {
-                                Text("Start")
-                            }
+                }
+                WrappingActionRow(labels = listOf("Start", "Bewerken")) { actionModifier ->
+                    routine.firstStartableDay()?.let { startableDay ->
+                        PrimaryActionButton(onClick = { onStartWorkout(startableDay.id) }, modifier = actionModifier) {
+                            Text("Start")
                         }
-                        IconButton(
-                            onClick = {
-                                detailTab = "info"
-                                isEditing = true
-                            },
-                        ) {
-                            Icon(
-                                Icons.Rounded.Edit,
-                                contentDescription = "Naam en beschrijving bewerken",
-                            )
-                        }
+                    }
+                    SecondaryActionButton(
+                        onClick = {
+                            detailTab = "info"
+                            isEditing = true
+                        },
+                        modifier = actionModifier,
+                    ) {
+                        Icon(
+                            Icons.Rounded.Edit,
+                            contentDescription = "Naam en beschrijving bewerken",
+                        )
+                        Text("Bewerken")
                     }
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SecondaryActionButton(onClick = { onSetActiveRoutine(routine.id) }) { Text(if (routine.active) "Actief" else "Actief maken") }
-                TextButton(onClick = { showDeleteRoutineConfirm = true }) { Text("Verwijderen") }
+            WrappingActionRow(labels = listOf(if (routine.active) "Actief" else "Actief maken", "Verwijderen")) { actionModifier ->
+                SecondaryActionButton(onClick = { onSetActiveRoutine(routine.id) }, modifier = actionModifier) {
+                    Text(if (routine.active) "Actief" else "Actief maken", maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                }
+                TextButton(onClick = { showDeleteRoutineConfirm = true }, modifier = actionModifier) {
+                    Text("Verwijderen", maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                }
             }
             HorizontalDivider()
             RoutineDetailTabSwitcher(
@@ -4529,6 +4577,7 @@ private fun EmptyExerciseHistoryState() {
 fun ActiveWorkoutRoute(
     dayId: Long,
     onBack: () -> Unit,
+    onSwitchActiveWorkout: (Long) -> Unit,
     onOpenExerciseHistory: (Long) -> Unit,
     onWorkoutCompleted: (Long) -> Unit,
     onWorkoutProcessing: (Long) -> Unit,
@@ -4615,6 +4664,12 @@ fun ActiveWorkoutRoute(
         onReplaceActiveExercise = viewModel::replaceExerciseInActiveWorkout,
         onReplaceActiveExerciseWithCustom = viewModel::replaceActiveExerciseWithCustom,
         onRemoveActiveExercise = viewModel::removeExerciseFromActiveWorkout,
+        onResumeConflictingWorkout = { conflict ->
+            viewModel.dismissStartConflict()
+            onSwitchActiveWorkout(conflict.activeDayId)
+        },
+        onReplaceConflictingWorkout = viewModel::replaceConflictingActiveWorkout,
+        onDismissStartConflict = viewModel::dismissStartConflict,
         onFinish = { onWorkoutProcessing(dayId) },
         onDiscard = { viewModel.discardWorkout(dayId) },
     )
@@ -5035,6 +5090,38 @@ private fun CompletionActions(
     }
 }
 
+@Composable
+private fun ActiveWorkoutStartConflictDialog(
+    conflict: ActiveWorkoutStartConflict,
+    onResume: (ActiveWorkoutStartConflict) -> Unit,
+    onReplace: (ActiveWorkoutStartConflict) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val setCopy = if (conflict.loggedSetCount == 1) "1 gelogde set" else "${conflict.loggedSetCount} gelogde sets"
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Oude training open") },
+        text = {
+            Text(
+                "Er staat nog een actieve training open met $setCopy. Hervat die training of gooi hem weg voordat je deze nieuwe routine start.",
+            )
+        },
+        confirmButton = {
+            Button(onClick = { onReplace(conflict) }) {
+                Text("Nieuwe training starten")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { onResume(conflict) }) {
+                Text("Oude training hervatten")
+            }
+            TextButton(onClick = onDismiss) {
+                Text("Annuleren")
+            }
+        },
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActiveWorkoutScreen(
@@ -5062,6 +5149,9 @@ fun ActiveWorkoutScreen(
     onReplaceActiveExercise: (Long, Exercise) -> Unit,
     onReplaceActiveExerciseWithCustom: (Long, String, String, String) -> Unit,
     onRemoveActiveExercise: (Long) -> Unit,
+    onResumeConflictingWorkout: (ActiveWorkoutStartConflict) -> Unit,
+    onReplaceConflictingWorkout: (ActiveWorkoutStartConflict) -> Unit,
+    onDismissStartConflict: () -> Unit,
     onFinish: () -> Unit,
     onDiscard: () -> Unit,
 ) {
@@ -5083,6 +5173,15 @@ fun ActiveWorkoutScreen(
         val currentMessage = uiState.message ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(currentMessage)
         currentOnDismissMessage()
+    }
+
+    uiState.pendingStartConflict?.let { conflict ->
+        ActiveWorkoutStartConflictDialog(
+            conflict = conflict,
+            onResume = onResumeConflictingWorkout,
+            onReplace = onReplaceConflictingWorkout,
+            onDismiss = onDismissStartConflict,
+        )
     }
 
     replacingActivePlan?.let { plan ->

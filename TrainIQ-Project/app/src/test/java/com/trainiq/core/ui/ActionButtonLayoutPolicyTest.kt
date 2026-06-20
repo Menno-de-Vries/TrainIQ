@@ -27,6 +27,17 @@ class ActionButtonLayoutPolicyTest {
     }
 
     @Test
+    fun routineEditLabelsStackOnMediumPhoneWidths() {
+        assertEquals(
+            ActionButtonLayout.Stacked,
+            actionButtonLayoutForWidth(
+                widthDp = 390,
+                labels = listOf("Start", "Routine aanpassen"),
+            ),
+        )
+    }
+
+    @Test
     fun longDutchLabelsCanStayInlineOnWideWidths() {
         assertEquals(
             ActionButtonLayout.Inline,

@@ -31,6 +31,22 @@ class WarmFuturisticUiSourceTest {
     }
 
     @Test
+    fun `wrapping action row gives each action its own safe modifier`() {
+        val appDesign = testSourceFile("core/ui/AppDesign.kt").readText()
+        val actionRowBody = appDesign.substringAfter("fun ActionButtonRow(")
+            .substringBefore("@Composable\nfun WrappingActionRow(")
+
+        assertTrue(actionRowBody.contains("content: @Composable (Modifier) -> Unit"))
+        assertTrue(actionRowBody.contains("val actionModifier ="))
+        assertTrue(actionRowBody.contains("defaultMinSize(minHeight = 48.dp)"))
+        assertTrue(actionRowBody.contains("content(actionModifier)"))
+        assertFalse(
+            "Actions should be separate FlowRow children, not all rendered inside one shared Box.",
+            actionRowBody.contains("Box(\n            modifier = if (layout == ActionButtonLayout.Stacked)"),
+        )
+    }
+
+    @Test
     fun `app card gradient is drawn on the full card bounds without unbounded sizing`() {
         val appDesign = testSourceFile("core/ui/AppDesign.kt").readText()
         val appCardBody = appDesign.substringAfter("fun AppCard(").substringBefore("@Composable\nfun WarmGlassCard(")

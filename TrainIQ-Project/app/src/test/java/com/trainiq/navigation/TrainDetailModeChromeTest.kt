@@ -42,4 +42,11 @@ class TrainDetailModeChromeTest {
         assertEquals("Trend", bottomNavigationLabel("Voortgang"))
         assertEquals("Meer", bottomNavigationLabel("Instellingen"))
     }
+
+    @Test
+    fun activeWorkoutNavigationOnlySkipsTheSameWorkoutDay() {
+        assertFalse(shouldNavigateToActiveWorkout(currentActiveWorkoutDayId = 7L, requestedDayId = 7L))
+        assertTrue(shouldNavigateToActiveWorkout(currentActiveWorkoutDayId = 7L, requestedDayId = 8L))
+        assertTrue(shouldNavigateToActiveWorkout(currentActiveWorkoutDayId = null, requestedDayId = 8L))
+    }
 }

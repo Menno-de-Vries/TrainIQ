@@ -249,6 +249,11 @@ class TrainIqDataCoordinator @Inject constructor(
     suspend fun getNextWorkoutDay(): WorkoutDay? =
         buildWorkoutOverview(snapshotState.value).activeRoutine?.days?.minByOrNull { it.orderIndex }
 
+    suspend fun getCurrentActiveWorkoutSession(): ActiveWorkoutSession? =
+        withContext(Dispatchers.IO) {
+            runtimeStore.state.value.activeWorkoutSession?.toDomain()
+        }
+
     suspend fun getOrStartActiveWorkoutSession(
         dayId: Long,
         initialDrafts: Map<Long, ActiveWorkoutSetDraft>,
@@ -474,6 +479,14 @@ class TrainIqDataCoordinator @Inject constructor(
     suspend fun discardActiveWorkout(dayId: Long) {
         withContext(Dispatchers.IO) {
             val active = runtimeStore.state.value.activeWorkoutSession?.takeIf { it.dayId == dayId }
+                ?: return@withContext
+            runtimeStore.discardActiveWorkoutSession(active.sessionId)
+        }
+    }
+
+    suspend fun discardActiveWorkoutSession(sessionId: Long) {
+        withContext(Dispatchers.IO) {
+            val active = runtimeStore.state.value.activeWorkoutSession?.takeIf { it.sessionId == sessionId }
                 ?: return@withContext
             runtimeStore.discardActiveWorkoutSession(active.sessionId)
         }
