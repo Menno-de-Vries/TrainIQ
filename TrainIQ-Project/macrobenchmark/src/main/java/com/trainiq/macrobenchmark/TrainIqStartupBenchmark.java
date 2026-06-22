@@ -96,14 +96,34 @@ public class TrainIqStartupBenchmark {
                 scope -> {
                     seedActiveWorkout(scope);
                     scope.pressHome();
-                    scope.startActivityAndWait();
-                    waitForAppReady(scope.getDevice());
-                    tapAnyText(scope.getDevice(), "Training", "Train");
-                    tapAnyText(scope.getDevice(), "Training starten");
+                    startTrainIqMainActivity(scope);
+                    tapBottomTrain(scope.getDevice());
+                    tapSeededActiveRoutineStart(scope.getDevice());
                     requireAnyText(scope.getDevice(), "Actieve training");
                     return Unit.INSTANCE;
                 },
                 this::logActiveWorkoutSet
+        );
+    }
+
+    @Test
+    public void activeWorkoutScrollFrames() {
+        benchmarkRule.measureRepeated(
+                PACKAGE_NAME,
+                Collections.singletonList(new FrameTimingMetric()),
+                new CompilationMode.Partial(BaselineProfileMode.Require),
+                StartupMode.WARM,
+                5,
+                scope -> {
+                    seedActiveWorkout(scope);
+                    scope.pressHome();
+                    startTrainIqMainActivity(scope);
+                    tapBottomTrain(scope.getDevice());
+                    tapSeededActiveRoutineStart(scope.getDevice());
+                    requireAnyText(scope.getDevice(), "Actieve training");
+                    return Unit.INSTANCE;
+                },
+                this::scrollActiveWorkoutUpAndDown
         );
     }
 
@@ -133,21 +153,70 @@ public class TrainIqStartupBenchmark {
         return Unit.INSTANCE;
     }
 
+    private Unit scrollActiveWorkoutUpAndDown(MacrobenchmarkScope scope) {
+        UiDevice device = scope.getDevice();
+        int width = device.getDisplayWidth();
+        int height = device.getDisplayHeight();
+        for (int i = 0; i < 4; i++) {
+            device.swipe(width / 2, (int) (height * 0.78f), width / 2, (int) (height * 0.20f), 36);
+            device.waitForIdle();
+        }
+        for (int i = 0; i < 4; i++) {
+            device.swipe(width / 2, (int) (height * 0.22f), width / 2, (int) (height * 0.80f), 36);
+            device.waitForIdle();
+        }
+        return Unit.INSTANCE;
+    }
+
     private static void seedActiveWorkout(MacrobenchmarkScope scope) {
         try {
-            scope.getDevice().executeShellCommand(
+            String output = scope.getDevice().executeShellCommand(
                     "am start -W -n " + PACKAGE_NAME + "/com.trainiq.benchmark.BenchmarkSeedActivity"
             );
+            if (output.contains("Error") || output.contains("Exception")) {
+                throw new AssertionError("Failed to seed active workout benchmark state: " + output);
+            }
         } catch (IOException exception) {
             throw new AssertionError("Failed to seed active workout benchmark state", exception);
         }
         scope.getDevice().waitForIdle();
     }
 
+    private static void startTrainIqMainActivity(MacrobenchmarkScope scope) {
+        try {
+            String output = scope.getDevice().executeShellCommand(
+                    "am start -W -n " + PACKAGE_NAME + "/.MainActivity"
+            );
+            if (output.contains("Error") || output.contains("Exception")) {
+                throw new AssertionError("Failed to start TrainIQ main activity: " + output);
+            }
+        } catch (IOException exception) {
+            throw new AssertionError("Failed to start TrainIQ main activity", exception);
+        }
+        waitForAppReady(scope.getDevice());
+    }
+
     private static void waitForAppReady(UiDevice device) {
         if (!device.wait(Until.hasObject(By.pkg(PACKAGE_NAME).depth(0)), STARTUP_TIMEOUT_MILLIS)) {
             throw new AssertionError("Required benchmark package did not render: " + PACKAGE_NAME);
         }
+        device.waitForIdle();
+    }
+
+    private static void tapBottomTrain(UiDevice device) {
+        device.click(
+                (int) (device.getDisplayWidth() * 0.25f),
+                (int) (device.getDisplayHeight() * 0.94f)
+        );
+        device.waitForIdle();
+    }
+
+    private static void tapSeededActiveRoutineStart(UiDevice device) {
+        device.wait(Until.hasObject(By.text("Benchmark routine")), TIMEOUT_MILLIS);
+        device.click(
+                (int) (device.getDisplayWidth() * 0.28f),
+                (int) (device.getDisplayHeight() * 0.39f)
+        );
         device.waitForIdle();
     }
 

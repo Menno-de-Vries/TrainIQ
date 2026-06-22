@@ -16,6 +16,8 @@ import com.trainiq.core.database.WorkoutDayEntity
 import com.trainiq.core.database.WorkoutExerciseEntity
 import com.trainiq.core.database.WorkoutRoutineEntity
 import com.trainiq.core.database.WorkoutSessionEntity
+import com.trainiq.core.datastore.OnboardingPreferences
+import com.trainiq.core.datastore.UserPreferencesRepository
 import kotlinx.coroutines.runBlocking
 
 class BenchmarkSeedActivity : Activity() {
@@ -28,6 +30,21 @@ class BenchmarkSeedActivity : Activity() {
     }
 
     private fun seedActiveWorkout() {
+        runBlocking {
+            UserPreferencesRepository(applicationContext).saveOnboardingPreferences(
+                OnboardingPreferences(
+                    completed = true,
+                    goal = "strength",
+                    experience = "advanced",
+                    trainingDays = 4,
+                    equipment = "barbell",
+                    privacyAcknowledged = true,
+                    guidedTourCompleted = true,
+                    guidedTourSkipped = false,
+                ),
+            )
+        }
+
         val database = Room.databaseBuilder(
             applicationContext,
             TrainIqDatabase::class.java,
@@ -61,6 +78,41 @@ class BenchmarkSeedActivity : Activity() {
                             trainingFocus = "POWERLIFTING",
                         ),
                     )
+                    val exercises = (0 until BenchmarkExerciseCount).map { index ->
+                        ExerciseEntity(
+                            id = ExerciseIdBase + index,
+                            name = "Benchmark lift ${index + 1}",
+                            muscleGroup = if (index % 2 == 0) "Chest" else "Back",
+                            equipment = "Barbell",
+                        )
+                    }
+                    val workoutExercises = exercises.mapIndexed { index, exercise ->
+                        WorkoutExerciseEntity(
+                            id = WorkoutExerciseIdBase + index,
+                            dayId = DayId,
+                            exerciseId = exercise.id,
+                            targetSets = 4,
+                            repRange = "6-8",
+                            restSeconds = 120,
+                            targetWeightKg = 80.0 + index,
+                            targetRpe = 8.0,
+                            orderIndex = index,
+                        )
+                    }
+                    val routineSets = workoutExercises.flatMapIndexed { exerciseIndex, workoutExercise ->
+                        (0 until BenchmarkSetsPerExercise).map { setIndex ->
+                            RoutineSetEntity(
+                                id = RoutineSetIdBase + exerciseIndex * BenchmarkSetsPerExercise + setIndex,
+                                workoutExerciseId = workoutExercise.id,
+                                orderIndex = setIndex,
+                                setType = "WORKING",
+                                targetReps = 8,
+                                targetWeightKg = 80.0 + exerciseIndex,
+                                restSeconds = 120,
+                                targetRpe = 8.0,
+                            )
+                        }
+                    }
                     dao.insertGeneratedRoutineGraph(
                         routine = WorkoutRoutineEntity(
                             id = RoutineId,
@@ -71,34 +123,9 @@ class BenchmarkSeedActivity : Activity() {
                         days = listOf(
                             WorkoutDayEntity(id = DayId, routineId = RoutineId, name = "Benchmark day", orderIndex = 0),
                         ),
-                        exercises = listOf(
-                            ExerciseEntity(id = ExerciseId, name = "Bench press", muscleGroup = "Chest", equipment = "Barbell"),
-                        ),
-                        workoutExercises = listOf(
-                            WorkoutExerciseEntity(
-                                id = WorkoutExerciseId,
-                                dayId = DayId,
-                                exerciseId = ExerciseId,
-                                targetSets = 3,
-                                repRange = "6-8",
-                                restSeconds = 120,
-                                targetWeightKg = 80.0,
-                                targetRpe = 8.0,
-                                orderIndex = 0,
-                            ),
-                        ),
-                        sets = listOf(
-                            RoutineSetEntity(
-                                id = RoutineSetId,
-                                workoutExerciseId = WorkoutExerciseId,
-                                orderIndex = 0,
-                                setType = "WORKING",
-                                targetReps = 8,
-                                targetWeightKg = 80.0,
-                                restSeconds = 120,
-                                targetRpe = 8.0,
-                            ),
-                        ),
+                        exercises = exercises,
+                        workoutExercises = workoutExercises,
+                        sets = routineSets,
                     )
                     dao.startOrResumeActiveWorkoutSession(
                         activeSession = ActiveWorkoutSessionEntity(
@@ -118,25 +145,25 @@ class BenchmarkSeedActivity : Activity() {
                             status = "DRAFT",
                             completed = false,
                         ),
-                        drafts = listOf(
+                        drafts = workoutExercises.mapIndexed { index, workoutExercise ->
                             ActiveWorkoutDraftEntity(
                                 sessionId = SessionId,
-                                exerciseId = ExerciseId,
-                                weight = "80",
+                                exerciseId = workoutExercise.id,
+                                weight = "${80 + index}",
                                 reps = "8",
                                 rpe = "8",
                                 setType = "WORKING",
-                            ),
-                        ),
-                        performedExercises = listOf(
+                            )
+                        },
+                        performedExercises = workoutExercises.mapIndexed { index, workoutExercise ->
                             PerformedExerciseEntity(
-                                id = PerformedExerciseId,
+                                id = PerformedExerciseIdBase + index,
                                 sessionId = SessionId,
-                                exerciseId = ExerciseId,
-                                sourceWorkoutExerciseId = WorkoutExerciseId,
-                                orderIndex = 0,
-                            ),
-                        ),
+                                exerciseId = workoutExercise.exerciseId,
+                                sourceWorkoutExerciseId = workoutExercise.id,
+                                orderIndex = index,
+                            )
+                        },
                     )
                 }
             }
@@ -148,10 +175,12 @@ class BenchmarkSeedActivity : Activity() {
     private companion object {
         const val RoutineId = 9_001L
         const val DayId = 9_002L
-        const val ExerciseId = 9_003L
-        const val WorkoutExerciseId = 9_004L
-        const val RoutineSetId = 9_005L
+        const val ExerciseIdBase = 9_100L
+        const val WorkoutExerciseIdBase = 9_200L
+        const val RoutineSetIdBase = 9_300L
         const val SessionId = 9_006L
-        const val PerformedExerciseId = 9_007L
+        const val PerformedExerciseIdBase = 9_400L
+        const val BenchmarkExerciseCount = 10
+        const val BenchmarkSetsPerExercise = 4
     }
 }

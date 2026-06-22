@@ -24,6 +24,7 @@ import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutExercisePlan
+import com.trainiq.domain.model.resolveSamsungComparableDisplaySteps
 import com.trainiq.domain.model.WorkoutRoutine
 import com.trainiq.domain.model.WorkoutSessionSummary
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
@@ -172,10 +173,21 @@ internal fun WeightRecord.toCachedWeightRecord() = CachedWeightRecord(
 )
 
 internal fun HealthConnectCacheState.toDomainMetrics(): HealthConnectMetrics = HealthConnectMetrics(
-    // Prefer the aggregate API result (deduplication-aware). Fall back to the manual sum only
-    // for old DataStore caches that predate the aggregate field (aggregatedStepsToday == 0).
-    stepsToday = if (aggregatedStepsToday > 0) aggregatedStepsToday.toInt()
-                 else stepRecords.sumOf(CachedStepRecord::count),
+    // Prefer the explicit display value chosen from deduplicated aggregate reads. Fall back
+    // to the manual sum only for old DataStore caches that predate aggregate fields.
+    stepsToday = displayStepsToday?.takeIf { it > 0L }?.toInt()
+        ?: resolveSamsungComparableDisplaySteps(
+            healthConnectAggregateSteps = aggregatedStepsToday.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+            samsungHealthAggregateSteps = samsungHealthStepsToday
+                ?.takeIf { it > 0L }
+                ?.coerceAtMost(Int.MAX_VALUE.toLong())
+                ?.toInt(),
+            samsungHealthDirectSteps = samsungHealthDirectStepsToday
+                ?.takeIf { it > 0L }
+                ?.coerceAtMost(Int.MAX_VALUE.toLong())
+                ?.toInt(),
+        ).takeIf { it > 0 }
+        ?: stepRecords.sumOf(CachedStepRecord::count),
     averageHeartRateBpm = heartRateRecords
         .takeIf { it.isNotEmpty() }
         ?.let { records ->

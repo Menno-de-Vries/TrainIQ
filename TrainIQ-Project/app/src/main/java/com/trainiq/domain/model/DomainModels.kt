@@ -668,22 +668,45 @@ enum class HealthConnectStepDiagnosticFreshness {
     STALE,
 }
 
+fun resolveSamsungComparableDisplaySteps(
+    healthConnectAggregateSteps: Int,
+    samsungHealthAggregateSteps: Int?,
+    samsungHealthDirectSteps: Int? = null,
+): Int = maxOf(
+    healthConnectAggregateSteps,
+    samsungHealthAggregateSteps ?: 0,
+    samsungHealthDirectSteps ?: 0,
+)
+
 data class HealthConnectStepDiagnostic(
     val aggregateStepsToday: Int,
+    val samsungHealthStepsToday: Int? = null,
+    val samsungHealthAggregateStepsToday: Int? = samsungHealthStepsToday,
+    val samsungRawStepRecordSumToday: Int? = null,
+    val samsungHealthDirectStepsToday: Int? = null,
+    val samsungHealthDirectStatus: String = "Samsung Health Data SDK API AAR samsung-health-data-api*.aar ontbreekt in app/libs; directe Samsung All steps-bron niet beschikbaar.",
+    val displaySteps: Int = resolveSamsungComparableDisplaySteps(
+        aggregateStepsToday,
+        samsungHealthStepsToday,
+        samsungHealthDirectStepsToday,
+    ),
     val queriedAt: Long,
     val sourceLabels: List<String> = emptyList(),
     val latestSamsungSourceSeenAt: Long? = null,
     val dayStartLabel: String = "",
     val dayEndLabel: String = "",
+    val workoutWindowSteps: Int? = null,
+    val workoutWindowSessionCount: Int = 0,
+    val workoutWindowTruncated: Boolean = false,
 ) {
-    val displaySteps: Int
-        get() = aggregateStepsToday
-
     val sourceSummary: String
         get() = sourceLabels.distinct().joinToString(", ").ifBlank { "Geen bronlabels zichtbaar" }
 
     val hasSamsungHealthSource: Boolean
         get() = sourceLabels.any { it.contains("Samsung", ignoreCase = true) }
+
+    val hasMultipleHealthConnectStepSources: Boolean
+        get() = sourceLabels.distinct().size > 1
 
     val queryWindowSummary: String
         get() = if (dayStartLabel.isNotBlank() && dayEndLabel.isNotBlank()) {
@@ -693,7 +716,122 @@ data class HealthConnectStepDiagnostic(
         }
 
     val aggregateAuthorityLabel: String
-        get() = "TrainIQ toont de Health Connect aggregate als dagtotaal; bronlabels zijn alleen diagnose."
+        get() = if (samsungHealthDirectStepsToday != null && displaySteps == samsungHealthDirectStepsToday) {
+            "TrainIQ toont de directe Samsung Health Data SDK-waarde om Samsung Health All steps te matchen; Health Connect blijft zichtbaar voor diagnose."
+        } else if (samsungHealthStepsToday != null && displaySteps == samsungHealthStepsToday) {
+            "TrainIQ toont de hogere Samsung Health-export om Samsung Health All steps zo dicht mogelijk te matchen; de Health Connect aggregate blijft zichtbaar voor diagnose."
+        } else {
+            "TrainIQ toont de Health Connect aggregate als dagtotaal omdat die hoger is dan de Samsung Health-export die Health Connect nu zichtbaar maakt."
+        }
+
+    val samsungHealthComparisonSummary: String
+        get() = when {
+            samsungHealthDirectStepsToday != null && displaySteps == samsungHealthDirectStepsToday ->
+                "Directe Samsung Health Data SDK-waarde $samsungHealthDirectStepsToday wordt getoond; Health Connect aggregate $aggregateStepsToday blijft diagnose."
+            samsungHealthStepsToday == null ->
+                "Samsung Health publiceerde vandaag nog geen apart stappenaggregate naar Health Connect."
+            samsungRawStepRecordSumToday != null &&
+                samsungHealthAggregateStepsToday != null &&
+                samsungRawStepRecordSumToday > samsungHealthAggregateStepsToday &&
+                displaySteps == samsungRawStepRecordSumToday ->
+                "Samsung Health exporteerde $samsungRawStepRecordSumToday stappen via ruwe Health Connect-records; Samsung aggregate was $samsungHealthAggregateStepsToday. TrainIQ toont de hogere Samsung-export om Samsung Health beter te volgen."
+            displaySteps == samsungHealthStepsToday ->
+                "Samsung Health-export $samsungHealthStepsToday wordt getoond; Health Connect aggregate $aggregateStepsToday blijft diagnose."
+            else ->
+                "Health Connect aggregate $aggregateStepsToday wordt getoond omdat die hoger is dan de Samsung Health-export $samsungHealthStepsToday die nu zichtbaar is."
+        }
+
+    val stepValueDebugSummary: String
+        get() = buildList {
+            add("getoond $displaySteps")
+            add("Health Connect aggregate $aggregateStepsToday")
+            add("Samsung export ${samsungHealthStepsToday ?: "niet zichtbaar"}")
+            add("Samsung aggregate ${samsungHealthAggregateStepsToday ?: "niet zichtbaar"}")
+            add("Samsung raw ${samsungRawStepRecordSumToday ?: "niet zichtbaar"}")
+            add("Samsung direct ${samsungHealthDirectStepsToday ?: "niet beschikbaar"}")
+        }.joinToString(separator = " · ")
+
+    val parityGapSummary: String
+        get() = when {
+            samsungHealthDirectStepsToday != null && displaySteps == samsungHealthDirectStepsToday ->
+                "Directe Samsung Health Data SDK-waarde is beschikbaar; vergelijk deze met Samsung Health All steps na Sync now."
+            samsungHealthDirectStatus.contains("samsung-health-data-api", ignoreCase = true) ->
+                "Directe Samsung Health All steps-bron ontbreekt nog omdat de Samsung Health Data SDK API AAR niet beschikbaar is; Health Connect kan daardoor lager blijven dan Samsung Health.${healthConnectPriorityHintSuffix()}"
+            samsungHealthDirectStatus.contains("toestemming ontbreekt", ignoreCase = true) ->
+                "Directe Samsung Health All steps-bron is gebundeld, maar Samsung stappen-toestemming ontbreekt nog."
+            samsungHealthDirectStatus.contains("lager dan API 29", ignoreCase = true) ->
+                "Directe Samsung Health All steps-bron is geblokkeerd omdat Samsung Health Data SDK Android 10/API 29+ vereist."
+            samsungHealthDirectStatus.contains("lager dan Samsung Health Data SDK minimum", ignoreCase = true) ->
+                "Directe Samsung Health All steps-bron is geblokkeerd omdat Samsung Health te oud is voor de Data SDK."
+            samsungHealthDirectStatus.contains("app niet gevonden", ignoreCase = true) ->
+                "Directe Samsung Health All steps-bron is geblokkeerd omdat Samsung Health niet gevonden is."
+            samsungHealthStepsToday != null && displaySteps == samsungHealthStepsToday ->
+                "TrainIQ toont de hoogste Samsung Health-export die Health Connect zichtbaar maakt; als Samsung Health zelf hoger staat, is directe Samsung Data SDK-verificatie nodig.${healthConnectPriorityHintSuffix()}"
+            hasSamsungHealthSource ->
+                "Samsung Health is zichtbaar in Health Connect, maar directe Samsung Data SDK-verificatie blijft nodig bij aanhoudende mismatch.${healthConnectPriorityHintSuffix()}"
+            else ->
+                "Samsung Health is nog niet als Health Connect-bron zichtbaar; directe Samsung Data SDK-verificatie of Samsung Health Sync now is nodig bij aanhoudende mismatch."
+        }
+
+    val healthConnectStepPrioritySummary: String
+        get() = if (hasMultipleHealthConnectStepSources) {
+            "Health Connect heeft meerdere stappenbronnen zichtbaar. Android dedupliceert Activity/Stappen-aggregates op basis van App priorities; zet Samsung Health daar bovenaan als Samsung Health leidend moet zijn."
+        } else {
+            "Health Connect toont nu een enkele stappenbron; App priorities verklaren deze meting minder snel dan Samsung Health-sync of directe Samsung Data SDK-toegang."
+        }
+
+    fun samsungSourceRecencySummary(nowMillis: Long = System.currentTimeMillis()): String =
+        latestSamsungSourceSeenAt?.let { seenAt ->
+            val ageMinutes = ((nowMillis - seenAt).coerceAtLeast(0L) / 60_000L).toInt()
+            when {
+                ageMinutes < 1 -> "Samsung-bron net gezien in Health Connect."
+                ageMinutes < 60 -> "Samsung-bron $ageMinutes min geleden gezien in Health Connect."
+                else -> "Samsung-bron ${ageMinutes / 60} uur geleden gezien in Health Connect."
+            }
+        } ?: "Samsung-bron vandaag nog niet met timestamp gezien in Health Connect."
+
+    fun samsungStepDebugClipboardText(nowMillis: Long = System.currentTimeMillis()): String =
+        listOf(
+            "TrainIQ Samsung stappen-diagnose",
+            stepValueDebugSummary,
+            "Bronnen: $sourceSummary",
+            "Venster: $queryWindowSummary",
+            "Samsung timing: ${samsungSourceRecencySummary(nowMillis)}",
+            "Samsung vergelijking: $samsungHealthComparisonSummary",
+            "Samsung direct: $samsungHealthDirectStatus",
+            "Pariteit: $parityGapSummary",
+            "Health Connect zichtbaar: $healthConnectVisibleStepSummary",
+            "Health Connect prioriteit: $healthConnectStepPrioritySummary",
+            "Syncadvies: ${samsungHealthSyncGuidance(nowMillis)}",
+        ).joinToString(separator = "\n")
+
+    val healthConnectVisibleStepSummary: String
+        get() = if (samsungHealthDirectStepsToday != null && displaySteps == samsungHealthDirectStepsToday) {
+            "TrainIQ toont nu $displaySteps stappen uit de directe Samsung Health Data SDK-bron. Health Connect aggregate blijft zichtbaar als diagnosewaarde."
+        } else if (samsungHealthStepsToday != null && displaySteps == samsungHealthStepsToday) {
+            val rawFallback = samsungRawStepRecordSumToday?.takeIf { raw ->
+                samsungHealthAggregateStepsToday != null && raw > samsungHealthAggregateStepsToday
+            }
+            if (rawFallback != null) {
+                "Health Connect geeft TrainIQ nu $displaySteps Samsung Health-stappen via de hogere ruwe Samsung-export. Als Samsung Health zelf nog meer toont, zijn die extra stappen nog niet naar Health Connect geschreven."
+            } else {
+                "Health Connect geeft TrainIQ nu $displaySteps Samsung Health-stappen. Als Samsung Health zelf meer toont, zijn die extra stappen nog niet naar Health Connect geschreven."
+            }
+        } else {
+            "Health Connect geeft TrainIQ nu $aggregateStepsToday stappen. Als Samsung Health zelf meer toont, controleer of Samsung Health bij Health Connect > Gegevens en toegang > Activiteit > Stappen als bron met recente vermeldingen staat."
+        }
+
+    val workoutWindowSummary: String
+        get() = when {
+            workoutWindowSteps == null ->
+                "Workout-stappen zijn niet apart berekend; geef ook workout-toegang om overlap met geregistreerde trainingen te zien."
+            workoutWindowSessionCount == 0 ->
+                "Geen Health Connect-workouts vandaag om stappen apart mee te vergelijken."
+            workoutWindowTruncated ->
+                "$workoutWindowSteps stappen vielen binnen de eerste $workoutWindowSessionCount Health Connect-workoutvensters; dit is diagnose en wordt niet afgetrokken."
+            else ->
+                "$workoutWindowSteps stappen vielen binnen $workoutWindowSessionCount Health Connect-workoutvenster(s); dit is diagnose en wordt niet afgetrokken."
+        }
 
     fun freshness(nowMillis: Long = System.currentTimeMillis()): HealthConnectStepDiagnosticFreshness =
         if (nowMillis - queriedAt < StepDiagnosticFreshMillis) {
@@ -710,6 +848,13 @@ data class HealthConnectStepDiagnostic(
         else ->
             "Samsung Health-data is zichtbaar in Health Connect."
     }
+
+    private fun healthConnectPriorityHintSuffix(): String =
+        if (hasMultipleHealthConnectStepSources) {
+            " Controleer ook Health Connect App priorities voor Activity/Stappen; Android kan meerdere bronnen dedupliceren op basis van die volgorde."
+        } else {
+            ""
+        }
 
     private companion object {
         const val StepDiagnosticFreshMillis = 15 * 60 * 1000L

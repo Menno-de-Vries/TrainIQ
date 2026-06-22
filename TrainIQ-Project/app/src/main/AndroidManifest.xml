@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-sdk tools:overrideLibrary="com.samsung.android.sdk.health.data" />
 
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.INTERNET" />
@@ -19,6 +23,7 @@
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
         <package android:name="com.google.android.healthconnect.controller" />
+        <package android:name="com.sec.android.app.shealth" />
         <package android:name="com.android.vending" />
     </queries>
 
@@ -32,6 +37,10 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.TrainIQ">
+        <meta-data
+            android:name="com.samsung.android.sdk.health.data.MIGRATION_COMPLETED"
+            android:value="true" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

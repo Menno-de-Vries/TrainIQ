@@ -3,7 +3,7 @@
         <activity
             android:name="com.trainiq.benchmark.BenchmarkSeedActivity"
             android:excludeFromRecents="true"
-            android:exported="false"
+            android:exported="true"
             android:noHistory="true" />
     </application>
 </manifest>

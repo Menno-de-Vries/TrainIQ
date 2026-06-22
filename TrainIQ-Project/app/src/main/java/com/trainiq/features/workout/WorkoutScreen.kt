@@ -317,6 +317,18 @@ data class ActiveWorkoutUiState(
     val message: String? = null,
 )
 
+private data class ActiveWorkoutExerciseUiState(
+    val loggedSets: List<LoggedSet>,
+    val activeRestSeconds: Int,
+    val draft: SetInputDraft,
+    val draftErrors: SetInputFieldErrors,
+    val isSessionFinished: Boolean,
+    val isAutoAdvanceTarget: Boolean,
+    val isLogPending: Boolean,
+    val pendingCorrectionSetId: Long?,
+    val collapsed: Boolean,
+)
+
 data class WorkoutUiContent(
     val overview: WorkoutOverview?,
     val workoutFeedbackPreferences: WorkoutFeedbackPreferences,
@@ -648,7 +660,7 @@ class WorkoutViewModel @Inject constructor(
         _drafts.value = _drafts.value.toMutableMap().apply { put(exerciseId, draft) }
         clearSetInputError(exerciseId)
         viewModelScope.launch {
-            updateActiveWorkoutDraftUseCase(exerciseId, draft.toDomainDraft())?.let(::applyActiveSession)
+            updateActiveWorkoutDraftUseCase(exerciseId, draft.toDomainDraft())
         }
     }
 
@@ -666,7 +678,7 @@ class WorkoutViewModel @Inject constructor(
         _pendingCorrectionSetIds.value = _pendingCorrectionSetIds.value.toMutableMap().apply { put(exerciseId, setId) }
         clearSetInputError(exerciseId)
         viewModelScope.launch {
-            updateActiveWorkoutDraftUseCase(exerciseId, draft.toDomainDraft())?.let(::applyActiveSession)
+            updateActiveWorkoutDraftUseCase(exerciseId, draft.toDomainDraft())
         }
         _message.value = "Set staat klaar voor correctie. Pas de invoer aan en kies Wijzig loggen."
     }
@@ -5323,7 +5335,10 @@ fun ActiveWorkoutScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-            item(key = "active-workout-header") {
+            item(
+                key = "active-workout-header",
+                contentType = "active-workout-header",
+            ) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
@@ -5368,7 +5383,10 @@ fun ActiveWorkoutScreen(
                 return@LazyColumn
             }
             if (restTimerSeconds > 0) {
-                item(key = "active-workout-rest-timer") {
+                item(
+                    key = "active-workout-rest-timer",
+                    contentType = "active-workout-rest-timer",
+                ) {
                     RestTimerCard(
                         restTimerSeconds = restTimerSeconds,
                         totalSeconds = restTimerTotalSeconds,
@@ -5384,6 +5402,7 @@ fun ActiveWorkoutScreen(
             items(
                 exerciseGroups,
                 key = { group -> group.joinToString("-") { it.id.toString() } },
+                contentType = { group -> if (group.size > 1) "active-workout-superset" else "active-workout-exercise" },
             ) { group ->
                 if (group.size > 1) {
                     Column(
@@ -5395,12 +5414,14 @@ fun ActiveWorkoutScreen(
                     ) {
                         Text("Superset", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                         group.forEach { plan ->
-                            ActiveWorkoutPlanCard(
+                            val exerciseState = activeWorkoutExerciseUiState(
                                 plan = plan,
                                 uiState = uiState,
+                            )
+                            ActiveWorkoutPlanCard(
+                                plan = plan,
+                                exerciseState = exerciseState,
                                 suggestion = suggestionsByExerciseId[plan.exercise.id],
-                                isSessionFinished = uiState.debrief != null,
-                                isAutoAdvanceTarget = uiState.activeFocusTarget?.exerciseId == plan.activeKey,
                                 hapticOnSuccess = {
                                     if (workoutHapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                 },
@@ -5420,16 +5441,19 @@ fun ActiveWorkoutScreen(
                         }
                     }
                 } else {
-                    ActiveWorkoutPlanCard(
-                        plan = group.first(),
+                    val plan = group.first()
+                    val exerciseState = activeWorkoutExerciseUiState(
+                        plan = plan,
                         uiState = uiState,
-                        suggestion = suggestionsByExerciseId[group.first().exercise.id],
-                        isSessionFinished = uiState.debrief != null,
-                        isAutoAdvanceTarget = uiState.activeFocusTarget?.exerciseId == group.first().activeKey,
+                    )
+                    ActiveWorkoutPlanCard(
+                        plan = plan,
+                        exerciseState = exerciseState,
+                        suggestion = suggestionsByExerciseId[plan.exercise.id],
                         hapticOnSuccess = {
                             if (workoutHapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         },
-                        onOpenHistory = { onOpenExerciseHistory(group.first().exercise.id) },
+                        onOpenHistory = { onOpenExerciseHistory(plan.exercise.id) },
                         onDraftChange = onDraftChange,
                         onSetTypeChange = onSetTypeChange,
                         onEditSet = onEditSet,
@@ -5439,12 +5463,19 @@ fun ActiveWorkoutScreen(
                         onLogSameAgain = onLogSameAgain,
                         onAdjustExerciseRest = onAdjustExerciseRest,
                         onToggleCollapsed = onToggleExerciseCollapsed,
-                        onReplaceExercise = { replacingActivePlan = group.first() },
-                        onRemoveExercise = { pendingRemoveActivePlan = group.first() },
+                        onReplaceExercise = { replacingActivePlan = plan },
+                        onRemoveExercise = { pendingRemoveActivePlan = plan },
                     )
                 }
             }
-            if (uiState.debrief != null) item { WorkoutDebriefCard(uiState.debrief, uiState) }
+            if (uiState.debrief != null) {
+                item(
+                    key = "active-workout-debrief",
+                    contentType = "active-workout-debrief",
+                ) {
+                    WorkoutDebriefCard(uiState.debrief, uiState)
+                }
+            }
         }
     }
     }
@@ -5714,10 +5745,8 @@ private fun ActiveWorkoutBottomBar(
 @Composable
 private fun ActiveWorkoutPlanCard(
     plan: WorkoutExercisePlan,
-    uiState: ActiveWorkoutUiState,
+    exerciseState: ActiveWorkoutExerciseUiState,
     suggestion: ProgressionSuggestion?,
-    isSessionFinished: Boolean,
-    isAutoAdvanceTarget: Boolean,
     hapticOnSuccess: () -> Unit,
     onOpenHistory: () -> Unit,
     onDraftChange: (Long, SetInputDraft) -> Unit,
@@ -5733,40 +5762,27 @@ private fun ActiveWorkoutPlanCard(
     onRemoveExercise: () -> Unit,
 ) {
     val key = plan.activeKey
-    val loggedSets = uiState.loggedSetsThisSession[key].orEmpty()
-    val activeRestSeconds = activeExerciseRestSeconds(
-        plan.plannedRestSeconds(loggedSets.size),
-        uiState.exerciseRestOverrides[key],
-    )
-    val draft = activeSetUiDraft(
-        savedDraft = uiState.drafts[key],
-        plan = plan,
-        loggedSetCount = loggedSets.size,
-        activeRestSeconds = activeRestSeconds,
-    )
-    val draftErrors = uiState.draftErrors[key] ?: SetInputFieldErrors()
-    val collapsed = key in uiState.collapsedExerciseIds
     ActiveExerciseCard(
         plan = plan,
-        loggedSets = loggedSets,
-        activeRestSeconds = activeRestSeconds,
+        loggedSets = exerciseState.loggedSets,
+        activeRestSeconds = exerciseState.activeRestSeconds,
         suggestion = suggestion,
-        draft = draft,
-        draftErrors = draftErrors,
-        isSessionFinished = isSessionFinished,
-        isAutoAdvanceTarget = isAutoAdvanceTarget,
-        isLogPending = uiState.pendingLoggingExerciseIds.contains(key),
-        pendingCorrectionSetId = uiState.pendingCorrectionSetIds[key],
-        collapsed = collapsed,
+        draft = exerciseState.draft,
+        draftErrors = exerciseState.draftErrors,
+        isSessionFinished = exerciseState.isSessionFinished,
+        isAutoAdvanceTarget = exerciseState.isAutoAdvanceTarget,
+        isLogPending = exerciseState.isLogPending,
+        pendingCorrectionSetId = exerciseState.pendingCorrectionSetId,
+        collapsed = exerciseState.collapsed,
         onOpenHistory = onOpenHistory,
         onDraftChange = { next -> onDraftChange(key, next) },
         onSetTypeChange = { setId, setType -> onSetTypeChange(setId, setType) },
         onEditSet = { setId -> onEditSet(key, setId) },
         onDeleteSet = { setId -> onDeleteSet(setId) },
         onRelogSet = { setId -> onRelogSet(key, setId) },
-        onToggleCollapsed = { onToggleCollapsed(key, !collapsed) },
+        onToggleCollapsed = { onToggleCollapsed(key, !exerciseState.collapsed) },
         onCopyLastSet = {
-            loggedSets.lastOrNull()?.let { lastSet ->
+            exerciseState.loggedSets.lastOrNull()?.let { lastSet ->
                 onDraftChange(key, lastSet.toDraft())
             }
         },
@@ -5780,9 +5796,38 @@ private fun ActiveWorkoutPlanCard(
                 hapticOnSuccess()
             }
         },
-        onAdjustExerciseRest = { deltaSeconds -> onAdjustExerciseRest(key, activeRestSeconds, deltaSeconds) },
+        onAdjustExerciseRest = { deltaSeconds -> onAdjustExerciseRest(key, exerciseState.activeRestSeconds, deltaSeconds) },
         onReplaceExercise = onReplaceExercise,
         onRemoveExercise = onRemoveExercise,
+    )
+}
+
+private fun activeWorkoutExerciseUiState(
+    plan: WorkoutExercisePlan,
+    uiState: ActiveWorkoutUiState,
+): ActiveWorkoutExerciseUiState {
+    val key = plan.activeKey
+    val loggedSets = uiState.loggedSetsThisSession[key].orEmpty()
+    val activeRestSeconds = activeExerciseRestSeconds(
+        plan.plannedRestSeconds(loggedSets.size),
+        uiState.exerciseRestOverrides[key],
+    )
+    val draft = activeSetUiDraft(
+        savedDraft = uiState.drafts[key],
+        plan = plan,
+        loggedSetCount = loggedSets.size,
+        activeRestSeconds = activeRestSeconds,
+    )
+    return ActiveWorkoutExerciseUiState(
+        loggedSets = loggedSets,
+        activeRestSeconds = activeRestSeconds,
+        draft = draft,
+        draftErrors = uiState.draftErrors[key] ?: SetInputFieldErrors(),
+        isSessionFinished = uiState.debrief != null,
+        isAutoAdvanceTarget = uiState.activeFocusTarget?.exerciseId == key,
+        isLogPending = uiState.pendingLoggingExerciseIds.contains(key),
+        pendingCorrectionSetId = uiState.pendingCorrectionSetIds[key],
+        collapsed = key in uiState.collapsedExerciseIds,
     )
 }
 

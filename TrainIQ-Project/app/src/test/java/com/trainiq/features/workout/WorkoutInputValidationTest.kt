@@ -803,10 +803,22 @@ class WorkoutInputValidationTest {
         val activeExerciseCard = workoutScreen
             .substringAfter("private fun ActiveExerciseCard(")
             .substringBefore("private fun ActiveSetInputRow(")
+        val activeWorkoutPlanCard = workoutScreen
+            .substringAfter("private fun ActiveWorkoutPlanCard(")
+            .substringBefore("private fun activeWorkoutExerciseUiState(")
+        val activeWorkoutScreen = workoutScreen
+            .substringAfter("fun ActiveWorkoutScreen(")
+            .substringBefore("if (showFinishConfirm)")
         val setRow = workoutScreen
             .substringAfter("private fun SetRow(")
             .substringBefore("private fun RoutineSetMetricValue(")
 
+        assertTrue(workoutScreen.contains("private data class ActiveWorkoutExerciseUiState("))
+        assertTrue(activeWorkoutPlanCard.contains("exerciseState: ActiveWorkoutExerciseUiState"))
+        assertFalse(activeWorkoutPlanCard.contains("uiState: ActiveWorkoutUiState"))
+        assertTrue(activeWorkoutScreen.contains("contentType = \"active-workout-header\""))
+        assertTrue(activeWorkoutScreen.contains("contentType = \"active-workout-rest-timer\""))
+        assertTrue(activeWorkoutScreen.contains("contentType = { group -> if (group.size > 1) \"active-workout-superset\" else \"active-workout-exercise\" }"))
         assertFalse(routineExerciseCard.contains("ActiveExerciseActionChip("))
         assertTrue(routineExerciseCard.contains("text = { Text(\"Set toevoegen\") }"))
         assertTrue(routineExerciseCard.contains("onAddSet()"))
@@ -832,6 +844,20 @@ class WorkoutInputValidationTest {
         assertFalse(activeExerciseCard.contains("label = \"Set +\""))
         assertFalse(activeExerciseCard.contains("label = activeExerciseReplaceLabel()"))
         assertFalse(activeExerciseCard.contains("active-workout-message"))
+    }
+
+    @Test
+    fun `active workout draft persistence does not replay full session on every keystroke`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val updateDraftBody = workoutScreen.substringAfter("fun updateSetDraft(")
+            .substringBefore("fun updateLoggedSetType(")
+        val editSetBody = workoutScreen.substringAfter("fun editLoggedSet(")
+            .substringBefore("fun deleteLoggedSet(")
+
+        assertTrue(updateDraftBody.contains("updateActiveWorkoutDraftUseCase(exerciseId, draft.toDomainDraft())"))
+        assertFalse(updateDraftBody.contains("applyActiveSession"))
+        assertTrue(editSetBody.contains("updateActiveWorkoutDraftUseCase(exerciseId, draft.toDomainDraft())"))
+        assertFalse(editSetBody.contains("applyActiveSession"))
     }
 
     @Test

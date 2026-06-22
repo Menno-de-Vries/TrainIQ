@@ -611,10 +611,30 @@ internal fun homeHealthStepDiagnostic(status: HealthConnectStatus): String = whe
         val diagnostic = status.stepDiagnostic
         val sourceCopy = diagnostic?.let { " Bronnen: ${it.sourceSummary}." }.orEmpty()
         val windowCopy = diagnostic?.let { " Venster: ${it.queryWindowSummary}." }.orEmpty()
-        "Live uit Health Connect: aggregate stappen bijgewerkt om ${formatHomeLastSync(status.stepDataUpdatedAt)}.$windowCopy$sourceCopy"
+        val directSamsungDisplay = diagnostic?.samsungHealthDirectStepsToday != null &&
+            diagnostic.displaySteps == diagnostic.samsungHealthDirectStepsToday
+        val liveSource = if (directSamsungDisplay) {
+            "Samsung Health"
+        } else {
+            "Health Connect"
+        }
+        val displaySource = when {
+            directSamsungDisplay ->
+                "directe Samsung Health-stappen"
+            diagnostic?.samsungHealthStepsToday != null &&
+                diagnostic.displaySteps == diagnostic.samsungHealthStepsToday ->
+                "Samsung Health-stappen"
+            else ->
+                "Health Connect-stappen"
+        }
+        val parityCopy = diagnostic
+            ?.takeUnless { directSamsungDisplay }
+            ?.let { " Pariteit: ${it.parityGapSummary}" }
+            .orEmpty()
+        "Live uit $liveSource: $displaySource bijgewerkt om ${formatHomeLastSync(status.stepDataUpdatedAt)}.$windowCopy$sourceCopy$parityCopy"
     }
     HealthConnectStepDataFreshness.STALE_CACHE ->
-        "Laatste bekende stappen uit Health Connect-cache. Open Samsung Health, sync met Samsung Cloud en controleer Health Connect > App-permissies als Samsung Health meer stappen toont."
+        "Laatste bekende stappen uit Health Connect-cache. Open Samsung Health, gebruik Sync now en controleer Health Connect > App-permissies als Samsung Health meer stappen toont."
     HealthConnectStepDataFreshness.PERMISSION_MISSING ->
         "Stappentoegang ontbreekt. Geef READ_STEPS via Health Connect zodat TrainIQ dezelfde bron kan lezen."
     HealthConnectStepDataFreshness.UNAVAILABLE ->

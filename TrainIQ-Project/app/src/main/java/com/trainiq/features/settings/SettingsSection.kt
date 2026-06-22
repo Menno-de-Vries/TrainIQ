@@ -1,6 +1,7 @@
 package com.trainiq.features.settings
 
 import android.Manifest
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -51,10 +52,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -86,6 +89,7 @@ import com.trainiq.core.ui.TrainIqFormFieldContext
 import com.trainiq.core.ui.UiMessage
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.datastore.UserPreferencesRepository
+import com.trainiq.data.datasource.SamsungHealthDirectStepsDataSource
 import com.trainiq.core.theme.ThemeMode
 import com.trainiq.features.profile.ProfileInputField
 import com.trainiq.features.profile.ProfileInputValidationError
@@ -174,6 +178,7 @@ class SettingsViewModel @Inject constructor(
     observeUserProfileUseCase: ObserveUserProfileUseCase,
     private val saveUserProfileUseCase: SaveUserProfileUseCase,
     private val getHealthConnectStatusUseCase: GetHealthConnectStatusUseCase,
+    private val samsungHealthDirectStepsDataSource: SamsungHealthDirectStepsDataSource,
     private val aiUsageGate: AiUsageGate,
     private val goalAdvisorService: GoalAdvisorService,
     private val resetProfileUseCase: ResetProfileUseCase,
@@ -497,6 +502,19 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun requestSamsungHealthStepPermission(activity: Activity) {
+        viewModelScope.launch {
+            val samsungStatus = runCatching {
+                samsungHealthDirectStepsDataSource.requestTodayStepPermission(activity).status
+            }.getOrElse { throwable ->
+                "Samsung Health-stappentoegang kon niet worden geopend: ${throwable.message ?: throwable.javaClass.simpleName}"
+            }
+            _healthStatus.value = runCatching { getHealthConnectStatusUseCase() }
+                .getOrElse { _healthStatus.value }
+            emitMessage(samsungStatus)
+        }
+    }
+
     suspend fun exportAppDataJson(): String = exportAppDataUseCase()
 
     fun previewImportJson(json: String) {
@@ -573,6 +591,7 @@ fun SettingsRoute(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val activity = context as? Activity
     val coroutineScope = rememberCoroutineScope()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val requestHealthPermission = rememberHealthConnectPermissionRequester(viewModel::refreshHealthConnectStatus)
@@ -654,6 +673,13 @@ fun SettingsRoute(
                 onClearAllData = viewModel::clearAllData,
                 onDismissMessage = viewModel::clearMessage,
                 onRequestHealthPermission = requestHealthPermission,
+                onRequestSamsungHealthPermission = {
+                    if (activity != null) {
+                        viewModel.requestSamsungHealthStepPermission(activity)
+                    } else {
+                        viewModel.refreshHealthConnectStatus()
+                    }
+                },
                 onRefreshHealth = viewModel::refreshHealthConnectStatus,
                 onOpenHealthSettings = {
                     val intent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
@@ -666,6 +692,21 @@ fun SettingsRoute(
                     val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata"))
                     if (!context.startActivityIfResolvable(marketIntent) && !context.startActivityIfResolvable(webIntent)) {
                         viewModel.refreshHealthConnectStatus()
+                    }
+                },
+                onOpenSamsungHealth = {
+                    val launchIntent = context.packageManager
+                        .getLaunchIntentForPackage(SamsungHealthPackageName)
+                        ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$SamsungHealthPackageName"))
+                    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$SamsungHealthPackageName"))
+                    if (
+                        launchIntent == null ||
+                        !context.startActivityIfResolvable(launchIntent)
+                    ) {
+                        if (!context.startActivityIfResolvable(marketIntent) && !context.startActivityIfResolvable(webIntent)) {
+                            viewModel.refreshHealthConnectStatus()
+                        }
                     }
                 },
                 onExportData = {
@@ -759,9 +800,11 @@ fun SettingsScreen(
     onClearAllData: () -> Unit,
     onDismissMessage: (Long) -> Unit,
     onRequestHealthPermission: () -> Unit,
+    onRequestSamsungHealthPermission: () -> Unit,
     onRefreshHealth: () -> Unit,
     onOpenHealthSettings: () -> Unit,
     onOpenHealthInstall: () -> Unit,
+    onOpenSamsungHealth: () -> Unit,
     onExportData: () -> Unit,
     onImportData: () -> Unit,
     onConfirmImport: () -> Unit,
@@ -779,6 +822,8 @@ fun SettingsScreen(
     }
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val clipboardManager = LocalClipboardManager.current
+    val coroutineScope = rememberCoroutineScope()
     val skippedSetupItems = onboardingSetupItems(onboardingPreferences)
 
     LaunchedEffect(message?.id) {
@@ -1056,7 +1101,53 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        "Samsung Health All steps: open Samsung Health > Instellingen > Health Connect en gebruik Sync now als TrainIQ lager blijft.",
+                        "Samsung-vergelijking: ${stepDiagnostic.samsungHealthComparisonSummary}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "Stappenwaarden: ${stepDiagnostic.stepValueDebugSummary}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "Samsung-bron timing: ${stepDiagnostic.samsungSourceRecencySummary()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "Samsung direct: ${stepDiagnostic.samsungHealthDirectStatus}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "Pariteit: ${stepDiagnostic.parityGapSummary}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "Health Connect zichtbaar: ${stepDiagnostic.healthConnectVisibleStepSummary}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "Health Connect-prioriteit: ${stepDiagnostic.healthConnectStepPrioritySummary}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (stepDiagnostic.hasMultipleHealthConnectStepSources) {
+                        TextButton(
+                            modifier = Modifier.settingsActionLabel("Health Connect App priorities openen"),
+                            onClick = onOpenHealthSettings,
+                        ) { Text("Prioriteiten openen") }
+                    }
+                    Text(
+                        "Samsung Health All steps: open Samsung Health > Instellingen > Health Connect en gebruik Sync now als TrainIQ blijft afwijken.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "Workout-overlap: ${stepDiagnostic.workoutWindowSummary}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1067,6 +1158,17 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.primary,
                         )
                     }
+                    TextButton(
+                        modifier = Modifier.settingsActionLabel("Samsung stappen-diagnose kopieren"),
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(stepDiagnostic.samsungStepDebugClipboardText()))
+                            coroutineScope.launch { snackbarHostState.showSnackbar("Samsung stappen-diagnose gekopieerd.") }
+                        },
+                    ) { Text("Diagnose kopieren") }
+                    TextButton(
+                        modifier = Modifier.settingsActionLabel("Samsung Health openen voor Sync now"),
+                        onClick = onOpenSamsungHealth,
+                    ) { Text("Samsung Health openen") }
                 }
                 healthStatus.averageHeartRateBpm?.let { bpm ->
                     Text("Gemiddelde hartslag vandaag: $bpm bpm")
@@ -1106,6 +1208,12 @@ fun SettingsScreen(
                         ) { Text("Health Connect openen") }
                         HealthConnectState.UNSUPPORTED -> Text("Niet ondersteund op dit apparaat.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         HealthConnectState.ERROR -> Text("Health Connect kan nu niet worden gelezen.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (BuildConfig.SAMSUNG_HEALTH_DATA_SDK_AAR_PRESENT) {
+                        Button(
+                            modifier = Modifier.settingsActionLabel("Samsung Health-stappentoegang geven"),
+                            onClick = onRequestSamsungHealthPermission,
+                        ) { Text("Samsung toegang geven") }
                     }
                     TextButton(
                         modifier = Modifier.settingsActionLabel("Health Connect-status vernieuwen"),
@@ -1429,6 +1537,8 @@ private fun Context.startActivityIfResolvable(intent: Intent): Boolean {
         startActivity(intent)
     }.isSuccess
 }
+
+private const val SamsungHealthPackageName = "com.sec.android.app.shealth"
 
 private fun ProfileInputValidationError?.isFor(field: ProfileInputField): Boolean = this?.field == field
 

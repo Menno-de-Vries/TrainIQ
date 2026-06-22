@@ -9,6 +9,7 @@ import org.gradle.api.tasks.TaskAction
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    id("kotlin-parcelize")
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt.android)
@@ -45,6 +46,31 @@ android {
         buildConfigField("Long", "TELEMETRY_FLUSH_INTERVAL_MILLIS", "60000L")
         buildConfigField("Boolean", "TELEMETRY_PERFETTO_ENABLED", "false")
         buildConfigField("Boolean", "TELEMETRY_CRASH_CONTEXT_ENABLED", "true")
+        buildConfigField(
+            "Boolean",
+            "SAMSUNG_HEALTH_DATA_SDK_AAR_PRESENT",
+            File(projectDir, "libs")
+                .walkTopDown()
+                .any { file ->
+                    file.isFile &&
+                        file.extension.equals("aar", ignoreCase = true) &&
+                        file.name.contains("samsung-health-data-api", ignoreCase = true)
+                }
+                .toString(),
+        )
+        buildConfigField(
+            "Boolean",
+            "SAMSUNG_HEALTH_NON_API_AAR_PRESENT",
+            File(projectDir, "libs")
+                .walkTopDown()
+                .any { file ->
+                    file.isFile &&
+                        file.extension.equals("aar", ignoreCase = true) &&
+                        file.name.contains("samsung-health", ignoreCase = true) &&
+                        !file.name.contains("samsung-health-data-api", ignoreCase = true)
+                }
+                .toString(),
+        )
     }
 
     signingConfigs {
@@ -164,6 +190,57 @@ tasks.matching { it.name in setOf("assembleRelease", "bundleRelease", "packageRe
     dependsOn("checkReleaseSigningReadiness")
 }
 
+fun samsungHealthDataSdkApiAarFiles(): List<File> {
+    val libsDir = File(projectDir, "libs")
+    if (!libsDir.isDirectory) return emptyList()
+    return libsDir.walkTopDown()
+        .filter { file ->
+            file.isFile &&
+                file.extension.equals("aar", ignoreCase = true) &&
+                file.name.contains("samsung-health-data-api", ignoreCase = true)
+        }
+        .toList()
+}
+
+tasks.register("checkSamsungHealthDataSdkReadiness") {
+    group = "verification"
+    description = "Verifies the Samsung Health Data SDK API AAR is present before physical Samsung Health step parity builds."
+
+    doLast {
+        val libsDir = File(projectDir, "libs")
+        val apiAars = samsungHealthDataSdkApiAarFiles()
+        check(apiAars.isNotEmpty()) {
+            "Samsung Health Data SDK API AAR missing. Add samsung-health-data-api*.aar to ${libsDir.absolutePath} before physical Samsung Health All steps parity builds."
+        }
+        logger.lifecycle("Samsung Health Data SDK API AAR ready: ${apiAars.joinToString { it.name }}")
+    }
+}
+
+tasks.register("assembleSamsungHealthParityDebug") {
+    group = "verification"
+    description = "Assembles a debug build that is eligible for physical Samsung Health All steps parity testing."
+    dependsOn("checkSamsungHealthDataSdkReadiness", "assembleDebug")
+}
+
+tasks.register("installSamsungHealthParityDebug") {
+    group = "verification"
+    description = "Installs a debug build only when the Samsung Health Data SDK API AAR is present for All steps parity testing."
+    dependsOn("checkSamsungHealthDataSdkReadiness", "installDebug")
+}
+
+if (providers.gradleProperty("trainiq.requireSamsungHealthDataSdk").map(String::toBoolean).orElse(false).get()) {
+    tasks.matching { task ->
+        task.name in setOf(
+            "assembleDebug",
+            "installDebug",
+            "assembleProfileable",
+            "installProfileable",
+        )
+    }.configureEach {
+        dependsOn("checkSamsungHealthDataSdkReadiness")
+    }
+}
+
 fun registerRoomMigrationChainVerificationMarkerTask(
     buildVariant: String,
     taskName: String,
@@ -270,6 +347,7 @@ ksp {
 
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
+    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
@@ -298,6 +376,7 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.gson)
+    implementation(libs.gson)
     implementation(libs.reorderable)
     implementation(libs.okhttp.logging)
     implementation(libs.kotlinx.coroutines.android)

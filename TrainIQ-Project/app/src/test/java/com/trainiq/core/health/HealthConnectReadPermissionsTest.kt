@@ -82,7 +82,21 @@ class HealthConnectReadPermissionsTest {
 
         assertTrue(manifest.contains("""<package android:name="com.google.android.apps.healthdata" />"""))
         assertTrue(manifest.contains("""<package android:name="com.google.android.healthconnect.controller" />"""))
+        assertTrue(manifest.contains("""<package android:name="com.sec.android.app.shealth" />"""))
         assertTrue(manifest.contains("""<package android:name="com.android.vending" />"""))
+    }
+
+    @Test
+    fun manifestDeclaresSamsungHealthDataSdkMigrationReadinessWithoutLegacyPermissionMetadata() {
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+
+        assertTrue(manifest.contains("android:name=\"com.samsung.android.sdk.health.data.MIGRATION_COMPLETED\""))
+        assertTrue(manifest.contains("android:value=\"true\""))
+        assertTrue(manifest.contains("xmlns:tools=\"http://schemas.android.com/tools\""))
+        assertTrue(manifest.contains("tools:overrideLibrary=\"com.samsung.android.sdk.health.data\""))
+        assertFalse(manifest.contains("com.samsung.android.health.permission.read"))
+        assertFalse(manifest.contains("com.samsung.android.health.permission.write"))
+        assertFalse(manifest.contains("com.samsung.shealth.step_daily_trend"))
     }
 
     @Test

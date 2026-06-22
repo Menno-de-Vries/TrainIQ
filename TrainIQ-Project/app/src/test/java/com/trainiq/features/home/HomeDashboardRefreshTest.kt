@@ -186,8 +186,10 @@ class HomeDashboardRefreshTest {
         )
 
         assertTrue(homeHealthStepDiagnostic(fresh).contains("Live uit Health Connect"))
+        assertTrue(homeHealthStepDiagnostic(fresh).contains("Health Connect-stappen"))
         assertTrue(homeHealthStepDiagnostic(stale).contains("Laatste bekende stappen"))
         assertTrue(homeHealthStepDiagnostic(stale).contains("Samsung Health"))
+        assertTrue(homeHealthStepDiagnostic(stale).contains("Sync now"))
         assertTrue(homeHealthStepDiagnostic(missing).contains("Stappentoegang ontbreekt"))
     }
 
@@ -212,12 +214,97 @@ class HomeDashboardRefreshTest {
         val copy = homeHealthStepDiagnostic(status)
 
         assertTrue(copy.contains("Live uit Health Connect"))
-        assertTrue(copy.contains("aggregate stappen bijgewerkt om"))
+        assertTrue(copy.contains("Health Connect-stappen bijgewerkt om"))
         assertTrue(copy.contains("Venster: 00:00-23:59"))
         assertTrue(copy.contains("Bronnen:"))
         assertFalse(copy.contains("Sync now"))
         assertFalse(copy.contains("Samsung Health >"))
         assertFalse(copy.contains("App permissions"))
+    }
+
+    @Test
+    fun homeHealthConnectFreshDiagnosticNamesSamsungDisplayWhenUsed() {
+        val status = HealthConnectStatus(
+            state = HealthConnectState.CONNECTED,
+            message = "Verbonden",
+            metrics = HealthConnectMetrics(stepsToday = 13_000),
+            lastSyncedAt = 1_800_000L,
+            stepDataFreshness = HealthConnectStepDataFreshness.FRESH,
+            stepDataUpdatedAt = 1_800_000L,
+            stepDiagnostic = HealthConnectStepDiagnostic(
+                aggregateStepsToday = 12_345,
+                samsungHealthStepsToday = 13_000,
+                queriedAt = 1_800_000L,
+                sourceLabels = listOf("Samsung Health"),
+                dayStartLabel = "00:00",
+                dayEndLabel = "23:59",
+            ),
+        )
+
+        val copy = homeHealthStepDiagnostic(status)
+
+        assertTrue(copy.contains("Samsung Health-stappen bijgewerkt om"))
+        assertTrue(copy.contains("Bronnen: Samsung Health"))
+        assertFalse(copy.contains("Health Connect-stappen bijgewerkt om"))
+    }
+
+    @Test
+    fun homeHealthConnectFreshDiagnosticSurfacesMissingSamsungDataSdkParityGap() {
+        val status = HealthConnectStatus(
+            state = HealthConnectState.CONNECTED,
+            message = "Verbonden",
+            metrics = HealthConnectMetrics(stepsToday = 180),
+            lastSyncedAt = 1_800_000L,
+            stepDataFreshness = HealthConnectStepDataFreshness.FRESH,
+            stepDataUpdatedAt = 1_800_000L,
+            stepDiagnostic = HealthConnectStepDiagnostic(
+                aggregateStepsToday = 180,
+                samsungHealthStepsToday = 180,
+                queriedAt = 1_800_000L,
+                sourceLabels = listOf("Samsung Health"),
+                dayStartLabel = "00:00",
+                dayEndLabel = "23:59",
+            ),
+        )
+
+        val copy = homeHealthStepDiagnostic(status)
+
+        assertTrue(copy.contains("Live uit Health Connect"))
+        assertTrue(copy.contains("Samsung Health-stappen bijgewerkt om"))
+        assertTrue(copy.contains("Pariteit:"))
+        assertTrue(copy.contains("Samsung Health Data SDK API AAR niet beschikbaar"))
+        assertTrue(copy.contains("Health Connect kan daardoor lager blijven dan Samsung Health"))
+    }
+
+    @Test
+    fun homeHealthConnectFreshDiagnosticNamesDirectSamsungDisplayWhenUsed() {
+        val status = HealthConnectStatus(
+            state = HealthConnectState.CONNECTED,
+            message = "Verbonden",
+            metrics = HealthConnectMetrics(stepsToday = 13_200),
+            lastSyncedAt = 1_800_000L,
+            stepDataFreshness = HealthConnectStepDataFreshness.FRESH,
+            stepDataUpdatedAt = 1_800_000L,
+            stepDiagnostic = HealthConnectStepDiagnostic(
+                aggregateStepsToday = 12_345,
+                samsungHealthStepsToday = 13_000,
+                samsungHealthDirectStepsToday = 13_200,
+                samsungHealthDirectStatus = "Samsung Health Data SDK direct gelezen.",
+                queriedAt = 1_800_000L,
+                sourceLabels = listOf("Samsung Health"),
+                dayStartLabel = "00:00",
+                dayEndLabel = "23:59",
+            ),
+        )
+
+        val copy = homeHealthStepDiagnostic(status)
+
+        assertTrue(copy.contains("Live uit Samsung Health"))
+        assertTrue(copy.contains("directe Samsung Health-stappen bijgewerkt om"))
+        assertTrue(copy.contains("Bronnen: Samsung Health"))
+        assertFalse(copy.contains("Live uit Health Connect"))
+        assertFalse(copy.contains("Health Connect-stappen bijgewerkt om"))
+        assertFalse(copy.contains("Pariteit:"))
     }
 
     @Test
