@@ -1,16 +1,25 @@
 package com.trainiq.data.datasource
 
+import com.google.gson.Gson
 import com.trainiq.core.datastore.HealthConnectSyncPreferences
 import com.trainiq.data.mapper.toDomainMetrics
+import com.trainiq.domain.model.HealthConnectMetrics
+import com.trainiq.domain.model.HealthConnectState
+import com.trainiq.domain.model.HealthConnectStepDataFreshness
 import com.trainiq.domain.model.HealthMetricSyncState
+import com.trainiq.domain.model.HealthMetricStatus
 import com.trainiq.domain.model.HealthMetricType
 import com.trainiq.domain.model.HealthConnectStepDiagnostic
 import com.trainiq.domain.model.HealthConnectStepDiagnosticFreshness
+import com.trainiq.domain.model.resolveSamsungComparableDisplaySteps
 import java.io.File
+import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZoneId
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -33,6 +42,129 @@ class HealthConnectPermissionPolicyTest {
                 requiredPermission = "steps",
             ),
         )
+    }
+
+    @Test
+    fun samsungHealthPublicPackageIsClassifiedAsSamsungStepSource() {
+        assertEquals(
+            "Samsung Health",
+            SamsungHealthDirectStepsDataSource.SamsungHealthPackageName.toStepSourceLabel(),
+        )
+    }
+
+    @Test
+    fun officialSamsungRawStepsWinWhenAggregateUnderReports() {
+        assertEquals(
+            84,
+            resolveSamsungHealthVisibleSteps(
+                samsungHealthAggregateSteps = 5,
+                samsungRawStepRecordSum = 84,
+            ),
+        )
+        assertEquals(
+            84,
+            resolveSamsungHealthVisibleSteps(
+                samsungHealthAggregateSteps = null,
+                samsungRawStepRecordSum = 84,
+            ),
+        )
+        assertEquals(
+            84,
+            resolveSamsungHealthVisibleSteps(
+                samsungHealthAggregateSteps = 84,
+                samsungRawStepRecordSum = 5,
+            ),
+        )
+        assertEquals(5, resolveSamsungHealthVisibleSteps(5, 0))
+        assertNull(resolveSamsungHealthVisibleSteps(null, null))
+    }
+
+    @Test
+    fun onlyOfficialSamsungHealthPackageCanProvideRawFallback() {
+        assertTrue("com.sec.android.app.shealth".isOfficialSamsungHealthDataOrigin())
+        assertTrue("COM.SEC.ANDROID.APP.SHEALTH".isOfficialSamsungHealthDataOrigin())
+        assertFalse("com.example.samsung.health".isOfficialSamsungHealthDataOrigin())
+    }
+
+    @Test
+    fun directSamsungTotalIsAuthoritativeWhenAvailable() {
+        assertEquals(
+            600,
+            resolveSamsungComparableDisplaySteps(
+                healthConnectAggregateSteps = 700,
+                samsungHealthVisibleSteps = 650,
+                samsungHealthDirectSteps = 600,
+            ),
+        )
+    }
+
+    @Test
+    fun samsungVisibleStepsTakePriorityOverHigherGeneralAggregateWhenDirectIsUnavailable() {
+        assertEquals(
+            84,
+            resolveSamsungComparableDisplaySteps(
+                healthConnectAggregateSteps = 100,
+                samsungHealthVisibleSteps = 84,
+                samsungHealthDirectSteps = null,
+            ),
+        )
+    }
+
+    @Test
+    fun successfulDirectSamsungZeroRemainsAuthoritative() {
+        assertEquals(0, samsungDirectStepsFromTotal(0))
+        assertEquals(
+            0,
+            resolveSamsungComparableDisplaySteps(
+                healthConnectAggregateSteps = 700,
+                samsungHealthVisibleSteps = 650,
+                samsungHealthDirectSteps = 0,
+            ),
+        )
+        assertFalse(
+            HealthConnectCacheState(
+                samsungHealthDirectStepsToday = 0L,
+                displayStepsToday = 0L,
+                stepsLocalDate = "2026-07-09",
+            ).isEmpty(),
+        )
+    }
+
+    @Test
+    fun successfulDirectSamsungZeroPersistsThroughRefreshAndMapping() {
+        val resolved = resolveRefreshedStepCacheState(
+            previous = HealthConnectCacheState(),
+            localDate = LocalDate.of(2026, 7, 9),
+            healthConnectAggregateSteps = 700L,
+            samsungHealthSteps = 650,
+            samsungHealthDirectSnapshot = SamsungHealthDirectStepSnapshot(
+                steps = 0,
+                status = SamsungHealthDirectStepsDataSource.StatusSdkReadNoSteps,
+                queriedAt = 123L,
+            ),
+            aggregateFailed = false,
+        )
+
+        assertEquals(700L, resolved.aggregatedStepsToday)
+        assertEquals(650L, resolved.samsungHealthStepsToday)
+        assertEquals(0L, resolved.samsungHealthDirectStepsToday)
+        assertEquals(0L, resolved.displayStepsToday)
+        assertEquals(0, resolved.toDomainMetrics().stepsToday)
+        assertEquals("2026-07-09", resolved.stepsLocalDate)
+    }
+
+    @Test
+    fun nullSamsungAggregateBucketContributesZeroSteps() {
+        assertEquals(0L, samsungAggregateStepValue(null))
+    }
+
+    @Test
+    fun nonNumericSamsungAggregateBucketFailsExplicitly() {
+        val failure = assertThrows(IllegalStateException::class.java) {
+            samsungAggregateStepValue("600")
+        }
+
+        assertTrue(failure.message.orEmpty().contains("geen getal"))
     }
 
     @Test
@@ -84,6 +216,118 @@ class HealthConnectPermissionPolicyTest {
     }
 
     @Test
+    fun successfulStepAggregateClearsOnlyEarlierStepTokenFailure() {
+        val failures = mutableMapOf(
+            HealthMetricType.STEPS to "ChangesToken tijdelijk niet beschikbaar.",
+            HealthMetricType.HEART_RATE to "Hartslag kan nu niet worden gelezen.",
+        )
+
+        failures.clearRecoveredStepFailure(
+            shouldRefreshSteps = true,
+            stepAggregateFailed = false,
+        )
+
+        assertFalse(failures.containsKey(HealthMetricType.STEPS))
+        assertEquals("Hartslag kan nu niet worden gelezen.", failures[HealthMetricType.HEART_RATE])
+        val statuses = buildHealthMetricSyncStatuses(
+            metrics = setOf(HealthMetricType.STEPS, HealthMetricType.HEART_RATE),
+            failedMetrics = failures,
+            lastSyncedAt = 456L,
+        )
+        assertEquals(HealthMetricSyncState.SYNCED, statuses.single { it.metric == HealthMetricType.STEPS }.state)
+        assertEquals(HealthMetricSyncState.FAILED, statuses.single { it.metric == HealthMetricType.HEART_RATE }.state)
+    }
+
+    @Test
+    fun failedStepAggregateRetainsStepFailure() {
+        val failures = mutableMapOf(HealthMetricType.STEPS to "Aggregate tijdelijk niet beschikbaar.")
+
+        failures.clearRecoveredStepFailure(
+            shouldRefreshSteps = true,
+            stepAggregateFailed = true,
+        )
+
+        assertTrue(failures.containsKey(HealthMetricType.STEPS))
+    }
+
+    @Test
+    fun freshDirectSamsungZeroOverridesFailedHealthConnectAggregateFreshness() {
+        val metrics = HealthConnectMetrics(stepsToday = 0)
+        val statuses = listOf(
+            HealthMetricStatus(
+                metric = HealthMetricType.STEPS,
+                state = HealthMetricSyncState.FAILED,
+                message = "Health Connect aggregate mislukt.",
+            ),
+        )
+        val diagnostic = HealthConnectStepDiagnostic(
+            aggregateStepsToday = 0,
+            samsungHealthDirectStepsToday = 0,
+            samsungHealthDirectStatus = SamsungHealthDirectStepsDataSource.StatusSdkReadNoSteps,
+            displaySteps = 0,
+            queriedAt = 123L,
+        )
+
+        assertEquals(
+            HealthConnectStepDataFreshness.FRESH,
+            resolveHealthConnectStepDataFreshness(metrics, statuses, diagnostic),
+        )
+        assertEquals(
+            HealthConnectState.CONNECTED,
+            resolveHealthConnectState(metrics, statuses, diagnostic),
+        )
+        val successfulHealthConnectStatuses = listOf(
+            HealthMetricStatus(
+                metric = HealthMetricType.STEPS,
+                state = HealthMetricSyncState.SYNCED,
+            ),
+        )
+        assertEquals(
+            HealthConnectStepDataFreshness.FRESH,
+            resolveHealthConnectStepDataFreshness(metrics, successfulHealthConnectStatuses, null),
+        )
+        assertEquals(
+            HealthConnectState.CONNECTED,
+            resolveHealthConnectState(metrics, successfulHealthConnectStatuses, null),
+        )
+    }
+
+    @Test
+    fun failedAggregateWithoutFreshDirectValueRemainsStaleCache() {
+        val metrics = HealthConnectMetrics(stepsToday = 600)
+        val statuses = listOf(
+            HealthMetricStatus(
+                metric = HealthMetricType.STEPS,
+                state = HealthMetricSyncState.FAILED,
+                message = "Health Connect aggregate mislukt.",
+            ),
+        )
+        val diagnostic = HealthConnectStepDiagnostic(
+            aggregateStepsToday = 600,
+            displaySteps = 600,
+            queriedAt = 123L,
+            displayStepsFromCache = true,
+        )
+
+        assertEquals(
+            HealthConnectStepDataFreshness.STALE_CACHE,
+            resolveHealthConnectStepDataFreshness(metrics, statuses, diagnostic),
+        )
+        assertEquals(
+            HealthConnectStepDataFreshness.STALE_CACHE,
+            resolveHealthConnectStepDataFreshness(
+                metrics = HealthConnectMetrics(stepsToday = 0),
+                metricStatuses = statuses,
+                stepDiagnostic = diagnostic.copy(
+                    aggregateStepsToday = 0,
+                    displaySteps = 0,
+                    displayStepsFromCache = true,
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun failedMetricReadsDoNotReceiveLastSyncedTimestamp() {
         val statuses = buildHealthMetricSyncStatuses(
             metrics = listOf(HealthMetricType.STEPS, HealthMetricType.WORKOUTS),
@@ -97,7 +341,15 @@ class HealthConnectPermissionPolicyTest {
 
     @Test
     fun incrementalFailurePayloadPreservesCachedMetricsAndToken() {
-        val cachedState = HealthConnectCacheState(aggregatedStepsToday = 1234L)
+        val now = LocalDate.of(2026, 7, 9)
+            .atTime(12, 0)
+            .atZone(ZoneId.systemDefault())
+            .toInstant()
+        val cachedState = HealthConnectCacheState(
+            aggregatedStepsToday = 1234L,
+            displayStepsToday = 1234L,
+            stepsLocalDate = "2026-07-09",
+        )
         val storedState = HealthConnectSyncPreferences(
             changesToken = "existing-token",
             cacheStateJson = "{}",
@@ -108,6 +360,7 @@ class HealthConnectPermissionPolicyTest {
             cachedState = cachedState,
             storedState = storedState,
             failureMessage = "Changes API tijdelijk niet beschikbaar.",
+            now = now,
         )
 
         assertEquals(cachedState, payload.cacheState)
@@ -118,6 +371,98 @@ class HealthConnectPermissionPolicyTest {
             payload.metricStatuses.single { it.metric == HealthMetricType.STEPS }.state,
         )
         assertEquals(1234, payload.cacheState.toDomainMetrics().stepsToday)
+        assertTrue(payload.stepDiagnostic?.samsungHealthDirectStatus.orEmpty().contains("geen directe cachewaarde"))
+        assertFalse(payload.stepDiagnostic?.samsungHealthDirectStatus.orEmpty().contains("laatst bekende waarde"))
+    }
+
+    @Test
+    fun cachedSamsungSelectionDoesNotInventRawOrAggregateProvenance() {
+        val now = LocalDate.of(2026, 7, 9)
+            .atTime(12, 0)
+            .atZone(ZoneId.systemDefault())
+            .toInstant()
+        val payload = cachedIncrementalFailurePayload(
+            cachedState = HealthConnectCacheState(
+                aggregatedStepsToday = 5L,
+                samsungHealthStepsToday = 84L,
+                displayStepsToday = 84L,
+                stepsLocalDate = "2026-07-09",
+            ),
+            storedState = HealthConnectSyncPreferences(
+                changesToken = "existing-token",
+                cacheStateJson = "{}",
+                lastSyncedAt = 987L,
+            ),
+            failureMessage = "Algemene syncfout.",
+            now = now,
+        )
+        val diagnostic = requireNotNull(payload.stepDiagnostic)
+
+        assertEquals(84, diagnostic.samsungHealthStepsToday)
+        assertNull(diagnostic.samsungHealthAggregateStepsToday)
+        assertNull(diagnostic.samsungRawStepRecordSumToday)
+        assertTrue(diagnostic.displayStepsFromCache)
+        assertFalse(diagnostic.stepValueDebugSummary.contains("Samsung aggregate 84"))
+    }
+
+    @Test
+    fun incrementalFailurePayloadExpiresPriorDayStepScalars() {
+        val now = LocalDate.of(2026, 7, 9)
+            .atTime(12, 0)
+            .atZone(ZoneId.systemDefault())
+            .toInstant()
+        val payload = cachedIncrementalFailurePayload(
+            cachedState = HealthConnectCacheState(
+                aggregatedStepsToday = 700L,
+                samsungHealthStepsToday = 650L,
+                samsungHealthDirectStepsToday = 600L,
+                displayStepsToday = 600L,
+                stepsLocalDate = "2026-07-08",
+            ),
+            storedState = HealthConnectSyncPreferences(
+                changesToken = "existing-token",
+                cacheStateJson = "{}",
+                lastSyncedAt = 987L,
+            ),
+            failureMessage = "Changes API tijdelijk niet beschikbaar.",
+            now = now,
+        )
+
+        assertEquals(0L, payload.cacheState.aggregatedStepsToday)
+        assertNull(payload.cacheState.samsungHealthStepsToday)
+        assertNull(payload.cacheState.samsungHealthDirectStepsToday)
+        assertNull(payload.cacheState.displayStepsToday)
+        assertNull(payload.cacheState.stepsLocalDate)
+        assertEquals(0, payload.cacheState.toDomainMetrics().stepsToday)
+    }
+
+    @Test
+    fun incrementalFailurePayloadLabelsCachedDirectStatusAsUnknownInsteadOfMissingAar() {
+        val now = LocalDate.of(2026, 7, 9)
+            .atTime(12, 0)
+            .atZone(ZoneId.systemDefault())
+            .toInstant()
+        val payload = cachedIncrementalFailurePayload(
+            cachedState = HealthConnectCacheState(
+                aggregatedStepsToday = 700L,
+                samsungHealthDirectStepsToday = 600L,
+                displayStepsToday = 600L,
+                stepsLocalDate = "2026-07-09",
+            ),
+            storedState = HealthConnectSyncPreferences(
+                changesToken = "existing-token",
+                cacheStateJson = "{}",
+                lastSyncedAt = 987L,
+            ),
+            failureMessage = "Algemene syncfout.",
+            now = now,
+        )
+        val diagnostic = requireNotNull(payload.stepDiagnostic)
+
+        assertTrue(diagnostic.samsungHealthDirectFromCache)
+        assertTrue(diagnostic.samsungHealthDirectStatus.contains("niet opnieuw bepaald"))
+        assertFalse(diagnostic.samsungHealthDirectStatus.contains("API AAR", ignoreCase = true))
+        assertTrue(diagnostic.samsungStepDebugClipboardText(nowMillis = 988L).contains("cache, niet vers"))
     }
 
     @Test
@@ -206,7 +551,7 @@ class HealthConnectPermissionPolicyTest {
         assertEquals(888L, redacted.samsungHealthStepsToday)
         assertEquals(999L, redacted.samsungHealthDirectStepsToday)
         assertEquals(999L, redacted.displayStepsToday)
-        assertEquals(1, redacted.stepRecords.size)
+        assertTrue(redacted.stepRecords.isEmpty())
         assertEquals(1, redacted.sleepSessionRecords.size)
         assertTrue(redacted.heartRateRecords.isEmpty())
         assertTrue(redacted.caloriesBurnedRecords.isEmpty())
@@ -234,6 +579,53 @@ class HealthConnectPermissionPolicyTest {
         assertEquals("steps-token", decoded[HealthMetricType.STEPS])
         assertEquals("sleep-token", decoded[HealthMetricType.SLEEP])
         assertFalse(decoded.containsKey(HealthMetricType.HEART_RATE))
+        val merged = mergeMetricChangesTokens(
+            storedTokens = retainedTokens,
+            grantedMetrics = setOf(HealthMetricType.STEPS, HealthMetricType.SLEEP),
+            tokenUpdates = mapOf(
+                HealthMetricType.STEPS to "fresh-steps-token",
+                HealthMetricType.HEART_RATE to "must-not-return",
+            ),
+        )
+        assertEquals("fresh-steps-token", merged[HealthMetricType.STEPS])
+        assertFalse(merged.containsKey(HealthMetricType.HEART_RATE))
+    }
+
+    @Test
+    fun expiredChangesTokenStoresFreshFullSyncReplacementInsteadOfExpiredToken() {
+        val tokens = mutableMapOf(HealthMetricType.STEPS to "expired-token")
+
+        tokens.storeResolvedChangesToken(
+            metric = HealthMetricType.STEPS,
+            currentToken = "expired-token",
+            tokenExpired = true,
+            fullSyncReplacementToken = "fresh-token",
+        )
+        assertEquals("fresh-token", tokens[HealthMetricType.STEPS])
+
+        tokens.storeResolvedChangesToken(
+            metric = HealthMetricType.STEPS,
+            currentToken = "expired-token",
+            tokenExpired = true,
+            fullSyncReplacementToken = null,
+        )
+        assertTrue(tokens.containsKey(HealthMetricType.STEPS))
+        assertEquals("", tokens[HealthMetricType.STEPS])
+        assertFalse(
+            mergeMetricChangesTokens(
+                storedTokens = mapOf(HealthMetricType.STEPS to "expired-token"),
+                grantedMetrics = setOf(HealthMetricType.STEPS),
+                tokenUpdates = tokens,
+            ).containsKey(HealthMetricType.STEPS),
+        )
+
+        tokens.storeResolvedChangesToken(
+            metric = HealthMetricType.STEPS,
+            currentToken = "next-incremental-token",
+            tokenExpired = false,
+            fullSyncReplacementToken = null,
+        )
+        assertEquals("next-incremental-token", tokens[HealthMetricType.STEPS])
     }
 
     @Test
@@ -282,14 +674,65 @@ class HealthConnectPermissionPolicyTest {
     }
 
     @Test
-    fun domainMetricsIgnoreEmptySamsungAggregateCacheValue() {
+    fun domainMetricsRecomputesLegacyDisplayFromDirectSamsungCache() {
+        val legacyState = HealthConnectCacheState(
+            aggregatedStepsToday = 700L,
+            samsungHealthStepsToday = 650L,
+            samsungHealthDirectStepsToday = 600L,
+            displayStepsToday = 700L,
+        )
+        val restoredState = Gson().fromJson(
+            Gson().toJson(legacyState),
+            HealthConnectCacheState::class.java,
+        )
+        val metrics = restoredState.toDomainMetrics()
+
+        assertEquals(600, metrics.stepsToday)
+    }
+
+    @Test
+    fun domainMetricsIgnoreEmptySamsungAggregateWhenDirectReadIsUnavailable() {
         val metrics = HealthConnectCacheState(
             aggregatedStepsToday = 12_820L,
             samsungHealthStepsToday = 0L,
-            samsungHealthDirectStepsToday = 0L,
+            samsungHealthDirectStepsToday = null,
         ).toDomainMetrics()
 
         assertEquals(12_820, metrics.stepsToday)
+    }
+
+    @Test
+    fun modernZeroDisplayDoesNotFallBackToLegacyRawStepRecords() {
+        val metrics = HealthConnectCacheState(
+            aggregatedStepsToday = 0L,
+            displayStepsToday = 0L,
+            stepsLocalDate = "2026-07-09",
+            stepRecords = listOf(CachedStepRecord("raw", 1L, 2L, 600)),
+        ).toDomainMetrics()
+
+        assertEquals(0, metrics.stepsToday)
+    }
+
+    @Test
+    fun cachePruningDropsLegacyRawStepRecordsAfterTheyStopDrivingDisplay() {
+        val now = LocalDate.of(2026, 7, 9)
+            .atTime(12, 0)
+            .atZone(ZoneId.systemDefault())
+            .toInstant()
+        val pruned = HealthConnectCacheState(
+            stepsLocalDate = "2026-07-09",
+            stepRecords = listOf(
+                CachedStepRecord(
+                    recordId = "legacy-raw",
+                    startTimeMillis = now.minusSeconds(60).toEpochMilli(),
+                    endTimeMillis = now.minusSeconds(30).toEpochMilli(),
+                    count = 600,
+                ),
+            ),
+        ).pruneForInstant(now)
+
+        assertTrue(pruned.stepRecords.isEmpty())
+        assertEquals(0, pruned.toDomainMetrics().stepsToday)
     }
 
     @Test
@@ -311,6 +754,257 @@ class HealthConnectPermissionPolicyTest {
         assertTrue(aggregateBody.contains("healthConnectTodayLocalDateTimeRange"))
         assertFalse(aggregateBody.contains("DataOrigin"))
         assertFalse(aggregateBody.contains("dataOriginFilter"))
+    }
+
+    @Test
+    fun stepAggregateFailuresReachTheExistingCacheFallbackPolicy() {
+        val source = File("src/main/java/com/trainiq/data/datasource/HealthConnectDataSource.kt").readText()
+        val aggregateBody = source.substringAfter("private suspend fun aggregateStepsToday")
+            .substringBefore("private suspend fun performFullSync")
+        val fullSyncBody = source.substringAfter("private suspend fun performFullSync")
+            .substringBefore("private suspend fun readChangesTokensByMetric")
+        val incrementalBody = source.substringAfter("private suspend fun performIncrementalSync")
+            .substringBefore("private fun applyChanges")
+
+        assertFalse(aggregateBody.contains("runCatching"))
+        assertFalse(aggregateBody.contains("getOrElse { 0L }"))
+        assertTrue(fullSyncBody.contains("aggregateStepsToday(client, todayRange)"))
+        assertTrue(fullSyncBody.contains("buildStepAggregateSnapshot(client, stepsToday, todayRange)"))
+        assertTrue(fullSyncBody.contains("resolveRefreshedStepCacheState("))
+        assertTrue(fullSyncBody.contains("var stepAggregateFailed = false"))
+        assertTrue(fullSyncBody.contains("aggregateFailed = stepAggregateFailed"))
+        assertFalse(fullSyncBody.contains("aggregateFailed = HealthMetricType.STEPS in metricFailures"))
+        assertTrue(incrementalBody.contains("readMetricOrDefault("))
+        assertTrue(incrementalBody.contains("HealthMetricType.STEPS"))
+        assertTrue(incrementalBody.contains("aggregateStepsToday(client, todayRange)"))
+        assertTrue(incrementalBody.contains("buildStepAggregateSnapshot(client, freshSteps, todayRange)"))
+        assertTrue(incrementalBody.contains("resolveRefreshedStepCacheState("))
+        assertTrue(incrementalBody.contains("var stepAggregateFailed = false"))
+        assertTrue(incrementalBody.contains("aggregateFailed = stepAggregateFailed"))
+        assertFalse(incrementalBody.contains("aggregateFailed = HealthMetricType.STEPS in metricFailures"))
+    }
+
+    @Test
+    fun sameDayStepFailurePreservesAndRecomputesCachedDirectDisplay() {
+        val previous = HealthConnectCacheState(
+            aggregatedStepsToday = 700L,
+            samsungHealthStepsToday = 650L,
+            samsungHealthDirectStepsToday = 600L,
+            displayStepsToday = 700L,
+            stepsLocalDate = "2026-07-09",
+            heartRateRecords = listOf(CachedHeartRateRecord("hr", 1L, 2L, 60, 64, 2L, 3)),
+            sleepSessionRecords = listOf(CachedSleepSessionRecord("sleep", 1L, 2L, 480)),
+        )
+
+        val resolved = resolveRefreshedStepCacheState(
+            previous = previous,
+            localDate = LocalDate.of(2026, 7, 9),
+            healthConnectAggregateSteps = 0L,
+            samsungHealthSteps = null,
+            samsungHealthDirectSnapshot = SamsungHealthDirectStepSnapshot(
+                status = SamsungHealthDirectStepsDataSource.StatusSdkPlatformInternal,
+            ),
+            aggregateFailed = true,
+        )
+
+        assertEquals(700L, resolved.aggregatedStepsToday)
+        assertEquals(650L, resolved.samsungHealthStepsToday)
+        assertEquals(600L, resolved.samsungHealthDirectStepsToday)
+        assertEquals(600L, resolved.displayStepsToday)
+        assertEquals("2026-07-09", resolved.stepsLocalDate)
+        assertEquals(previous.heartRateRecords, resolved.heartRateRecords)
+        assertEquals(previous.sleepSessionRecords, resolved.sleepSessionRecords)
+    }
+
+    @Test
+    fun freshSamsungRawSelectionWinsOverCachedDirectWhenGeneralAggregateFails() {
+        val resolved = resolveRefreshedStepCacheState(
+            previous = HealthConnectCacheState(
+                aggregatedStepsToday = 700L,
+                samsungHealthStepsToday = 650L,
+                samsungHealthDirectStepsToday = 600L,
+                displayStepsToday = 600L,
+                stepsLocalDate = "2026-07-09",
+            ),
+            localDate = LocalDate.of(2026, 7, 9),
+            healthConnectAggregateSteps = 0L,
+            samsungHealthSteps = 84,
+            samsungHealthDirectSnapshot = SamsungHealthDirectStepSnapshot(
+                status = SamsungHealthDirectStepsDataSource.StatusSdkPlatformInternal,
+            ),
+            aggregateFailed = true,
+        )
+
+        assertEquals(84L, resolved.samsungHealthStepsToday)
+        assertNull(resolved.samsungHealthDirectStepsToday)
+        assertEquals(84L, resolved.displayStepsToday)
+    }
+
+    @Test
+    fun cachedDirectFallbackIsMarkedStaleInSamsungDiagnostic() {
+        val directFailure = SamsungHealthDirectStepSnapshot(
+            status = SamsungHealthDirectStepsDataSource.StatusSdkPlatformInternal,
+        )
+        val resolved = resolveRefreshedStepCacheState(
+            previous = HealthConnectCacheState(
+                aggregatedStepsToday = 700L,
+                samsungHealthStepsToday = 650L,
+                samsungHealthDirectStepsToday = 600L,
+                displayStepsToday = 600L,
+                stepsLocalDate = "2026-07-09",
+            ),
+            localDate = LocalDate.of(2026, 7, 9),
+            healthConnectAggregateSteps = 0L,
+            samsungHealthSteps = null,
+            samsungHealthDirectSnapshot = directFailure,
+            aggregateFailed = true,
+        )
+        val diagnostic = HealthConnectStepDiagnostic(
+            aggregateStepsToday = 0,
+            samsungHealthDirectStatus = directFailure.status,
+            queriedAt = 123L,
+            sourceLabels = listOf("Samsung Health"),
+        ).withResolvedStepCache(
+            cacheState = resolved,
+            aggregateFailed = true,
+        )
+
+        assertEquals(600, diagnostic.displaySteps)
+        assertEquals(600, diagnostic.samsungHealthDirectStepsToday)
+        assertTrue(diagnostic.samsungHealthDirectFromCache)
+        assertEquals(HealthConnectStepDiagnosticFreshness.STALE, diagnostic.freshness(nowMillis = 124L))
+        assertTrue(diagnostic.aggregateAuthorityLabel.contains("laatst bekende"))
+        assertTrue(diagnostic.samsungHealthComparisonSummary.contains("cache"))
+        assertTrue(diagnostic.stepValueDebugSummary.contains("cache, niet vers"))
+        assertTrue(diagnostic.parityGapSummary.contains("niet als verse pariteitsmeting"))
+        assertFalse(diagnostic.parityGapSummary.contains("is beschikbaar"))
+        assertTrue(diagnostic.healthConnectVisibleStepSummary.contains("tijdelijk"))
+    }
+
+    @Test
+    fun cachedAggregateFallbackIsMarkedStaleInSamsungDiagnostic() {
+        val resolved = resolveRefreshedStepCacheState(
+            previous = HealthConnectCacheState(
+                aggregatedStepsToday = 700L,
+                samsungHealthStepsToday = 650L,
+                displayStepsToday = 700L,
+                stepsLocalDate = "2026-07-09",
+            ),
+            localDate = LocalDate.of(2026, 7, 9),
+            healthConnectAggregateSteps = 0L,
+            samsungHealthSteps = null,
+            samsungHealthDirectSnapshot = SamsungHealthDirectStepSnapshot(
+                status = SamsungHealthDirectStepsDataSource.StatusPermissionMissing,
+            ),
+            aggregateFailed = true,
+        )
+        val diagnostic = HealthConnectStepDiagnostic(
+            aggregateStepsToday = 0,
+            samsungHealthDirectStatus = SamsungHealthDirectStepsDataSource.StatusPermissionMissing,
+            queriedAt = 123L,
+            sourceLabels = listOf("Samsung Health"),
+        ).withResolvedStepCache(
+            cacheState = resolved,
+            aggregateFailed = true,
+        )
+
+        assertEquals(650, diagnostic.displaySteps)
+        assertTrue(diagnostic.displayStepsFromCache)
+        assertEquals(HealthConnectStepDiagnosticFreshness.STALE, diagnostic.freshness(nowMillis = 124L))
+        assertTrue(diagnostic.aggregateAuthorityLabel.contains("cache"))
+        assertTrue(diagnostic.samsungHealthComparisonSummary.contains("cache"))
+        assertTrue(diagnostic.stepValueDebugSummary.contains("getoond 650 (cache, niet vers)"))
+        assertTrue(diagnostic.parityGapSummary.contains("niet als verse pariteitsmeting"))
+        assertTrue(diagnostic.healthConnectVisibleStepSummary.contains("tijdelijk"))
+    }
+
+    @Test
+    fun freshDirectSamsungReadRemainsFreshWhenHealthConnectAggregateFails() {
+        val resolved = resolveRefreshedStepCacheState(
+            previous = HealthConnectCacheState(
+                aggregatedStepsToday = 700L,
+                displayStepsToday = 700L,
+                stepsLocalDate = "2026-07-09",
+            ),
+            localDate = LocalDate.of(2026, 7, 9),
+            healthConnectAggregateSteps = 0L,
+            samsungHealthSteps = null,
+            samsungHealthDirectSnapshot = SamsungHealthDirectStepSnapshot(
+                steps = 600,
+                status = SamsungHealthDirectStepsDataSource.StatusSdkRead,
+                queriedAt = 123L,
+            ),
+            aggregateFailed = true,
+        )
+        val diagnostic = HealthConnectStepDiagnostic(
+            aggregateStepsToday = 0,
+            samsungHealthDirectStepsToday = 600,
+            samsungHealthDirectStatus = SamsungHealthDirectStepsDataSource.StatusSdkRead,
+            queriedAt = 123L,
+        ).withResolvedStepCache(
+            cacheState = resolved,
+            aggregateFailed = true,
+        )
+
+        assertEquals(600, diagnostic.displaySteps)
+        assertFalse(diagnostic.displayStepsFromCache)
+        assertFalse(diagnostic.samsungHealthDirectFromCache)
+        assertEquals(HealthConnectStepDiagnosticFreshness.FRESH, diagnostic.freshness(nowMillis = 124L))
+    }
+
+    @Test
+    fun explicitSamsungPermissionLossDoesNotReuseCachedDirectSteps() {
+        val previous = HealthConnectCacheState(
+            aggregatedStepsToday = 700L,
+            samsungHealthStepsToday = 650L,
+            samsungHealthDirectStepsToday = 600L,
+            displayStepsToday = 600L,
+            stepsLocalDate = "2026-07-09",
+        )
+
+        val resolved = resolveRefreshedStepCacheState(
+            previous = previous,
+            localDate = LocalDate.of(2026, 7, 9),
+            healthConnectAggregateSteps = 0L,
+            samsungHealthSteps = null,
+            samsungHealthDirectSnapshot = SamsungHealthDirectStepSnapshot(
+                status = SamsungHealthDirectStepsDataSource.StatusPermissionMissing,
+            ),
+            aggregateFailed = true,
+        )
+
+        assertNull(resolved.samsungHealthDirectStepsToday)
+        assertEquals(650L, resolved.displayStepsToday)
+    }
+
+    @Test
+    fun newDayStepFailureDoesNotReuseYesterdayTotals() {
+        val previous = HealthConnectCacheState(
+            aggregatedStepsToday = 700L,
+            samsungHealthStepsToday = 650L,
+            samsungHealthDirectStepsToday = 600L,
+            displayStepsToday = 600L,
+            stepsLocalDate = "2026-07-08",
+            stepRecords = listOf(CachedStepRecord("today-raw", 1L, 2L, 600)),
+        )
+
+        val resolved = resolveRefreshedStepCacheState(
+            previous = previous,
+            localDate = LocalDate.of(2026, 7, 9),
+            healthConnectAggregateSteps = 0L,
+            samsungHealthSteps = null,
+            samsungHealthDirectSnapshot = SamsungHealthDirectStepSnapshot(
+                status = SamsungHealthDirectStepsDataSource.StatusSdkPlatformInternal,
+            ),
+            aggregateFailed = true,
+        )
+
+        assertEquals(0L, resolved.aggregatedStepsToday)
+        assertNull(resolved.samsungHealthStepsToday)
+        assertNull(resolved.samsungHealthDirectStepsToday)
+        assertEquals(0L, resolved.displayStepsToday)
+        assertEquals("2026-07-09", resolved.stepsLocalDate)
+        assertEquals(0, resolved.toDomainMetrics().stepsToday)
     }
 
     @Test
@@ -339,8 +1033,13 @@ class HealthConnectPermissionPolicyTest {
         assertTrue(samsungAggregateBody.contains("samsungPackageNames.mapNotNull"))
         assertTrue(samsungAggregateBody.contains("}.getOrNull()"))
         assertTrue(samsungAggregateBody.contains("}.maxOrNull()"))
-        assertTrue(source.contains("KnownSamsungHealthPackageNames = setOf(\"com.sec.android.app.shealth\")"))
+        assertTrue(
+            source.contains(
+                "KnownSamsungHealthPackageNames = setOf(SamsungHealthDirectStepsDataSource.SamsungHealthPackageName)",
+            ),
+        )
         assertTrue(source.contains("sourceSnapshot.samsungPackageNames + KnownSamsungHealthPackageNames"))
+        assertTrue(source.contains("if (packageName.isOfficialSamsungHealthDataOrigin())"))
         assertTrue(source.contains("samsungRawStepRecordSum += record.count"))
         assertTrue(source.contains("resolveSamsungHealthVisibleSteps("))
         assertTrue(samsungAggregateBody.contains("takeIf { it > 0L }"))
@@ -630,7 +1329,7 @@ class HealthConnectPermissionPolicyTest {
     }
 
     @Test
-    fun stepDiagnosticKeepsHigherHealthConnectAggregateWhenSamsungExportIsLower() {
+    fun stepDiagnosticPrefersSamsungSourceOverHigherGeneralAggregate() {
         val diagnostic = HealthConnectStepDiagnostic(
             aggregateStepsToday = 12_345,
             samsungHealthStepsToday = 12_000,
@@ -638,9 +1337,9 @@ class HealthConnectPermissionPolicyTest {
             sourceLabels = listOf("Samsung Health"),
         )
 
-        assertEquals(12_345, diagnostic.displaySteps)
-        assertTrue(diagnostic.samsungHealthComparisonSummary.contains("Health Connect aggregate 12345 wordt getoond"))
-        assertTrue(diagnostic.aggregateAuthorityLabel.contains("Health Connect aggregate"))
+        assertEquals(12_000, diagnostic.displaySteps)
+        assertTrue(diagnostic.samsungHealthComparisonSummary.contains("Samsung Health-export 12000 wordt getoond"))
+        assertTrue(diagnostic.aggregateAuthorityLabel.contains("Samsung Health-export als leidende Samsung-bron"))
     }
 
     @Test
@@ -657,25 +1356,28 @@ class HealthConnectPermissionPolicyTest {
     }
 
     @Test
-    fun stepDiagnosticUsesHigherRawSamsungExportWhenAggregateUnderReports() {
+    fun stepDiagnosticExplainsOfficialSamsungRawFallbackWhenAggregateUnderReports() {
         val diagnostic = HealthConnectStepDiagnostic(
-            aggregateStepsToday = 180,
-            samsungHealthStepsToday = 600,
-            samsungHealthAggregateStepsToday = 180,
-            samsungRawStepRecordSumToday = 600,
+            aggregateStepsToday = 5,
+            samsungHealthStepsToday = 84,
+            samsungHealthAggregateStepsToday = 5,
+            samsungRawStepRecordSumToday = 84,
             queriedAt = 123L,
-            sourceLabels = listOf("Samsung Health"),
+            sourceLabels = listOf("Samsung Health", "Jouw telefoon"),
         )
 
-        assertEquals(600, diagnostic.displaySteps)
-        assertTrue(diagnostic.samsungHealthComparisonSummary.contains("ruwe Health Connect-records"))
-        assertTrue(diagnostic.samsungHealthComparisonSummary.contains("Samsung aggregate was 180"))
-        assertTrue(diagnostic.healthConnectVisibleStepSummary.contains("hogere ruwe Samsung-export"))
-        assertTrue(diagnostic.stepValueDebugSummary.contains("getoond 600"))
-        assertTrue(diagnostic.stepValueDebugSummary.contains("Health Connect aggregate 180"))
-        assertTrue(diagnostic.stepValueDebugSummary.contains("Samsung export 600"))
-        assertTrue(diagnostic.stepValueDebugSummary.contains("Samsung aggregate 180"))
-        assertTrue(diagnostic.stepValueDebugSummary.contains("Samsung raw 600"))
+        assertEquals(84, diagnostic.displaySteps)
+        assertTrue(diagnostic.usesSamsungRawStepFallback)
+        assertTrue(diagnostic.aggregateAuthorityLabel.contains("officiële Samsung Health raw"))
+        assertTrue(diagnostic.samsungHealthComparisonSummary.contains("Officiële Samsung Health raw-waarde 84"))
+        assertTrue(diagnostic.samsungHealthComparisonSummary.contains("Samsung aggregate 5"))
+        assertTrue(diagnostic.healthConnectVisibleStepSummary.contains("raw StepsRecords"))
+        assertTrue(diagnostic.parityGapSummary.contains("officiële Samsung Health raw-export"))
+        assertTrue(diagnostic.stepValueDebugSummary.contains("getoond 84"))
+        assertTrue(diagnostic.stepValueDebugSummary.contains("Health Connect aggregate 5"))
+        assertTrue(diagnostic.stepValueDebugSummary.contains("Samsung export 84"))
+        assertTrue(diagnostic.stepValueDebugSummary.contains("Samsung aggregate 5"))
+        assertTrue(diagnostic.stepValueDebugSummary.contains("Samsung raw 84"))
         assertTrue(diagnostic.stepValueDebugSummary.contains("Samsung direct niet beschikbaar"))
         assertTrue(diagnostic.samsungStepDebugClipboardText(nowMillis = 123L).contains("samsung-health-data-api*.aar ontbreekt"))
     }

@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -78,6 +79,7 @@ import com.trainiq.core.datastore.OnboardingPreferences
 import com.trainiq.core.datastore.ReminderPreferences
 import com.trainiq.core.datastore.WorkoutFeedbackPreferences
 import com.trainiq.core.health.HealthConnectRefreshOnResume
+import com.trainiq.core.health.healthConnectStepSourceLabel
 import com.trainiq.core.health.rememberHealthConnectPermissionRequester
 import com.trainiq.core.reminders.TrainIqReminderScheduler
 import com.trainiq.core.ui.MessageCard
@@ -98,6 +100,7 @@ import com.trainiq.features.profile.validateProfileInput
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
+import com.trainiq.domain.model.HealthConnectStepDataFreshness
 import com.trainiq.domain.model.HealthMetricSyncState
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.usecase.AppDataImportPreview
@@ -124,6 +127,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 sealed interface SettingsUiState {
     data object Loading : SettingsUiState
@@ -814,6 +820,7 @@ fun SettingsScreen(
     var geminiKeyInput by remember { mutableStateOf("") }
     var openAiKeyInput by remember { mutableStateOf("") }
     var pendingDestructiveAction by rememberSaveable { mutableStateOf<PendingDestructiveSettingsAction?>(null) }
+    var showHealthTechnicalDetails by rememberSaveable { mutableStateOf(false) }
     DisposableEffect(Unit) {
         onDispose {
             geminiKeyInput = ""
@@ -1073,116 +1080,25 @@ fun SettingsScreen(
         item {
             SectionCard(title = "Health Connect") {
                 Text("Status: ${healthStatusLabel(healthStatus)}")
-                Text(
-                    healthConnectSettingsMessage(healthStatus),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    "Achtergrondsync: TrainIQ plant alleen periodieke Health Connect-sync als Android achtergrondtoegang beschikbaar is en jij die in Health Connect hebt toegestaan.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                healthStatus.lastSyncedAt?.let {
-                    Text("Laatst gecontroleerd: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it))}")
+                healthConnectStepsAvailabilityMessage(healthStatus)?.let { stepMessage ->
+                    Text(stepMessage)
                 }
-                healthStatus.stepsToday?.let { steps ->
-                    Text(if (steps > 0) "Stappen vandaag beschikbaar: $steps" else "Verbonden, maar er is vandaag nog geen stapdata teruggekomen.")
+                healthConnectLastCheckedMessage(healthStatus.lastSyncedAt)?.let { lastCheckedMessage ->
+                    Text(
+                        lastCheckedMessage,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                healthStatus.stepDiagnostic?.let { stepDiagnostic ->
+                if (
+                    (healthStatus.state != HealthConnectState.CONNECTED && healthStatus.state != HealthConnectState.NO_DATA) ||
+                    healthStatus.hasPartialHealthConnectAccess()
+                ) {
                     Text(
-                        "Bronnen vandaag: ${stepDiagnostic.sourceSummary}",
-                        style = MaterialTheme.typography.bodySmall,
+                        healthConnectSettingsMessage(healthStatus),
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Text(
-                        "Venster: ${stepDiagnostic.queryWindowSummary}. ${stepDiagnostic.aggregateAuthorityLabel}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        "Samsung-vergelijking: ${stepDiagnostic.samsungHealthComparisonSummary}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        "Stappenwaarden: ${stepDiagnostic.stepValueDebugSummary}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        "Samsung-bron timing: ${stepDiagnostic.samsungSourceRecencySummary()}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        "Samsung direct: ${stepDiagnostic.samsungHealthDirectStatus}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        "Pariteit: ${stepDiagnostic.parityGapSummary}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        "Health Connect zichtbaar: ${stepDiagnostic.healthConnectVisibleStepSummary}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        "Health Connect-prioriteit: ${stepDiagnostic.healthConnectStepPrioritySummary}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (stepDiagnostic.hasMultipleHealthConnectStepSources) {
-                        TextButton(
-                            modifier = Modifier.settingsActionLabel("Health Connect App priorities openen"),
-                            onClick = onOpenHealthSettings,
-                        ) { Text("Prioriteiten openen") }
-                    }
-                    Text(
-                        "Samsung Health All steps: open Samsung Health > Instellingen > Health Connect en gebruik Sync now als TrainIQ blijft afwijken.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        "Workout-overlap: ${stepDiagnostic.workoutWindowSummary}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (!stepDiagnostic.hasSamsungHealthSource || stepDiagnostic.freshness() == com.trainiq.domain.model.HealthConnectStepDiagnosticFreshness.STALE) {
-                        Text(
-                            stepDiagnostic.samsungHealthSyncGuidance(),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                    TextButton(
-                        modifier = Modifier.settingsActionLabel("Samsung stappen-diagnose kopieren"),
-                        onClick = {
-                            clipboardManager.setText(AnnotatedString(stepDiagnostic.samsungStepDebugClipboardText()))
-                            coroutineScope.launch { snackbarHostState.showSnackbar("Samsung stappen-diagnose gekopieerd.") }
-                        },
-                    ) { Text("Diagnose kopieren") }
-                    TextButton(
-                        modifier = Modifier.settingsActionLabel("Samsung Health openen voor Sync now"),
-                        onClick = onOpenSamsungHealth,
-                    ) { Text("Samsung Health openen") }
-                }
-                healthStatus.averageHeartRateBpm?.let { bpm ->
-                    Text("Gemiddelde hartslag vandaag: $bpm bpm")
-                }
-                healthStatus.latestHeartRateBpm?.let { bpm ->
-                    Text("Laatste hartslagmeting: $bpm bpm")
-                }
-                healthStatus.sleepMinutes?.takeIf { it > 0 }?.let { minutes ->
-                    val recordContext = if (healthStatus.sleepSessionCount > 1) {
-                        " · meerdere Health Connect-records gezien"
-                    } else {
-                        ""
-                    }
-                    Text("Recente slaap: ${minutes / 60}u ${minutes % 60}m$recordContext")
                 }
                 when (healthStatus.state) {
                     HealthConnectState.PERMISSION_REQUIRED -> Text("Geef toegang zodat TrainIQ je dagelijkse stappen, hartslag en slaap kan lezen.")
@@ -1219,6 +1135,24 @@ fun SettingsScreen(
                         modifier = Modifier.settingsActionLabel("Health Connect-status vernieuwen"),
                         onClick = onRefreshHealth,
                     ) { Text("Vernieuwen") }
+                }
+                val technicalDetailsLabel = healthTechnicalDetailsToggleLabel(showHealthTechnicalDetails)
+                TextButton(
+                    modifier = Modifier.settingsActionLabel(technicalDetailsLabel),
+                    onClick = { showHealthTechnicalDetails = !showHealthTechnicalDetails },
+                ) { Text(technicalDetailsLabel) }
+                AnimatedVisibility(visible = showHealthTechnicalDetails) {
+                    HealthConnectTechnicalDetails(
+                        healthStatus = healthStatus,
+                        onOpenHealthSettings = onOpenHealthSettings,
+                        onOpenSamsungHealth = onOpenSamsungHealth,
+                        onCopyDiagnostic = { diagnostic ->
+                            clipboardManager.setText(AnnotatedString(diagnostic))
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("Samsung stappen-diagnose gekopieerd.")
+                            }
+                        },
+                    )
                 }
             }
         }
@@ -1379,6 +1313,120 @@ private fun FeedbackToggleRow(
 internal fun settingsToggleAccessibilityLabel(title: String, checked: Boolean): String =
     "$title: ${if (checked) "ingeschakeld" else "uitgeschakeld"}"
 
+@Composable
+private fun HealthConnectTechnicalDetails(
+    healthStatus: HealthConnectStatus,
+    onOpenHealthSettings: () -> Unit,
+    onOpenSamsungHealth: () -> Unit,
+    onCopyDiagnostic: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
+    ) {
+        Text(
+            "Achtergrondsync wordt alleen gepland als Android-toegang beschikbaar en toegestaan is.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        healthStatus.stepDiagnostic?.let { stepDiagnostic ->
+            Text(
+                "Bronnen vandaag: ${stepDiagnostic.sourceSummary}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "Venster: ${stepDiagnostic.queryWindowSummary}. ${stepDiagnostic.aggregateAuthorityLabel}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "Samsung-vergelijking: ${stepDiagnostic.samsungHealthComparisonSummary}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "Stappenwaarden: ${stepDiagnostic.stepValueDebugSummary}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "Samsung-bron timing: ${stepDiagnostic.samsungSourceRecencySummary()}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "Samsung direct: ${stepDiagnostic.samsungHealthDirectStatus}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "Pariteit: ${stepDiagnostic.parityGapSummary}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "Health Connect zichtbaar: ${stepDiagnostic.healthConnectVisibleStepSummary}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "Health Connect-prioriteit: ${stepDiagnostic.healthConnectStepPrioritySummary}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (stepDiagnostic.hasMultipleHealthConnectStepSources) {
+                TextButton(
+                    modifier = Modifier.settingsActionLabel("Health Connect App priorities openen"),
+                    onClick = onOpenHealthSettings,
+                ) { Text("Prioriteiten openen") }
+            }
+            Text(
+                "Samsung Health All steps: open Samsung Health > Instellingen > Health Connect en gebruik Sync now als TrainIQ blijft afwijken.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "Workout-overlap: ${stepDiagnostic.workoutWindowSummary}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (
+                !stepDiagnostic.hasSamsungHealthSource ||
+                stepDiagnostic.freshness() == com.trainiq.domain.model.HealthConnectStepDiagnosticFreshness.STALE
+            ) {
+                Text(
+                    stepDiagnostic.samsungHealthSyncGuidance(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            TextButton(
+                modifier = Modifier.settingsActionLabel("Samsung stappen-diagnose kopieren"),
+                onClick = { onCopyDiagnostic(stepDiagnostic.samsungStepDebugClipboardText()) },
+            ) { Text("Diagnose kopieren") }
+            TextButton(
+                modifier = Modifier.settingsActionLabel("Samsung Health openen voor Sync now"),
+                onClick = onOpenSamsungHealth,
+            ) { Text("Samsung Health openen") }
+        }
+        healthStatus.averageHeartRateBpm?.let { bpm ->
+            Text("Gemiddelde hartslag vandaag: $bpm bpm")
+        }
+        healthStatus.latestHeartRateBpm?.let { bpm ->
+            Text("Laatste hartslagmeting: $bpm bpm")
+        }
+        healthStatus.sleepMinutes?.takeIf { it > 0 }?.let { minutes ->
+            val recordContext = if (healthStatus.sleepSessionCount > 1) {
+                " · meerdere Health Connect-records gezien"
+            } else {
+                ""
+            }
+            Text("Recente slaap: ${minutes / 60}u ${minutes % 60}m$recordContext")
+        }
+    }
+}
+
 internal fun healthStatusLabel(status: HealthConnectStatus): String = when {
     status.hasPartialHealthConnectAccess() -> "Gedeeltelijk verbonden"
     else -> when (status.state) {
@@ -1390,6 +1438,29 @@ internal fun healthStatusLabel(status: HealthConnectStatus): String = when {
         HealthConnectState.ERROR -> "Fout"
     }
 }
+
+internal fun healthConnectStepsAvailabilityMessage(status: HealthConnectStatus): String? {
+    val steps = status.stepsToday ?: return null
+    val source = healthConnectStepSourceLabel(status)
+    return when (status.stepDataFreshness) {
+        HealthConnectStepDataFreshness.FRESH -> "$steps stappen via $source"
+        HealthConnectStepDataFreshness.STALE_CACHE -> "Laatst bekend: $steps stappen via $source"
+        else -> null
+    }
+}
+
+internal fun healthConnectLastCheckedMessage(
+    lastSyncedAt: Long?,
+    zoneId: ZoneId = ZoneId.systemDefault(),
+): String? = lastSyncedAt?.let { timestamp ->
+    val time = Instant.ofEpochMilli(timestamp)
+        .atZone(zoneId)
+        .format(DateTimeFormatter.ofPattern("HH:mm"))
+    "Laatst gecontroleerd om $time"
+}
+
+internal fun healthTechnicalDetailsToggleLabel(expanded: Boolean): String =
+    if (expanded) "Technische details verbergen" else "Technische details tonen"
 
 internal fun healthConnectSettingsMessage(status: HealthConnectStatus): String = when {
     status.hasPartialHealthConnectAccess() -> status.message

@@ -87,7 +87,7 @@ class MappersTest {
     }
 
     @Test
-    fun healthConnectCacheState_toDomainMetrics_emitsWeightedMetricsViaFlow() = runTest {
+    fun healthConnectCacheState_toDomainMetrics_ignoresRawStepsAndEmitsOtherMetricsViaFlow() = runTest {
         val cacheState = HealthConnectCacheState(
             stepRecords = listOf(
                 CachedStepRecord("steps-1", 0L, 10L, 4000),
@@ -111,7 +111,7 @@ class MappersTest {
             .map { it.toDomainMetrics() }
             .test {
                 val metrics = awaitItem()
-                assertEquals(6500, metrics.stepsToday)
+                assertEquals(0, metrics.stepsToday)
                 assertEquals(73, metrics.averageHeartRateBpm)
                 assertEquals(84, metrics.latestHeartRateBpm)
                 assertEquals(420L, metrics.sleepMinutes)

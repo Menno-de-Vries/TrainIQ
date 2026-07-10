@@ -14,6 +14,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -131,6 +132,7 @@ class HomeDashboardRefreshTest {
             state = HealthConnectState.CONNECTED,
             message = "Verbonden",
             metrics = HealthConnectMetrics(stepsToday = 7200),
+            stepDataFreshness = HealthConnectStepDataFreshness.FRESH,
         )
 
         assertEquals("3 dagen", homeStreakValue(3))
@@ -166,145 +168,128 @@ class HomeDashboardRefreshTest {
     }
 
     @Test
-    fun healthConnectStepDiagnosticCopyNamesFreshStaleMissingAndSamsungSyncStates() {
+    fun homeStepsValueShowsSuccessfulZeroInsteadOfMissingData() {
+        val status = HealthConnectStatus(
+            state = HealthConnectState.NO_DATA,
+            message = "Verbonden zonder positieve waarden",
+            metrics = HealthConnectMetrics(stepsToday = 0),
+            stepDataFreshness = HealthConnectStepDataFreshness.FRESH,
+        )
+
+        assertEquals("0", homeStepsValue(status))
+    }
+
+    @Test
+    fun homeStepsValueDoesNotPresentMissingOrFailedPermissionAsMeasuredZero() {
+        val base = HealthConnectStatus(
+            state = HealthConnectState.NO_DATA,
+            message = "Geen bewezen stappenmeting",
+            metrics = HealthConnectMetrics(stepsToday = 0),
+        )
+
+        listOf(HealthConnectState.NO_DATA, HealthConnectState.CONNECTED).forEach { state ->
+            assertEquals(
+                "Geen data",
+                homeStepsValue(
+                    base.copy(
+                        state = state,
+                        stepDataFreshness = HealthConnectStepDataFreshness.PERMISSION_MISSING,
+                    ),
+                ),
+            )
+            assertEquals(
+                "Geen data",
+                homeStepsValue(
+                    base.copy(
+                        state = state,
+                        stepDataFreshness = HealthConnectStepDataFreshness.ERROR,
+                    ),
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun compactHomeHealthCopyShowsOnlyValueSourceAndUpdateTime() {
+        val status = HealthConnectStatus(
+            state = HealthConnectState.CONNECTED,
+            message = "Verbonden",
+            metrics = HealthConnectMetrics(stepsToday = 84),
+            lastSyncedAt = 1_800_000L,
+            stepDataFreshness = HealthConnectStepDataFreshness.FRESH,
+            stepDataUpdatedAt = 1_800_000L,
+            stepDiagnostic = HealthConnectStepDiagnostic(
+                aggregateStepsToday = 8,
+                samsungHealthStepsToday = 84,
+                samsungHealthAggregateStepsToday = 8,
+                samsungRawStepRecordSumToday = 84,
+                queriedAt = 1_800_000L,
+                sourceLabels = listOf("Jouw telefoon", "Samsung Health"),
+                dayStartLabel = "00:00",
+                dayEndLabel = "02:33",
+            ),
+        )
+
+        val primary = homeHealthCompactSummary(status)
+
+        assertEquals("84 stappen · Samsung Health", primary)
+        assertEquals("Bijgewerkt om ${formatHomeLastSync(1_800_000L)}", homeHealthSyncSummary(status))
+        assertFalse(primary.contains("raw", ignoreCase = true))
+        assertFalse(primary.contains("aggregate", ignoreCase = true))
+        assertFalse(primary.contains("Pariteit", ignoreCase = true))
+    }
+
+    @Test
+    fun compactHomeHealthCopyNamesFreshStaleAndPermissionStates() {
         val fresh = HealthConnectStatus(
             state = HealthConnectState.CONNECTED,
             message = "Verbonden",
-            metrics = HealthConnectMetrics(stepsToday = 10_400),
+            metrics = HealthConnectMetrics(stepsToday = 84),
             lastSyncedAt = 1_800_000L,
             stepDataFreshness = HealthConnectStepDataFreshness.FRESH,
             stepDataUpdatedAt = 1_800_000L,
         )
-        val stale = fresh.copy(
-            stepDataFreshness = HealthConnectStepDataFreshness.STALE_CACHE,
-            stepDataUpdatedAt = 600_000L,
-        )
-        val missing = HealthConnectStatus(
-            state = HealthConnectState.PERMISSION_REQUIRED,
-            message = "Toegang nodig",
-            stepDataFreshness = HealthConnectStepDataFreshness.PERMISSION_MISSING,
-        )
+        val stale = fresh.copy(stepDataFreshness = HealthConnectStepDataFreshness.STALE_CACHE)
+        val missing = fresh.copy(stepDataFreshness = HealthConnectStepDataFreshness.PERMISSION_MISSING)
 
-        assertTrue(homeHealthStepDiagnostic(fresh).contains("Live uit Health Connect"))
-        assertTrue(homeHealthStepDiagnostic(fresh).contains("Health Connect-stappen"))
-        assertTrue(homeHealthStepDiagnostic(stale).contains("Laatste bekende stappen"))
-        assertTrue(homeHealthStepDiagnostic(stale).contains("Samsung Health"))
-        assertTrue(homeHealthStepDiagnostic(stale).contains("Sync now"))
-        assertTrue(homeHealthStepDiagnostic(missing).contains("Stappentoegang ontbreekt"))
+        assertEquals("84 stappen · Health Connect", homeHealthCompactSummary(fresh))
+        assertEquals("Laatst bekend: 84 stappen · Health Connect", homeHealthCompactSummary(stale))
+        assertEquals("Stappentoegang ontbreekt.", homeHealthCompactSummary(missing))
+        assertEquals("Laatste update om ${formatHomeLastSync(1_800_000L)}", homeHealthSyncSummary(stale))
+        assertNull(homeHealthSyncSummary(missing))
     }
 
     @Test
-    fun homeHealthConnectFreshDiagnosticStaysCompactAndHidesSamsungDebugGuidance() {
-        val status = HealthConnectStatus(
+    fun homeUsesExactlyOneHealthConnectCardForSuccessOrActionState() {
+        val connected = HealthConnectStatus(
             state = HealthConnectState.CONNECTED,
             message = "Verbonden",
-            metrics = HealthConnectMetrics(stepsToday = 10_400),
-            lastSyncedAt = 1_800_000L,
+            metrics = HealthConnectMetrics(stepsToday = 84),
             stepDataFreshness = HealthConnectStepDataFreshness.FRESH,
-            stepDataUpdatedAt = 1_800_000L,
-            stepDiagnostic = HealthConnectStepDiagnostic(
-                aggregateStepsToday = 10_400,
-                queriedAt = 1_800_000L - 20 * 60 * 1000L,
-                sourceLabels = listOf("Samsung Health", "Health Connect"),
-                dayStartLabel = "00:00",
-                dayEndLabel = "23:59",
-            ),
         )
 
-        val copy = homeHealthStepDiagnostic(status)
-
-        assertTrue(copy.contains("Live uit Health Connect"))
-        assertTrue(copy.contains("Health Connect-stappen bijgewerkt om"))
-        assertTrue(copy.contains("Venster: 00:00-23:59"))
-        assertTrue(copy.contains("Bronnen:"))
-        assertFalse(copy.contains("Sync now"))
-        assertFalse(copy.contains("Samsung Health >"))
-        assertFalse(copy.contains("App permissions"))
+        assertTrue(showCompactHomeHealthCard(connected))
+        assertFalse(
+            showCompactHomeHealthCard(
+                connected.copy(stepDataFreshness = HealthConnectStepDataFreshness.PERMISSION_MISSING),
+            ),
+        )
+        assertFalse(
+            showCompactHomeHealthCard(
+                connected.copy(state = HealthConnectState.PROVIDER_MISSING),
+            ),
+        )
     }
 
     @Test
-    fun homeHealthConnectFreshDiagnosticNamesSamsungDisplayWhenUsed() {
-        val status = HealthConnectStatus(
-            state = HealthConnectState.CONNECTED,
-            message = "Verbonden",
-            metrics = HealthConnectMetrics(stepsToday = 13_000),
-            lastSyncedAt = 1_800_000L,
-            stepDataFreshness = HealthConnectStepDataFreshness.FRESH,
-            stepDataUpdatedAt = 1_800_000L,
-            stepDiagnostic = HealthConnectStepDiagnostic(
-                aggregateStepsToday = 12_345,
-                samsungHealthStepsToday = 13_000,
-                queriedAt = 1_800_000L,
-                sourceLabels = listOf("Samsung Health"),
-                dayStartLabel = "00:00",
-                dayEndLabel = "23:59",
-            ),
-        )
+    fun homeSourceUsesConditionalHealthConnectCards() {
+        val source = File("src/main/java/com/trainiq/features/home/HomeScreen.kt").readText()
+        val successBody = source.substringAfter("is HomeUiState.Success ->")
+            .substringBefore("internal fun buildHomeRecoverySubtitle")
 
-        val copy = homeHealthStepDiagnostic(status)
-
-        assertTrue(copy.contains("Samsung Health-stappen bijgewerkt om"))
-        assertTrue(copy.contains("Bronnen: Samsung Health"))
-        assertFalse(copy.contains("Health Connect-stappen bijgewerkt om"))
-    }
-
-    @Test
-    fun homeHealthConnectFreshDiagnosticSurfacesMissingSamsungDataSdkParityGap() {
-        val status = HealthConnectStatus(
-            state = HealthConnectState.CONNECTED,
-            message = "Verbonden",
-            metrics = HealthConnectMetrics(stepsToday = 180),
-            lastSyncedAt = 1_800_000L,
-            stepDataFreshness = HealthConnectStepDataFreshness.FRESH,
-            stepDataUpdatedAt = 1_800_000L,
-            stepDiagnostic = HealthConnectStepDiagnostic(
-                aggregateStepsToday = 180,
-                samsungHealthStepsToday = 180,
-                queriedAt = 1_800_000L,
-                sourceLabels = listOf("Samsung Health"),
-                dayStartLabel = "00:00",
-                dayEndLabel = "23:59",
-            ),
-        )
-
-        val copy = homeHealthStepDiagnostic(status)
-
-        assertTrue(copy.contains("Live uit Health Connect"))
-        assertTrue(copy.contains("Samsung Health-stappen bijgewerkt om"))
-        assertTrue(copy.contains("Pariteit:"))
-        assertTrue(copy.contains("Samsung Health Data SDK API AAR niet beschikbaar"))
-        assertTrue(copy.contains("Health Connect kan daardoor lager blijven dan Samsung Health"))
-    }
-
-    @Test
-    fun homeHealthConnectFreshDiagnosticNamesDirectSamsungDisplayWhenUsed() {
-        val status = HealthConnectStatus(
-            state = HealthConnectState.CONNECTED,
-            message = "Verbonden",
-            metrics = HealthConnectMetrics(stepsToday = 13_200),
-            lastSyncedAt = 1_800_000L,
-            stepDataFreshness = HealthConnectStepDataFreshness.FRESH,
-            stepDataUpdatedAt = 1_800_000L,
-            stepDiagnostic = HealthConnectStepDiagnostic(
-                aggregateStepsToday = 12_345,
-                samsungHealthStepsToday = 13_000,
-                samsungHealthDirectStepsToday = 13_200,
-                samsungHealthDirectStatus = "Samsung Health Data SDK direct gelezen.",
-                queriedAt = 1_800_000L,
-                sourceLabels = listOf("Samsung Health"),
-                dayStartLabel = "00:00",
-                dayEndLabel = "23:59",
-            ),
-        )
-
-        val copy = homeHealthStepDiagnostic(status)
-
-        assertTrue(copy.contains("Live uit Samsung Health"))
-        assertTrue(copy.contains("directe Samsung Health-stappen bijgewerkt om"))
-        assertTrue(copy.contains("Bronnen: Samsung Health"))
-        assertFalse(copy.contains("Live uit Health Connect"))
-        assertFalse(copy.contains("Health Connect-stappen bijgewerkt om"))
-        assertFalse(copy.contains("Pariteit:"))
+        assertTrue(successBody.contains("if (showCompactHomeHealthCard(healthConnectStatus))"))
+        assertTrue(successBody.contains("HealthConnectSyncCard("))
+        assertTrue(successBody.contains("PermissionManagerCard("))
     }
 
     @Test
@@ -320,12 +305,13 @@ class HomeDashboardRefreshTest {
     }
 
     @Test
-    fun homeScreenShowsHealthConnectRefreshStateAndLastSyncCopy() {
+    fun homeScreenShowsCompactHealthConnectRefreshAndSyncCopy() {
         val source = File("src/main/java/com/trainiq/features/home/HomeScreen.kt").readText()
 
         assertTrue(source.contains("isRefreshingHealth"))
         assertTrue(source.contains("homeHealthRefreshMessage"))
-        assertTrue(source.contains("Laatst gesynchroniseerd"))
+        assertTrue(source.contains("homeHealthSyncSummary"))
+        assertTrue(source.contains("Bijgewerkt om"))
         assertTrue(source.contains("Verversen"))
     }
 

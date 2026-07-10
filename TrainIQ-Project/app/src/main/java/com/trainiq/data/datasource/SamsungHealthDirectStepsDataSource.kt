@@ -57,7 +57,7 @@ class SamsungHealthDirectStepsDataSource @Inject constructor(
 
             val stepCount = readTotalSteps(store, start, end)
             SamsungHealthDirectStepSnapshot(
-                steps = stepCount.takeIf { it > 0 },
+                steps = samsungDirectStepsFromTotal(stepCount),
                 status = if (stepCount > 0) StatusSdkRead else StatusSdkReadNoSteps,
                 queriedAt = System.currentTimeMillis(),
             )
@@ -280,20 +280,15 @@ class SamsungHealthDirectStepsDataSource @Inject constructor(
     private fun Any.samsungAggregateValue(): Long {
         javaClass.methods
             .firstOrNull { method -> method.name == "getValue" && method.parameterTypes.isEmpty() }
-            ?.invoke(this)
-            ?.let { value -> return value.asLongStepValue() }
+            ?.let { method -> return method.invoke(this).asLongStepValue() }
         javaClass.fields
             .firstOrNull { field -> field.name == "value" }
-            ?.get(this)
-            ?.let { value -> return value.asLongStepValue() }
+            ?.let { field -> return field.get(this).asLongStepValue() }
         error("Samsung Health Data SDK aggregate response value ontbreekt.")
     }
 
-    private fun Any.asLongStepValue(): Long {
-        val number = this as? Number
-            ?: error("Samsung Health Data SDK aggregate response value is geen getal.")
-        return number.toLong()
-    }
+    private fun Any?.asLongStepValue(): Long =
+        samsungAggregateStepValue(this)
 
     private fun localTimeFilter(start: LocalDateTime, end: LocalDateTime): Any {
         val localTimeFilterClass = samsungClass("com.samsung.android.sdk.health.data.request.LocalTimeFilter")
@@ -645,3 +640,13 @@ internal fun samsungHealthRuntimeReadinessForVersion(
 private fun String.semanticVersionParts(): List<Int> =
     split(".", "-", "_")
         .mapNotNull { part -> part.takeWhile { char -> char.isDigit() }.toIntOrNull() }
+
+internal fun samsungAggregateStepValue(value: Any?): Long {
+    if (value == null) return 0L
+    val number = value as? Number
+        ?: error("Samsung Health Data SDK aggregate response value is geen getal.")
+    return number.toLong()
+}
+
+internal fun samsungDirectStepsFromTotal(stepCount: Int): Int =
+    stepCount.coerceAtLeast(0)

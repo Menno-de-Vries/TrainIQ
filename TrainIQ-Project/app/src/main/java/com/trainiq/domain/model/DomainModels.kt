@@ -670,18 +670,17 @@ enum class HealthConnectStepDiagnosticFreshness {
 
 fun resolveSamsungComparableDisplaySteps(
     healthConnectAggregateSteps: Int,
-    samsungHealthAggregateSteps: Int?,
+    samsungHealthVisibleSteps: Int?,
     samsungHealthDirectSteps: Int? = null,
-): Int = maxOf(
-    healthConnectAggregateSteps,
-    samsungHealthAggregateSteps ?: 0,
-    samsungHealthDirectSteps ?: 0,
-)
+): Int = samsungHealthDirectSteps
+    ?.takeIf { it >= 0 }
+    ?: samsungHealthVisibleSteps?.takeIf { it > 0 }
+    ?: healthConnectAggregateSteps
 
 data class HealthConnectStepDiagnostic(
     val aggregateStepsToday: Int,
     val samsungHealthStepsToday: Int? = null,
-    val samsungHealthAggregateStepsToday: Int? = samsungHealthStepsToday,
+    val samsungHealthAggregateStepsToday: Int? = null,
     val samsungRawStepRecordSumToday: Int? = null,
     val samsungHealthDirectStepsToday: Int? = null,
     val samsungHealthDirectStatus: String = "Samsung Health Data SDK API AAR samsung-health-data-api*.aar ontbreekt in app/libs; directe Samsung All steps-bron niet beschikbaar.",
@@ -698,6 +697,8 @@ data class HealthConnectStepDiagnostic(
     val workoutWindowSteps: Int? = null,
     val workoutWindowSessionCount: Int = 0,
     val workoutWindowTruncated: Boolean = false,
+    val samsungHealthDirectFromCache: Boolean = false,
+    val displayStepsFromCache: Boolean = false,
 ) {
     val sourceSummary: String
         get() = sourceLabels.distinct().joinToString(", ").ifBlank { "Geen bronlabels zichtbaar" }
@@ -708,6 +709,22 @@ data class HealthConnectStepDiagnostic(
     val hasMultipleHealthConnectStepSources: Boolean
         get() = sourceLabels.distinct().size > 1
 
+    val hasFreshDirectStepValue: Boolean
+        get() = samsungHealthDirectStepsToday != null &&
+            displaySteps == samsungHealthDirectStepsToday &&
+            !samsungHealthDirectFromCache
+
+    val usesSamsungRawStepFallback: Boolean
+        get() {
+            val rawSteps = samsungRawStepRecordSumToday ?: return false
+            return samsungHealthDirectStepsToday == null &&
+                !displayStepsFromCache &&
+                rawSteps > 0 &&
+                rawSteps > (samsungHealthAggregateStepsToday ?: 0) &&
+                samsungHealthStepsToday == rawSteps &&
+                displaySteps == rawSteps
+        }
+
     val queryWindowSummary: String
         get() = if (dayStartLabel.isNotBlank() && dayEndLabel.isNotBlank()) {
             "$dayStartLabel-$dayEndLabel"
@@ -716,25 +733,35 @@ data class HealthConnectStepDiagnostic(
         }
 
     val aggregateAuthorityLabel: String
-        get() = if (samsungHealthDirectStepsToday != null && displaySteps == samsungHealthDirectStepsToday) {
-            "TrainIQ toont de directe Samsung Health Data SDK-waarde om Samsung Health All steps te matchen; Health Connect blijft zichtbaar voor diagnose."
-        } else if (samsungHealthStepsToday != null && displaySteps == samsungHealthStepsToday) {
-            "TrainIQ toont de hogere Samsung Health-export om Samsung Health All steps zo dicht mogelijk te matchen; de Health Connect aggregate blijft zichtbaar voor diagnose."
-        } else {
-            "TrainIQ toont de Health Connect aggregate als dagtotaal omdat die hoger is dan de Samsung Health-export die Health Connect nu zichtbaar maakt."
+        get() = when {
+            samsungHealthDirectFromCache && samsungHealthDirectStepsToday != null &&
+                displaySteps == samsungHealthDirectStepsToday ->
+                "TrainIQ toont tijdelijk de laatst bekende directe Samsung Health Data SDK-waarde uit cache; de huidige directe read is mislukt en deze waarde is niet vers."
+            samsungHealthDirectStepsToday != null && displaySteps == samsungHealthDirectStepsToday ->
+                "TrainIQ toont de directe Samsung Health Data SDK-waarde om Samsung Health All steps te matchen; Health Connect blijft zichtbaar voor diagnose."
+            displayStepsFromCache ->
+                "TrainIQ toont tijdelijk het laatst bekende stappentotaal uit cache; de huidige stappenread is mislukt en deze waarde is niet vers."
+            usesSamsungRawStepFallback ->
+                "TrainIQ toont de hogere officiële Samsung Health raw-export om Samsung Health All steps te matchen; de Health Connect-aggregates blijven zichtbaar voor diagnose."
+            samsungHealthStepsToday != null && displaySteps == samsungHealthStepsToday ->
+                "TrainIQ toont de Samsung Health-export als leidende Samsung-bron; de algemene Health Connect aggregate blijft zichtbaar voor diagnose."
+            else ->
+                "TrainIQ toont de Health Connect aggregate als dagtotaal omdat geen bruikbare Samsung Health-export beschikbaar is."
         }
 
     val samsungHealthComparisonSummary: String
         get() = when {
+            samsungHealthDirectFromCache && samsungHealthDirectStepsToday != null &&
+                displaySteps == samsungHealthDirectStepsToday ->
+                "Laatst bekende directe Samsung Health-waarde $samsungHealthDirectStepsToday wordt tijdelijk uit cache getoond; de huidige directe read is mislukt."
             samsungHealthDirectStepsToday != null && displaySteps == samsungHealthDirectStepsToday ->
                 "Directe Samsung Health Data SDK-waarde $samsungHealthDirectStepsToday wordt getoond; Health Connect aggregate $aggregateStepsToday blijft diagnose."
+            displayStepsFromCache ->
+                "Laatst bekende stappenwaarde $displaySteps wordt tijdelijk uit cache getoond; de huidige stappenread is mislukt."
+            usesSamsungRawStepFallback ->
+                "Officiële Samsung Health raw-waarde $samsungRawStepRecordSumToday wordt getoond; Samsung aggregate ${samsungHealthAggregateStepsToday ?: 0} en Health Connect aggregate $aggregateStepsToday blijven diagnose."
             samsungHealthStepsToday == null ->
                 "Samsung Health publiceerde vandaag nog geen apart stappenaggregate naar Health Connect."
-            samsungRawStepRecordSumToday != null &&
-                samsungHealthAggregateStepsToday != null &&
-                samsungRawStepRecordSumToday > samsungHealthAggregateStepsToday &&
-                displaySteps == samsungRawStepRecordSumToday ->
-                "Samsung Health exporteerde $samsungRawStepRecordSumToday stappen via ruwe Health Connect-records; Samsung aggregate was $samsungHealthAggregateStepsToday. TrainIQ toont de hogere Samsung-export om Samsung Health beter te volgen."
             displaySteps == samsungHealthStepsToday ->
                 "Samsung Health-export $samsungHealthStepsToday wordt getoond; Health Connect aggregate $aggregateStepsToday blijft diagnose."
             else ->
@@ -743,18 +770,37 @@ data class HealthConnectStepDiagnostic(
 
     val stepValueDebugSummary: String
         get() = buildList {
-            add("getoond $displaySteps")
-            add("Health Connect aggregate $aggregateStepsToday")
+            add(if (displayStepsFromCache) "getoond $displaySteps (cache, niet vers)" else "getoond $displaySteps")
+            add(
+                if (displayStepsFromCache && displaySteps == aggregateStepsToday) {
+                    "Health Connect aggregate $aggregateStepsToday (cache, niet vers)"
+                } else {
+                    "Health Connect aggregate $aggregateStepsToday"
+                },
+            )
             add("Samsung export ${samsungHealthStepsToday ?: "niet zichtbaar"}")
             add("Samsung aggregate ${samsungHealthAggregateStepsToday ?: "niet zichtbaar"}")
             add("Samsung raw ${samsungRawStepRecordSumToday ?: "niet zichtbaar"}")
-            add("Samsung direct ${samsungHealthDirectStepsToday ?: "niet beschikbaar"}")
+            add(
+                when {
+                    samsungHealthDirectStepsToday == null -> "Samsung direct niet beschikbaar"
+                    samsungHealthDirectFromCache -> "Samsung direct $samsungHealthDirectStepsToday (cache, niet vers)"
+                    else -> "Samsung direct $samsungHealthDirectStepsToday"
+                },
+            )
         }.joinToString(separator = " · ")
 
     val parityGapSummary: String
         get() = when {
+            samsungHealthDirectFromCache && samsungHealthDirectStepsToday != null &&
+                displaySteps == samsungHealthDirectStepsToday ->
+                "TrainIQ toont tijdelijk een laatst bekende directe Samsung-waarde; gebruik deze niet als verse pariteitsmeting en vernieuw na Samsung Health Sync now."
             samsungHealthDirectStepsToday != null && displaySteps == samsungHealthDirectStepsToday ->
                 "Directe Samsung Health Data SDK-waarde is beschikbaar; vergelijk deze met Samsung Health All steps na Sync now."
+            displayStepsFromCache ->
+                "TrainIQ toont tijdelijk een laatst bekende stappenwaarde; gebruik deze niet als verse pariteitsmeting en vernieuw na Samsung Health Sync now."
+            usesSamsungRawStepFallback ->
+                "TrainIQ toont de officiële Samsung Health raw-export omdat die hoger is dan de Health Connect-aggregates; dit is de beste beschikbare Samsung All steps-vergelijking zolang directe Data SDK-verificatie niet werkt."
             samsungHealthDirectStatus.contains("samsung-health-data-api", ignoreCase = true) ->
                 "Directe Samsung Health All steps-bron ontbreekt nog omdat de Samsung Health Data SDK API AAR niet beschikbaar is; Health Connect kan daardoor lager blijven dan Samsung Health.${healthConnectPriorityHintSuffix()}"
             samsungHealthDirectStatus.contains("toestemming ontbreekt", ignoreCase = true) ->
@@ -806,17 +852,19 @@ data class HealthConnectStepDiagnostic(
         ).joinToString(separator = "\n")
 
     val healthConnectVisibleStepSummary: String
-        get() = if (samsungHealthDirectStepsToday != null && displaySteps == samsungHealthDirectStepsToday) {
+        get() = if (
+            samsungHealthDirectFromCache && samsungHealthDirectStepsToday != null &&
+            displaySteps == samsungHealthDirectStepsToday
+        ) {
+            "TrainIQ toont tijdelijk $displaySteps stappen uit de laatst bekende directe Samsung-cache. De huidige Samsung-read is mislukt; Health Connect aggregate blijft de diagnosewaarde."
+        } else if (samsungHealthDirectStepsToday != null && displaySteps == samsungHealthDirectStepsToday) {
             "TrainIQ toont nu $displaySteps stappen uit de directe Samsung Health Data SDK-bron. Health Connect aggregate blijft zichtbaar als diagnosewaarde."
+        } else if (displayStepsFromCache) {
+            "TrainIQ toont tijdelijk $displaySteps stappen uit cache. De huidige stappenread is mislukt; vernieuw na Samsung Health Sync now."
+        } else if (usesSamsungRawStepFallback) {
+            "TrainIQ toont nu $displaySteps stappen uit raw StepsRecords van de officiële Samsung Health-bron. Samsung aggregate ${samsungHealthAggregateStepsToday ?: 0} en Health Connect aggregate $aggregateStepsToday blijven diagnosewaarden."
         } else if (samsungHealthStepsToday != null && displaySteps == samsungHealthStepsToday) {
-            val rawFallback = samsungRawStepRecordSumToday?.takeIf { raw ->
-                samsungHealthAggregateStepsToday != null && raw > samsungHealthAggregateStepsToday
-            }
-            if (rawFallback != null) {
-                "Health Connect geeft TrainIQ nu $displaySteps Samsung Health-stappen via de hogere ruwe Samsung-export. Als Samsung Health zelf nog meer toont, zijn die extra stappen nog niet naar Health Connect geschreven."
-            } else {
-                "Health Connect geeft TrainIQ nu $displaySteps Samsung Health-stappen. Als Samsung Health zelf meer toont, zijn die extra stappen nog niet naar Health Connect geschreven."
-            }
+            "Health Connect geeft TrainIQ nu $displaySteps Samsung Health-stappen. Als Samsung Health zelf meer toont, zijn die extra stappen nog niet naar Health Connect geschreven."
         } else {
             "Health Connect geeft TrainIQ nu $aggregateStepsToday stappen. Als Samsung Health zelf meer toont, controleer of Samsung Health bij Health Connect > Gegevens en toegang > Activiteit > Stappen als bron met recente vermeldingen staat."
         }
@@ -834,7 +882,7 @@ data class HealthConnectStepDiagnostic(
         }
 
     fun freshness(nowMillis: Long = System.currentTimeMillis()): HealthConnectStepDiagnosticFreshness =
-        if (nowMillis - queriedAt < StepDiagnosticFreshMillis) {
+        if (!displayStepsFromCache && nowMillis - queriedAt < StepDiagnosticFreshMillis) {
             HealthConnectStepDiagnosticFreshness.FRESH
         } else {
             HealthConnectStepDiagnosticFreshness.STALE

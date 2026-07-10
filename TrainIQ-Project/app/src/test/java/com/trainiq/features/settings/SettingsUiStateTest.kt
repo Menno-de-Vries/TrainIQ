@@ -6,13 +6,19 @@ import com.trainiq.ai.services.AiProviderPreference
 import com.trainiq.core.theme.ThemeMode
 import com.trainiq.core.ui.UiMessage
 import com.trainiq.domain.model.HealthConnectState
+import com.trainiq.domain.model.HealthConnectMetrics
 import com.trainiq.domain.model.HealthConnectStatus
+import com.trainiq.domain.model.HealthConnectStepDataFreshness
+import com.trainiq.domain.model.HealthConnectStepDiagnostic
 import com.trainiq.domain.model.HealthMetricStatus
 import com.trainiq.domain.model.HealthMetricSyncState
 import com.trainiq.domain.model.HealthMetricType
 import java.io.File
+import java.time.Instant
+import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -152,6 +158,62 @@ class SettingsUiStateTest {
     }
 
     @Test
+    fun healthConnectStepAvailabilityDistinguishesMeasuredZeroFromMissingPermission() {
+        val freshZero = HealthConnectStatus(
+            state = HealthConnectState.CONNECTED,
+            message = "Verbonden",
+            metrics = HealthConnectMetrics(stepsToday = 0),
+            stepDataFreshness = HealthConnectStepDataFreshness.FRESH,
+        )
+
+        assertEquals("0 stappen via Health Connect", healthConnectStepsAvailabilityMessage(freshZero))
+        assertNull(
+            healthConnectStepsAvailabilityMessage(
+                freshZero.copy(stepDataFreshness = HealthConnectStepDataFreshness.PERMISSION_MISSING),
+            ),
+        )
+    }
+
+    @Test
+    fun healthConnectCompactSummaryUsesFriendlySamsungSourceAndStaleCopy() {
+        val diagnostic = HealthConnectStepDiagnostic(
+            aggregateStepsToday = 8,
+            samsungHealthStepsToday = 84,
+            samsungHealthAggregateStepsToday = 8,
+            samsungRawStepRecordSumToday = 84,
+            queriedAt = 123L,
+        )
+        val fresh = HealthConnectStatus(
+            state = HealthConnectState.CONNECTED,
+            metrics = HealthConnectMetrics(stepsToday = 84),
+            message = "Verbonden",
+            stepDataFreshness = HealthConnectStepDataFreshness.FRESH,
+            stepDiagnostic = diagnostic,
+        )
+
+        assertEquals("84 stappen via Samsung Health", healthConnectStepsAvailabilityMessage(fresh))
+        assertEquals(
+            "Laatst bekend: 84 stappen via Samsung Health",
+            healthConnectStepsAvailabilityMessage(
+                fresh.copy(stepDataFreshness = HealthConnectStepDataFreshness.STALE_CACHE),
+            ),
+        )
+        assertEquals("Technische details tonen", healthTechnicalDetailsToggleLabel(expanded = false))
+        assertEquals("Technische details verbergen", healthTechnicalDetailsToggleLabel(expanded = true))
+    }
+
+    @Test
+    fun healthConnectLastCheckedUsesCompactTime() {
+        val timestamp = Instant.parse("2026-07-10T00:33:00Z").toEpochMilli()
+
+        assertEquals(
+            "Laatst gecontroleerd om 00:33",
+            healthConnectLastCheckedMessage(timestamp, ZoneId.of("UTC")),
+        )
+        assertNull(healthConnectLastCheckedMessage(null, ZoneId.of("UTC")))
+    }
+
+    @Test
     fun destructiveSettingsDialogCopyNamesScopeAndKeepsCancelAvailable() {
         assertEquals("API-sleutel verwijderen?", destructiveSettingsActionTitle(PendingDestructiveSettingsAction.CLEAR_API_KEY))
         assertEquals("Profiel resetten?", destructiveSettingsActionTitle(PendingDestructiveSettingsAction.RESET_PROFILE))
@@ -225,6 +287,24 @@ class SettingsUiStateTest {
         assertTrue(source.contains("Prioriteiten openen"))
         assertTrue(source.contains("Workout-overlap"))
         assertTrue(source.contains("workoutWindowSummary"))
+    }
+
+    @Test
+    fun healthConnectTechnicalDiagnosticsAreCollapsedButPreserved() {
+        val source = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
+        val healthCard = source.substringAfter("SectionCard(title = \"Health Connect\")")
+            .substringBefore("SectionCard(title = \"Gegevens / opslag\")")
+        val details = source.substringAfter("private fun HealthConnectTechnicalDetails(")
+            .substringBefore("internal fun healthStatusLabel")
+
+        assertTrue(source.contains("var showHealthTechnicalDetails by rememberSaveable"))
+        assertTrue(healthCard.contains("AnimatedVisibility"))
+        assertTrue(healthCard.contains("healthTechnicalDetailsToggleLabel"))
+        assertTrue(details.contains("stepValueDebugSummary"))
+        assertTrue(details.contains("samsungHealthDirectStatus"))
+        assertTrue(details.contains("parityGapSummary"))
+        assertTrue(details.contains("samsungStepDebugClipboardText"))
+        assertTrue(details.contains("workoutWindowSummary"))
     }
 
     @Test

@@ -55,6 +55,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
 import com.trainiq.core.health.HealthConnectRefreshOnResume
+import com.trainiq.core.health.healthConnectStepSourceLabel
 import com.trainiq.core.health.rememberHealthConnectPermissionRequester
 import com.trainiq.core.theme.spacing
 import com.trainiq.core.ui.PermissionManagerCard
@@ -373,42 +374,45 @@ fun HomeScreen(
                                 todaysWorkoutCalories = dashboard.todaysWorkoutCalories,
                             )
                         }
-                        item(span = { GridItemSpan(gridColumns) }) {
-                            HealthConnectSyncCard(
-                                status = healthConnectStatus,
-                                isRefreshingHealth = uiState.isRefreshingHealth,
-                                refreshMessage = uiState.refreshMessage,
-                                onRefresh = {
-                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    onRefreshHealth()
-                                },
-                            )
-                        }
-                        item(span = { GridItemSpan(gridColumns) }) {
-                            PermissionManagerCard(
-                                status = healthConnectStatus,
-                                onRequestPermission = {
-                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    onRequestHealthPermission()
-                                },
-                                onOpenInstall = {
-                                    val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata"))
-                                    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata"))
-                                    if (!context.startActivityIfResolvable(marketIntent)) {
-                                        context.startActivityIfResolvable(webIntent)
-                                    }
-                                },
-                                onOpenSettings = {
-                                    val settingsIntent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
-                                    if (!context.startActivityIfResolvable(settingsIntent)) {
+                        if (showCompactHomeHealthCard(healthConnectStatus)) {
+                            item(span = { GridItemSpan(gridColumns) }) {
+                                HealthConnectSyncCard(
+                                    status = healthConnectStatus,
+                                    isRefreshingHealth = uiState.isRefreshingHealth,
+                                    refreshMessage = uiState.refreshMessage,
+                                    onRefresh = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                         onRefreshHealth()
-                                    }
-                                },
-                                onRefresh = {
-                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    onRefreshHealth()
-                                },
-                            )
+                                    },
+                                )
+                            }
+                        } else {
+                            item(span = { GridItemSpan(gridColumns) }) {
+                                PermissionManagerCard(
+                                    status = healthConnectStatus,
+                                    onRequestPermission = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        onRequestHealthPermission()
+                                    },
+                                    onOpenInstall = {
+                                        val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata"))
+                                        val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata"))
+                                        if (!context.startActivityIfResolvable(marketIntent)) {
+                                            context.startActivityIfResolvable(webIntent)
+                                        }
+                                    },
+                                    onOpenSettings = {
+                                        val settingsIntent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
+                                        if (!context.startActivityIfResolvable(settingsIntent)) {
+                                            onRefreshHealth()
+                                        }
+                                    },
+                                    onRefresh = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        onRefreshHealth()
+                                    },
+                                )
+                            }
                         }
                         item(span = { GridItemSpan(gridColumns) }) {
                             NextWorkoutCard(
@@ -537,8 +541,12 @@ internal fun homeStreakSubtitle(streak: Int): String =
     if (streak > 0) "Ritme staat aan" else "Start vandaag"
 
 internal fun homeStepsValue(status: HealthConnectStatus): String = when (status.state) {
-    HealthConnectState.CONNECTED -> "${status.stepsToday ?: 0}"
-    HealthConnectState.NO_DATA -> "Geen data"
+    HealthConnectState.CONNECTED,
+    HealthConnectState.NO_DATA -> when (status.stepDataFreshness) {
+        HealthConnectStepDataFreshness.FRESH,
+        HealthConnectStepDataFreshness.STALE_CACHE -> status.stepsToday?.toString() ?: "Geen data"
+        else -> "Geen data"
+    }
     else -> "Offline"
 }
 
@@ -571,7 +579,7 @@ private fun HealthConnectSyncCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Health Connect", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                     Text(
-                        homeHealthStatusSummary(status),
+                        homeHealthCompactSummary(status),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.trainIqColors.mutedText,
                     )
@@ -580,16 +588,13 @@ private fun HealthConnectSyncCard(
                     Text(if (isRefreshingHealth) "Verversen..." else "Verversen")
                 }
             }
-            Text(
-                "Laatst gesynchroniseerd: ${formatHomeLastSync(status.lastSyncedAt)}",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.trainIqColors.mutedText,
-            )
-            Text(
-                homeHealthStepDiagnostic(status),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.trainIqColors.mutedText,
-            )
+            homeHealthSyncSummary(status)?.let { syncSummary ->
+                Text(
+                    syncSummary,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.trainIqColors.mutedText,
+                )
+            }
             refreshMessage?.let {
                 Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             }
@@ -597,53 +602,38 @@ private fun HealthConnectSyncCard(
     }
 }
 
-internal fun homeHealthStatusSummary(status: HealthConnectStatus): String = when (status.state) {
-    HealthConnectState.CONNECTED -> "Stappen en toegestane Health Connect-bronnen zijn beschikbaar."
-    HealthConnectState.NO_DATA -> "Verbonden, maar er is nog geen recente data."
-    HealthConnectState.PERMISSION_REQUIRED -> "Toestemming ontbreekt voor een of meer bronnen."
-    HealthConnectState.PROVIDER_MISSING -> "Health Connect moet worden geïnstalleerd of bijgewerkt."
-    HealthConnectState.UNSUPPORTED -> "Health Connect wordt niet ondersteund op dit apparaat."
-    HealthConnectState.ERROR -> "Health Connect kan nu niet worden gelezen."
+internal fun homeHealthCompactSummary(status: HealthConnectStatus): String = when (status.state) {
+    HealthConnectState.PERMISSION_REQUIRED -> "Stappentoegang ontbreekt."
+    HealthConnectState.PROVIDER_MISSING -> "Health Connect moet worden bijgewerkt."
+    HealthConnectState.UNSUPPORTED -> "Health Connect wordt niet ondersteund."
+    HealthConnectState.ERROR -> "Stappen konden niet worden bijgewerkt."
+    HealthConnectState.CONNECTED,
+    HealthConnectState.NO_DATA -> when (status.stepDataFreshness) {
+        HealthConnectStepDataFreshness.FRESH -> status.stepsToday
+            ?.let { "$it stappen · ${healthConnectStepSourceLabel(status)}" }
+            ?: "Nog geen recente stappen."
+        HealthConnectStepDataFreshness.STALE_CACHE -> status.stepsToday
+            ?.let { "Laatst bekend: $it stappen · ${healthConnectStepSourceLabel(status)}" }
+            ?: "Nog geen recente stappen."
+        HealthConnectStepDataFreshness.PERMISSION_MISSING -> "Stappentoegang ontbreekt."
+        HealthConnectStepDataFreshness.UNAVAILABLE -> "Health Connect is niet beschikbaar."
+        HealthConnectStepDataFreshness.ERROR -> "Stappen konden niet worden bijgewerkt."
+        HealthConnectStepDataFreshness.UNKNOWN -> "Stappenstatus wordt opgehaald."
+    }
 }
 
-internal fun homeHealthStepDiagnostic(status: HealthConnectStatus): String = when (status.stepDataFreshness) {
-    HealthConnectStepDataFreshness.FRESH -> {
-        val diagnostic = status.stepDiagnostic
-        val sourceCopy = diagnostic?.let { " Bronnen: ${it.sourceSummary}." }.orEmpty()
-        val windowCopy = diagnostic?.let { " Venster: ${it.queryWindowSummary}." }.orEmpty()
-        val directSamsungDisplay = diagnostic?.samsungHealthDirectStepsToday != null &&
-            diagnostic.displaySteps == diagnostic.samsungHealthDirectStepsToday
-        val liveSource = if (directSamsungDisplay) {
-            "Samsung Health"
-        } else {
-            "Health Connect"
-        }
-        val displaySource = when {
-            directSamsungDisplay ->
-                "directe Samsung Health-stappen"
-            diagnostic?.samsungHealthStepsToday != null &&
-                diagnostic.displaySteps == diagnostic.samsungHealthStepsToday ->
-                "Samsung Health-stappen"
-            else ->
-                "Health Connect-stappen"
-        }
-        val parityCopy = diagnostic
-            ?.takeUnless { directSamsungDisplay }
-            ?.let { " Pariteit: ${it.parityGapSummary}" }
-            .orEmpty()
-        "Live uit $liveSource: $displaySource bijgewerkt om ${formatHomeLastSync(status.stepDataUpdatedAt)}.$windowCopy$sourceCopy$parityCopy"
+internal fun homeHealthSyncSummary(status: HealthConnectStatus): String? {
+    val updatedAt = status.stepDataUpdatedAt ?: status.lastSyncedAt ?: return null
+    return when (status.stepDataFreshness) {
+        HealthConnectStepDataFreshness.FRESH -> "Bijgewerkt om ${formatHomeLastSync(updatedAt)}"
+        HealthConnectStepDataFreshness.STALE_CACHE -> "Laatste update om ${formatHomeLastSync(updatedAt)}"
+        else -> null
     }
-    HealthConnectStepDataFreshness.STALE_CACHE ->
-        "Laatste bekende stappen uit Health Connect-cache. Open Samsung Health, gebruik Sync now en controleer Health Connect > App-permissies als Samsung Health meer stappen toont."
-    HealthConnectStepDataFreshness.PERMISSION_MISSING ->
-        "Stappentoegang ontbreekt. Geef READ_STEPS via Health Connect zodat TrainIQ dezelfde bron kan lezen."
-    HealthConnectStepDataFreshness.UNAVAILABLE ->
-        "Health Connect is niet beschikbaar of moet worden bijgewerkt voordat stappen live kunnen matchen."
-    HealthConnectStepDataFreshness.ERROR ->
-        "Stappen konden nu niet live worden gelezen. Laatste bekende data blijft zichtbaar wanneer die bestaat."
-    HealthConnectStepDataFreshness.UNKNOWN ->
-        "Stappenstatus wordt opgehaald via Health Connect."
 }
+
+internal fun showCompactHomeHealthCard(status: HealthConnectStatus): Boolean =
+    (status.state == HealthConnectState.CONNECTED || status.state == HealthConnectState.NO_DATA) &&
+        status.stepDataFreshness != HealthConnectStepDataFreshness.PERMISSION_MISSING
 
 internal fun formatHomeLastSync(lastSyncedAt: Long?): String {
     lastSyncedAt ?: return "nog niet"

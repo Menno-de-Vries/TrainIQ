@@ -12,7 +12,6 @@ import com.trainiq.data.datasource.CachedHeartRateRecord
 import com.trainiq.data.datasource.CachedCaloriesBurnedRecord
 import com.trainiq.data.datasource.CachedExerciseSessionRecord
 import com.trainiq.data.datasource.CachedSleepSessionRecord
-import com.trainiq.data.datasource.CachedStepRecord
 import com.trainiq.data.datasource.CachedWeightRecord
 import com.trainiq.data.datasource.HealthConnectCacheState
 import com.trainiq.domain.model.BodyMeasurement
@@ -31,7 +30,6 @@ import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.SleepSessionRecord
-import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.WeightRecord
 import java.time.Duration
 import java.time.Instant
@@ -120,13 +118,6 @@ fun WorkoutExerciseEntity.legacyRoutineSets(): List<RoutineSet> {
     }
 }
 
-internal fun StepsRecord.toCachedStepRecord() = CachedStepRecord(
-    recordId = metadata.id,
-    startTimeMillis = startTime.toEpochMilli(),
-    endTimeMillis = endTime.toEpochMilli(),
-    count = count.toInt(),
-)
-
 internal fun HeartRateRecord.toCachedHeartRateRecord(): CachedHeartRateRecord {
     val latestSample = samples.maxByOrNull { it.time }
     val averageBpm = samples.takeIf { it.isNotEmpty() }
@@ -173,12 +164,17 @@ internal fun WeightRecord.toCachedWeightRecord() = CachedWeightRecord(
 )
 
 internal fun HealthConnectCacheState.toDomainMetrics(): HealthConnectMetrics = HealthConnectMetrics(
-    // Prefer the explicit display value chosen from deduplicated aggregate reads. Fall back
-    // to the manual sum only for old DataStore caches that predate aggregate fields.
-    stepsToday = displayStepsToday?.takeIf { it > 0L }?.toInt()
+    // Only deduplication-aware aggregate/direct values may drive the visible total.
+    // Raw records remain diagnostic because summing them can double count steps.
+    stepsToday = samsungHealthDirectStepsToday
+        ?.coerceIn(0L, Int.MAX_VALUE.toLong())
+        ?.toInt()
+        ?: displayStepsToday
+            ?.coerceIn(0L, Int.MAX_VALUE.toLong())
+            ?.toInt()
         ?: resolveSamsungComparableDisplaySteps(
             healthConnectAggregateSteps = aggregatedStepsToday.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
-            samsungHealthAggregateSteps = samsungHealthStepsToday
+            samsungHealthVisibleSteps = samsungHealthStepsToday
                 ?.takeIf { it > 0L }
                 ?.coerceAtMost(Int.MAX_VALUE.toLong())
                 ?.toInt(),
@@ -186,8 +182,7 @@ internal fun HealthConnectCacheState.toDomainMetrics(): HealthConnectMetrics = H
                 ?.takeIf { it > 0L }
                 ?.coerceAtMost(Int.MAX_VALUE.toLong())
                 ?.toInt(),
-        ).takeIf { it > 0 }
-        ?: stepRecords.sumOf(CachedStepRecord::count),
+        ).coerceAtLeast(0),
     averageHeartRateBpm = heartRateRecords
         .takeIf { it.isNotEmpty() }
         ?.let { records ->

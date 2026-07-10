@@ -28,7 +28,6 @@ import com.trainiq.data.mapper.toCachedCaloriesBurnedRecord
 import com.trainiq.data.mapper.toCachedExerciseSessionRecord
 import com.trainiq.data.mapper.toCachedHeartRateRecord
 import com.trainiq.data.mapper.toCachedSleepSessionRecord
-import com.trainiq.data.mapper.toCachedStepRecord
 import com.trainiq.data.mapper.toDomainMetrics
 import com.trainiq.domain.model.HealthConnectMetrics
 import com.trainiq.domain.model.HealthConnectState
@@ -167,15 +166,11 @@ class HealthConnectDataSource @Inject constructor(
             } else {
                 val syncPayload = syncTrackedMetrics(client, grantedMetrics)
                 val storedState = preferencesRepository.getHealthConnectSyncPreferences()
-                val mergedMetricTokens = storedState
-                    .resolvedMetricChangesTokens(requiredPermissionsByMetric.keys)
-                    .filterKeys { it in grantedMetrics }
-                    .toMutableMap()
-                    .apply {
-                        syncPayload.nextChangesTokens.forEach { (metric, token) ->
-                            if (token.isBlank()) remove(metric) else put(metric, token)
-                        }
-                    }
+                val mergedMetricTokens = mergeMetricChangesTokens(
+                    storedTokens = storedState.resolvedMetricChangesTokens(requiredPermissionsByMetric.keys),
+                    grantedMetrics = grantedMetrics,
+                    tokenUpdates = syncPayload.nextChangesTokens,
+                )
                 preferencesRepository.saveHealthConnectSyncPreferences(
                     changesToken = mergedMetricTokens[HealthMetricType.STEPS].orEmpty(),
                     cacheStateJson = gson.toJson(syncPayload.cacheState),
@@ -236,15 +231,17 @@ class HealthConnectDataSource @Inject constructor(
         }
     }
 
-    private suspend fun aggregateStepsToday(client: HealthConnectClient): Long = runCatching {
-        val todayRange = healthConnectTodayLocalDateTimeRange(LocalDateTime.now())
-        client.aggregate(
+    private suspend fun aggregateStepsToday(
+        client: HealthConnectClient,
+        todayRange: HealthConnectLocalDateTimeRange = healthConnectTodayLocalDateTimeRange(LocalDateTime.now()),
+    ): Long {
+        return client.aggregate(
             AggregateRequest(
                 metrics = setOf(StepsRecord.COUNT_TOTAL),
                 timeRangeFilter = TimeRangeFilter.between(todayRange.start, todayRange.end),
             )
         )[StepsRecord.COUNT_TOTAL] ?: 0L
-    }.getOrElse { 0L }
+    }
 
     private suspend fun performFullSync(
         client: HealthConnectClient,
@@ -252,82 +249,110 @@ class HealthConnectDataSource @Inject constructor(
         initialCacheState: HealthConnectCacheState = HealthConnectCacheState(),
     ): SyncPayload {
         val now = Instant.now()
+        val todayRange = healthConnectTodayLocalDateTimeRange(
+            LocalDateTime.ofInstant(now, ZoneId.systemDefault()),
+        )
+        val normalizedInitialCacheState = initialCacheState.pruneForInstant(now)
         val syncQueriedAt = System.currentTimeMillis()
         val metricFailures = mutableMapOf<HealthMetricType, String>()
+        var stepAggregateFailed = false
         val stepsToday = if (HealthMetricType.STEPS in metricsToSync) readMetricOrDefault(
             HealthMetricType.STEPS,
             metricFailures,
-            initialCacheState.aggregatedStepsToday,
+            normalizedInitialCacheState.aggregatedStepsToday,
         ) {
-            aggregateStepsToday(client)
-        } else initialCacheState.aggregatedStepsToday
+            runCatching { aggregateStepsToday(client, todayRange) }
+                .onFailure { stepAggregateFailed = true }
+                .getOrThrow()
+        } else normalizedInitialCacheState.aggregatedStepsToday
         val heartRateRecords = if (HealthMetricType.HEART_RATE in metricsToSync) readMetricOrDefault(
             HealthMetricType.HEART_RATE,
             metricFailures,
-            initialCacheState.heartRateRecords,
+            normalizedInitialCacheState.heartRateRecords,
         ) {
             client.readAllRecords(
                 recordType = HeartRateRecord::class,
                 timeRangeFilter = TimeRangeFilter.between(startOfToday(), now),
                 mapper = HeartRateRecord::toCachedHeartRateRecord,
             )
-        } else initialCacheState.heartRateRecords
+        } else normalizedInitialCacheState.heartRateRecords
         val sleepSessionRecords = if (HealthMetricType.SLEEP in metricsToSync) readMetricOrDefault(
             HealthMetricType.SLEEP,
             metricFailures,
-            initialCacheState.sleepSessionRecords,
+            normalizedInitialCacheState.sleepSessionRecords,
         ) {
             client.readAllRecords(
                 recordType = SleepSessionRecord::class,
                 timeRangeFilter = TimeRangeFilter.between(startOfSleepWindow(), now),
                 mapper = SleepSessionRecord::toCachedSleepSessionRecord,
             )
-        } else initialCacheState.sleepSessionRecords
+        } else normalizedInitialCacheState.sleepSessionRecords
         val caloriesBurnedRecords = if (HealthMetricType.ACTIVE_CALORIES in metricsToSync) readMetricOrDefault(
             HealthMetricType.ACTIVE_CALORIES,
             metricFailures,
-            initialCacheState.caloriesBurnedRecords,
+            normalizedInitialCacheState.caloriesBurnedRecords,
         ) {
             client.readAllRecords(
                 recordType = ActiveCaloriesBurnedRecord::class,
                 timeRangeFilter = TimeRangeFilter.between(startOfToday(), now),
                 mapper = ActiveCaloriesBurnedRecord::toCachedCaloriesBurnedRecord,
             )
-        } else initialCacheState.caloriesBurnedRecords
+        } else normalizedInitialCacheState.caloriesBurnedRecords
         val exerciseSessionRecords = if (HealthMetricType.WORKOUTS in metricsToSync) readMetricOrDefault(
             HealthMetricType.WORKOUTS,
             metricFailures,
-            initialCacheState.exerciseSessionRecords,
+            normalizedInitialCacheState.exerciseSessionRecords,
         ) {
             client.readAllRecords(
                 recordType = ExerciseSessionRecord::class,
                 timeRangeFilter = TimeRangeFilter.between(startOfToday(), now),
                 mapper = ExerciseSessionRecord::toCachedExerciseSessionRecord,
             )
-        } else initialCacheState.exerciseSessionRecords
-        val stepDiagnostic = if (HealthMetricType.STEPS in metricsToSync) {
-            val stepAggregateSnapshot = buildStepAggregateSnapshot(client, stepsToday)
-            buildStepDiagnostic(
-                client = client,
-                stepAggregateSnapshot = stepAggregateSnapshot,
-                queriedAt = syncQueriedAt,
-                exerciseSessionRecords = exerciseSessionRecords.takeIf { HealthMetricType.WORKOUTS in metricsToSync },
-            )
+        } else normalizedInitialCacheState.exerciseSessionRecords
+        val stepAggregateSnapshot = if (HealthMetricType.STEPS in metricsToSync) {
+            buildStepAggregateSnapshot(client, stepsToday, todayRange)
         } else {
             null
         }
+        val rawStepDiagnostic = stepAggregateSnapshot?.let { snapshot ->
+            buildStepDiagnostic(
+                client = client,
+                stepAggregateSnapshot = snapshot,
+                queriedAt = syncQueriedAt,
+                exerciseSessionRecords = exerciseSessionRecords.takeIf { HealthMetricType.WORKOUTS in metricsToSync },
+            )
+        }
+        val resolvedStepCache = stepAggregateSnapshot?.let { snapshot ->
+            resolveRefreshedStepCacheState(
+                previous = normalizedInitialCacheState,
+                localDate = todayRange.start.toLocalDate(),
+                healthConnectAggregateSteps = stepsToday,
+                samsungHealthSteps = snapshot.samsungHealthSteps,
+                samsungHealthDirectSnapshot = snapshot.samsungHealthDirectStepSnapshot,
+                aggregateFailed = stepAggregateFailed,
+            )
+        } ?: normalizedInitialCacheState
+        val stepDiagnostic = rawStepDiagnostic?.withResolvedStepCache(
+            cacheState = resolvedStepCache,
+            aggregateFailed = stepAggregateFailed,
+        )
         val cacheState = HealthConnectCacheState(
-            aggregatedStepsToday = stepsToday,
-            samsungHealthStepsToday = stepDiagnostic?.samsungHealthStepsToday?.toLong(),
-            samsungHealthDirectStepsToday = stepDiagnostic?.samsungHealthDirectStepsToday?.toLong(),
-            displayStepsToday = stepDiagnostic?.displaySteps?.toLong(),
+            aggregatedStepsToday = resolvedStepCache.aggregatedStepsToday,
+            samsungHealthStepsToday = resolvedStepCache.samsungHealthStepsToday,
+            samsungHealthDirectStepsToday = resolvedStepCache.samsungHealthDirectStepsToday,
+            displayStepsToday = resolvedStepCache.displayStepsToday,
+            stepsLocalDate = resolvedStepCache.stepsLocalDate,
             heartRateRecords = heartRateRecords,
             sleepSessionRecords = sleepSessionRecords,
             caloriesBurnedRecords = caloriesBurnedRecords,
             weightRecords = emptyList(),
             exerciseSessionRecords = exerciseSessionRecords,
-        ).prune(now)
+        ).pruneForInstant(now)
         val nextChangesTokens = readChangesTokensByMetric(client, metricsToSync, metricFailures)
+        metricFailures.clearRecoveredStepFailure(
+            shouldRefreshSteps = HealthMetricType.STEPS in metricsToSync,
+            stepAggregateFailed = stepAggregateFailed,
+        )
         val lastSyncedAt = System.currentTimeMillis()
 
         return SyncPayload(
@@ -399,18 +424,21 @@ class HealthConnectDataSource @Inject constructor(
         val metricFailures = mutableMapOf<HealthMetricType, String>()
         metricTokens.forEach { (metric, token) ->
             var currentToken = token
+            var tokenExpired = false
+            var fullSyncReplacementToken: String? = null
             var hasMore = true
             val metricResult = runCatching {
                 while (hasMore) {
                     val changesResponse = client.getChanges(currentToken)
                     if (changesResponse.changesTokenExpired) {
+                        tokenExpired = true
                         val refreshedMetric = performFullSync(
                             client = client,
                             metricsToSync = setOf(metric),
                             initialCacheState = cacheState,
                         )
                         cacheState = refreshedMetric.cacheState
-                        refreshedMetric.nextChangesTokens[metric]?.let { nextMetricTokens[metric] = it }
+                        fullSyncReplacementToken = refreshedMetric.nextChangesTokens[metric]
                         refreshedMetric.metricStatuses
                             .firstOrNull { it.metric == metric && it.state == HealthMetricSyncState.FAILED }
                             ?.message
@@ -425,18 +453,48 @@ class HealthConnectDataSource @Inject constructor(
             metricResult.onFailure { throwable ->
                 metricFailures[metric] = throwable.message ?: "Health Connect-incrementele sync is mislukt voor deze metric."
             }
-            nextMetricTokens[metric] = currentToken
+            nextMetricTokens.storeResolvedChangesToken(
+                metric = metric,
+                currentToken = currentToken,
+                tokenExpired = tokenExpired,
+                fullSyncReplacementToken = fullSyncReplacementToken,
+            )
         }
-        val normalizedCacheState = cacheState.prune(Instant.now())
+        val syncInstant = Instant.now()
+        val todayRange = healthConnectTodayLocalDateTimeRange(
+            LocalDateTime.ofInstant(syncInstant, ZoneId.systemDefault()),
+        )
+        val normalizedCacheState = cacheState.pruneForInstant(syncInstant)
         val hasNewUiData = normalizedCacheState != initialCacheState
 
         // Always re-aggregate: the call is a single cheap round-trip and guarantees
         // deduplication-correct results. We cannot safely reuse the cached value because
         // older DataStore entries have aggregatedStepsToday == 0 (pre-migration).
         val shouldRefreshSteps = HealthMetricType.STEPS in metricTokens.keys
-        val freshSteps = if (shouldRefreshSteps) aggregateStepsToday(client) else initialCacheState.aggregatedStepsToday
-        val stepAggregateSnapshot = if (shouldRefreshSteps) buildStepAggregateSnapshot(client, freshSteps) else null
-        val stepDiagnostic = if (shouldRefreshSteps) {
+        var stepAggregateFailed = false
+        val freshSteps = if (shouldRefreshSteps) {
+            readMetricOrDefault(
+                metric = HealthMetricType.STEPS,
+                failures = metricFailures,
+                default = normalizedCacheState.aggregatedStepsToday,
+            ) {
+                runCatching { aggregateStepsToday(client, todayRange) }
+                    .onFailure { stepAggregateFailed = true }
+                    .getOrThrow()
+            }
+        } else {
+            normalizedCacheState.aggregatedStepsToday
+        }
+        metricFailures.clearRecoveredStepFailure(
+            shouldRefreshSteps = shouldRefreshSteps,
+            stepAggregateFailed = stepAggregateFailed,
+        )
+        val stepAggregateSnapshot = if (shouldRefreshSteps) {
+            buildStepAggregateSnapshot(client, freshSteps, todayRange)
+        } else {
+            null
+        }
+        val rawStepDiagnostic = if (shouldRefreshSteps) {
             buildStepDiagnostic(
                 client = client,
                 stepAggregateSnapshot = requireNotNull(stepAggregateSnapshot),
@@ -446,7 +504,22 @@ class HealthConnectDataSource @Inject constructor(
         } else {
             null
         }
-        val hasFreshAggregateData = shouldRefreshSteps && freshSteps != initialCacheState.aggregatedStepsToday
+        val resolvedStepCache = stepAggregateSnapshot?.let { snapshot ->
+            resolveRefreshedStepCacheState(
+                previous = normalizedCacheState,
+                localDate = todayRange.start.toLocalDate(),
+                healthConnectAggregateSteps = freshSteps,
+                samsungHealthSteps = snapshot.samsungHealthSteps,
+                samsungHealthDirectSnapshot = snapshot.samsungHealthDirectStepSnapshot,
+                aggregateFailed = stepAggregateFailed,
+            )
+        } ?: normalizedCacheState
+        val stepDiagnostic = rawStepDiagnostic?.withResolvedStepCache(
+            cacheState = resolvedStepCache,
+            aggregateFailed = stepAggregateFailed,
+        )
+        val hasFreshAggregateData = shouldRefreshSteps &&
+            resolvedStepCache.displayStepsToday != normalizedCacheState.displayStepsToday
         val lastSyncedAt = if (hasNewUiData || hasFreshAggregateData || metricFailures.isNotEmpty()) {
             System.currentTimeMillis()
         } else {
@@ -454,12 +527,7 @@ class HealthConnectDataSource @Inject constructor(
         }
 
         return SyncPayload(
-            cacheState = normalizedCacheState.copy(
-                aggregatedStepsToday = freshSteps,
-                samsungHealthStepsToday = stepAggregateSnapshot?.samsungHealthSteps?.toLong(),
-                samsungHealthDirectStepsToday = stepAggregateSnapshot?.samsungHealthDirectStepSnapshot?.steps?.toLong(),
-                displayStepsToday = stepAggregateSnapshot?.displaySteps?.toLong(),
-            ),
+            cacheState = resolvedStepCache,
             stepDiagnostic = stepDiagnostic,
             nextChangesTokens = nextMetricTokens,
             lastSyncedAt = lastSyncedAt,
@@ -489,20 +557,14 @@ class HealthConnectDataSource @Inject constructor(
     private fun HealthConnectCacheState.upsert(record: androidx.health.connect.client.records.Record): HealthConnectCacheState {
         val now = Instant.now()
         return when (record) {
-            is StepsRecord -> {
-                val mapped = record.toCachedStepRecord()
-                copy(
-                    stepRecords = stepRecords.filterNot { it.recordId == mapped.recordId } +
-                        listOfNotNull(mapped.takeIf { it.endTimeMillis >= startOfToday().toEpochMilli() }),
-                ).prune(now)
-            }
+            is StepsRecord -> copy(stepRecords = emptyList())
 
             is HeartRateRecord -> {
                 val mapped = record.toCachedHeartRateRecord()
                 copy(
                     heartRateRecords = heartRateRecords.filterNot { it.recordId == mapped.recordId } +
                         listOfNotNull(mapped.takeIf { it.endTimeMillis >= startOfToday().toEpochMilli() }),
-                ).prune(now)
+                ).pruneForInstant(now)
             }
 
             is SleepSessionRecord -> {
@@ -510,7 +572,7 @@ class HealthConnectDataSource @Inject constructor(
                 copy(
                     sleepSessionRecords = sleepSessionRecords.filterNot { it.recordId == mapped.recordId } +
                         listOfNotNull(mapped.takeIf { it.endTimeMillis >= startOfSleepWindow().toEpochMilli() }),
-                ).prune(now)
+                ).pruneForInstant(now)
             }
 
             is ActiveCaloriesBurnedRecord -> {
@@ -518,7 +580,7 @@ class HealthConnectDataSource @Inject constructor(
                 copy(
                     caloriesBurnedRecords = caloriesBurnedRecords.filterNot { it.recordId == mapped.recordId } +
                         listOfNotNull(mapped.takeIf { it.endTimeMillis >= startOfToday().toEpochMilli() }),
-                ).prune(now)
+                ).pruneForInstant(now)
             }
 
             is ExerciseSessionRecord -> {
@@ -526,7 +588,7 @@ class HealthConnectDataSource @Inject constructor(
                 copy(
                     exerciseSessionRecords = exerciseSessionRecords.filterNot { it.recordId == mapped.recordId } +
                         listOfNotNull(mapped.takeIf { it.endTimeMillis >= startOfToday().toEpochMilli() }),
-                ).prune(now)
+                ).pruneForInstant(now)
             }
 
             else -> this
@@ -542,27 +604,13 @@ class HealthConnectDataSource @Inject constructor(
         exerciseSessionRecords = exerciseSessionRecords.filterNot { it.recordId == recordId },
     )
 
-    private fun HealthConnectCacheState.prune(now: Instant): HealthConnectCacheState {
-        val todayStartMillis = startOfToday().toEpochMilli()
-        val sleepWindowStartMillis = startOfSleepWindow().toEpochMilli()
-        val nowMillis = now.toEpochMilli()
-        return copy(
-            stepRecords = stepRecords.filter { it.endTimeMillis in todayStartMillis..nowMillis },
-            heartRateRecords = heartRateRecords.filter { it.endTimeMillis in todayStartMillis..nowMillis },
-            sleepSessionRecords = sleepSessionRecords.filter { it.endTimeMillis in sleepWindowStartMillis..nowMillis },
-            caloriesBurnedRecords = caloriesBurnedRecords.filter { it.endTimeMillis in todayStartMillis..nowMillis },
-            weightRecords = emptyList(),
-            exerciseSessionRecords = exerciseSessionRecords.filter { it.endTimeMillis in todayStartMillis..nowMillis },
-        )
-    }
-
     private fun SyncPayload.toStatus(
         metricStatuses: List<HealthMetricStatus> = this.metricStatuses,
         isPartialPermission: Boolean = false,
     ): HealthConnectStatus {
         val metrics = cacheState.toDomainMetrics()
-        val state = if (metrics.hasAnyData()) HealthConnectState.CONNECTED else HealthConnectState.NO_DATA
-        val freshness = stepDataFreshness(metrics, metricStatuses)
+        val state = resolveHealthConnectState(metrics, metricStatuses, stepDiagnostic)
+        val freshness = resolveHealthConnectStepDataFreshness(metrics, metricStatuses, stepDiagnostic)
         return HealthConnectStatus(
             state = state,
             metrics = metrics,
@@ -609,8 +657,8 @@ class HealthConnectDataSource @Inject constructor(
     private suspend fun buildStepAggregateSnapshot(
         client: HealthConnectClient,
         healthConnectSteps: Long,
+        todayRange: HealthConnectLocalDateTimeRange,
     ): StepAggregateSnapshot {
-        val todayRange = healthConnectTodayLocalDateTimeRange(LocalDateTime.now())
         val sourceSnapshot = readStepSourceSnapshotToday(client, todayRange)
         val samsungHealthAggregateSteps = aggregateSamsungHealthStepsToday(
             client = client,
@@ -629,7 +677,7 @@ class HealthConnectDataSource @Inject constructor(
         val healthConnectStepCount = healthConnectSteps.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
         val displaySteps = resolveSamsungComparableDisplaySteps(
             healthConnectAggregateSteps = healthConnectStepCount,
-            samsungHealthAggregateSteps = samsungHealthSteps,
+            samsungHealthVisibleSteps = samsungHealthSteps,
             samsungHealthDirectSteps = samsungHealthDirectStepSnapshot.steps,
         )
         return StepAggregateSnapshot(
@@ -665,14 +713,6 @@ class HealthConnectDataSource @Inject constructor(
             ?.coerceAtMost(Int.MAX_VALUE.toLong())
             ?.toInt()
     }
-
-    private fun resolveSamsungHealthVisibleSteps(
-        samsungHealthAggregateSteps: Int?,
-        samsungRawStepRecordSum: Int?,
-    ): Int? = maxOf(
-        samsungHealthAggregateSteps ?: 0,
-        samsungRawStepRecordSum ?: 0,
-    ).takeIf { it > 0 }
 
     private suspend fun aggregateStepsForWorkoutWindowsToday(
         client: HealthConnectClient,
@@ -729,7 +769,7 @@ class HealthConnectDataSource @Inject constructor(
         ) { record ->
             val packageName = record.metadata.dataOrigin.packageName
             val label = packageName.toStepSourceLabel()
-            if (label == "Samsung Health") {
+            if (packageName.isOfficialSamsungHealthDataOrigin()) {
                 samsungPackageNames += packageName
                 samsungRawStepRecordSum += record.count
                 val endMillis = record.endTime.toEpochMilli()
@@ -755,27 +795,6 @@ class HealthConnectDataSource @Inject constructor(
         }.distinct().sorted()
     }.getOrDefault(emptyList())
 
-    private fun stepDataFreshness(
-        metrics: HealthConnectMetrics,
-        metricStatuses: List<HealthMetricStatus>,
-    ): HealthConnectStepDataFreshness {
-        val stepStatus = metricStatuses.firstOrNull { it.metric == HealthMetricType.STEPS }
-            ?: return HealthConnectStepDataFreshness.PERMISSION_MISSING
-        return when (stepStatus.state) {
-            HealthMetricSyncState.SYNCED,
-            HealthMetricSyncState.SYNCING,
-            HealthMetricSyncState.STALE -> HealthConnectStepDataFreshness.FRESH
-            HealthMetricSyncState.DENIED,
-            HealthMetricSyncState.PARTIALLY_GRANTED -> HealthConnectStepDataFreshness.PERMISSION_MISSING
-            HealthMetricSyncState.UNAVAILABLE -> HealthConnectStepDataFreshness.UNAVAILABLE
-            HealthMetricSyncState.FAILED -> if (metrics.stepsToday > 0) {
-                HealthConnectStepDataFreshness.STALE_CACHE
-            } else {
-                HealthConnectStepDataFreshness.ERROR
-            }
-        }
-    }
-
     private fun List<HealthMetricStatus>.withDeniedMetrics(
         grantedMetrics: Set<HealthMetricType>,
         grantedPermissions: Set<String>,
@@ -793,7 +812,7 @@ class HealthConnectDataSource @Inject constructor(
         if (storedState.cacheStateJson.isBlank()) return null
         return runCatching {
             val cacheState = readCacheStateFromStoredState(storedState)
-            cacheState.prune(Instant.now()).toDomainMetrics()
+            cacheState.pruneForInstant(Instant.now()).toDomainMetrics()
         }.getOrNull()
     }
 
@@ -830,13 +849,6 @@ class HealthConnectDataSource @Inject constructor(
         return "Health Connect gesynchroniseerd: ${parts.joinToString(", ")}."
     }
 
-    private fun HealthConnectMetrics.hasAnyData(): Boolean =
-        stepsToday > 0 ||
-            averageHeartRateBpm != null ||
-            sleepSessionCount > 0 ||
-            caloriesBurnedToday != null ||
-            workoutSessionCountToday > 0
-
     /**
      * Fetches today's step count directly from the Health Connect aggregate API.
      * Lightweight — only checks SDK status, permissions, and runs one aggregate query.
@@ -868,7 +880,7 @@ class HealthConnectDataSource @Inject constructor(
         runCatching {
             val cacheState = gson.fromJson(storedState.cacheStateJson, HealthConnectCacheState::class.java)
                 ?: return@runCatching 0
-            cacheState.prune(Instant.now()).toDomainMetrics().stepsToday
+            cacheState.pruneForInstant(Instant.now()).toDomainMetrics().stepsToday
         }.getOrElse { 0 }
     }
 
@@ -881,7 +893,7 @@ class HealthConnectDataSource @Inject constructor(
     private companion object {
         const val HealthConnectReadPageSize = 100
         const val MaxStepWorkoutWindowSessions = 12
-        val KnownSamsungHealthPackageNames = setOf("com.sec.android.app.shealth")
+        val KnownSamsungHealthPackageNames = setOf(SamsungHealthDirectStepsDataSource.SamsungHealthPackageName)
         val StepDiagnosticTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
     }
 }
@@ -916,6 +928,53 @@ private data class StepWorkoutWindowSnapshot(
     val truncated: Boolean,
 )
 
+internal fun resolveHealthConnectState(
+    metrics: HealthConnectMetrics,
+    metricStatuses: List<HealthMetricStatus>,
+    stepDiagnostic: HealthConnectStepDiagnostic?,
+): HealthConnectState {
+    val hasSuccessfulStepMeasurement = metricStatuses.any { status ->
+        status.metric == HealthMetricType.STEPS && status.state == HealthMetricSyncState.SYNCED
+    } || stepDiagnostic?.hasFreshDirectStepValue == true
+    val hasAnyPositiveOrNonStepData = metrics.stepsToday > 0 ||
+        metrics.averageHeartRateBpm != null ||
+        metrics.sleepSessionCount > 0 ||
+        metrics.caloriesBurnedToday != null ||
+        metrics.workoutSessionCountToday > 0
+    return if (hasSuccessfulStepMeasurement || hasAnyPositiveOrNonStepData) {
+        HealthConnectState.CONNECTED
+    } else {
+        HealthConnectState.NO_DATA
+    }
+}
+
+internal fun resolveHealthConnectStepDataFreshness(
+    metrics: HealthConnectMetrics,
+    metricStatuses: List<HealthMetricStatus>,
+    stepDiagnostic: HealthConnectStepDiagnostic?,
+): HealthConnectStepDataFreshness {
+    if (stepDiagnostic?.hasFreshDirectStepValue == true) {
+        return HealthConnectStepDataFreshness.FRESH
+    }
+    val stepStatus = metricStatuses.firstOrNull { it.metric == HealthMetricType.STEPS }
+        ?: return HealthConnectStepDataFreshness.PERMISSION_MISSING
+    return when (stepStatus.state) {
+        HealthMetricSyncState.SYNCED,
+        HealthMetricSyncState.SYNCING,
+        HealthMetricSyncState.STALE -> HealthConnectStepDataFreshness.FRESH
+        HealthMetricSyncState.DENIED,
+        HealthMetricSyncState.PARTIALLY_GRANTED -> HealthConnectStepDataFreshness.PERMISSION_MISSING
+        HealthMetricSyncState.UNAVAILABLE -> HealthConnectStepDataFreshness.UNAVAILABLE
+        HealthMetricSyncState.FAILED -> if (
+            metrics.stepsToday > 0 || stepDiagnostic?.displayStepsFromCache == true
+        ) {
+            HealthConnectStepDataFreshness.STALE_CACHE
+        } else {
+            HealthConnectStepDataFreshness.ERROR
+        }
+    }
+}
+
 internal data class HealthConnectLocalDateTimeRange(
     val start: LocalDateTime,
     val end: LocalDateTime,
@@ -926,6 +985,14 @@ internal fun healthConnectTodayLocalDateTimeRange(now: LocalDateTime): HealthCon
         start = now.toLocalDate().atStartOfDay(),
         end = now,
     )
+
+internal fun resolveSamsungHealthVisibleSteps(
+    samsungHealthAggregateSteps: Int?,
+    samsungRawStepRecordSum: Int?,
+): Int? = listOfNotNull(
+    samsungHealthAggregateSteps?.takeIf { it > 0 },
+    samsungRawStepRecordSum?.takeIf { it > 0 },
+).maxOrNull()
 
 internal data class CachedStepRecord(
     val recordId: String,
@@ -975,12 +1042,14 @@ internal data class CachedExerciseSessionRecord(
 internal data class HealthConnectCacheState(
     /** Authoritative step count from the Health Connect aggregate API (deduplication-aware). */
     val aggregatedStepsToday: Long = 0L,
-    /** Samsung Health-origin aggregate for matching Samsung Health All steps when Samsung publishes a total. */
+    /** Selected Samsung Health-visible scalar: official raw fallback or Samsung-origin aggregate. */
     val samsungHealthStepsToday: Long? = null,
     /** Direct Samsung Health Data SDK All steps value, when the API AAR and Samsung permission are available. */
     val samsungHealthDirectStepsToday: Long? = null,
     /** Step count intentionally shown in TrainIQ after applying the Samsung comparison policy. */
     val displayStepsToday: Long? = null,
+    /** Local calendar day that owns the scalar step totals. */
+    val stepsLocalDate: String? = null,
     /** Kept for backward-compatible JSON deserialization of older caches. Not used for step counting. */
     val stepRecords: List<CachedStepRecord> = emptyList(),
     val heartRateRecords: List<CachedHeartRateRecord> = emptyList(),
@@ -990,7 +1059,8 @@ internal data class HealthConnectCacheState(
     val exerciseSessionRecords: List<CachedExerciseSessionRecord> = emptyList(),
 ) {
     fun isEmpty(): Boolean =
-        aggregatedStepsToday == 0L &&
+        stepsLocalDate == null &&
+            aggregatedStepsToday == 0L &&
             (samsungHealthStepsToday ?: 0L) == 0L &&
             (samsungHealthDirectStepsToday ?: 0L) == 0L &&
             (displayStepsToday ?: 0L) == 0L &&
@@ -1001,12 +1071,155 @@ internal data class HealthConnectCacheState(
             exerciseSessionRecords.isEmpty()
 }
 
+internal fun HealthConnectCacheState.pruneForInstant(now: Instant): HealthConnectCacheState {
+    val zone = ZoneId.systemDefault()
+    val currentLocalDate = now.atZone(zone).toLocalDate()
+    val currentStepDate = currentLocalDate.toString()
+    val hasCurrentStepTotals = stepsLocalDate == currentStepDate
+    val todayStartMillis = currentLocalDate.atStartOfDay(zone).toInstant().toEpochMilli()
+    val sleepWindowStartMillis = currentLocalDate.minusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+    val nowMillis = now.toEpochMilli()
+    return copy(
+        aggregatedStepsToday = if (hasCurrentStepTotals) aggregatedStepsToday else 0L,
+        samsungHealthStepsToday = samsungHealthStepsToday.takeIf { hasCurrentStepTotals },
+        samsungHealthDirectStepsToday = samsungHealthDirectStepsToday.takeIf { hasCurrentStepTotals },
+        displayStepsToday = displayStepsToday.takeIf { hasCurrentStepTotals },
+        stepsLocalDate = stepsLocalDate.takeIf { hasCurrentStepTotals },
+        stepRecords = emptyList(),
+        heartRateRecords = heartRateRecords.filter { it.endTimeMillis in todayStartMillis..nowMillis },
+        sleepSessionRecords = sleepSessionRecords.filter { it.endTimeMillis in sleepWindowStartMillis..nowMillis },
+        caloriesBurnedRecords = caloriesBurnedRecords.filter { it.endTimeMillis in todayStartMillis..nowMillis },
+        weightRecords = emptyList(),
+        exerciseSessionRecords = exerciseSessionRecords.filter { it.endTimeMillis in todayStartMillis..nowMillis },
+    )
+}
+
+internal fun HealthConnectStepDiagnostic.withResolvedStepCache(
+    cacheState: HealthConnectCacheState,
+    aggregateFailed: Boolean = false,
+): HealthConnectStepDiagnostic {
+    val resolvedDirectSteps = cacheState.samsungHealthDirectStepsToday
+        ?.coerceIn(0L, Int.MAX_VALUE.toLong())
+        ?.toInt()
+    val resolvedDisplaySteps = cacheState.toDomainMetrics().stepsToday
+    val hasFreshDirectSelection = samsungHealthDirectStepsToday != null &&
+        resolvedDisplaySteps == samsungHealthDirectStepsToday
+    val hasFreshSamsungSelection = samsungHealthStepsToday != null &&
+        resolvedDisplaySteps == samsungHealthStepsToday
+    return copy(
+        aggregateStepsToday = cacheState.aggregatedStepsToday
+            .coerceIn(0L, Int.MAX_VALUE.toLong())
+            .toInt(),
+        samsungHealthStepsToday = cacheState.samsungHealthStepsToday
+            ?.coerceIn(0L, Int.MAX_VALUE.toLong())
+            ?.toInt(),
+        samsungHealthDirectStepsToday = resolvedDirectSteps,
+        displaySteps = resolvedDisplaySteps,
+        samsungHealthDirectFromCache = resolvedDirectSteps != null && samsungHealthDirectStepsToday == null,
+        displayStepsFromCache = aggregateFailed &&
+            !hasFreshDirectSelection &&
+            !hasFreshSamsungSelection,
+    )
+}
+
+internal fun resolveRefreshedStepCacheState(
+    previous: HealthConnectCacheState,
+    localDate: LocalDate,
+    healthConnectAggregateSteps: Long,
+    samsungHealthSteps: Int?,
+    samsungHealthDirectSnapshot: SamsungHealthDirectStepSnapshot,
+    aggregateFailed: Boolean,
+): HealthConnectCacheState {
+    val dateKey = localDate.toString()
+    val sameDayPrevious = previous.takeIf { it.stepsLocalDate == dateKey } ?: HealthConnectCacheState()
+    val resolvedAggregate = if (aggregateFailed) {
+        sameDayPrevious.aggregatedStepsToday
+    } else {
+        healthConnectAggregateSteps
+    }
+    val resolvedSamsung = samsungHealthSteps?.toLong()
+        ?: sameDayPrevious.samsungHealthStepsToday.takeIf { aggregateFailed }
+    val directReadSucceeded = samsungHealthDirectSnapshot.queriedAt != null
+    val resolvedDirect = when {
+        directReadSucceeded -> samsungHealthDirectSnapshot.steps?.toLong() ?: 0L
+        aggregateFailed && samsungHealthSteps == null && samsungHealthDirectSnapshot.canReuseCachedDirectSteps() ->
+            sameDayPrevious.samsungHealthDirectStepsToday
+        else -> null
+    }
+    val displaySteps = resolveSamsungComparableDisplaySteps(
+        healthConnectAggregateSteps = resolvedAggregate
+            .coerceIn(0L, Int.MAX_VALUE.toLong())
+            .toInt(),
+        samsungHealthVisibleSteps = resolvedSamsung
+            ?.coerceIn(0L, Int.MAX_VALUE.toLong())
+            ?.toInt(),
+        samsungHealthDirectSteps = resolvedDirect
+            ?.coerceIn(0L, Int.MAX_VALUE.toLong())
+            ?.toInt(),
+    )
+    return previous.copy(
+        stepsLocalDate = dateKey,
+        aggregatedStepsToday = resolvedAggregate,
+        samsungHealthStepsToday = resolvedSamsung,
+        samsungHealthDirectStepsToday = resolvedDirect,
+        displayStepsToday = displaySteps.toLong(),
+    )
+}
+
+private fun SamsungHealthDirectStepSnapshot.canReuseCachedDirectSteps(): Boolean =
+    status.startsWith(SamsungHealthDirectStepsDataSource.StatusSdkReadFailedPrefix) ||
+        status.startsWith(SamsungHealthDirectStepsDataSource.StatusSdkPlatformInternal) ||
+        status.startsWith(SamsungHealthDirectStepsDataSource.StatusSdkHealthDataFailed) ||
+        status.startsWith(SamsungHealthDirectStepsDataSource.StatusSdkPlatformUnavailable)
+
+internal fun MutableMap<HealthMetricType, String>.clearRecoveredStepFailure(
+    shouldRefreshSteps: Boolean,
+    stepAggregateFailed: Boolean,
+) {
+    if (shouldRefreshSteps && !stepAggregateFailed) {
+        remove(HealthMetricType.STEPS)
+    }
+}
+
+internal fun MutableMap<HealthMetricType, String>.storeResolvedChangesToken(
+    metric: HealthMetricType,
+    currentToken: String,
+    tokenExpired: Boolean,
+    fullSyncReplacementToken: String?,
+) {
+    if (tokenExpired && fullSyncReplacementToken.isNullOrBlank()) {
+        this[metric] = ""
+        return
+    }
+    val resolvedToken = if (tokenExpired) fullSyncReplacementToken else currentToken
+    if (resolvedToken.isNullOrBlank()) {
+        remove(metric)
+    } else {
+        this[metric] = resolvedToken
+    }
+}
+
+internal fun mergeMetricChangesTokens(
+    storedTokens: Map<HealthMetricType, String>,
+    grantedMetrics: Set<HealthMetricType>,
+    tokenUpdates: Map<HealthMetricType, String>,
+): Map<HealthMetricType, String> = storedTokens
+    .filterKeys { it in grantedMetrics }
+    .toMutableMap()
+    .apply {
+        tokenUpdates.forEach { (metric, token) ->
+            if (metric !in grantedMetrics) return@forEach
+            if (token.isBlank()) remove(metric) else put(metric, token)
+        }
+    }
+
 internal fun HealthConnectCacheState.onlyMetrics(metrics: Set<HealthMetricType>): HealthConnectCacheState = copy(
     aggregatedStepsToday = if (HealthMetricType.STEPS in metrics) aggregatedStepsToday else 0L,
     samsungHealthStepsToday = if (HealthMetricType.STEPS in metrics) samsungHealthStepsToday else null,
     samsungHealthDirectStepsToday = if (HealthMetricType.STEPS in metrics) samsungHealthDirectStepsToday else null,
     displayStepsToday = if (HealthMetricType.STEPS in metrics) displayStepsToday else null,
-    stepRecords = if (HealthMetricType.STEPS in metrics) stepRecords else emptyList(),
+    stepsLocalDate = if (HealthMetricType.STEPS in metrics) stepsLocalDate else null,
+    stepRecords = emptyList(),
     heartRateRecords = if (HealthMetricType.HEART_RATE in metrics) heartRateRecords else emptyList(),
     sleepSessionRecords = if (HealthMetricType.SLEEP in metrics) sleepSessionRecords else emptyList(),
     caloriesBurnedRecords = if (HealthMetricType.ACTIVE_CALORIES in metrics) caloriesBurnedRecords else emptyList(),
@@ -1031,26 +1244,39 @@ internal fun cachedIncrementalFailurePayload(
     cachedState: HealthConnectCacheState,
     storedState: HealthConnectSyncPreferences,
     failureMessage: String,
-): SyncPayload = SyncPayload(
-    cacheState = cachedState,
-    lastSyncedAt = storedState.lastSyncedAt,
-    stepDiagnostic = HealthConnectStepDiagnostic(
-        aggregateStepsToday = cachedState.aggregatedStepsToday.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
-        samsungHealthStepsToday = cachedState.samsungHealthStepsToday?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt(),
-        samsungHealthDirectStepsToday = cachedState.samsungHealthDirectStepsToday
-            ?.coerceAtMost(Int.MAX_VALUE.toLong())
-            ?.toInt(),
-        displaySteps = cachedState.toDomainMetrics().stepsToday,
-        queriedAt = storedState.lastSyncedAt,
-    ),
-    nextChangesTokens = storedState.resolvedMetricChangesTokens(HealthConnectSyncMetricTypes),
-    nextChangesToken = storedState.changesToken,
-    metricStatuses = buildHealthMetricSyncStatuses(
-        metrics = HealthConnectSyncMetricTypes,
-        failedMetrics = HealthConnectSyncMetricTypes.associateWith { failureMessage },
+    now: Instant = Instant.now(),
+): SyncPayload {
+    val safeCachedState = cachedState.pruneForInstant(now)
+    return SyncPayload(
+        cacheState = safeCachedState,
         lastSyncedAt = storedState.lastSyncedAt,
-    ),
-)
+        stepDiagnostic = HealthConnectStepDiagnostic(
+            aggregateStepsToday = safeCachedState.aggregatedStepsToday.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+            samsungHealthStepsToday = safeCachedState.samsungHealthStepsToday
+                ?.coerceAtMost(Int.MAX_VALUE.toLong())
+                ?.toInt(),
+            samsungHealthDirectStepsToday = safeCachedState.samsungHealthDirectStepsToday
+                ?.coerceAtMost(Int.MAX_VALUE.toLong())
+                ?.toInt(),
+            samsungHealthDirectStatus = if (safeCachedState.samsungHealthDirectStepsToday != null) {
+                "Samsung Health directe status niet opnieuw bepaald door een algemene syncfout; laatst bekende waarde komt uit cache."
+            } else {
+                "Samsung Health directe status niet opnieuw bepaald door een algemene syncfout; geen directe cachewaarde beschikbaar."
+            },
+            samsungHealthDirectFromCache = safeCachedState.samsungHealthDirectStepsToday != null,
+            displayStepsFromCache = safeCachedState.stepsLocalDate != null && safeCachedState.displayStepsToday != null,
+            displaySteps = safeCachedState.toDomainMetrics().stepsToday,
+            queriedAt = storedState.lastSyncedAt,
+        ),
+        nextChangesTokens = storedState.resolvedMetricChangesTokens(HealthConnectSyncMetricTypes),
+        nextChangesToken = storedState.changesToken,
+        metricStatuses = buildHealthMetricSyncStatuses(
+            metrics = HealthConnectSyncMetricTypes,
+            failedMetrics = HealthConnectSyncMetricTypes.associateWith { failureMessage },
+            lastSyncedAt = storedState.lastSyncedAt,
+        ),
+    )
+}
 
 internal fun fullSyncTokenFailurePayload(
     cacheState: HealthConnectCacheState,
@@ -1065,6 +1291,13 @@ internal fun fullSyncTokenFailurePayload(
         samsungHealthDirectStepsToday = cacheState.samsungHealthDirectStepsToday
             ?.coerceAtMost(Int.MAX_VALUE.toLong())
             ?.toInt(),
+        samsungHealthDirectStatus = if (cacheState.samsungHealthDirectStepsToday != null) {
+            "Samsung Health directe status niet opnieuw bepaald doordat de ChangesToken-sync is mislukt; laatst bekende waarde komt uit cache."
+        } else {
+            "Samsung Health directe status niet opnieuw bepaald doordat de ChangesToken-sync is mislukt; geen directe cachewaarde beschikbaar."
+        },
+        samsungHealthDirectFromCache = cacheState.samsungHealthDirectStepsToday != null,
+        displayStepsFromCache = cacheState.stepsLocalDate != null && cacheState.displayStepsToday != null,
         displaySteps = cacheState.toDomainMetrics().stepsToday,
         queriedAt = lastSyncedAt,
     ),
@@ -1111,8 +1344,12 @@ internal fun hasHealthConnectPermission(
     requiredPermission: String,
 ): Boolean = requiredPermission in grantedPermissions
 
+internal fun String.isOfficialSamsungHealthDataOrigin(): Boolean =
+    equals(SamsungHealthDirectStepsDataSource.SamsungHealthPackageName, ignoreCase = true)
+
 internal fun String.toStepSourceLabel(): String = when {
-    contains("samsung", ignoreCase = true) -> "Samsung Health"
+    equals(SamsungHealthDirectStepsDataSource.SamsungHealthPackageName, ignoreCase = true) ||
+        contains("samsung", ignoreCase = true) -> "Samsung Health"
     this == "android" || contains("healthconnect.phone", ignoreCase = true) -> "Jouw telefoon"
     isBlank() -> "Onbekende bron"
     else -> this
