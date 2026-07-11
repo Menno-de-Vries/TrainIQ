@@ -11,8 +11,6 @@ import androidx.benchmark.macro.junit4.MacrobenchmarkRule;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.uiautomator.By;
 import androidx.test.uiautomator.Direction;
-import androidx.test.uiautomator.StaleObjectException;
-import androidx.test.uiautomator.UiObject2;
 import androidx.test.uiautomator.UiDevice;
 import androidx.test.uiautomator.Until;
 import java.io.IOException;
@@ -131,16 +129,14 @@ public class TrainIqStartupBenchmark {
 
     private Unit navigateAndScrollSettings(MacrobenchmarkScope scope) {
         UiDevice device = scope.getDevice();
-        tapAnyText(device, "Training", "Train");
-        tapAnyText(device, "Voeding");
-        tapAnyText(device, "Coach");
-        tapAnyText(device, "Meer", "Instellingen");
+        tapBottomDestination(device, 1);
+        tapBottomDestination(device, 2);
+        tapBottomDestination(device, 3);
+        tapBottomDestination(device, 4);
         requireAnyText(device, "Instellingen", "Health Connect, AI en voorkeuren");
         device.waitForIdle();
-        if (device.findObject(By.scrollable(true)) != null) {
-            device.findObject(By.scrollable(true)).scroll(Direction.DOWN, 0.7f);
-        }
-        device.waitForIdle();
+        scrollVertical(device, Direction.DOWN);
+        scrollVertical(device, Direction.UP);
         return Unit.INSTANCE;
     }
 
@@ -206,8 +202,13 @@ public class TrainIqStartupBenchmark {
     }
 
     private static void tapBottomTrain(UiDevice device) {
+        tapBottomDestination(device, 1);
+    }
+
+    private static void tapBottomDestination(UiDevice device, int index) {
+        int destinationCount = 5;
         device.click(
-                (int) (device.getDisplayWidth() * 0.25f),
+                (int) (device.getDisplayWidth() * ((index + 0.5f) / destinationCount)),
                 (int) (device.getDisplayHeight() * 0.94f)
         );
         device.waitForIdle();
@@ -222,23 +223,6 @@ public class TrainIqStartupBenchmark {
         device.waitForIdle();
     }
 
-    private static void tapAnyText(UiDevice device, String... labels) {
-        for (int attempt = 0; attempt < 10; attempt++) {
-            for (String label : labels) {
-                if (device.wait(Until.hasObject(By.text(label)), 1_500L)) {
-                    try {
-                        clickNearestClickable(device.findObject(By.text(label)));
-                        device.waitForIdle();
-                        return;
-                    } catch (StaleObjectException exception) {
-                        device.waitForIdle();
-                    }
-                }
-            }
-        }
-        throw new AssertionError("Required benchmark target not found: " + String.join(" or ", labels));
-    }
-
     private static void requireAnyText(UiDevice device, String... labels) {
         for (String label : labels) {
             if (device.wait(Until.hasObject(By.text(label)), 5_000L)) {
@@ -246,14 +230,6 @@ public class TrainIqStartupBenchmark {
             }
         }
         throw new AssertionError("Required benchmark screen not found: " + String.join(" or ", labels));
-    }
-
-    private static void clickNearestClickable(UiObject2 object) {
-        UiObject2 current = object;
-        while (current != null && !current.isClickable()) {
-            current = current.getParent();
-        }
-        (current != null ? current : object).click();
     }
 
     private static void scrollVertical(UiDevice device, Direction direction) {

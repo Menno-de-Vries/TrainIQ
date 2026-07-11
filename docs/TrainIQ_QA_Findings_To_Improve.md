@@ -6,6 +6,17 @@ Refresh date: 2026-05-10, current worktree
 
 Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emulator smoke, Health Connect, Gemini/AI, Room/data, UI/UX/accessibility, release readiness.
 
+## 2026-07-11 App Performance and Test-Health Pass
+
+- status: partially-done; concrete Settings lazy-layout and benchmark reliability risks are fixed, while physical-device certification remains open.
+- Settings now gives every large `LazyColumn` item a unique stable key and compatible content type so Compose can preserve item identity and reuse section compositions during down/up scrolling.
+- The top-level/Settings Macrobenchmark no longer selects ambiguous body text such as `Training`; it targets the five navigation slots directly and measures both downward and upward Settings scroll. The final five profileable emulator iterations completed and produced five Perfetto traces. Emulator-only result: median frame count `126`, frame CPU P50 `45.3 ms` and P95 `119.3 ms`; frame overrun P50 `49.0 ms` and P95 `159.9 ms`. An earlier pass was materially faster, confirming high emulator variance; these numbers are diagnostic trend evidence, not release certification.
+- Test cleanup removed only the two untouched Android Studio template tests (`2 + 2 = 4` and package-name-only instrumentation). Privacy, data, architecture, accessibility and behavioral regression coverage remains intact.
+- verification: focused Settings and benchmark RED/GREEN tests passed; `:app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:compileDebugAndroidTestKotlin :macrobenchmark:compileProfileableJavaWithJavac` passed; debug update install passed; emulator cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 4831 ms`; Settings down/up smoke kept `MainActivity` resumed and crash/severe logcat slices were empty.
+- active-workout profileable measurement: NOT RUN to completion. Iteration one entered and scrolled the seeded active workout, but the next setup could not find the seeded routine after the prior active-session flow. The benchmark failed before comparable five-run metrics were emitted; app workout behavior was not marked regressed from this automation failure.
+- external source: Android Developers Compose performance and lazy-list guidance recommends stable lazy keys, `contentType`, release-like builds and measurement rather than debug-only conclusions: https://developer.android.com/develop/ui/compose/performance and https://developer.android.com/develop/ui/compose/lists
+- remaining risk: repeatable active-workout benchmark reset and physical-device Settings/workout frame certification remain open.
+
 ## 2026-07-10 Compact Health Connect Presentation
 
 - Home now shows one concise Health Connect card with the displayed step count, friendly source label, last update time and refresh action. Raw, aggregate, query-window and parity diagnostics no longer compete with the primary dashboard information.

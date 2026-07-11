@@ -1,6 +1,16 @@
 # TrainIQ Target-State Progress
 
-Updated date: 2026-07-10
+Updated date: 2026-07-11
+
+## 2026-07-11 Performance and Code-Health Follow-up
+
+- Settings lazy items now have stable identity and reusable content types without changing visible behavior, navigation, data or ViewModel contracts.
+- The profileable top-level/Settings journey is repeatable across five runs by targeting bottom-navigation slots instead of duplicate screen text, and it now scrolls in both directions. Five Perfetto traces and benchmark JSON are available under `TrainIQ-Project/macrobenchmark/build/outputs/connected_android_test_additional_output/profileable/connected/`.
+- Final emulator trend capture: median frame count `126`, frame CPU P50 `45.3 ms` and P95 `119.3 ms`; frame overrun P50 `49.0 ms` and P95 `159.9 ms`. An earlier successful pass was materially faster, so no target-state score increase is claimed: emulator timing is noisy and no same-device pre-change run or physical-device threshold is available.
+- Two generated example tests with no TrainIQ contract were removed. Higher-value behavioral, persistence, privacy, security, architecture and accessibility tests remain.
+- Full debug unit, assemble, lint, AndroidTest compile and profileable Macrobenchmark compile gates pass. Debug update install and a `4831 ms` emulator cold launch pass; Settings down/up smoke leaves `MainActivity` resumed with empty crash and severe-error slices.
+- Active-workout benchmark setup remains partially repeatable: the first iteration reached and scrolled `Actieve training`, while a subsequent reset did not expose `Benchmark routine`; no five-run workout metric is claimed.
+- External research used official Android Compose performance and lazy-list documentation. Remaining performance work is a deterministic active-workout benchmark reset plus physical-device certification, not a broad UI rewrite.
 
 ## 2026-07-10 Compact Health Connect UX
 

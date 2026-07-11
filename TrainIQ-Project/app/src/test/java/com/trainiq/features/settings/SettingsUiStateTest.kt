@@ -24,6 +24,16 @@ import org.junit.Test
 
 class SettingsUiStateTest {
     @Test
+    fun settingsLazyItemsExposeUniqueStableKeysAndReusableContentTypes() {
+        val items = SettingsListItem.entries
+
+        assertEquals(items.size, items.map(SettingsListItem::stableKey).distinct().size)
+        assertTrue(items.all { it.contentType.isNotBlank() })
+        assertEquals("settings-header", SettingsListItem.HEADER.contentType)
+        assertEquals("settings-section", SettingsListItem.HEALTH_CONNECT.contentType)
+    }
+
+    @Test
     fun settingsUiState_usesSingleSuccessStateWithMaskedKey() {
         val state = settingsUiState(
             themeMode = ThemeMode.DARK,

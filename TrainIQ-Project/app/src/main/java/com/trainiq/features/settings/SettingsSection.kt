@@ -737,6 +737,21 @@ internal enum class PendingDestructiveSettingsAction {
     CLEAR_ALL_DATA,
 }
 
+internal enum class SettingsListItem(
+    val stableKey: String,
+    val contentType: String,
+) {
+    HEADER("settings-header", "settings-header"),
+    OVERVIEW("settings-overview", "settings-section"),
+    ONBOARDING("settings-onboarding", "settings-section"),
+    DISPLAY("settings-display", "settings-section"),
+    PREFERENCES("settings-preferences", "settings-section"),
+    AI_PROVIDERS("settings-ai-providers", "settings-section"),
+    HEALTH_CONNECT("settings-health-connect", "settings-section"),
+    DATA_STORAGE("settings-data-storage", "settings-section"),
+    ABOUT("settings-about", "settings-section"),
+}
+
 @Composable
 private fun SettingsLoadingScreen() {
     LazyColumn(
@@ -859,8 +874,8 @@ fun SettingsScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
         ) {
-        item { ScreenHeader(title = "Instellingen", subtitle = "Health Connect, AI en voorkeuren") }
-        item {
+        item(key = SettingsListItem.HEADER.stableKey, contentType = SettingsListItem.HEADER.contentType) { ScreenHeader(title = "Instellingen", subtitle = "Health Connect, AI en voorkeuren") }
+        item(key = SettingsListItem.OVERVIEW.stableKey, contentType = SettingsListItem.OVERVIEW.contentType) {
             SectionCard(title = settingsOverflowSectionTitle()) {
                 Text(settingsOverflowSectionBody())
                 Text("Thema: ${themeMode.displayLabel()}")
@@ -868,7 +883,7 @@ fun SettingsScreen(
                 Text("Health Connect: ${healthStatusLabel(healthStatus)}")
             }
         }
-        item {
+        item(key = SettingsListItem.ONBOARDING.stableKey, contentType = SettingsListItem.ONBOARDING.contentType) {
             SectionCard(title = "Onboarding") {
                 Text(
                     if (onboardingPreferences.completed) {
@@ -910,7 +925,7 @@ fun SettingsScreen(
                 }
             }
         }
-        item {
+        item(key = SettingsListItem.DISPLAY.stableKey, contentType = SettingsListItem.DISPLAY.contentType) {
             SectionCard(title = "Weergave") {
                 Text("Themamodus")
                 FlowRow(
@@ -931,7 +946,7 @@ fun SettingsScreen(
                 }
             }
         }
-        item {
+        item(key = SettingsListItem.PREFERENCES.stableKey, contentType = SettingsListItem.PREFERENCES.contentType) {
             SectionCard(title = "Voorkeuren") {
                 FeedbackToggleRow(
                     title = "Rusttimer-geluid",
@@ -977,7 +992,7 @@ fun SettingsScreen(
                 )
             }
         }
-        item {
+        item(key = SettingsListItem.AI_PROVIDERS.stableKey, contentType = SettingsListItem.AI_PROVIDERS.contentType) {
             SectionCard(title = "AI / Providers") {
                 Text("AI wordt alleen gebruikt nadat jij het inschakelt. TrainIQ doet geen AI-aanvragen op de achtergrond.")
                 Text("Bij een expliciete AI-actie stuurt TrainIQ de benodigde prompt, context en eventueel gekozen foto naar je gekozen provider met jouw lokaal opgeslagen API-sleutel.")
@@ -1077,7 +1092,7 @@ fun SettingsScreen(
                 Text("Status: ${aiProviderStatusLabel(aiStatus)}")
             }
         }
-        item {
+        item(key = SettingsListItem.HEALTH_CONNECT.stableKey, contentType = SettingsListItem.HEALTH_CONNECT.contentType) {
             SectionCard(title = "Health Connect") {
                 Text("Status: ${healthStatusLabel(healthStatus)}")
                 healthConnectStepsAvailabilityMessage(healthStatus)?.let { stepMessage ->
@@ -1156,7 +1171,7 @@ fun SettingsScreen(
                 }
             }
         }
-        item {
+        item(key = SettingsListItem.DATA_STORAGE.stableKey, contentType = SettingsListItem.DATA_STORAGE.contentType) {
             SectionCard(title = "Gegevens / opslag") {
                 Text("Lokale data: profiel, routines, workouts, voeding, recepten en metingen.")
                 Text("AI-sleutel: lokaal versleuteld opgeslagen via Android Keystore.")
@@ -1191,7 +1206,7 @@ fun SettingsScreen(
                 }
             }
         }
-        item {
+        item(key = SettingsListItem.ABOUT.stableKey, contentType = SettingsListItem.ABOUT.contentType) {
             SectionCard(title = "Over") {
                 Text("Appversie: ${BuildConfig.VERSION_NAME}")
                 Text("AI ingeschakeld: ${if (aiStatus.enabled) "Ja" else "Nee"}")

@@ -46,4 +46,16 @@ class ProfileableBenchmarkSeedArchitectureTest {
         assertTrue(benchmarkBody.indexOf("seedActiveWorkout(scope);") < benchmarkBody.indexOf("startTrainIqMainActivity(scope);"))
         assertTrue(baselineProfileBody.contains("seedActiveWorkout(scope);"))
     }
+
+    @Test
+    fun topLevelBenchmarkTargetsNavigationSlotsInsteadOfAmbiguousScreenText() {
+        val source = File("../macrobenchmark/src/main/java/com/trainiq/macrobenchmark/TrainIqStartupBenchmark.java").readText()
+        val navigationBody = source
+            .substringAfter("private Unit navigateAndScrollSettings(MacrobenchmarkScope scope)")
+            .substringBefore("private Unit logActiveWorkoutSet")
+
+        assertTrue(navigationBody.contains("tapBottomDestination(device, 1);"))
+        assertTrue(navigationBody.contains("tapBottomDestination(device, 4);"))
+        assertFalse(navigationBody.contains("tapAnyText"))
+    }
 }
