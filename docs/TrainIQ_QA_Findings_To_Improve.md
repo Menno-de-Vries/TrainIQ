@@ -1593,3 +1593,14 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
 - Crash evidence: PASS, AndroidRuntime crash buffer captured during the initial-scroll smoke was empty.
 - External sources used: None. Local source, tests, and emulator evidence were sufficient.
 - Remaining risk: the emulator's local nutrition overview settled very quickly, so runtime evidence mainly proves the stable loaded scroll and source guards prove the initial loading path. A slower seeded startup profile can further prove placeholder-scroll behavior if needed.
+
+## 2026-07-10 Compact Guided Tour and Focused Jank Follow-up
+
+- Status: partially-done (UI and code-level performance fixes verified; physical-device frame certification remains open).
+- Guided tour: replaced the oversized three-equal-button overlay with a compact panel above app/system navigation. `Later afronden` is now a quiet header action; `Terug` and `Volgende` keep 48dp minimum touch targets and the six-step flow remains intact.
+- App-wide diagnostics: replaced the unbounded boxed frame-duration list with a bounded primitive ring buffer, keeping per-frame recording O(1) and moving sorting to summary generation.
+- Active workout: removed per-second elapsed/rest values from broad `ActiveWorkoutUiState`; only the session summary, rest card, and bottom bar read the stable clock state.
+- Benchmark readiness: top-level and baseline-profile journeys now seed completed onboarding before navigation. The emulator profileable run no longer failed on the missing `Training` target, but did not finish within 180 seconds; metric status is `NOT RUN`.
+- Sources: Android Compose performance guidance (`https://developer.android.com/develop/ui/compose/performance`, `https://developer.android.com/develop/ui/compose/performance/bestpractices`) and Compose accessibility defaults (`https://developer.android.com/develop/ui/compose/accessibility/api-defaults`).
+- Verification: focused RED/PASS tests; PASS broad `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin :macrobenchmark:compileProfileableJavaWithJavac`; PASS adb cold launch (`Status: ok`, `LaunchState: COLD`, `TotalTime: 4792`) with an empty fatal buffer; PASS UI-tree/screenshot for `Stap 1 van 6`, unwrapped `Volgende`, and navigation to `Stap 2 van 6` / Training.
+- Remaining risk: repeat top-level and active-workout profileable benchmarks plus fast workout scrolling on a physical Samsung before closing performance certification.

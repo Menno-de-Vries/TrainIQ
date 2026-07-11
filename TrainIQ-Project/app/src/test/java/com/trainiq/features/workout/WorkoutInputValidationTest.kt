@@ -18,6 +18,34 @@ import org.junit.Test
 
 class WorkoutInputValidationTest {
     @Test
+    fun `active workout clock derives elapsed and remaining time from persisted timestamps`() {
+        val clock = activeWorkoutClockUiState(
+            startedAt = 1_000L,
+            restTimerEndsAt = 91_000L,
+            restTimerTotalSeconds = 120,
+            now = 31_000L,
+        )
+
+        assertEquals(30L, clock.elapsedSeconds)
+        assertEquals(60, clock.restTimerSeconds)
+        assertEquals(120, clock.restTimerTotalSeconds)
+    }
+
+    @Test
+    fun `active workout clock clears rest total when timer has ended`() {
+        val clock = activeWorkoutClockUiState(
+            startedAt = 1_000L,
+            restTimerEndsAt = 30_000L,
+            restTimerTotalSeconds = 120,
+            now = 31_000L,
+        )
+
+        assertEquals(30L, clock.elapsedSeconds)
+        assertEquals(0, clock.restTimerSeconds)
+        assertEquals(0, clock.restTimerTotalSeconds)
+    }
+
+    @Test
     fun `workout processing uses shimmer loading instead of spinner`() {
         assertEquals(true, workoutProcessingUsesShimmerLoading())
     }
@@ -378,7 +406,6 @@ class WorkoutInputValidationTest {
     @Test
     fun `active workout sticky status exposes merged accessibility summary`() {
         val state = ActiveWorkoutUiState(
-            elapsedSeconds = 125L,
             completedSets = 3,
             targetSets = 5,
             totalVolume = 1200.0,
@@ -386,11 +413,11 @@ class WorkoutInputValidationTest {
 
         assertEquals(
             "Actieve training: tijd 2:05, sets 3 van 5, volume 1200 kg, rust 1:15.",
-            activeWorkoutStickyStatusContentDescription(state, restTimerSeconds = 75),
+            activeWorkoutStickyStatusContentDescription(state, elapsedSeconds = 125L, restTimerSeconds = 75),
         )
         assertEquals(
             "Actieve training: tijd 2:05, sets 3 van 5, volume 1200 kg, rust klaar.",
-            activeWorkoutStickyStatusContentDescription(state, restTimerSeconds = 0),
+            activeWorkoutStickyStatusContentDescription(state, elapsedSeconds = 125L, restTimerSeconds = 0),
         )
     }
 
@@ -398,10 +425,10 @@ class WorkoutInputValidationTest {
     fun `active workout summary keeps rest status and session name visible`() {
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
         val summaryBody = workoutScreen.substringAfter("private fun ActiveWorkoutSessionSummary(")
-            .substringBefore("private fun ActiveWorkoutStickyStatus(")
+            .substringBefore("private fun ActiveWorkoutBottomBar(")
 
         assertTrue(summaryBody.contains("displayWorkoutDayName"))
-        assertTrue(summaryBody.contains("activeWorkoutBottomBarStatusText(restTimerSeconds)"))
+        assertTrue(summaryBody.contains("activeWorkoutBottomBarStatusText(clock.restTimerSeconds)"))
         assertTrue(summaryBody.contains("StatusMetric(\"Rust\""))
         assertTrue(summaryBody.contains("AppLinearProgress(progress = progress"))
     }

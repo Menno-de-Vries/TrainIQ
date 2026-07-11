@@ -41,8 +41,9 @@ public class TrainIqStartupBenchmark {
                 true,
                 rule -> true,
                 scope -> {
+                    seedActiveWorkout(scope);
                     scope.pressHome();
-                    scope.startActivityAndWait();
+                    startTrainIqMainActivity(scope);
                     waitForAppReady(scope.getDevice());
                     navigateAndScrollSettings(scope);
                     return Unit.INSTANCE;
@@ -76,8 +77,9 @@ public class TrainIqStartupBenchmark {
                 StartupMode.WARM,
                 5,
                 scope -> {
+                    seedActiveWorkout(scope);
                     scope.pressHome();
-                    scope.startActivityAndWait();
+                    startTrainIqMainActivity(scope);
                     waitForAppReady(scope.getDevice());
                     return Unit.INSTANCE;
                 },

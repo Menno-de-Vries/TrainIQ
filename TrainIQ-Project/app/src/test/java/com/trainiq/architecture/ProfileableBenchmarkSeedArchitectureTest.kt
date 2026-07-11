@@ -31,4 +31,19 @@ class ProfileableBenchmarkSeedArchitectureTest {
         assertTrue(macrobenchmarkSource.contains("activeWorkoutLoggingFrames"))
         assertFalse("Benchmark seed activity must not ship from main manifest", mainManifest.contains("BenchmarkSeedActivity"))
     }
+
+    @Test
+    fun topLevelFrameBenchmarkSeedsCompletedOnboardingBeforeNavigation() {
+        val macrobenchmarkSource = File("../macrobenchmark/src/main/java/com/trainiq/macrobenchmark/TrainIqStartupBenchmark.java").readText()
+        val benchmarkBody = macrobenchmarkSource
+            .substringAfter("public void topLevelNavigationAndSettingsScrollFrames()")
+            .substringBefore("public void activeWorkoutLoggingFrames()")
+        val baselineProfileBody = macrobenchmarkSource
+            .substringAfter("public void generateBaselineProfileForCriticalJourneys()")
+            .substringBefore("public void coldStartupWithRequiredBaselineProfile()")
+
+        assertTrue(benchmarkBody.contains("seedActiveWorkout(scope);"))
+        assertTrue(benchmarkBody.indexOf("seedActiveWorkout(scope);") < benchmarkBody.indexOf("startTrainIqMainActivity(scope);"))
+        assertTrue(baselineProfileBody.contains("seedActiveWorkout(scope);"))
+    }
 }

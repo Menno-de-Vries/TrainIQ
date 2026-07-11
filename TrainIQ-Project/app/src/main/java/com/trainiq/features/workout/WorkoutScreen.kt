@@ -107,6 +107,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -117,6 +118,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -298,14 +300,11 @@ data class ActiveWorkoutUiState(
     val loggedSetsThisSession: Map<Long, List<LoggedSet>> = emptyMap(),
     val pendingLoggingExerciseIds: Set<Long> = emptySet(),
     val pendingCorrectionSetIds: Map<Long, Long> = emptyMap(),
-    val restTimerSeconds: Int = 0,
-    val restTimerTotalSeconds: Int = 0,
     val debrief: WorkoutDebrief? = null,
     val drafts: Map<Long, SetInputDraft> = emptyMap(),
     val draftErrors: Map<Long, SetInputFieldErrors> = emptyMap(),
     val exerciseRestOverrides: Map<Long, Int> = emptyMap(),
     val collapsedExerciseIds: Set<Long> = emptySet(),
-    val elapsedSeconds: Long = 0L,
     val completedSets: Int = 0,
     val targetSets: Int = 0,
     val totalVolume: Double = 0.0,
@@ -316,6 +315,56 @@ data class ActiveWorkoutUiState(
     val pendingStartConflict: ActiveWorkoutStartConflict? = null,
     val message: String? = null,
 )
+
+data class ActiveWorkoutClockUiState(
+    val elapsedSeconds: Long = 0L,
+    val restTimerSeconds: Int = 0,
+    val restTimerTotalSeconds: Int = 0,
+)
+
+internal fun activeWorkoutClockUiState(
+    startedAt: Long,
+    restTimerEndsAt: Long?,
+    restTimerTotalSeconds: Int,
+    now: Long,
+): ActiveWorkoutClockUiState {
+    val remaining = restTimerEndsAt
+        ?.let { ((it - now) / 1_000L).toInt().coerceAtLeast(0) }
+        ?: 0
+    return ActiveWorkoutClockUiState(
+        elapsedSeconds = activeWorkoutElapsedSeconds(startedAt = startedAt, now = now),
+        restTimerSeconds = remaining,
+        restTimerTotalSeconds = restTimerTotalSeconds.takeIf { remaining > 0 } ?: 0,
+    )
+}
+
+@Composable
+private fun rememberActiveWorkoutClock(activeSession: ActiveWorkoutSession?): State<ActiveWorkoutClockUiState> {
+    val startedAt = activeSession?.startedAt ?: 0L
+    val restTimerEndsAt = activeSession?.restTimerEndsAt
+    val restTimerTotalSeconds = activeSession?.restTimerTotalSeconds ?: 0
+    return produceState(
+        initialValue = activeWorkoutClockUiState(
+            startedAt = startedAt,
+            restTimerEndsAt = restTimerEndsAt,
+            restTimerTotalSeconds = restTimerTotalSeconds,
+            now = System.currentTimeMillis(),
+        ),
+        key1 = startedAt,
+        key2 = restTimerEndsAt,
+        key3 = restTimerTotalSeconds,
+    ) {
+        while (true) {
+            value = activeWorkoutClockUiState(
+                startedAt = startedAt,
+                restTimerEndsAt = restTimerEndsAt,
+                restTimerTotalSeconds = restTimerTotalSeconds,
+                now = System.currentTimeMillis(),
+            )
+            delay(1_000L)
+        }
+    }
+}
 
 private data class ActiveWorkoutExerciseUiState(
     val loggedSets: List<LoggedSet>,
@@ -476,11 +525,7 @@ class WorkoutViewModel @Inject constructor(
     private val _loggedSetsThisSession = MutableStateFlow<Map<Long, List<LoggedSet>>>(emptyMap())
     private val loggedSetsThisSession: StateFlow<Map<Long, List<LoggedSet>>> = _loggedSetsThisSession.asStateFlow()
 
-    private val _restTimerSeconds = MutableStateFlow(0)
-    private val restTimerSeconds: StateFlow<Int> = _restTimerSeconds.asStateFlow()
-    private val _restTimerTotalSeconds = MutableStateFlow(0)
-    private val restTimerTotalSeconds: StateFlow<Int> = _restTimerTotalSeconds.asStateFlow()
-    private val _elapsedSeconds = MutableStateFlow(0L)
+    private var restTimerSeconds = 0
 
     private val _debrief = MutableStateFlow<WorkoutDebrief?>(null)
     private val debrief: StateFlow<WorkoutDebrief?> = _debrief.asStateFlow()
@@ -539,12 +584,6 @@ class WorkoutViewModel @Inject constructor(
         )
     }.combine(_debrief) { state, debrief ->
         state.copy(debrief = debrief)
-    }.combine(_elapsedSeconds) { state, elapsedSeconds ->
-        state.copy(elapsedSeconds = elapsedSeconds)
-    }.combine(_restTimerSeconds) { state, restTimerSeconds ->
-        state.copy(restTimerSeconds = restTimerSeconds)
-    }.combine(_restTimerTotalSeconds) { state, restTimerTotalSeconds ->
-        state.copy(restTimerTotalSeconds = restTimerTotalSeconds)
     }.combine(_drafts) { state, drafts ->
         state.copy(drafts = drafts)
     }.combine(_draftErrors) { state, draftErrors ->
@@ -587,7 +626,6 @@ class WorkoutViewModel @Inject constructor(
 
     private var restTimerJob: Job? = null
     private var loggingSummaryJob: Job? = null
-    private var sessionStartTime: Long = 0L
     private var lastGenerationRequest: RoutineGenerationRequest? = null
     private var observedRestTimerEndsAt: Long? = null
     private var restTimerFinishHandled = true
@@ -636,7 +674,6 @@ class WorkoutViewModel @Inject constructor(
             val active = started.session
             applyActiveSession(active)
             observeLoggingSummary(dayId)
-            sessionStartTime = active.startedAt
             if (active.loggedSets.isNotEmpty()) {
                 _message.value = "Actieve training hersteld."
             }
@@ -1227,10 +1264,6 @@ class WorkoutViewModel @Inject constructor(
         restTimerJob?.cancel()
         restTimerJob = viewModelScope.launch {
             while (true) {
-                val startedAt = _activeSession.value?.startedAt ?: sessionStartTime
-                if (startedAt > 0L) {
-                    _elapsedSeconds.value = activeWorkoutElapsedSeconds(startedAt = startedAt, now = System.currentTimeMillis())
-                }
                 updateRestTimerFromSession()
                 delay(1_000)
             }
@@ -1259,8 +1292,7 @@ class WorkoutViewModel @Inject constructor(
     }
 
     private fun stopRestTimer(persist: Boolean = false) {
-        _restTimerSeconds.value = 0
-        _restTimerTotalSeconds.value = 0
+        restTimerSeconds = 0
         observedRestTimerEndsAt = null
         restTimerFinishHandled = true
         restTimerClearRequested = true
@@ -1272,7 +1304,7 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun adjustRestTimer(deltaSeconds: Int) {
-        val next = (_restTimerSeconds.value + deltaSeconds).coerceAtLeast(0)
+        val next = (restTimerSeconds + deltaSeconds).coerceAtLeast(0)
         if (next == 0) {
             stopRestTimer(persist = true)
             return
@@ -1327,7 +1359,6 @@ class WorkoutViewModel @Inject constructor(
         _activeWorkout.value?.exercises?.map { it.activeKey }?.toSet()?.let { activeKeys ->
             _exerciseRestOverrides.value = _exerciseRestOverrides.value.filterKeys { it in activeKeys }
         }
-        _elapsedSeconds.value = activeWorkoutElapsedSeconds(startedAt = session.startedAt, now = System.currentTimeMillis())
         updateRestTimerFromSession()
     }
 
@@ -1335,14 +1366,13 @@ class WorkoutViewModel @Inject constructor(
         val active = _activeSession.value
         val endsAt = active?.restTimerEndsAt
         val remaining = endsAt?.let { ((it - System.currentTimeMillis()) / 1_000).toInt().coerceAtLeast(0) } ?: 0
-        val previousRemaining = _restTimerSeconds.value
+        val previousRemaining = restTimerSeconds
         if (endsAt != observedRestTimerEndsAt) {
             observedRestTimerEndsAt = endsAt
             restTimerFinishHandled = remaining == 0
             restTimerClearRequested = endsAt == null
         }
-        _restTimerSeconds.value = remaining
-        _restTimerTotalSeconds.value = if (remaining > 0) active?.restTimerTotalSeconds ?: 0 else 0
+        restTimerSeconds = remaining
         if (endsAt != null && previousRemaining > 0 && remaining == 0 && !restTimerFinishHandled) {
             restTimerFinishHandled = true
             restTimerClearRequested = true
@@ -4705,8 +4735,6 @@ fun ActiveWorkoutRoute(
 
     ActiveWorkoutScreen(
         uiState = uiState,
-        restTimerSeconds = uiState.restTimerSeconds,
-        restTimerTotalSeconds = uiState.restTimerTotalSeconds,
         exerciseLibrary = content.overview?.exercises.orEmpty(),
         snackbarHostState = snackbarHostState,
         workoutHapticsEnabled = workoutFeedbackPreferences.workoutHapticsEnabled,
@@ -5190,8 +5218,6 @@ private fun ActiveWorkoutStartConflictDialog(
 @Composable
 fun ActiveWorkoutScreen(
     uiState: ActiveWorkoutUiState,
-    restTimerSeconds: Int,
-    restTimerTotalSeconds: Int,
     exerciseLibrary: List<Exercise>,
     snackbarHostState: SnackbarHostState,
     workoutHapticsEnabled: Boolean,
@@ -5230,6 +5256,7 @@ fun ActiveWorkoutScreen(
     val workoutExercises = uiState.workout?.exercises.orEmpty()
     val exerciseGroups = remember(workoutExercises) { workoutExerciseGroups(workoutExercises) }
     val activeWorkoutListState = rememberLazyListState()
+    val clockState = rememberActiveWorkoutClock(uiState.activeSession)
     val suggestionsByExerciseId = remember(uiState.progressionSuggestions) {
         uiState.progressionSuggestions.associateBy { it.exerciseId }
     }
@@ -5307,8 +5334,7 @@ fun ActiveWorkoutScreen(
             if (uiState.debrief == null) {
                 ActiveWorkoutBottomBar(
                     uiState = uiState,
-                    restTimerSeconds = restTimerSeconds,
-                    restTimerTotalSeconds = restTimerTotalSeconds,
+                    clockState = clockState,
                     onAdjustRestTimer = onAdjustRestTimer,
                     onSkipRestTimer = onSkipRestTimer,
                     onFinishClick = {
@@ -5371,7 +5397,7 @@ fun ActiveWorkoutScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.trainIqColors.mutedText,
                     )
-                    ActiveWorkoutSessionSummary(uiState, restTimerSeconds)
+                    ActiveWorkoutSessionSummary(uiState, clockState)
                 }
             }
             if (uiState.workout == null) {
@@ -5382,22 +5408,17 @@ fun ActiveWorkoutScreen(
                 item { EmptyCard("Geen oefeningen", "Voeg oefeningen toe aan deze routine voordat je een training start.") }
                 return@LazyColumn
             }
-            if (restTimerSeconds > 0) {
-                item(
-                    key = "active-workout-rest-timer",
-                    contentType = "active-workout-rest-timer",
-                ) {
-                    RestTimerCard(
-                        restTimerSeconds = restTimerSeconds,
-                        totalSeconds = restTimerTotalSeconds,
-                        onAdjust = onAdjustRestTimer,
-                        onSkip = onSkipRestTimer,
-                        onRestart = {
-                            val nextRest = uiState.workout.exercises.firstOrNull()?.restSeconds ?: restTimerTotalSeconds
-                            onRestartRestTimer(nextRest)
-                        },
-                    )
-                }
+            item(
+                key = "active-workout-rest-timer",
+                contentType = "active-workout-rest-timer",
+            ) {
+                ActiveWorkoutRestTimerItem(
+                    clockState = clockState,
+                    fallbackRestSeconds = uiState.workout.exercises.firstOrNull()?.restSeconds ?: 0,
+                    onAdjust = onAdjustRestTimer,
+                    onSkip = onSkipRestTimer,
+                    onRestart = onRestartRestTimer,
+                )
             }
             items(
                 exerciseGroups,
@@ -5564,7 +5585,11 @@ fun ActiveWorkoutScreen(
 }
 
 @Composable
-private fun ActiveWorkoutSessionSummary(uiState: ActiveWorkoutUiState, restTimerSeconds: Int) {
+private fun ActiveWorkoutSessionSummary(
+    uiState: ActiveWorkoutUiState,
+    clockState: State<ActiveWorkoutClockUiState>,
+) {
+    val clock by clockState
     val progress = if (uiState.targetSets > 0) {
         (uiState.completedSets / uiState.targetSets.toFloat()).coerceIn(0f, 1f)
     } else {
@@ -5574,7 +5599,11 @@ private fun ActiveWorkoutSessionSummary(uiState: ActiveWorkoutUiState, restTimer
         modifier = Modifier
             .fillMaxWidth()
             .semantics(mergeDescendants = true) {
-                contentDescription = activeWorkoutStickyStatusContentDescription(uiState, restTimerSeconds)
+                contentDescription = activeWorkoutStickyStatusContentDescription(
+                    uiState = uiState,
+                    elapsedSeconds = clock.elapsedSeconds,
+                    restTimerSeconds = clock.restTimerSeconds,
+                )
             },
         accent = MaterialTheme.trainIqColors.amber,
         elevated = true,
@@ -5600,10 +5629,10 @@ private fun ActiveWorkoutSessionSummary(uiState: ActiveWorkoutUiState, restTimer
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                StatusMetric("Tijd", formatTimer(uiState.elapsedSeconds.toInt()))
+                StatusMetric("Tijd", formatTimer(clock.elapsedSeconds.toInt()))
                 StatusMetric("Oefeningen", uiState.workout?.exercises?.size?.toString() ?: "-")
                 StatusMetric("Sets", "${uiState.completedSets}/${uiState.targetSets}")
-                StatusMetric("Rust", activeWorkoutBottomBarStatusText(restTimerSeconds).removePrefix("Rust "))
+                StatusMetric("Rust", activeWorkoutBottomBarStatusText(clock.restTimerSeconds).removePrefix("Rust "))
             }
             AppLinearProgress(progress = progress, accent = MaterialTheme.trainIqColors.amber)
         }
@@ -5611,80 +5640,28 @@ private fun ActiveWorkoutSessionSummary(uiState: ActiveWorkoutUiState, restTimer
 }
 
 @Composable
-private fun ActiveWorkoutStickyStatus(uiState: ActiveWorkoutUiState, restTimerSeconds: Int) {
-    val progress = if (uiState.targetSets > 0) {
-        (uiState.completedSets / uiState.targetSets.toFloat()).coerceIn(0f, 1f)
-    } else {
-        0f
-    }
-    AppCard(
-        modifier = Modifier
-            .padding(top = 12.dp)
-            .semantics(mergeDescendants = true) {
-                contentDescription = activeWorkoutStickyStatusContentDescription(uiState, restTimerSeconds)
-            },
-        accent = MaterialTheme.colorScheme.primary,
-    ) {
-        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                StatusMetric("Tijd", formatTimer(uiState.elapsedSeconds.toInt()), Modifier.weight(1f))
-                StatusMetric("Sets", "${uiState.completedSets}/${uiState.targetSets}", Modifier.weight(1f))
-                StatusMetric("Volume", "${uiState.totalVolume.toInt()} kg", Modifier.weight(1f))
-                StatusMetric("Rust", if (restTimerSeconds > 0) formatTimer(restTimerSeconds) else "Klaar", Modifier.weight(1f))
-            }
-            if (uiState.loggingSummary.pendingCount > 0) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        Icons.Rounded.CloudQueue,
-                        contentDescription = "${uiState.loggingSummary.pendingCount} workout-events wachten op synchronisatie",
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                    Text(
-                        "${uiState.loggingSummary.pendingCount} lokaal in sync-wachtrij",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            AppLinearProgress(progress = progress)
-        }
-    }
-}
-
-@Composable
 private fun ActiveWorkoutBottomBar(
     uiState: ActiveWorkoutUiState,
-    restTimerSeconds: Int,
-    restTimerTotalSeconds: Int,
+    clockState: State<ActiveWorkoutClockUiState>,
     onAdjustRestTimer: (Int) -> Unit,
     onSkipRestTimer: () -> Unit,
     onFinishClick: () -> Unit,
 ) {
+    val clock by clockState
     Surface(color = MaterialTheme.colorScheme.background, tonalElevation = 0.dp) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 10.dp, vertical = 0.dp)
                 .semantics(mergeDescendants = true) {
-                    contentDescription = activeWorkoutBottomBarContentDescription(uiState, restTimerSeconds)
+                    contentDescription = activeWorkoutBottomBarContentDescription(uiState, clock.restTimerSeconds)
                 },
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            if (restTimerSeconds > 0) {
+            if (clock.restTimerSeconds > 0) {
                 AppLinearProgress(
-                    progress = if (restTimerTotalSeconds > 0) {
-                        restTimerSeconds / restTimerTotalSeconds.toFloat()
+                    progress = if (clock.restTimerTotalSeconds > 0) {
+                        clock.restTimerSeconds / clock.restTimerTotalSeconds.toFloat()
                     } else {
                         0f
                     },
@@ -5697,7 +5674,7 @@ private fun ActiveWorkoutBottomBar(
             ) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(0.dp)) {
                     Text(
-                        if (restTimerSeconds > 0) "Rust ${formatTimer(restTimerSeconds)}" else "Klaar voor volgende set",
+                        if (clock.restTimerSeconds > 0) "Rust ${formatTimer(clock.restTimerSeconds)}" else "Klaar voor volgende set",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                         maxLines = 1,
@@ -5711,7 +5688,7 @@ private fun ActiveWorkoutBottomBar(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (restTimerSeconds > 0) {
+                if (clock.restTimerSeconds > 0) {
                     IconButton(onClick = { onAdjustRestTimer(-30) }, modifier = Modifier.size(38.dp)) {
                         Icon(Icons.Rounded.Remove, contentDescription = restTimerAdjustContentDescription(-30))
                     }
@@ -5828,6 +5805,27 @@ private fun activeWorkoutExerciseUiState(
         isLogPending = uiState.pendingLoggingExerciseIds.contains(key),
         pendingCorrectionSetId = uiState.pendingCorrectionSetIds[key],
         collapsed = key in uiState.collapsedExerciseIds,
+    )
+}
+
+@Composable
+private fun ActiveWorkoutRestTimerItem(
+    clockState: State<ActiveWorkoutClockUiState>,
+    fallbackRestSeconds: Int,
+    onAdjust: (Int) -> Unit,
+    onSkip: () -> Unit,
+    onRestart: (Int) -> Unit,
+) {
+    val clock by clockState
+    if (clock.restTimerSeconds <= 0) return
+    RestTimerCard(
+        restTimerSeconds = clock.restTimerSeconds,
+        totalSeconds = clock.restTimerTotalSeconds,
+        onAdjust = onAdjust,
+        onSkip = onSkip,
+        onRestart = {
+            onRestart(clock.restTimerTotalSeconds.takeIf { it > 0 } ?: fallbackRestSeconds)
+        },
     )
 }
 
@@ -6871,47 +6869,6 @@ private fun SuggestedNextSetRow(suggestion: ProgressionSuggestion) {
 }
 
 @Composable
-private fun WorkoutSessionStatusCard(uiState: ActiveWorkoutUiState) {
-    val workout = uiState.workout ?: return
-    val summary = remember(uiState.loggedSetsThisSession, workout.exercises) {
-        val loggedSets = uiState.loggedSetsThisSession.values.flatten()
-        val targetSets = workout.exercises.sumOf { it.plannedSetCount() }
-        WorkoutSessionUiSummary(
-            loggedSetCount = loggedSets.size,
-            targetSets = targetSets,
-            remainingSets = (targetSets - loggedSets.size).coerceAtLeast(0),
-            volume = loggedSets.sumOf { it.weight * it.reps },
-            averageRpe = loggedSets.map { it.rpe }.filter { it > 0.0 }.average().takeIf { !it.isNaN() },
-        )
-    }
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-            ) {
-                StatusMetric("Sets", "${summary.loggedSetCount}/${summary.targetSets}", Modifier.weight(1f))
-                StatusMetric(
-                    activeWorkoutRestStatusLabel(),
-                    if (uiState.restTimerSeconds > 0) formatTimer(uiState.restTimerSeconds) else "Klaar",
-                    Modifier.weight(1f),
-                )
-                StatusMetric("Volume", "${summary.volume.toInt()} kg", Modifier.weight(1f))
-            }
-            LinearProgressIndicator(
-                progress = { if (summary.targetSets > 0) (summary.loggedSetCount / summary.targetSets.toFloat()).coerceIn(0f, 1f) else 0f },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Text(
-                "${summary.remainingSets} sets resterend${summary.averageRpe?.let { " - gemiddelde RPE ${formatWeight(it)}" }.orEmpty()}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
 private fun StatusMetric(label: String, value: String, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier.semantics(mergeDescendants = true) {
@@ -7177,10 +7134,11 @@ internal fun activeWorkoutBottomBarContentDescription(
 
 internal fun activeWorkoutStickyStatusContentDescription(
     uiState: ActiveWorkoutUiState,
+    elapsedSeconds: Long,
     restTimerSeconds: Int,
 ): String {
     val restText = if (restTimerSeconds > 0) formatTimer(restTimerSeconds) else "klaar"
-    return "Actieve training: tijd ${formatTimer(uiState.elapsedSeconds.toInt())}, " +
+    return "Actieve training: tijd ${formatTimer(elapsedSeconds.toInt())}, " +
         "sets ${uiState.completedSets} van ${uiState.targetSets}, " +
         "volume ${uiState.totalVolume.toInt()} kg, rust $restText."
 }

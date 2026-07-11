@@ -31,4 +31,22 @@ class FrameStatsAccumulatorTest {
         assertEquals(0, summary.jankyFrameCount)
         assertTrue(summary.averageFrameMs == 0.0)
     }
+
+    @Test
+    fun summary_whenCapacityIsExceeded_keepsOnlyMostRecentFrames() {
+        val accumulator = FrameStatsAccumulator(
+            jankThresholdMs = 16.0,
+            maxStoredFrames = 3,
+        )
+
+        listOf(8.0, 12.0, 20.0, 40.0, 60.0).forEach(accumulator::recordFrameDurationMs)
+
+        val summary = accumulator.summary()
+
+        assertEquals(3, summary.frameCount)
+        assertEquals(3, summary.jankyFrameCount)
+        assertEquals(20.0, summary.minFrameMs, 0.0)
+        assertEquals(60.0, summary.maxFrameMs, 0.0)
+        assertEquals(40.0, summary.p50FrameMs, 0.0)
+    }
 }

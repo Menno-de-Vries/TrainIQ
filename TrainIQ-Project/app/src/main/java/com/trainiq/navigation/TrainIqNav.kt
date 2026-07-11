@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.animateDpAsState
@@ -147,8 +148,7 @@ private data class TopLevelDestination(
 private data class GuidedTourStep(
     val destination: TopLevelDestination,
     val title: String,
-    val body: String,
-    val action: String,
+    val description: String,
 )
 
 @Composable
@@ -382,7 +382,14 @@ fun TrainIqApp(
                 onSkip = markGuidedTourSkipped,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(horizontal = 16.dp, vertical = 20.dp),
+                    .padding(horizontal = 16.dp)
+                    .navigationBarsPadding()
+                    .padding(
+                        bottom = guidedTourBottomPaddingDp(
+                            useNavigationRail = useNavigationRail,
+                            useCompactShortBottomBar = useCompactShortBottomBar,
+                        ).dp,
+                    ),
             )
         }
     }
@@ -437,6 +444,15 @@ internal fun shouldUseCompactShortBottomBar(
 ): Boolean =
     widthClass == TrainIqWindowWidthClass.Compact && screenHeightDp <= 640
 
+internal fun guidedTourBottomPaddingDp(
+    useNavigationRail: Boolean,
+    useCompactShortBottomBar: Boolean,
+): Int = when {
+    useNavigationRail -> 20
+    useCompactShortBottomBar -> 58
+    else -> 70
+}
+
 private fun bottomNavigationDestinations(
     items: List<TopLevelDestination>,
     windowWidthClass: TrainIqWindowWidthClass,
@@ -468,38 +484,32 @@ private fun guidedTourSteps(items: List<TopLevelDestination>): List<GuidedTourSt
         GuidedTourStep(
             destination = byRoute.getValue(Home::class),
             title = "Start",
-            body = "Hier zie je je eerstvolgende training, energie-inname en Health Connect-signalen bij elkaar.",
-            action = "Check je dagstatus en open je volgende actie.",
+            description = "Je volgende training, energie-inname en Health Connect-signalen staan hier bij elkaar. Check je dagstatus en open je volgende actie.",
         ),
         GuidedTourStep(
             destination = byRoute.getValue(Train::class),
             title = "Training",
-            body = "Hier bouw je routines, start je een workout en bekijk je krachtgeschiedenis.",
-            action = "Maak of start je eerste routine.",
+            description = "Bouw routines, start een workout en bekijk je krachtgeschiedenis. Maak of start je eerste routine.",
         ),
         GuidedTourStep(
             destination = byRoute.getValue(Nutrition::class),
             title = "Voeding",
-            body = "Hier log je maaltijden handmatig, met barcode of met AI-fotoherkenning wanneer jij dat kiest.",
-            action = "Leg je eerste maaltijd of product vast.",
+            description = "Log maaltijden handmatig, met barcode of met AI-fotoherkenning. Leg je eerste maaltijd of product vast.",
         ),
         GuidedTourStep(
             destination = byRoute.getValue(Progress::class),
             title = "Voortgang",
-            body = "Hier volg je lichaamsmetingen, krachttrend en historie zonder ontbrekende data als nul te behandelen.",
-            action = "Voeg een lichaamsmeting toe of bekijk je trends.",
+            description = "Volg lichaamsmetingen, krachttrend en historie. Voeg een lichaamsmeting toe of bekijk je trends.",
         ),
         GuidedTourStep(
             destination = byRoute.getValue(Coach::class),
             title = "Coach",
-            body = "Hier beheer je profiel, calorie doel, auto macro's, weekrapporten en expliciet advies.",
-            action = "Vul je profiel en calorie doel in voor betere coaching.",
+            description = "Beheer je profiel, caloriedoel, automatische macro's en advies. Vul je profiel en calorie doel in voor betere coaching.",
         ),
         GuidedTourStep(
             destination = byRoute.getValue(Settings::class),
             title = "Instellingen",
-            body = "Hier beheer je Health Connect, AI-sleutels, privacy, export/import, thema en reminders.",
-            action = "Controleer Health Connect, AI en reminders wanneer je setup nog openstaat.",
+            description = "Beheer Health Connect, AI, privacy, export, thema en reminders. Controleer Health Connect, AI en reminders wanneer je setup nog openstaat.",
         ),
     )
 }
@@ -550,8 +560,9 @@ private fun GuidedTourOverlay(
 ) {
     Surface(
         modifier = modifier
+            .widthIn(max = 520.dp)
             .fillMaxWidth()
-            .heightIn(min = 176.dp),
+            .heightIn(min = 0.dp),
         color = MaterialTheme.trainIqColors.card,
         contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = 0.dp,
@@ -560,17 +571,28 @@ private fun GuidedTourOverlay(
         shape = RoundedCornerShape(MaterialTheme.radii.card),
     ) {
         Column(
-            modifier = Modifier.padding(MaterialTheme.radii.card),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                text = "Stap ${index + 1} van $total",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Text(step.title, style = MaterialTheme.typography.titleLarge)
-            Text(step.body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
-            Text(step.action, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Stap ${index + 1} van $total",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                TextButton(
+                    onClick = onSkip,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
+                    Text("Later afronden", maxLines = 1)
+                }
+            }
+            Text(step.title, style = MaterialTheme.typography.titleMedium)
+            Text(step.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -579,21 +601,17 @@ private fun GuidedTourOverlay(
                 OutlinedButton(
                     onClick = onBack,
                     enabled = index > 0,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.heightIn(min = 48.dp),
                 ) {
-                    Text("Terug")
-                }
-                TextButton(
-                    onClick = onSkip,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("Later afronden")
+                    Text("Terug", maxLines = 1)
                 }
                 Button(
                     onClick = onNext,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp),
                 ) {
-                    Text(if (index == total - 1) "Tour afronden" else "Volgende")
+                    Text(if (index == total - 1) "Tour afronden" else "Volgende", maxLines = 1)
                 }
             }
         }

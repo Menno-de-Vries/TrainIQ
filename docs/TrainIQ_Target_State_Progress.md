@@ -446,3 +446,13 @@ Updated date: 2026-07-10
 6. If product/security/legal approve credentials/network use, run Gemini-enabled workout debrief evidence; local fallback completion is already verified.
 7. If release owners close scope decisions, update Data Safety, background Health Connect, production AI boundary, signing/versioning, and final release docs before any upload.
 8. Optional engineering follow-up: expand process-restart correctness coverage per targeted mutation only if QA-2026-05-09-001 must be fully closed before owner gates move.
+
+## 2026-07-10 Guided Tour and Runtime Jank Containment
+
+- Completed: compact six-step tour panel preserves tab context, clears bottom/system navigation, keeps 48dp actions, and avoids the photographed three-column label wrapping.
+- Completed: diagnostics frame sampling is bounded and allocation-light during frame recording.
+- Completed: active-workout elapsed/rest ticks no longer flow through broad screen state or invalidate lazy exercise content every second.
+- Completed: profileable top-level/baseline journeys seed onboarding before tab navigation.
+- Regression checks: focused RED/PASS tests; broad debug build, unit tests, lint, AndroidTest compile, macrobenchmark compile, emulator cold launch, and two-step tour smoke PASS with empty fatal buffer.
+- Not certified: the profileable emulator benchmark timed out after 180 seconds and no physical device was available, so Samsung frame thresholds and subjective scroll acceptance remain open.
+- Target-state alignment: no score change claimed; this closes the bounded UI defect and removes two concrete jank risks without broad screen refactors.

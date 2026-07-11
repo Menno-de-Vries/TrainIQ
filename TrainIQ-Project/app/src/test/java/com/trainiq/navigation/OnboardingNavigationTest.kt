@@ -52,6 +52,20 @@ class OnboardingNavigationTest {
     }
 
     @Test
+    fun guidedTourUsesCompactActionsAndClearsBottomNavigation() {
+        val source = File("src/main/java/com/trainiq/navigation/TrainIqNav.kt").readText()
+        val overlay = source.substringAfter("private fun GuidedTourOverlay").substringBefore("private fun Modifier.topLevelTabSwipeNavigation")
+
+        assertFalse(overlay.contains("heightIn(min = 176.dp)"))
+        assertTrue(overlay.contains("onClick = onSkip"))
+        assertTrue(overlay.contains("heightIn(min = 48.dp)"))
+        assertTrue(overlay.contains("maxLines = 1"))
+        assertTrue(guidedTourBottomPaddingDp(useNavigationRail = true, useCompactShortBottomBar = false) == 20)
+        assertTrue(guidedTourBottomPaddingDp(useNavigationRail = false, useCompactShortBottomBar = true) == 58)
+        assertTrue(guidedTourBottomPaddingDp(useNavigationRail = false, useCompactShortBottomBar = false) == 70)
+    }
+
+    @Test
     fun guidedTourCopyKeepsRoutinesInTrainingAndNotCoach() {
         val source = File("src/main/java/com/trainiq/navigation/TrainIqNav.kt").readText()
         val trainingStep = source.substringAfter("title = \"Training\"").substringBefore("GuidedTourStep(")

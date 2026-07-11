@@ -25,15 +25,14 @@ class ScreenUiStateArchitectureTest {
     }
 
     @Test
-    fun activeWorkoutUiStateIncludesRestTimerFlows() {
+    fun activeWorkoutUiStateKeepsPerSecondClockTicksOutOfBroadScreenState() {
         val source = File(root, "features/workout/WorkoutScreen.kt").readText()
         val stateBody = source.substringAfter("private val activeWorkoutUiState: StateFlow<ActiveWorkoutUiState>")
             .substringBefore("    val uiState: StateFlow<ScreenUiState<WorkoutUiContent>>")
 
-        assertTrue(stateBody.contains(".combine(_restTimerSeconds)"))
-        assertTrue(stateBody.contains("state.copy(restTimerSeconds = restTimerSeconds)"))
-        assertTrue(stateBody.contains(".combine(_restTimerTotalSeconds)"))
-        assertTrue(stateBody.contains("state.copy(restTimerTotalSeconds = restTimerTotalSeconds)"))
+        assertFalse(stateBody.contains(".combine(_elapsedSeconds)"))
+        assertFalse(stateBody.contains(".combine(_restTimerSeconds)"))
+        assertFalse(stateBody.contains(".combine(_restTimerTotalSeconds)"))
         assertTrue(stateBody.contains(".combine(_exerciseRestOverrides)"))
         assertTrue(stateBody.contains("state.copy(exerciseRestOverrides = exerciseRestOverrides)"))
     }
