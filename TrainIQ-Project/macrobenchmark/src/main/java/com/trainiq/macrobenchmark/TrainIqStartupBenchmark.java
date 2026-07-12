@@ -10,7 +10,6 @@ import androidx.benchmark.macro.junit4.BaselineProfileRule;
 import androidx.benchmark.macro.junit4.MacrobenchmarkRule;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.uiautomator.By;
-import androidx.test.uiautomator.Direction;
 import androidx.test.uiautomator.UiDevice;
 import androidx.test.uiautomator.Until;
 import java.io.IOException;
@@ -129,14 +128,11 @@ public class TrainIqStartupBenchmark {
 
     private Unit navigateAndScrollSettings(MacrobenchmarkScope scope) {
         UiDevice device = scope.getDevice();
-        tapBottomDestination(device, 1);
-        tapBottomDestination(device, 2);
-        tapBottomDestination(device, 3);
-        tapBottomDestination(device, 4);
+        tapVisibleTextCenter(device, "Meer");
         requireAnyText(device, "Instellingen", "Health Connect, AI en voorkeuren");
         device.waitForIdle();
-        scrollVertical(device, Direction.DOWN);
-        scrollVertical(device, Direction.UP);
+        swipeAcrossSettings(device, true, 6);
+        swipeAcrossSettings(device, false, 6);
         return Unit.INSTANCE;
     }
 
@@ -232,11 +228,24 @@ public class TrainIqStartupBenchmark {
         throw new AssertionError("Required benchmark screen not found: " + String.join(" or ", labels));
     }
 
-    private static void scrollVertical(UiDevice device, Direction direction) {
-        if (device.findObject(By.scrollable(true)) != null) {
-            device.findObject(By.scrollable(true)).scroll(direction, 0.8f);
-            device.waitForIdle();
+    private static void tapVisibleTextCenter(UiDevice device, String label) {
+        if (!device.wait(Until.hasObject(By.text(label)), TIMEOUT_MILLIS)) {
+            throw new AssertionError("Required benchmark target not found: " + label);
         }
+        android.graphics.Point center = device.findObject(By.text(label)).getVisibleCenter();
+        device.click(center.x, center.y);
+        device.waitForIdle();
+    }
+
+    private static void swipeAcrossSettings(UiDevice device, boolean downward, int count) {
+        int width = device.getDisplayWidth();
+        int height = device.getDisplayHeight();
+        for (int index = 0; index < count; index++) {
+            int startY = downward ? (int) (height * 0.78f) : (int) (height * 0.22f);
+            int endY = downward ? (int) (height * 0.22f) : (int) (height * 0.78f);
+            device.swipe(width / 2, startY, width / 2, endY, 30);
+        }
+        device.waitForIdle();
     }
 
     private static void swipeToActiveWorkoutLogControls(UiDevice device) {

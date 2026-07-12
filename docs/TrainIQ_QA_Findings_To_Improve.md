@@ -6,6 +6,16 @@ Refresh date: 2026-05-10, current worktree
 
 Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emulator smoke, Health Connect, Gemini/AI, Room/data, UI/UX/accessibility, release readiness.
 
+## 2026-07-11 Settings Section-Boundary Jank Fix
+
+- status: done for the reported Settings-only section-boundary hitch; physical-device subjective confirmation remains with the user.
+- root cause and fix: Settings contained nine fixed sections but used lazy item insertion, so each large card was first composed and measured as its boundary entered the viewport. The successful Settings screen now uses one remembered finite `ScrollState` with `Column.verticalScroll`; order, cards, copy, callbacks, fields, snackbar, dialogs, focus clearing and IME padding are unchanged.
+- test-first evidence: the new finite-container regression failed on the old `LazyColumn` and passed after the minimal container replacement. Settings, onboarding and benchmark architecture regressions pass.
+- emulator smoke: debug update install passed; after the existing first-run completion route, Settings rendered as one scrollable view. Repeated slow/fast full-length swipes crossed every section in both directions, both AI key fields remained reachable, scrolling after field focus cleared input (`mInputShown=false`), `MainActivity` remained resumed, and crash/severe logcat slices were empty.
+- profileable benchmark: NOT RUN to completion. The expanded five-run Settings journey was compiled and its source guards pass, but the current Android 16 emulator/profileable target repeatedly failed to expose the Settings destination to UiAutomator within the benchmark wait window after startup. No frame numbers are claimed from these aborted runs.
+- external sources: Android finite-list and Compose list guidance recommends `Column.verticalScroll` for small bounded collections and notes that all content emitted by one lazy item is composed/measured together: https://developer.android.com/develop/ui/compose/quick-guides/content/finite-scrolling-list and https://developer.android.com/develop/ui/compose/lists
+- remaining risk: a normal debug Settings render and interaction pass is green, but profileable emulator automation is not certification evidence; the user's device feel remains the acceptance signal for the original hitch.
+
 ## 2026-07-11 App Performance and Test-Health Pass
 
 - status: partially-done; concrete Settings lazy-layout and benchmark reliability risks are fixed, while physical-device certification remains open.

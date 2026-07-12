@@ -54,8 +54,21 @@ class ProfileableBenchmarkSeedArchitectureTest {
             .substringAfter("private Unit navigateAndScrollSettings(MacrobenchmarkScope scope)")
             .substringBefore("private Unit logActiveWorkoutSet")
 
-        assertTrue(navigationBody.contains("tapBottomDestination(device, 1);"))
-        assertTrue(navigationBody.contains("tapBottomDestination(device, 4);"))
-        assertFalse(navigationBody.contains("tapAnyText"))
+        assertTrue(navigationBody.contains("tapVisibleTextCenter(device, \"Meer\");"))
+        assertFalse(navigationBody.contains("tapBottomDestination(device, 1);"))
+        assertFalse(navigationBody.contains("tapBottomDestination(device, 2);"))
+        assertFalse(navigationBody.contains("tapBottomDestination(device, 3);"))
+        assertFalse(navigationBody.contains("tapBottomDestination(device, 4);"))
+    }
+
+    @Test
+    fun settingsBenchmarkCrossesEverySectionBoundaryInBothDirections() {
+        val source = File("../macrobenchmark/src/main/java/com/trainiq/macrobenchmark/TrainIqStartupBenchmark.java").readText()
+        val navigationBody = source
+            .substringAfter("private Unit navigateAndScrollSettings(MacrobenchmarkScope scope)")
+            .substringBefore("private Unit logActiveWorkoutSet")
+
+        assertTrue(navigationBody.contains("swipeAcrossSettings(device, true, 6);"))
+        assertTrue(navigationBody.contains("swipeAcrossSettings(device, false, 6);"))
     }
 }

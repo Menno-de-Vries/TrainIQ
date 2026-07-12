@@ -24,13 +24,16 @@ import org.junit.Test
 
 class SettingsUiStateTest {
     @Test
-    fun settingsLazyItemsExposeUniqueStableKeysAndReusableContentTypes() {
-        val items = SettingsListItem.entries
+    fun settingsUsesOnePrecomposedFiniteScrollContainer() {
+        val source = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
+        val settingsScreen = source.substringAfter("fun SettingsScreen(")
+            .substringBefore("pendingDestructiveAction?.let")
 
-        assertEquals(items.size, items.map(SettingsListItem::stableKey).distinct().size)
-        assertTrue(items.all { it.contentType.isNotBlank() })
-        assertEquals("settings-header", SettingsListItem.HEADER.contentType)
-        assertEquals("settings-section", SettingsListItem.HEALTH_CONNECT.contentType)
+        assertTrue(settingsScreen.contains("rememberScrollState()"))
+        assertTrue(settingsScreen.contains(".verticalScroll(scrollState)"))
+        assertTrue(settingsScreen.contains(".clearFocusOnScrollOrDrag()"))
+        assertFalse(settingsScreen.contains("LazyColumn("))
+        assertFalse(source.contains("SettingsListItem"))
     }
 
     @Test
@@ -383,7 +386,8 @@ class SettingsUiStateTest {
         assertTrue(source.contains("Lokale TrainIQ-data wissen"))
         assertTrue(source.contains("previewImportJson"))
         assertTrue(source.contains("confirmImport"))
-        assertTrue(source.contains("rememberLazyListState()"))
+        assertTrue(source.contains("rememberScrollState()"))
+        assertTrue(source.contains(".verticalScroll(scrollState)"))
         assertTrue(source.contains("SnackbarHost"))
         assertFalse(source.contains("message?.let"))
         assertFalse(source.contains("AnimatedScreenState(targetState = uiState)"))

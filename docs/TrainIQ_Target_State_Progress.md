@@ -2,6 +2,13 @@
 
 Updated date: 2026-07-11
 
+## 2026-07-11 Settings Finite-Scroll Follow-up
+
+- Settings now precomposes its nine fixed sections in one remembered finite scroll container, removing lazy item insertion from section-boundary scroll frames without changing any public, ViewModel, data, AI, Health Connect or navigation contract.
+- Test-first structure coverage, Settings regressions, broad debug gates, update install, full-length emulator swipes, AI field focus/scroll cleanup and empty crash/severe logcat evidence are recorded.
+- The profileable five-run Settings benchmark remains `NOT RUN to completion`: source/compile guards pass, but the Android 16 emulator target did not expose Settings to UiAutomator reliably after profileable startup, so no benchmark delta or score increase is claimed.
+- Official Android finite-list guidance supports the bounded `Column.verticalScroll` trade-off. Physical-device subjective confirmation remains the final proof for the reported user-visible hitch.
+
 ## 2026-07-11 Performance and Code-Health Follow-up
 
 - Settings lazy items now have stable identity and reusable content types without changing visible behavior, navigation, data or ViewModel contracts.

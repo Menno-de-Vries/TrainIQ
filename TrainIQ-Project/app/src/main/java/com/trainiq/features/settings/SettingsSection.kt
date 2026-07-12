@@ -26,10 +26,10 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -737,21 +737,6 @@ internal enum class PendingDestructiveSettingsAction {
     CLEAR_ALL_DATA,
 }
 
-internal enum class SettingsListItem(
-    val stableKey: String,
-    val contentType: String,
-) {
-    HEADER("settings-header", "settings-header"),
-    OVERVIEW("settings-overview", "settings-section"),
-    ONBOARDING("settings-onboarding", "settings-section"),
-    DISPLAY("settings-display", "settings-section"),
-    PREFERENCES("settings-preferences", "settings-section"),
-    AI_PROVIDERS("settings-ai-providers", "settings-section"),
-    HEALTH_CONNECT("settings-health-connect", "settings-section"),
-    DATA_STORAGE("settings-data-storage", "settings-section"),
-    ABOUT("settings-about", "settings-section"),
-}
-
 @Composable
 private fun SettingsLoadingScreen() {
     LazyColumn(
@@ -842,7 +827,7 @@ fun SettingsScreen(
             openAiKeyInput = ""
         }
     }
-    val listState = rememberLazyListState()
+    val scrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
     val clipboardManager = LocalClipboardManager.current
     val coroutineScope = rememberCoroutineScope()
@@ -859,32 +844,29 @@ fun SettingsScreen(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { _ ->
-        LazyColumn(
-            state = listState,
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .clearFocusOnScrollOrDrag()
+                .verticalScroll(scrollState)
                 .navigationBarsPadding()
-                .imePadding(),
-            contentPadding = PaddingValues(
-                start = MaterialTheme.spacing.medium,
-                top = MaterialTheme.spacing.small,
-                end = MaterialTheme.spacing.medium,
-                bottom = 132.dp,
-            ),
+                .imePadding()
+                .padding(
+                    start = MaterialTheme.spacing.medium,
+                    top = MaterialTheme.spacing.small,
+                    end = MaterialTheme.spacing.medium,
+                    bottom = 132.dp,
+                ),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
         ) {
-        item(key = SettingsListItem.HEADER.stableKey, contentType = SettingsListItem.HEADER.contentType) { ScreenHeader(title = "Instellingen", subtitle = "Health Connect, AI en voorkeuren") }
-        item(key = SettingsListItem.OVERVIEW.stableKey, contentType = SettingsListItem.OVERVIEW.contentType) {
-            SectionCard(title = settingsOverflowSectionTitle()) {
+        ScreenHeader(title = "Instellingen", subtitle = "Health Connect, AI en voorkeuren")
+        SectionCard(title = settingsOverflowSectionTitle()) {
                 Text(settingsOverflowSectionBody())
                 Text("Thema: ${themeMode.displayLabel()}")
                 Text("AI: ${if (aiStatus.enabled && (aiStatus.hasGeminiKey || aiStatus.hasOpenAiKey)) "Klaar voor expliciet gebruik" else "Alleen handmatig"}")
                 Text("Health Connect: ${healthStatusLabel(healthStatus)}")
-            }
         }
-        item(key = SettingsListItem.ONBOARDING.stableKey, contentType = SettingsListItem.ONBOARDING.contentType) {
-            SectionCard(title = "Onboarding") {
+        SectionCard(title = "Onboarding") {
                 Text(
                     if (onboardingPreferences.completed) {
                         "Intro afgerond. Je kunt de setup opnieuw openen om doelen, Health Connect, AI en reminders rustig langs te lopen."
@@ -923,10 +905,8 @@ fun SettingsScreen(
                 ) {
                     Text("Onboarding openen")
                 }
-            }
         }
-        item(key = SettingsListItem.DISPLAY.stableKey, contentType = SettingsListItem.DISPLAY.contentType) {
-            SectionCard(title = "Weergave") {
+        SectionCard(title = "Weergave") {
                 Text("Themamodus")
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
@@ -944,10 +924,8 @@ fun SettingsScreen(
                         )
                     }
                 }
-            }
         }
-        item(key = SettingsListItem.PREFERENCES.stableKey, contentType = SettingsListItem.PREFERENCES.contentType) {
-            SectionCard(title = "Voorkeuren") {
+        SectionCard(title = "Voorkeuren") {
                 FeedbackToggleRow(
                     title = "Rusttimer-geluid",
                     body = "Speel een kort geluid wanneer de rusttijd voorbij is.",
@@ -990,10 +968,8 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
         }
-        item(key = SettingsListItem.AI_PROVIDERS.stableKey, contentType = SettingsListItem.AI_PROVIDERS.contentType) {
-            SectionCard(title = "AI / Providers") {
+        SectionCard(title = "AI / Providers") {
                 Text("AI wordt alleen gebruikt nadat jij het inschakelt. TrainIQ doet geen AI-aanvragen op de achtergrond.")
                 Text("Bij een expliciete AI-actie stuurt TrainIQ de benodigde prompt, context en eventueel gekozen foto naar je gekozen provider met jouw lokaal opgeslagen API-sleutel.")
                 Row(
@@ -1090,10 +1066,8 @@ fun SettingsScreen(
                 Text("Gemini en OpenAI kunnen API-kosten veroorzaken. Laat AI uitgeschakeld tenzij je het wilt gebruiken.")
                 Text("Gebruikt door: maaltijdanalyse, workoutterugblik, wekelijks AI-rapport en doeladviseur.")
                 Text("Status: ${aiProviderStatusLabel(aiStatus)}")
-            }
         }
-        item(key = SettingsListItem.HEALTH_CONNECT.stableKey, contentType = SettingsListItem.HEALTH_CONNECT.contentType) {
-            SectionCard(title = "Health Connect") {
+        SectionCard(title = "Health Connect") {
                 Text("Status: ${healthStatusLabel(healthStatus)}")
                 healthConnectStepsAvailabilityMessage(healthStatus)?.let { stepMessage ->
                     Text(stepMessage)
@@ -1169,10 +1143,8 @@ fun SettingsScreen(
                         },
                     )
                 }
-            }
         }
-        item(key = SettingsListItem.DATA_STORAGE.stableKey, contentType = SettingsListItem.DATA_STORAGE.contentType) {
-            SectionCard(title = "Gegevens / opslag") {
+        SectionCard(title = "Gegevens / opslag") {
                 Text("Lokale data: profiel, routines, workouts, voeding, recepten en metingen.")
                 Text("AI-sleutel: lokaal versleuteld opgeslagen via Android Keystore.")
                 Text("Health Connect-cache: sync-token en recente stappen, hartslag, slaap, calorieën en gewicht.")
@@ -1204,15 +1176,12 @@ fun SettingsScreen(
                             .settingsActionLabel("Lokale TrainIQ-data wissen"),
                     ) { Text("Lokale data wissen") }
                 }
-            }
         }
-        item(key = SettingsListItem.ABOUT.stableKey, contentType = SettingsListItem.ABOUT.contentType) {
-            SectionCard(title = "Over") {
+        SectionCard(title = "Over") {
                 Text("Appversie: ${BuildConfig.VERSION_NAME}")
                 Text("AI ingeschakeld: ${if (aiStatus.enabled) "Ja" else "Nee"}")
                 Text("Health Connect: ${healthStatusLabel(healthStatus)}")
                 Text("Ontworpen als handmatige training- en voedings-MVP.")
-            }
         }
     }
     }
