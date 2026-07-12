@@ -2,6 +2,7 @@
 
 package com.trainiq.features.nutrition
 
+import android.os.Bundle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -55,10 +56,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -73,6 +76,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.os.BundleCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -83,6 +87,7 @@ import com.trainiq.core.datastore.AiPreferences
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.theme.spacing
 import com.trainiq.core.ui.MessageCard
+import com.trainiq.core.ui.reloadableObservation
 import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.ShimmerCardPlaceholder
 import com.trainiq.core.ui.AppCard
@@ -128,11 +133,15 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -140,6 +149,94 @@ import kotlinx.coroutines.launch
 enum class ScanTarget { FOOD_EDITOR, RECIPE_DRAFT }
 
 enum class BarcodeLookupTarget { FOOD_EDITOR, RECIPE_DRAFT }
+
+private val RecipeDraftSaver = Saver<SnapshotStateList<Pair<Long, Double>>, Bundle>(
+    save = { draft ->
+        Bundle().apply {
+            putLongArray("ids", draft.map { it.first }.toLongArray())
+            putDoubleArray("grams", draft.map { it.second }.toDoubleArray())
+        }
+    },
+    restore = { bundle ->
+        val ids = bundle.getLongArray("ids") ?: longArrayOf()
+        val grams = bundle.getDoubleArray("grams") ?: doubleArrayOf()
+        mutableStateListOf<Pair<Long, Double>>().apply {
+            ids.indices.take(minOf(ids.size, grams.size)).forEach { index -> add(ids[index] to grams[index]) }
+        }
+    },
+)
+
+private val MealDraftSaver = Saver<SnapshotStateList<EditableMealEntryRequest>, Bundle>(
+    save = { draft ->
+        Bundle().apply {
+            putParcelableArrayList("items", ArrayList(draft.map { entry ->
+                Bundle().apply {
+                    putString("type", entry.request.itemType.name)
+                    putLong("referenceId", entry.request.referenceId)
+                    putDouble("gramsUsed", entry.request.gramsUsed)
+                    putInt("servingCount", entry.request.servingCount)
+                    putString("notes", entry.request.notes)
+                    putString("gramsText", entry.gramsText)
+                    entry.request.snapshot?.let { snapshot ->
+                        putBundle("snapshot", Bundle().apply {
+                            putString("name", snapshot.name)
+                            putDouble("calories", snapshot.calories)
+                            putDouble("protein", snapshot.protein)
+                            putDouble("carbs", snapshot.carbs)
+                            putDouble("fat", snapshot.fat)
+                        })
+                    }
+                }
+            }))
+        }
+    },
+    restore = { bundle ->
+        mutableStateListOf<EditableMealEntryRequest>().apply {
+            BundleCompat.getParcelableArrayList(bundle, "items", Bundle::class.java).orEmpty().forEach { item ->
+                val snapshot = item.getBundle("snapshot")?.let {
+                    MealEntrySnapshot(it.getString("name").orEmpty(), it.getDouble("calories"), it.getDouble("protein"), it.getDouble("carbs"), it.getDouble("fat"))
+                }
+                add(EditableMealEntryRequest(
+                    request = MealEntryRequest(
+                        itemType = MealEntryType.valueOf(item.getString("type") ?: MealEntryType.FOOD.name),
+                        referenceId = item.getLong("referenceId"),
+                        gramsUsed = item.getDouble("gramsUsed"),
+                        servingCount = item.getInt("servingCount", 1),
+                        notes = item.getString("notes"),
+                        snapshot = snapshot,
+                    ),
+                    gramsText = item.getString("gramsText").orEmpty(),
+                ))
+            }
+        }
+    },
+)
+
+private val EditableAiItemsSaver = Saver<SnapshotStateList<EditableAiItem>, Bundle>(
+    save = { items ->
+        Bundle().apply {
+            putParcelableArrayList("items", ArrayList(items.map { item ->
+                Bundle().apply {
+                    putString("name", item.name); putString("grams", item.grams); putString("calories", item.calories)
+                    putString("protein", item.protein); putString("carbs", item.carbs); putString("fat", item.fat)
+                    putString("confidence", item.confidence); putString("notes", item.notes)
+                }
+            }))
+        }
+    },
+    restore = { bundle ->
+        mutableStateListOf<EditableAiItem>().apply {
+            BundleCompat.getParcelableArrayList(bundle, "items", Bundle::class.java).orEmpty().forEach { item ->
+                add(EditableAiItem(
+                    name = item.getString("name").orEmpty(), grams = item.getString("grams").orEmpty(),
+                    calories = item.getString("calories").orEmpty(), protein = item.getString("protein").orEmpty(),
+                    carbs = item.getString("carbs").orEmpty(), fat = item.getString("fat").orEmpty(),
+                    confidence = item.getString("confidence"), notes = item.getString("notes"),
+                ))
+            }
+        }
+    },
+)
 
 data class BarcodeLookupUiResult(
     val target: BarcodeLookupTarget,
@@ -175,8 +272,9 @@ sealed interface NutritionUiState {
 }
 
 @HiltViewModel
+@OptIn(ExperimentalCoroutinesApi::class)
 class NutritionViewModel @Inject constructor(
-    observeNutritionUseCase: ObserveNutritionUseCase,
+    private val observeNutritionUseCase: ObserveNutritionUseCase,
     preferencesRepository: UserPreferencesRepository,
     aiUsageGate: AiUsageGate,
     private val analyzeMealUseCase: AnalyzeMealUseCase,
@@ -198,20 +296,24 @@ class NutritionViewModel @Inject constructor(
         val pendingSubmits: Set<NutritionSubmitKey> = emptySet(),
     )
 
-    private val overview: StateFlow<NutritionOverview?> = observeNutritionUseCase()
+    private val reloads = MutableStateFlow(0)
+    private val overview = reloadableObservation(reloads) { observeNutritionUseCase() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
-    private val aiPreferences: StateFlow<AiPreferences> = preferencesRepository.aiPreferences
-        .combineResolvedAiPreferences(aiUsageGate)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AiPreferences(false, ""))
+    private val aiPreferences = reloadableObservation(reloads) {
+        preferencesRepository.aiPreferences
+            .combineResolvedAiPreferences(aiUsageGate)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     private val ephemeral = MutableStateFlow(NutritionEphemeralState())
 
     val uiState: StateFlow<NutritionUiState> = combine(overview, aiPreferences, ephemeral) { currentOverview, currentPreferences, temp ->
         when {
-            currentOverview == null -> NutritionUiState.Loading
+            currentOverview == null || currentPreferences == null -> NutritionUiState.Loading
+            currentOverview.isFailure -> NutritionUiState.Error("Voedingsgegevens konden niet worden geladen.")
+            currentPreferences.isFailure -> NutritionUiState.Error("Voedingsvoorkeuren konden niet worden geladen.")
             else -> NutritionUiState.Success(
-                overview = currentOverview,
-                aiPreferences = currentPreferences,
-                scanResult = temp.scanResult ?: currentOverview.scannedResult,
+                overview = currentOverview.getOrThrow(),
+                aiPreferences = currentPreferences.getOrThrow(),
+                scanResult = temp.scanResult ?: currentOverview.getOrThrow().scannedResult,
                 message = temp.message,
                 isAnalyzing = temp.isAnalyzing,
                 scanTarget = temp.scanTarget,
@@ -221,9 +323,13 @@ class NutritionViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), NutritionUiState.Loading)
 
+    fun retry() {
+        reloads.update { it + 1 }
+    }
+
     fun analyze(path: String, context: String, capturedAtMillis: Long) {
         viewModelScope.launch {
-            val ai = aiPreferences.value
+            val ai = aiPreferences.value?.getOrNull() ?: AiPreferences(false, "")
             if (!ai.enabled) {
                 ephemeral.update { it.copy(message = "AI staat uit in Instellingen. Voeding werkt nog steeds volledig met handmatige invoer.") }
                 return@launch
@@ -363,7 +469,7 @@ class NutritionViewModel @Inject constructor(
     }
 
     fun deleteFood(foodId: Long) {
-        if (overview.value?.recipes.orEmpty().any { recipe -> recipe.ingredients.any { it.foodItemId == foodId } }) {
+        if (overview.value?.getOrNull()?.recipes.orEmpty().any { recipe -> recipe.ingredients.any { it.foodItemId == foodId } }) {
             ephemeral.update { it.copy(message = "Dit product wordt nog gebruikt in recepten. Verwijder het eerst uit die recepten.") }
             return
         }
@@ -475,6 +581,7 @@ fun NutritionRoute(
         onClearBarcodeLookupResult = viewModel::clearBarcodeLookupResult,
         onSetMessage = viewModel::setMessage,
         onDismissMessage = { viewModel.setMessage(null) },
+        onRetry = viewModel::retry,
         onAnalyzeImportedPhoto = viewModel::analyze,
         onAiScanner = onAiScanner,
         onOpenBarcodeScanner = onOpenBarcodeScanner,
@@ -501,6 +608,7 @@ fun NutritionScreen(
     onClearBarcodeLookupResult: () -> Unit = {},
     onSetMessage: (String?) -> Unit,
     onDismissMessage: () -> Unit,
+    onRetry: () -> Unit,
     onAnalyzeImportedPhoto: (String, String, Long) -> Unit = { _, _, _ -> },
     onAiScanner: (String) -> Unit,
     onOpenBarcodeScanner: () -> Unit,
@@ -535,16 +643,19 @@ fun NutritionScreen(
     val ingredientEditorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedTab by rememberSaveable { mutableStateOf(0) }
     val nutritionListState = nutritionListStates[selectedTab.coerceIn(nutritionListStates.indices)]
-    var aiResultTarget by remember { mutableStateOf(NutritionAiResultTarget.MealDraft) }
+    var aiResultTarget by rememberSaveable { mutableStateOf(NutritionAiResultTarget.MealDraft) }
     var showAddToMealActions by remember { mutableStateOf(false) }
     var showSectionMenu by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<PendingNutritionDelete?>(null) }
-    var addToMealType by remember { mutableStateOf(MealType.BREAKFAST) }
-    var hasAddToMealTarget by remember { mutableStateOf(false) }
-    var pendingAiMealType by remember { mutableStateOf<MealType?>(null) }
-    var selectedFoodId by remember { mutableStateOf<Long?>(null) }
-    var selectedRecipeIngredientFoodId by remember { mutableStateOf<Long?>(null) }
-    var selectedRecipeId by remember { mutableStateOf<Long?>(null) }
+    var addToMealType by rememberSaveable { mutableStateOf(MealType.BREAKFAST) }
+    var hasAddToMealTarget by rememberSaveable { mutableStateOf(false) }
+    var pendingAiMealType by rememberSaveable { mutableStateOf<MealType?>(null) }
+    var selectedFoodId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var selectedRecipeIngredientFoodId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var selectedRecipeId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var hydratedFoodId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var hydratedRecipeId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var hydratedScanResultHash by rememberSaveable { mutableStateOf<Int?>(null) }
     val selectedFood = overview?.foods?.firstOrNull { it.id == selectedFoodId }
     val selectedRecipeIngredientFood = overview?.foods?.firstOrNull { it.id == selectedRecipeIngredientFoodId }
     val selectedRecipe = overview?.recipes?.firstOrNull { it.id == selectedRecipeId }
@@ -556,42 +667,42 @@ fun NutritionScreen(
     var recipeSearchQuery by rememberSaveable { mutableStateOf("") }
     var ingredientSearchQuery by rememberSaveable { mutableStateOf("") }
 
-    var foodName by remember { mutableStateOf("") }
-    var barcode by remember { mutableStateOf("") }
-    var calories by remember { mutableStateOf("") }
-    var protein by remember { mutableStateOf("") }
-    var carbs by remember { mutableStateOf("") }
-    var fat by remember { mutableStateOf("") }
-    var defaultServingGrams by remember { mutableStateOf("100") }
+    var foodName by rememberSaveable { mutableStateOf("") }
+    var barcode by rememberSaveable { mutableStateOf("") }
+    var calories by rememberSaveable { mutableStateOf("") }
+    var protein by rememberSaveable { mutableStateOf("") }
+    var carbs by rememberSaveable { mutableStateOf("") }
+    var fat by rememberSaveable { mutableStateOf("") }
+    var defaultServingGrams by rememberSaveable { mutableStateOf("100") }
     var foodErrors by remember { mutableStateOf(FoodFieldErrors()) }
 
-    var recipeName by remember { mutableStateOf("") }
-    var recipeNotes by remember { mutableStateOf("") }
-    var recipeCookedGrams by remember { mutableStateOf("") }
-    var ingredientGrams by remember { mutableStateOf("100") }
-    var recipeAiContext by remember { mutableStateOf("") }
-    var quickIngredientName by remember { mutableStateOf("") }
-    var quickIngredientBarcode by remember { mutableStateOf("") }
-    var quickIngredientKcal by remember { mutableStateOf("") }
-    var quickIngredientProtein by remember { mutableStateOf("") }
-    var quickIngredientCarbs by remember { mutableStateOf("") }
-    var quickIngredientFat by remember { mutableStateOf("") }
+    var recipeName by rememberSaveable { mutableStateOf("") }
+    var recipeNotes by rememberSaveable { mutableStateOf("") }
+    var recipeCookedGrams by rememberSaveable { mutableStateOf("") }
+    var ingredientGrams by rememberSaveable { mutableStateOf("100") }
+    var recipeAiContext by rememberSaveable { mutableStateOf("") }
+    var quickIngredientName by rememberSaveable { mutableStateOf("") }
+    var quickIngredientBarcode by rememberSaveable { mutableStateOf("") }
+    var quickIngredientKcal by rememberSaveable { mutableStateOf("") }
+    var quickIngredientProtein by rememberSaveable { mutableStateOf("") }
+    var quickIngredientCarbs by rememberSaveable { mutableStateOf("") }
+    var quickIngredientFat by rememberSaveable { mutableStateOf("") }
     var showRecipeActions by remember { mutableStateOf(false) }
-    val recipeDraft = remember { mutableStateListOf<Pair<Long, Double>>() }
+    val recipeDraft = rememberSaveable(saver = RecipeDraftSaver) { mutableStateListOf<Pair<Long, Double>>() }
     var recipeErrors by remember { mutableStateOf(RecipeFieldErrors()) }
     var quickIngredientErrors by remember { mutableStateOf(FoodFieldErrors()) }
 
-    var mealType by remember { mutableStateOf(MealType.LUNCH) }
-    var mealName by remember { mutableStateOf("") }
-    var mealNotes by remember { mutableStateOf("") }
-    var mealRecipeGrams by remember { mutableStateOf("150") }
-    var editingMealId by remember { mutableStateOf<Long?>(null) }
-    val mealDraft = remember { mutableStateListOf<EditableMealEntryRequest>() }
+    var mealType by rememberSaveable { mutableStateOf(MealType.LUNCH) }
+    var mealName by rememberSaveable { mutableStateOf("") }
+    var mealNotes by rememberSaveable { mutableStateOf("") }
+    var mealRecipeGrams by rememberSaveable { mutableStateOf("150") }
+    var editingMealId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val mealDraft = rememberSaveable(saver = MealDraftSaver) { mutableStateListOf<EditableMealEntryRequest>() }
     var mealErrors by remember { mutableStateOf(MealFieldErrors()) }
     var mealRecipeGramsErrors by remember { mutableStateOf(QuickAddFieldErrors()) }
 
-    var aiContext by remember { mutableStateOf("") }
-    val editableAiItems = remember { mutableStateListOf<EditableAiItem>() }
+    var aiContext by rememberSaveable { mutableStateOf("") }
+    val editableAiItems = rememberSaveable(saver = EditableAiItemsSaver) { mutableStateListOf<EditableAiItem>() }
     val photoImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         val path = copyScannerImageFromUri(context, uri)
@@ -629,6 +740,7 @@ fun NutritionScreen(
 
     fun resetFoodEditorState() {
         selectedFoodId = null
+        hydratedFoodId = null
         foodName = ""
         barcode = ""
         calories = ""
@@ -651,6 +763,7 @@ fun NutritionScreen(
 
     fun resetRecipeEditorState() {
         selectedRecipeId = null
+        hydratedRecipeId = null
         selectedRecipeIngredientFoodId = null
         recipeName = ""
         recipeNotes = ""
@@ -855,32 +968,41 @@ fun NutritionScreen(
 
     LaunchedEffect(showFoodEditor, selectedFood?.id) {
         if (!showFoodEditor) return@LaunchedEffect
-        selectedFood?.let {
-            foodName = it.name
-            barcode = it.barcode.orEmpty()
-            calories = formatNumber(it.caloriesPer100g)
-            protein = formatNumber(it.proteinPer100g)
-            carbs = formatNumber(it.carbsPer100g)
-            fat = formatNumber(it.fatPer100g)
-            defaultServingGrams = formatNumber(it.defaultServingGrams)
-        }
+        val selectedFood = selectedFood ?: return@LaunchedEffect
+        if (hydratedFoodId == selectedFood.id) return@LaunchedEffect
+        foodName = selectedFood.name
+        barcode = selectedFood.barcode.orEmpty()
+        calories = formatNumber(selectedFood.caloriesPer100g)
+        protein = formatNumber(selectedFood.proteinPer100g)
+        carbs = formatNumber(selectedFood.carbsPer100g)
+        fat = formatNumber(selectedFood.fatPer100g)
+        defaultServingGrams = formatNumber(selectedFood.defaultServingGrams)
+        hydratedFoodId = selectedFood.id
     }
 
     LaunchedEffect(selectedRecipe?.id) {
         selectedRecipe?.let {
+            if (hydratedRecipeId == it.id) return@LaunchedEffect
             recipeName = it.name
             recipeNotes = it.notes.orEmpty()
             recipeCookedGrams = formatNullableNumber(it.totalCookedGrams)
             recipeDraft.clear()
             recipeDraft.addAll(it.ingredients.map { ingredient -> ingredient.foodItemId to ingredient.gramsUsed })
+            hydratedRecipeId = it.id
         }
     }
 
     LaunchedEffect(scanResult) {
+        val currentScanResult = scanResult
+        if (currentScanResult == null) {
+            hydratedScanResultHash = null
+            return@LaunchedEffect
+        }
+        if (hydratedScanResultHash == currentScanResult.hashCode()) return@LaunchedEffect
         editableAiItems.clear()
-        scanResult?.items?.forEach { editableAiItems += EditableAiItem.from(it) }
+        currentScanResult.items.forEach { editableAiItems += EditableAiItem.from(it) }
         if (aiResultTarget == NutritionAiResultTarget.MealDraft) {
-            (pendingAiMealType ?: scanResult?.suggestedMealType)?.let {
+            (pendingAiMealType ?: currentScanResult.suggestedMealType)?.let {
                 mealType = it
                 if (mealName in listOf("Breakfast", "Lunch", "Dinner", "Snack", "Ochtend", "Middag", "Avond", "Snacks")) {
                     mealName = it.dutchLabel
@@ -890,6 +1012,7 @@ fun NutritionScreen(
         if (editableAiItems.isNotEmpty()) {
             selectedTab = 2
         }
+        hydratedScanResultHash = currentScanResult.hashCode()
     }
 
     LaunchedEffect(message) {
@@ -960,7 +1083,13 @@ fun NutritionScreen(
                     }
                 }
                 is NutritionUiState.Error -> {
-                    item { MessageCard(message = uiState.message) }
+                    item {
+                        MessageCard(message = uiState.message)
+                        Button(
+                            onClick = onRetry,
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) { Text("Opnieuw proberen") }
+                    }
                 }
                 is NutritionUiState.Success -> {
                     when (selectedTab) {

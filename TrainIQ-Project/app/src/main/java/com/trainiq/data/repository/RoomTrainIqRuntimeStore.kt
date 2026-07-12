@@ -598,7 +598,19 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         }
     }
 
-    suspend fun updateWorkoutSessionDebrief(sessionId: Long, debrief: WorkoutDebrief) {
+    suspend fun getWorkoutDebriefRefreshSnapshot(sessionId: Long): WorkoutDebriefRefreshSnapshot =
+        database.withTransaction {
+            WorkoutDebriefRefreshSnapshot(
+                session = dao.getCompletedWorkoutSession(sessionId),
+                sessions = dao.getWorkoutSessions(),
+                sets = dao.getWorkoutSets(),
+                days = dao.getWorkoutDays(),
+                exercises = dao.getExercises(),
+                workoutExercises = dao.getWorkoutExercises(),
+            )
+        }
+
+    suspend fun updateWorkoutSessionDebrief(sessionId: Long, debrief: WorkoutDebrief): Int =
         mutex.withLock {
             dao.updateWorkoutSessionDebrief(
                 sessionId = sessionId,
@@ -615,7 +627,6 @@ class RoomTrainIqRuntimeStore @Inject constructor(
                 source = debrief.source.name,
             )
         }
-    }
 
     suspend fun addMeasurement(measurement: BodyMeasurementEntity) {
         mutex.withLock {
@@ -638,6 +649,15 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         }
     }
 }
+
+data class WorkoutDebriefRefreshSnapshot(
+    val session: WorkoutSessionEntity?,
+    val sessions: List<WorkoutSessionEntity>,
+    val sets: List<WorkoutSetEntity>,
+    val days: List<WorkoutDayEntity>,
+    val exercises: List<ExerciseEntity>,
+    val workoutExercises: List<WorkoutExerciseEntity>,
+)
 
 private data class CorePlanTables(
     val profile: UserProfileEntity?,

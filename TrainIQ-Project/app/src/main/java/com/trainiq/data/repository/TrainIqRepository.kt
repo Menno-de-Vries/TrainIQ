@@ -104,6 +104,7 @@ import com.trainiq.domain.repository.MealEntryType
 import com.trainiq.domain.repository.NutritionRepository
 import com.trainiq.domain.repository.ProgressRepository
 import com.trainiq.domain.repository.WorkoutRepository
+import com.trainiq.domain.repository.WorkoutDebriefRefreshOutcome
 import javax.inject.Inject
 import javax.inject.Singleton
 import java.util.Locale
@@ -607,21 +608,90 @@ class TrainIqDataCoordinator @Inject constructor(
             sets = newSets,
             activeSessionId = activeSessionId,
         )
-        scope.launch {
-            runCatching {
-                val refreshedDebrief = workoutDebriefService.generateWorkoutDebrief(
-                    totalVolume = currentVolume,
-                    progression = progression,
-                    comparisonSummary = comparison?.summary ?: "Nog geen eerdere vergelijkbare training gevonden.",
-                    distribution = distribution,
-                    avgRpe = avgRpe,
-                    topExercises = topExercises,
-                    weeklyFrequency = weeklyFrequency,
-                )
-                runtimeStore.updateWorkoutSessionDebrief(sessionId = sessionId, debrief = refreshedDebrief)
-            }
-        }
         return WorkoutCompletionResult(sessionId = sessionId, debrief = localDebrief)
+    }
+
+    suspend fun refreshWorkoutDebrief(sessionId: Long): WorkoutDebriefRefreshOutcome = withContext(Dispatchers.IO) {
+        val refreshSnapshot = runtimeStore.getWorkoutDebriefRefreshSnapshot(sessionId)
+        val session = refreshSnapshot.session ?: return@withContext WorkoutDebriefRefreshOutcome.SESSION_MISSING
+        if (session.debriefSource != WorkoutDebriefSource.LOCAL_FALLBACK.name) {
+            return@withContext WorkoutDebriefRefreshOutcome.ALREADY_ENRICHED
+        }
+        val dayId = session.workoutDayId ?: return@withContext WorkoutDebriefRefreshOutcome.INVALID_RESULT
+        val sessionSets = refreshSnapshot.sets.filter { it.sessionId == sessionId }
+        if (sessionSets.isEmpty()) return@withContext WorkoutDebriefRefreshOutcome.INVALID_RESULT
+        val progressionSets = sessionSets.filter { parseSetType(it.setType).isProgressionType() }.ifEmpty { sessionSets }
+        val currentVolume = progressionSets.sumOf { it.weight * it.reps }
+        val comparison = buildWorkoutProgressComparison(
+            dayId = dayId,
+            routineId = session.routineId,
+            startedAt = session.startedAt,
+            activeSessionId = sessionId,
+            currentSets = progressionSets.map { set ->
+                LoggedSet(
+                    exerciseId = set.exerciseId,
+                    weight = set.weight,
+                    reps = set.reps,
+                    rpe = set.rpe,
+                    repsInReserve = set.repsInReserve,
+                    setType = parseSetType(set.setType),
+                    restSeconds = set.restSeconds,
+                    orderIndex = set.orderIndex,
+                    completed = set.completed,
+                    loggedAt = set.loggedAt,
+                    performedExerciseId = set.performedExerciseId,
+                )
+            },
+            sessions = refreshSnapshot.sessions,
+            sets = refreshSnapshot.sets,
+            days = refreshSnapshot.days,
+            exercises = refreshSnapshot.exercises,
+        )
+        val directSnapshot = RepositorySnapshot(
+            days = refreshSnapshot.days,
+            exercises = refreshSnapshot.exercises,
+            workoutExercises = refreshSnapshot.workoutExercises,
+        )
+        val workoutDay = buildWorkoutDay(directSnapshot, dayId)
+        val distribution = workoutDay?.exercises
+            ?.groupBy { it.exercise.muscleGroup }
+            ?.map { "${it.key} ${it.value.size}" }
+            ?.joinToString()
+            .orEmpty()
+        val exerciseNameById = refreshSnapshot.exercises.associate { it.id to it.name }
+        val topExercises = progressionSets
+            .sortedByDescending { it.weight * it.reps }
+            .take(3)
+            .joinToString { set ->
+                workoutDebriefTopSetText(
+                    exerciseName = exerciseNameById[set.exerciseId] ?: "Oefening ${set.exerciseId}",
+                    weightLabel = formatWeight(set.weight),
+                    reps = set.reps,
+                )
+            }
+            .ifBlank { workoutDebriefEmptyTopSetsText() }
+        val sevenDaysAgo = System.currentTimeMillis() - (7 * 86_400_000L)
+        val refreshed = workoutDebriefService.generateWorkoutDebriefOrThrow(
+            totalVolume = currentVolume,
+            progression = comparison?.progressionPercent,
+            comparisonSummary = comparison?.summary ?: "Nog geen eerdere vergelijkbare training gevonden.",
+            distribution = distribution,
+            avgRpe = progressionSets.map { it.rpe }.average().takeIf { !it.isNaN() }?.toFloat() ?: 0f,
+            topExercises = topExercises,
+            weeklyFrequency = refreshSnapshot.sessions
+                .filter { it.completed && it.date >= sevenDaysAgo }
+                .map { normalizeToDay(it.date) }
+                .distinct()
+                .count(),
+        )
+        if (refreshed.source == WorkoutDebriefSource.LOCAL_FALLBACK || refreshed.summary.isBlank()) {
+            return@withContext WorkoutDebriefRefreshOutcome.INVALID_RESULT
+        }
+        if (runtimeStore.updateWorkoutSessionDebrief(sessionId = sessionId, debrief = refreshed) > 0) {
+            WorkoutDebriefRefreshOutcome.UPDATED
+        } else {
+            WorkoutDebriefRefreshOutcome.ALREADY_ENRICHED
+        }
     }
 
     suspend fun createRoutine(name: String, description: String) {

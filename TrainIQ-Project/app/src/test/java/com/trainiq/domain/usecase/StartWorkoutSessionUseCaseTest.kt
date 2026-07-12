@@ -116,6 +116,8 @@ private class FakeWorkoutRepository(
     private val suggestions: List<ProgressionSuggestion> = emptyList(),
     private val session: ActiveWorkoutSession? = null,
 ) : WorkoutRepository {
+    override suspend fun refreshWorkoutDebrief(sessionId: Long) =
+        com.trainiq.domain.repository.WorkoutDebriefRefreshOutcome.SESSION_MISSING
     var startedDrafts: Map<Long, ActiveWorkoutSetDraft> = emptyMap()
     var discardedSessionId: Long? = null
 

@@ -6,6 +6,17 @@ Refresh date: 2026-05-10, current worktree
 
 Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emulator smoke, Health Connect, Gemini/AI, Room/data, UI/UX/accessibility, release readiness.
 
+## 2026-07-12 Home Finite-Scroll and Momentum Tile Balance
+
+- status: partially-done; the reported clipped-Macro regression is fixed in source and broad Android gates pass, while real-device visual confirmation remains open.
+- root cause and fix: Home rendered a small, fixed, full-width card sequence in `LazyVerticalGrid`, so scrolling could cross lazy composition/measurement boundaries with no grid layout benefit. It now uses one remembered finite `Column.verticalScroll`; card order, callbacks, Health Connect states, data flow and bottom padding remain unchanged.
+- clipping follow-up: the finite Home scroll initially applied navigation, IME and bottom content padding outside the scroll viewport. On the Samsung screenshot this reserved a large empty lower area and clipped Macro's today. Home now matches the working Settings modifier order so the complete viewport scrolls before those insets/content margins are applied.
+- layout fix: the two weighted Momentum metric tiles now share the Row's maximum intrinsic height, so longer Stappen/heart-rate/training text expands both tiles rather than leaving Reeks shorter.
+- test-first evidence: focused Home/UI source guards failed on the unsafe modifier order and passed after the minimal reordering. Full debug assemble, unit suite and lint passed.
+- emulator smoke: debug update installed on `emulator-5554`; Training, Voeding, Trend and Meer each accepted down/up scroll gestures without TrainIQ crash/fatal-error logcat entries. Start and Coach could not be read in the final pass because UiAutomator returned a temporary null root node; no claim is made for their populated runtime visual state.
+- external sources: Android's finite-list Compose guidance recommends `Column.verticalScroll(rememberScrollState())` for smaller bounded collections, and Material's Scaffold guidance warns against applying padding/insets outside vertical scroll content: https://developer.android.com/develop/ui/compose/quick-guides/content/finite-scrolling-list and https://developer.android.com/develop/ui/compose/system/material-insets
+- remaining risk: validate perceived smoothness and populated Macro/Momentum appearance on the user's real profile/device.
+
 ## 2026-07-11 Settings Section-Boundary Jank Fix
 
 - status: done for the reported Settings-only section-boundary hitch; physical-device subjective confirmation remains with the user.

@@ -89,6 +89,7 @@ import com.trainiq.core.ui.ShimmerCardPlaceholder
 import com.trainiq.core.ui.TrainIqFormField
 import com.trainiq.core.ui.TrainIqFormFieldContext
 import com.trainiq.core.ui.UiMessage
+import com.trainiq.core.ui.reloadableObservation
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.data.datasource.SamsungHealthDirectStepsDataSource
@@ -122,9 +123,13 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
@@ -179,6 +184,7 @@ private data class SettingsPreferenceInputs(
 )
 
 @HiltViewModel
+@OptIn(ExperimentalCoroutinesApi::class)
 class SettingsViewModel @Inject constructor(
     private val preferencesRepository: UserPreferencesRepository,
     observeUserProfileUseCase: ObserveUserProfileUseCase,
@@ -195,25 +201,34 @@ class SettingsViewModel @Inject constructor(
     private val reopenOnboardingUseCase: ReopenOnboardingUseCase,
     private val reminderScheduler: TrainIqReminderScheduler,
 ) : ViewModel() {
-    private val themeMode: StateFlow<ThemeMode> = preferencesRepository.themeMode
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ThemeMode.SYSTEM)
+    private val reloads = MutableStateFlow(0)
     private val apiKeyRefreshes = MutableStateFlow(0)
-    private val aiPreferences: StateFlow<AiPreferences> = combine(
-        preferencesRepository.aiPreferences,
-        apiKeyRefreshes,
-    ) { legacySettings, _ ->
-        aiUsageGate.resolveSettings(legacySettings)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AiPreferences(false, ""))
-    private val telemetryOptIn: StateFlow<Boolean> = preferencesRepository.telemetryOptIn
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
-    private val workoutFeedbackPreferences: StateFlow<WorkoutFeedbackPreferences> = preferencesRepository.workoutFeedbackPreferences
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WorkoutFeedbackPreferences())
-    private val reminderPreferences: StateFlow<ReminderPreferences> = preferencesRepository.reminderPreferences
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReminderPreferences())
-    private val onboardingPreferences: StateFlow<OnboardingPreferences> = preferencesRepository.onboardingPreferences
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), OnboardingPreferences())
-    private val profile: StateFlow<UserProfile?> = observeUserProfileUseCase()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    private val externalInputs = reloadableObservation(reloads) {
+        val aiPreferences = combine(preferencesRepository.aiPreferences, apiKeyRefreshes) { legacySettings, _ ->
+            aiUsageGate.resolveSettings(legacySettings)
+        }
+        val preferenceInputs = combine(
+            preferencesRepository.themeMode,
+            aiPreferences,
+            preferencesRepository.telemetryOptIn,
+            preferencesRepository.workoutFeedbackPreferences,
+            preferencesRepository.reminderPreferences,
+        ) { theme, ai, telemetry, feedback, reminders ->
+            SettingsPreferenceInputs(theme, ai.toSettingsAiStatus(), telemetry, feedback, reminders, OnboardingPreferences())
+        }
+        combine(preferenceInputs, preferencesRepository.onboardingPreferences, observeUserProfileUseCase()) { preferences, onboarding, profile ->
+            SettingsUiInputs(
+                themeMode = preferences.themeMode,
+                aiStatus = preferences.aiStatus,
+                telemetryOptIn = preferences.telemetryOptIn,
+                workoutFeedbackPreferences = preferences.workoutFeedbackPreferences,
+                reminderPreferences = preferences.reminderPreferences,
+                onboardingPreferences = onboarding,
+                profile = profile,
+                healthStatus = healthStatus.value,
+            )
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val _healthStatus = MutableStateFlow(
         HealthConnectStatus(
@@ -227,59 +242,28 @@ class SettingsViewModel @Inject constructor(
     private val _importPreview = MutableStateFlow<AppDataImportPreview?>(null)
     private val _isImporting = MutableStateFlow(false)
     private var pendingImportJson: String? = null
-    private val settingsPreferenceInputsBase = combine(
-        themeMode,
-        aiPreferences,
-        telemetryOptIn,
-        workoutFeedbackPreferences,
-        reminderPreferences,
-    ) { theme, ai, telemetry, feedback, reminders ->
-        SettingsPreferenceInputs(
-            themeMode = theme,
-            aiStatus = ai.toSettingsAiStatus(),
-            telemetryOptIn = telemetry,
-            workoutFeedbackPreferences = feedback,
-            reminderPreferences = reminders,
-            onboardingPreferences = OnboardingPreferences(),
-        )
-    }
-    private val settingsPreferenceInputs = combine(settingsPreferenceInputsBase, onboardingPreferences) { preferences, onboarding ->
-        preferences.copy(onboardingPreferences = onboarding)
-    }
     val uiState: StateFlow<SettingsUiState> = combine(
-        combine(settingsPreferenceInputs, profile) { preferences, userProfile ->
-            SettingsUiInputs(
-                themeMode = preferences.themeMode,
-                aiStatus = preferences.aiStatus,
-                telemetryOptIn = preferences.telemetryOptIn,
-                workoutFeedbackPreferences = preferences.workoutFeedbackPreferences,
-                reminderPreferences = preferences.reminderPreferences,
-                onboardingPreferences = preferences.onboardingPreferences,
-                profile = userProfile,
-                healthStatus = healthStatus.value,
-            )
-        },
+        externalInputs,
         healthStatus,
         _importPreview,
         _isImporting,
         _message,
-    ) { inputs, health, importPreview, isImporting, message ->
-        settingsUiState(
-            themeMode = inputs.themeMode,
-            aiStatus = inputs.aiStatus,
-            telemetryOptIn = inputs.telemetryOptIn,
-            workoutFeedbackPreferences = inputs.workoutFeedbackPreferences,
-            reminderPreferences = inputs.reminderPreferences,
-            onboardingPreferences = inputs.onboardingPreferences,
-            profile = inputs.profile,
-            healthStatus = health,
-            importPreview = importPreview,
-            isImporting = isImporting,
-            message = message,
-        )
+    ) { externalInputs, health, importPreview, isImporting, message ->
+        when {
+            externalInputs == null -> SettingsUiState.Loading
+            externalInputs.isFailure -> SettingsUiState.Error("Instellingen konden niet worden geladen.")
+            else -> externalInputs.getOrThrow().let { inputs ->
+                settingsUiState(inputs.themeMode, inputs.aiStatus, inputs.telemetryOptIn, inputs.workoutFeedbackPreferences, inputs.reminderPreferences, inputs.onboardingPreferences, inputs.profile, health, importPreview, isImporting, message)
+            }
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState.Loading)
 
     init {
+        refreshHealthConnectStatus()
+    }
+
+    fun retry() {
+        reloads.update { it + 1 }
         refreshHealthConnectStatus()
     }
 
@@ -642,7 +626,7 @@ fun SettingsRoute(
 
     when (val state = uiState) {
         SettingsUiState.Loading -> SettingsLoadingScreen()
-        is SettingsUiState.Error -> SettingsErrorScreen(state.message)
+        is SettingsUiState.Error -> SettingsErrorScreen(state.message, viewModel::retry)
         is SettingsUiState.Success -> {
             SettingsScreen(
                 themeMode = state.themeMode,
@@ -759,7 +743,7 @@ private fun SettingsLoadingScreen() {
 }
 
 @Composable
-private fun SettingsErrorScreen(message: String) {
+private fun SettingsErrorScreen(message: String, onRetry: () -> Unit) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -773,7 +757,15 @@ private fun SettingsErrorScreen(message: String) {
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.large),
     ) {
         item { ScreenHeader(title = "Instellingen", subtitle = "Profiel, Health Connect en voorkeuren") }
-        item { SectionCard(title = "Instellingen niet beschikbaar") { Text(message) } }
+        item {
+            SectionCard(title = "Instellingen niet beschikbaar") {
+                Text(message)
+                Button(
+                    onClick = onRetry,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("Opnieuw proberen") }
+            }
+        }
     }
 }
 

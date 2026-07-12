@@ -563,7 +563,30 @@ class WorkoutDebriefService internal constructor(
         weeklyFrequency: Int,
     ): WorkoutDebrief =
         runCatching {
-            val routed = aiJsonGenerator.generateJson(
+            generateWorkoutDebriefOrThrow(
+                totalVolume = totalVolume,
+                progression = progression,
+                comparisonSummary = comparisonSummary,
+                distribution = distribution,
+                avgRpe = avgRpe,
+                topExercises = topExercises,
+                weeklyFrequency = weeklyFrequency,
+            )
+        }.getOrElse { error ->
+            if (error is CancellationException) throw error
+            fallbackWorkoutDebriefResult(totalVolume, progression)
+        }
+
+    suspend fun generateWorkoutDebriefOrThrow(
+        totalVolume: Double,
+        progression: Double?,
+        comparisonSummary: String,
+        distribution: String,
+        avgRpe: Float,
+        topExercises: String,
+        weeklyFrequency: Int,
+    ): WorkoutDebrief {
+        val routed = aiJsonGenerator.generateJson(
                 AiRouteRequest(
                     feature = AiFeature.WORKOUT_DEBRIEF,
                     schemaName = "workout_debrief",
@@ -580,11 +603,8 @@ class WorkoutDebriefService internal constructor(
                                     ),
                 ),
             )
-            parseWorkoutDebriefResponse(routed.rawJson, totalVolume, progression, routed.providerUsed)
-        }.getOrElse { error ->
-            if (error is CancellationException) throw error
-            fallbackWorkoutDebriefResult(totalVolume, progression)
-        }
+        return parseWorkoutDebriefResponse(routed.rawJson, totalVolume, progression, routed.providerUsed)
+    }
 }
 
 @Singleton

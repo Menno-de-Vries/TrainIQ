@@ -225,8 +225,17 @@ class UpdateActiveWorkoutRestTimerUseCase @Inject constructor(private val reposi
         repository.updateActiveWorkoutRestTimer(endsAt, totalSeconds)
 }
 
-class FinishActiveWorkoutUseCase @Inject constructor(private val repository: WorkoutRepository) {
-    suspend operator fun invoke(dayId: Long) = repository.finishActiveWorkout(dayId)
+class FinishActiveWorkoutUseCase @Inject constructor(
+    private val repository: WorkoutRepository,
+    private val workoutDebriefScheduler: com.trainiq.domain.repository.WorkoutDebriefScheduler,
+) {
+    suspend operator fun invoke(dayId: Long) = repository.finishActiveWorkout(dayId).also { result ->
+        if (result.sessionId > 0L) runCatching { workoutDebriefScheduler.enqueue(result.sessionId) }
+    }
+}
+
+class RefreshWorkoutDebriefUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(sessionId: Long) = repository.refreshWorkoutDebrief(sessionId)
 }
 
 class GetWorkoutCompletionSummaryUseCase @Inject constructor(private val repository: WorkoutRepository) {

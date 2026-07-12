@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -52,6 +53,7 @@ import com.trainiq.core.ui.AppCard
 import com.trainiq.core.ui.CompactSectionTabItem
 import com.trainiq.core.ui.CompactSectionTabs
 import com.trainiq.core.ui.MessageCard
+import com.trainiq.core.ui.reloadableObservation
 import com.trainiq.core.ui.ScreenHeader
 import com.trainiq.core.ui.ShimmerCardPlaceholder
 import com.trainiq.core.ui.TrainIqFormField
@@ -84,10 +86,15 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -108,10 +115,11 @@ sealed interface CoachUiState {
 }
 
 @HiltViewModel
+@OptIn(ExperimentalCoroutinesApi::class)
 class CoachViewModel @Inject constructor(
-    observeCoachUseCase: ObserveCoachUseCase,
-    observeUserProfileUseCase: ObserveUserProfileUseCase,
-    observeSavedGoalAdviceUseCase: ObserveSavedGoalAdviceUseCase,
+    private val observeCoachUseCase: ObserveCoachUseCase,
+    private val observeUserProfileUseCase: ObserveUserProfileUseCase,
+    private val observeSavedGoalAdviceUseCase: ObserveSavedGoalAdviceUseCase,
     private val generateGoalAdviceUseCase: GenerateGoalAdviceUseCase,
     private val generateWeeklyReportUseCase: GenerateWeeklyReportUseCase,
     private val saveUserProfileUseCase: SaveUserProfileUseCase,
@@ -125,22 +133,25 @@ class CoachViewModel @Inject constructor(
         val isGeneratingReport: Boolean = false,
     )
 
-    private val overview = observeCoachUseCase()
+    private val reloads = MutableStateFlow(0)
+    private val overview = reloadableObservation(reloads) { observeCoachUseCase() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
-    private val profile = observeUserProfileUseCase()
+    private val profile = reloadableObservation(reloads) { observeUserProfileUseCase() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
-    private val savedGoalAdvice = observeSavedGoalAdviceUseCase()
+    private val savedGoalAdvice = reloadableObservation(reloads) { observeSavedGoalAdviceUseCase() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     private val ephemeral = MutableStateFlow(CoachEphemeralState())
 
     val uiState: StateFlow<CoachUiState> = combine(overview, profile, savedGoalAdvice, ephemeral) { currentOverview, currentProfile, persistedAdvice, temp ->
         when {
-            currentOverview == null -> CoachUiState.Loading
+            currentOverview == null || currentProfile == null || persistedAdvice == null -> CoachUiState.Loading
+            currentOverview.isFailure -> CoachUiState.Error("Coachgegevens konden niet worden geladen.")
+            currentProfile.isFailure || persistedAdvice.isFailure -> CoachUiState.Error("Coachprofiel en advies konden niet worden geladen.")
             else -> CoachUiState.Success(
-                overview = currentOverview,
-                currentProfile = currentProfile,
-                goalAdvice = temp.goalAdvice ?: persistedAdvice?.advice,
-                savedGoalAdvice = persistedAdvice,
+                overview = currentOverview.getOrThrow(),
+                currentProfile = currentProfile.getOrThrow(),
+                goalAdvice = temp.goalAdvice ?: persistedAdvice.getOrThrow()?.advice,
+                savedGoalAdvice = persistedAdvice.getOrThrow(),
                 generatedReport = temp.generatedReport,
                 message = temp.message,
                 isGeneratingAdvice = temp.isGeneratingAdvice,
@@ -148,6 +159,10 @@ class CoachViewModel @Inject constructor(
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CoachUiState.Loading)
+
+    fun retry() {
+        reloads.update { it + 1 }
+    }
 
     fun generateGoalAdvice(
         name: String,
@@ -474,6 +489,7 @@ fun CoachRoute(
         onGenerateWeeklyReport = viewModel::generateWeeklyReport,
         onSaveProfile = viewModel::saveProfile,
         onDismissMessage = viewModel::clearMessage,
+        onRetry = viewModel::retry,
     )
 }
 
@@ -484,6 +500,7 @@ fun CoachScreen(
     onGenerateWeeklyReport: () -> Unit,
     onSaveProfile: (String, String, String, String, String, BiologicalSex, String, String, String) -> Unit,
     onDismissMessage: () -> Unit,
+    onRetry: () -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
     var age by remember { mutableStateOf("30") }
@@ -550,7 +567,13 @@ fun CoachScreen(
                 }
 
                 is CoachUiState.Error -> {
-                    item { MessageCard(message = state.message) }
+                    item {
+                        MessageCard(message = state.message)
+                        Button(
+                            onClick = onRetry,
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) { Text("Opnieuw proberen") }
+                    }
                 }
 
                 is CoachUiState.Success -> {

@@ -31,6 +31,8 @@ import com.trainiq.domain.repository.HomeRepository
 import com.trainiq.domain.repository.NutritionRepository
 import com.trainiq.domain.repository.ProgressRepository
 import com.trainiq.domain.repository.WorkoutRepository
+import com.trainiq.domain.repository.WorkoutDebriefScheduler
+import com.trainiq.core.workout.WorkManagerWorkoutDebriefScheduler
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -151,6 +153,7 @@ annotation class OpenAiRetrofit
 abstract class RepositoryModule {
     @Binds abstract fun bindHomeRepository(repository: RoomHomeRepository): HomeRepository
     @Binds abstract fun bindWorkoutRepository(repository: RoomWorkoutRepository): WorkoutRepository
+    @Binds abstract fun bindWorkoutDebriefScheduler(scheduler: WorkManagerWorkoutDebriefScheduler): WorkoutDebriefScheduler
     @Binds abstract fun bindNutritionRepository(repository: RoomNutritionRepository): NutritionRepository
     @Binds abstract fun bindProgressRepository(repository: RoomProgressRepository): ProgressRepository
     @Binds abstract fun bindCoachRepository(repository: RoomCoachRepository): CoachRepository

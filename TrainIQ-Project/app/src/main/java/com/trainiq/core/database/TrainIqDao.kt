@@ -390,6 +390,24 @@ interface TrainIqDao {
     @Query("SELECT * FROM workout_sets ORDER BY id DESC")
     fun observeWorkoutSets(): Flow<List<WorkoutSetEntity>>
 
+    @Query("SELECT * FROM workout_sessions WHERE id = :sessionId AND completed = 1 AND status = 'COMPLETED' LIMIT 1")
+    suspend fun getCompletedWorkoutSession(sessionId: Long): WorkoutSessionEntity?
+
+    @Query("SELECT * FROM workout_sessions ORDER BY date DESC")
+    suspend fun getWorkoutSessions(): List<WorkoutSessionEntity>
+
+    @Query("SELECT * FROM workout_sets ORDER BY id DESC")
+    suspend fun getWorkoutSets(): List<WorkoutSetEntity>
+
+    @Query("SELECT * FROM workout_days ORDER BY orderIndex ASC")
+    suspend fun getWorkoutDays(): List<WorkoutDayEntity>
+
+    @Query("SELECT * FROM exercises ORDER BY name ASC")
+    suspend fun getExercises(): List<ExerciseEntity>
+
+    @Query("SELECT * FROM workout_exercises ORDER BY order_index ASC, id ASC")
+    suspend fun getWorkoutExercises(): List<WorkoutExerciseEntity>
+
     @Query("SELECT * FROM meals ORDER BY date DESC")
     fun observeMeals(): Flow<List<MealEntity>>
 
@@ -729,6 +747,7 @@ interface TrainIqDao {
         WHERE id = :sessionId
             AND completed = 1
             AND status = 'COMPLETED'
+            AND debrief_source = 'LOCAL_FALLBACK'
         """,
     )
     suspend fun updateWorkoutSessionDebrief(
@@ -744,7 +763,7 @@ interface TrainIqDao {
         nextLoadTarget: String,
         recoveryAdvice: String,
         source: String,
-    )
+    ): Int
 
     @Query("SELECT * FROM workout_days WHERE id = :dayId LIMIT 1")
     suspend fun getWorkoutDay(dayId: Long): WorkoutDayEntity?

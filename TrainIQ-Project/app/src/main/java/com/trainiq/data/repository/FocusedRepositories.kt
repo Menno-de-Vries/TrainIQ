@@ -36,6 +36,7 @@ import com.trainiq.domain.repository.MealEntryRequest
 import com.trainiq.domain.repository.NutritionRepository
 import com.trainiq.domain.repository.ProgressRepository
 import com.trainiq.domain.repository.WorkoutRepository
+import com.trainiq.domain.repository.WorkoutDebriefRefreshOutcome
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
@@ -77,6 +78,8 @@ class RoomWorkoutRepository @Inject constructor(
     override suspend fun updateActiveWorkoutRestTimer(endsAt: Long?, totalSeconds: Int): ActiveWorkoutSession? =
         delegate.updateActiveWorkoutRestTimer(endsAt, totalSeconds)
     override suspend fun finishActiveWorkout(dayId: Long): WorkoutCompletionResult = delegate.finishActiveWorkout(dayId)
+    override suspend fun refreshWorkoutDebrief(sessionId: Long): WorkoutDebriefRefreshOutcome =
+        delegate.refreshWorkoutDebrief(sessionId)
     override suspend fun getWorkoutCompletionSummary(sessionId: Long): WorkoutCompletionSummary? = delegate.getWorkoutCompletionSummary(sessionId)
     override suspend fun discardActiveWorkout(dayId: Long) = delegate.discardActiveWorkout(dayId)
     override suspend fun discardActiveWorkoutSession(sessionId: Long) = delegate.discardActiveWorkoutSession(sessionId)

@@ -67,21 +67,17 @@ class RoomAuthorityArchitectureTest {
     }
 
     @Test
-    fun workoutCompletionPersistsLocalDebriefBeforeAsyncGeminiRefresh() {
+    fun workoutCompletionPersistsLocalDebriefWithoutLaunchingUnobservedAiWork() {
         val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
         val finishBody = repository.substringAfter("private suspend fun finishWorkout(")
-            .substringBefore("suspend fun createRoutine(")
+            .substringBefore("suspend fun refreshWorkoutDebrief(")
         val localDebriefIndex = finishBody.indexOf("fallbackWorkoutDebriefResult")
-        val asyncRefreshIndex = finishBody.indexOf("scope.launch")
-        val runCatchingIndex = finishBody.indexOf("runCatching", asyncRefreshIndex)
-        val geminiDebriefIndex = finishBody.indexOf("workoutDebriefService.generateWorkoutDebrief")
         val returnIndex = finishBody.lastIndexOf("return WorkoutCompletionResult")
 
         assertTrue(localDebriefIndex >= 0)
-        assertTrue(asyncRefreshIndex > localDebriefIndex)
-        assertTrue(runCatchingIndex > asyncRefreshIndex)
-        assertTrue(geminiDebriefIndex > runCatchingIndex)
         assertTrue(returnIndex > localDebriefIndex)
+        assertFalse(finishBody.contains("scope.launch"))
+        assertFalse(finishBody.contains("workoutDebriefService.generateWorkoutDebrief"))
     }
 
     @Test

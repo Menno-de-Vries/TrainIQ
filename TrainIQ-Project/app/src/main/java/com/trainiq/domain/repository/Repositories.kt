@@ -60,6 +60,7 @@ interface WorkoutRepository {
     suspend fun setActiveWorkoutCollapsed(exerciseId: Long, collapsed: Boolean): ActiveWorkoutSession?
     suspend fun updateActiveWorkoutRestTimer(endsAt: Long?, totalSeconds: Int): ActiveWorkoutSession?
     suspend fun finishActiveWorkout(dayId: Long): WorkoutCompletionResult
+    suspend fun refreshWorkoutDebrief(sessionId: Long): WorkoutDebriefRefreshOutcome
     suspend fun getWorkoutCompletionSummary(sessionId: Long): WorkoutCompletionSummary?
     suspend fun discardActiveWorkout(dayId: Long)
     suspend fun discardActiveWorkoutSession(sessionId: Long)
@@ -175,6 +176,17 @@ enum class MealEntryType {
     FOOD,
     RECIPE,
     SNAPSHOT,
+}
+
+enum class WorkoutDebriefRefreshOutcome {
+    UPDATED,
+    ALREADY_ENRICHED,
+    SESSION_MISSING,
+    INVALID_RESULT,
+}
+
+interface WorkoutDebriefScheduler {
+    fun enqueue(sessionId: Long)
 }
 
 data class MealEntrySnapshot(

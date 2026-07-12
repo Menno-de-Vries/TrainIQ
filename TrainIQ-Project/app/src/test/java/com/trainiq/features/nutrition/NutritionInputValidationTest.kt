@@ -19,6 +19,47 @@ import org.junit.Test
 
 class NutritionInputValidationTest {
     @Test
+    fun nutritionDrafts_useSaveableStateAcrossActivityRecreation() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val draftState = source.substringAfter("var selectedTab by rememberSaveable")
+            .substringBefore("val photoImportLauncher")
+
+        listOf(
+            "aiResultTarget", "addToMealType", "hasAddToMealTarget", "pendingAiMealType",
+            "selectedFoodId", "selectedRecipeIngredientFoodId", "selectedRecipeId", "foodName", "barcode", "calories", "protein", "carbs", "fat",
+            "defaultServingGrams", "recipeName", "recipeNotes", "recipeCookedGrams", "ingredientGrams",
+            "recipeAiContext", "quickIngredientName", "quickIngredientBarcode", "quickIngredientKcal", "quickIngredientProtein",
+            "quickIngredientCarbs", "quickIngredientFat", "mealType", "mealName", "mealNotes", "mealRecipeGrams", "editingMealId", "aiContext",
+        ).forEach { stateName ->
+            assertTrue("$stateName must survive recreation", draftState.contains("var $stateName by rememberSaveable"))
+        }
+        assertTrue(draftState.contains("val recipeDraft = rememberSaveable(saver = RecipeDraftSaver)"))
+        assertTrue(draftState.contains("val mealDraft = rememberSaveable(saver = MealDraftSaver)"))
+        assertTrue(draftState.contains("val editableAiItems = rememberSaveable(saver = EditableAiItemsSaver)"))
+        listOf("showFoodEditor", "showRecipeEditor", "showIngredientPicker", "showIngredientEditor").forEach { stateName ->
+            assertTrue("$stateName must survive recreation", draftState.contains("var $stateName by rememberSaveable"))
+        }
+    }
+
+    @Test
+    fun restoredNutritionDrafts_areNotRehydratedOverUserEdits() {
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val foodHydration = source.substringAfter("LaunchedEffect(showFoodEditor, selectedFood?.id)")
+            .substringBefore("LaunchedEffect(selectedRecipe?.id)")
+        val recipeHydration = source.substringAfter("LaunchedEffect(selectedRecipe?.id)")
+            .substringBefore("LaunchedEffect(scanResult)")
+        val scanHydration = source.substringAfter("LaunchedEffect(scanResult)")
+            .substringBefore("LaunchedEffect(message)")
+
+        assertTrue(foodHydration.contains("hydratedFoodId == selectedFood.id"))
+        assertTrue(foodHydration.contains("hydratedFoodId = selectedFood.id"))
+        assertTrue(recipeHydration.contains("hydratedRecipeId == it.id"))
+        assertTrue(recipeHydration.contains("hydratedRecipeId = it.id"))
+        assertTrue(scanHydration.contains("hydratedScanResultHash == currentScanResult.hashCode()"))
+        assertTrue(scanHydration.contains("hydratedScanResultHash = currentScanResult.hashCode()"))
+    }
+
+    @Test
     fun nutritionNumber_acceptsCommaAndPointDecimals() {
         assertEquals(22.8, "22,8".toNutritionNumberOrNull(max = 100.0) ?: -1.0, 0.0)
         assertEquals(22.8, "22.8".toNutritionNumberOrNull(max = 100.0) ?: -1.0, 0.0)

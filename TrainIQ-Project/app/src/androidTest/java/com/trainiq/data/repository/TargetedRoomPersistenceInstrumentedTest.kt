@@ -143,7 +143,7 @@ class TargetedRoomPersistenceInstrumentedTest {
             ),
         )
 
-        dao.updateWorkoutSessionDebrief(
+        val updatedRows = dao.updateWorkoutSessionDebrief(
             sessionId = 51L,
             summary = "AI samenvatting",
             progressionFeedback = "Meer volume dan vorige sessie.",
@@ -157,7 +157,7 @@ class TargetedRoomPersistenceInstrumentedTest {
             recoveryAdvice = "Slaap bewaken",
             source = "GEMINI",
         )
-        dao.updateWorkoutSessionDebrief(
+        val ignoredRows = dao.updateWorkoutSessionDebrief(
             sessionId = 52L,
             summary = "Mag niet landen",
             progressionFeedback = "Draft",
@@ -178,6 +178,8 @@ class TargetedRoomPersistenceInstrumentedTest {
         val completed = reopened.observeWorkoutSessions().first().single { it.id == 51L }
         val draft = reopened.observeWorkoutSessions().first().single { it.id == 52L }
 
+        assertEquals(1, updatedRows)
+        assertEquals(0, ignoredRows)
         assertEquals("AI samenvatting", completed.debriefSummary)
         assertEquals("Meer volume dan vorige sessie.", completed.debriefProgressionFeedback)
         assertEquals("Behoud belasting.", completed.debriefRecommendation)

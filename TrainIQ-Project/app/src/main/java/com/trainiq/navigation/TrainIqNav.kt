@@ -680,7 +680,6 @@ private fun TrainIqNavHost(
                 onOpenCoach = { navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Coach::class }) },
                 onOpenTrain = { navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Train::class }) },
                 onOpenSettings = { navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Settings::class }) },
-                windowWidthClass = windowWidthClass,
             )
         }
         composable<Train> {

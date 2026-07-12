@@ -5,22 +5,21 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
@@ -76,8 +75,6 @@ import com.trainiq.domain.usecase.BuildHomeDashboardUseCase
 import com.trainiq.domain.usecase.GetHealthConnectStatusUseCase
 import com.trainiq.domain.usecase.ObserveHomeDashboardUseCase
 import com.trainiq.domain.usecase.RefreshDashboardDataUseCase
-import com.trainiq.navigation.TrainIqWindowWidthClass
-import com.trainiq.navigation.adaptiveDashboardGridColumns
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Instant
 import java.time.ZoneId
@@ -224,7 +221,6 @@ fun HomeRoute(
     onOpenCoach: () -> Unit,
     onOpenTrain: () -> Unit,
     onOpenSettings: () -> Unit,
-    windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -253,7 +249,6 @@ fun HomeRoute(
         onOpenSettings = onOpenSettings,
         onRequestHealthPermission = requestHealthPermission,
         onRefreshHealth = viewModel::refreshDashboardAndHealthStatus,
-        windowWidthClass = windowWidthClass,
     )
 }
 
@@ -266,34 +261,28 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onRequestHealthPermission: () -> Unit,
     onRefreshHealth: () -> Unit,
-    windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
 ) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
-    val gridColumns = adaptiveDashboardGridColumns(windowWidthClass)
-
     when (uiState) {
             HomeUiState.Loading -> {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(gridColumns),
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .clearFocusOnScrollOrDrag()
+                        .verticalScroll(rememberScrollState())
                         .navigationBarsPadding()
-                        .imePadding(),
-                    contentPadding = PaddingValues(
-                        start = MaterialTheme.spacing.medium,
-                        top = MaterialTheme.spacing.medium,
-                        end = MaterialTheme.spacing.medium,
-                        bottom = 132.dp,
-                    ),
+                        .imePadding()
+                        .padding(
+                            start = MaterialTheme.spacing.medium,
+                            top = MaterialTheme.spacing.medium,
+                            end = MaterialTheme.spacing.medium,
+                            bottom = 132.dp,
+                        ),
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
-                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                 ) {
-                    item(span = { GridItemSpan(gridColumns) }) {
-                        ScreenHeader(title = "TrainIQ", subtitle = "Vandaag in een slimme cockpit", actionIcon = Icons.Default.Settings, actionContentDescription = "Instellingen openen", onActionClick = onOpenSettings)
-                    }
-                    items(4) { HomeStartupPlaceholder(modifier = Modifier.height(170.dp)) }
+                    ScreenHeader(title = "TrainIQ", subtitle = "Vandaag in een slimme cockpit", actionIcon = Icons.Default.Settings, actionContentDescription = "Instellingen openen", onActionClick = onOpenSettings)
+                    repeat(4) { HomeStartupPlaceholder(modifier = Modifier.height(170.dp)) }
                 }
             }
 
@@ -315,122 +304,103 @@ fun HomeScreen(
             is HomeUiState.Success -> {
                 val dashboard = uiState.dashboard
                 val healthConnectStatus = uiState.healthConnectStatus
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(gridColumns),
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .clearFocusOnScrollOrDrag()
+                        .verticalScroll(rememberScrollState())
                         .navigationBarsPadding()
-                        .imePadding(),
-                    contentPadding = PaddingValues(
-                        start = MaterialTheme.spacing.medium,
-                        top = MaterialTheme.spacing.medium,
-                        end = MaterialTheme.spacing.medium,
-                        bottom = 132.dp,
-                    ),
+                        .imePadding()
+                        .padding(
+                            start = MaterialTheme.spacing.medium,
+                            top = MaterialTheme.spacing.medium,
+                            end = MaterialTheme.spacing.medium,
+                            bottom = 132.dp,
+                        ),
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
-                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                 ) {
-                    item(span = { GridItemSpan(gridColumns) }) {
-                        ScreenHeader(title = "TrainIQ", subtitle = "Vandaag in een slimme cockpit", actionIcon = Icons.Default.Settings, actionContentDescription = "Instellingen openen", onActionClick = onOpenSettings)
-                    }
+                    ScreenHeader(title = "TrainIQ", subtitle = "Vandaag in een slimme cockpit", actionIcon = Icons.Default.Settings, actionContentDescription = "Instellingen openen", onActionClick = onOpenSettings)
                     if (dashboard.profile == null) {
-                        item(span = { GridItemSpan(gridColumns) }) {
-                            DiscoveryCard(onOpenCoach = onOpenCoach)
-                        }
-                        item(span = { GridItemSpan(gridColumns) }) {
-                            SetupChecklistCard(
-                                hasRoutine = dashboard.nextWorkout != null,
-                                hasLoggedFood = dashboard.calorieProgress > 0,
-                                healthConnectStatus = healthConnectStatus,
-                                onOpenCoach = onOpenCoach,
-                                onOpenTrain = onOpenTrain,
-                                onRequestHealthPermission = onRequestHealthPermission,
-                            )
-                        }
+                        DiscoveryCard(onOpenCoach = onOpenCoach)
+                        SetupChecklistCard(
+                            hasRoutine = dashboard.nextWorkout != null,
+                            hasLoggedFood = dashboard.calorieProgress > 0,
+                            healthConnectStatus = healthConnectStatus,
+                            onOpenCoach = onOpenCoach,
+                            onOpenTrain = onOpenTrain,
+                            onRequestHealthPermission = onRequestHealthPermission,
+                        )
                     } else {
-                        item(span = { GridItemSpan(gridColumns) }) {
-                            EnergyBalanceCard(
-                                energyBalance = dashboard.energyBalance,
-                                calorieTarget = dashboard.calorieTarget,
-                                modifier = Modifier,
-                            )
-                        }
-                        item(span = { GridItemSpan(gridColumns) }) {
-                            MacroBreakdownCard(
+                        EnergyBalanceCard(
+                            energyBalance = dashboard.energyBalance,
+                            calorieTarget = dashboard.calorieTarget,
+                            modifier = Modifier,
+                        )
+                        MacroBreakdownCard(
                             protein = dashboard.proteinProgress,
                             proteinTarget = dashboard.proteinTarget,
                             carbs = dashboard.carbsProgress,
                             carbsTarget = dashboard.carbsTarget,
                             fat = dashboard.fatProgress,
                             fatTarget = dashboard.fatTarget,
-                                modifier = Modifier,
-                            )
-                        }
-                        item(span = { GridItemSpan(gridColumns) }) {
-                            HomeMomentumCard(
-                                streak = dashboard.streak,
-                                healthStatus = healthConnectStatus,
-                                todaysWorkoutCalories = dashboard.todaysWorkoutCalories,
-                            )
-                        }
+                            modifier = Modifier,
+                        )
+                        HomeMomentumCard(
+                            streak = dashboard.streak,
+                            healthStatus = healthConnectStatus,
+                            todaysWorkoutCalories = dashboard.todaysWorkoutCalories,
+                        )
                         if (showCompactHomeHealthCard(healthConnectStatus)) {
-                            item(span = { GridItemSpan(gridColumns) }) {
-                                HomeHealthStatusRow(
-                                    status = healthConnectStatus,
-                                    isRefreshingHealth = uiState.isRefreshingHealth,
-                                    refreshMessage = uiState.refreshMessage,
-                                    onRefresh = {
-                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        onRefreshHealth()
-                                    },
-                                )
-                            }
+                            HomeHealthStatusRow(
+                                status = healthConnectStatus,
+                                isRefreshingHealth = uiState.isRefreshingHealth,
+                                refreshMessage = uiState.refreshMessage,
+                                onRefresh = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onRefreshHealth()
+                                },
+                            )
                         }
                         if (!showCompactHomeHealthCard(healthConnectStatus)) {
-                            item(span = { GridItemSpan(gridColumns) }) {
-                                PermissionManagerCard(
-                                    status = healthConnectStatus,
-                                    onRequestPermission = {
-                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        onRequestHealthPermission()
-                                    },
-                                    onOpenInstall = {
-                                        val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata"))
-                                        val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata"))
-                                        if (!context.startActivityIfResolvable(marketIntent)) {
-                                            context.startActivityIfResolvable(webIntent)
-                                        }
-                                    },
-                                    onOpenSettings = {
-                                        val settingsIntent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
-                                        if (!context.startActivityIfResolvable(settingsIntent)) {
-                                            onRefreshHealth()
-                                        }
-                                    },
-                                    onRefresh = {
-                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            PermissionManagerCard(
+                                status = healthConnectStatus,
+                                onRequestPermission = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onRequestHealthPermission()
+                                },
+                                onOpenInstall = {
+                                    val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata"))
+                                    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata"))
+                                    if (!context.startActivityIfResolvable(marketIntent)) {
+                                        context.startActivityIfResolvable(webIntent)
+                                    }
+                                },
+                                onOpenSettings = {
+                                    val settingsIntent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
+                                    if (!context.startActivityIfResolvable(settingsIntent)) {
                                         onRefreshHealth()
-                                    },
-                                )
-                            }
+                                    }
+                                },
+                                onRefresh = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onRefreshHealth()
+                                },
+                            )
                         }
-                        item(span = { GridItemSpan(gridColumns) }) {
-                            if (dashboard.nextWorkout != null) {
-                                NextWorkoutCard(
-                                    dashboard = dashboard,
-                                    onOpenTrain = onOpenTrain,
-                                    onStartWorkout = {
-                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        onStartWorkout(it)
-                                    },
-                                )
-                            } else {
-                                CoachInsightCard(
-                                    insight = dashboard.aiInsight,
-                                    onOpenCoach = onOpenCoach,
-                                )
-                            }
+                        if (dashboard.nextWorkout != null) {
+                            NextWorkoutCard(
+                                dashboard = dashboard,
+                                onOpenTrain = onOpenTrain,
+                                onStartWorkout = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onStartWorkout(it)
+                                },
+                            )
+                        } else {
+                            CoachInsightCard(
+                                insight = dashboard.aiInsight,
+                                onOpenCoach = onOpenCoach,
+                            )
                         }
                     }
                 }
@@ -471,7 +441,9 @@ private fun HomeMomentumCard(
                 )
             }
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Max),
                 horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
             ) {
                 HomeMomentumMetricRow(
@@ -507,6 +479,7 @@ private fun HomeMomentumMetricRow(
 ) {
     Surface(
         modifier = modifier
+            .fillMaxHeight()
             .defaultMinSize(minHeight = 96.dp),
         shape = MaterialTheme.shapes.large,
         color = accent.copy(alpha = 0.10f),

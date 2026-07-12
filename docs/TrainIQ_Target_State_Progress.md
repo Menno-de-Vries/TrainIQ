@@ -2,6 +2,24 @@
 
 Updated date: 2026-07-11
 
+## 2026-07-12 Lifecycle Recovery and Durable Workout Debrief
+
+- Nutrition product, recipe, meal and editable AI drafts now survive activity recreation, including editor identity and contextual targets; hydration guards prevent restored dirty drafts from being overwritten.
+- Nutrition, Coach and Settings fatal observations now expose accessible retry actions and resubscribe all relevant upstream flows; a behavioral Turbine test proves failure-to-recovery subscription behavior.
+- Workout completion still returns after the atomic local save. AI debrief enrichment is now unique, network-constrained WorkManager work with exponential backoff and at most three attempts.
+- Cold-process execution reads the required session directly from Room in a transaction; the conditional update only replaces `LOCAL_FALLBACK` and reports row-count races correctly. Completion-summary reads never schedule additional AI attempts, keeping the per-session limit at one three-attempt chain.
+- The extraction is intentionally incremental: completion/debrief scheduling moved behind focused use cases and a scheduler interface; unrelated coordinator responsibilities remain unchanged.
+- Regression gates PASS: full debug unit tests, lint, debug assemble and Android-test Kotlin compilation. No Room version change or dependency addition was required.
+
+## 2026-07-12 Home Scroll and Momentum Polish
+
+- Home's small fixed card collection now uses a remembered finite vertical scroll instead of a lazy grid whose items all spanned the full width; no Home state, Health Connect, navigation or callback contract changed.
+- The Samsung Macro clipping regression is addressed by applying Home's navigation/IME/content margins within the scroll layout, matching the existing Settings finite-scroll pattern rather than reserving a non-scrollable lower viewport.
+- Momentum's Reeks and Stappen cards now match the tallest tile height while preserving all data copy.
+- Focused red/green source guards, full debug assemble, unit tests and lint pass. Training, Voeding, Trend and Meer smoke-scrolled without TrainIQ fatal/crash logcat entries; the final Start/Coach UiAutomator read was unavailable due to a temporary null-root error.
+- Android's official finite-list and Scaffold inset guidance informed the bounded-scroll/inset choice: https://developer.android.com/develop/ui/compose/quick-guides/content/finite-scrolling-list and https://developer.android.com/develop/ui/compose/system/material-insets
+- Remaining proof is subjective smoothness plus populated Macro/Momentum visual confirmation on a real profile/device.
+
 ## 2026-07-11 Settings Finite-Scroll Follow-up
 
 - Settings now precomposes its nine fixed sections in one remembered finite scroll container, removing lazy item insertion from section-boundary scroll frames without changing any public, ViewModel, data, AI, Health Connect or navigation contract.

@@ -33,26 +33,39 @@ class WarmFuturisticScreenPolishSourceTest {
     }
 
     @Test
-    fun homeMomentumUsesSingleWarmCardWithStackedMetricRows() {
+    fun homeMomentumUsesSingleWarmCardWithEqualHeightMetricTiles() {
         val home = ownedScreenSources()["home"]!!
         val momentumBlock = home.substringAfter("private fun HomeMomentumCard(")
             .substringBefore("internal fun homeStreakValue")
 
         assertTrue(momentumBlock.contains("HomeMomentumMetricRow("))
+        assertTrue(momentumBlock.contains("height(IntrinsicSize.Max)"))
+        assertTrue(momentumBlock.contains("fillMaxHeight()"))
         assertFalse(momentumBlock.contains("CompactMetricCard("))
         assertFalse(home.contains("com.trainiq.core.util.MetricCard"))
     }
 
     @Test
-    fun homeMetricsSpanFullRowsOnCompactScreens() {
+    fun homeUsesFiniteVerticalScrollForItsFixedFullWidthCardSet() {
         val home = ownedScreenSources()["home"]!!
-        val metricBlock = home.substringAfter("HomeMomentumCard(")
-            .substringBefore("HealthConnectSyncCard(")
 
-        assertTrue(metricBlock.contains("GridItemSpan(gridColumns)"))
-        assertTrue(home.contains("private fun HomeMomentumCard("))
-        assertTrue(home.contains("private fun HomeMomentumMetricRow("))
-        assertTrue(home.contains(".fillMaxWidth()"))
+        assertTrue(home.contains("verticalScroll(rememberScrollState())"))
+        assertFalse(home.contains("LazyVerticalGrid("))
+    }
+
+    @Test
+    fun homeFiniteScrollKeepsInsetsAndContentPaddingInsideItsScrollViewport() {
+        val home = ownedScreenSources()["home"]!!
+        val successBody = home.substringAfter("is HomeUiState.Success ->")
+            .substringBefore("internal fun buildHomeRecoverySubtitle")
+        val homeScrollModifier = successBody.substringAfter("Column(")
+            .substringBefore("verticalArrangement =")
+
+        val scrollIndex = homeScrollModifier.indexOf("verticalScroll(rememberScrollState())")
+        assertTrue(scrollIndex >= 0)
+        assertTrue(scrollIndex < homeScrollModifier.indexOf("navigationBarsPadding()"))
+        assertTrue(scrollIndex < homeScrollModifier.indexOf("imePadding()"))
+        assertTrue(scrollIndex < homeScrollModifier.indexOf(".padding("))
     }
 
     private fun ownedScreenSources(): Map<String, String> = mapOf(
