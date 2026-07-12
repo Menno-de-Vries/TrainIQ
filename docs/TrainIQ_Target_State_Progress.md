@@ -1,6 +1,15 @@
 # TrainIQ Target-State Progress
 
-Updated date: 2026-07-11
+Updated date: 2026-07-12
+
+## 2026-07-12 Trust, Navigation and Progress Recovery
+
+- Hidden full-screen tab swiping is removed; visible typed Material navigation remains the only top-level route switcher. This reduces gesture competition without changing destination contracts or screen state.
+- Home distinguishes deterministic on-device coaching copy from provider-backed AI by using `Coach-inzicht` and `Lokale analyse`; AI configuration and output paths are unchanged.
+- Trend reports a defensible weekly load ratio instead of a fatigue-style percentage. The value requires two positive training weeks and compares the latest with an average of at most three preceding positive weeks.
+- Fatal Trend observations now expose an accessible retry that starts a fresh repository subscription through the existing shared reload helper.
+- Focused red/green regressions, the full debug unit suite, lint, debug assemble, Android-test Kotlin compilation, update install, cold launch and a final Trend/navigation smoke pass are green. Independent re-review found no remaining critical or important issue.
+- Alignment remains `98%`: this removes concrete interaction and trust debt but does not close the existing physical-device, release-owner, CI-policy or Health Connect matrix gates.
 
 ## 2026-07-12 Lifecycle Recovery and Durable Workout Debrief
 

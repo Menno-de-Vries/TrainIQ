@@ -45,7 +45,7 @@ class BuildHomeDashboardUseCaseTest {
             steps = null,
             nextWorkout = null,
             streak = 3,
-            aiInsight = "Train vandaag rustig door.",
+            coachInsight = "Train vandaag rustig door.",
         )
         val status = HealthConnectStatus(
             state = HealthConnectState.CONNECTED,

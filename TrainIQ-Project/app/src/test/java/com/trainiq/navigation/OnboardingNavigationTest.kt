@@ -54,7 +54,7 @@ class OnboardingNavigationTest {
     @Test
     fun guidedTourUsesCompactActionsAndClearsBottomNavigation() {
         val source = File("src/main/java/com/trainiq/navigation/TrainIqNav.kt").readText()
-        val overlay = source.substringAfter("private fun GuidedTourOverlay").substringBefore("private fun Modifier.topLevelTabSwipeNavigation")
+        val overlay = source.substringAfter("private fun GuidedTourOverlay").substringBefore("private fun TrainIqNavHost")
 
         assertFalse(overlay.contains("heightIn(min = 176.dp)"))
         assertTrue(overlay.contains("onClick = onSkip"))

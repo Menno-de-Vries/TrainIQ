@@ -28,6 +28,7 @@ import com.trainiq.domain.repository.MealEntryRequest
 import com.trainiq.domain.repository.MealEntrySnapshot
 import com.trainiq.domain.repository.MealEntryType
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
@@ -117,6 +118,7 @@ class TrainIqRepositoryTest {
 
         assertEquals(1, overview.volumeTrend.size)
         assertEquals(1_300.0, overview.volumeTrend.single().value, 0.0)
+        assertNull(overview.weeklyLoadRatio)
     }
 
     @Test
@@ -153,6 +155,16 @@ class TrainIqRepositoryTest {
         assertEquals(112.5, overview.strengthTrend.first().value, 0.1)
         assertEquals(135.0, overview.strengthTrend.last().value, 0.1)
         assertEquals(listOf(34.0, 35.0), overview.muscleMassTrend.map { it.value })
+        assertEquals(1.2, overview.weeklyLoadRatio ?: -1.0, 0.0)
+    }
+
+    @Test
+    fun buildProgressOverviewFromHistory_ignoresZeroVolumeWeeksWhenSelectingComparisonWeeks() {
+        val zeroWeeksBetweenPositiveWeeks = progressOverviewForWeeklyVolumes(listOf(100.0, 0.0, 0.0, 0.0, 200.0))
+        val trailingZeroWeek = progressOverviewForWeeklyVolumes(listOf(100.0, 200.0, 0.0))
+
+        assertEquals(2.0, zeroWeeksBetweenPositiveWeeks.weeklyLoadRatio ?: -1.0, 0.0)
+        assertEquals(2.0, trailingZeroWeek.weeklyLoadRatio ?: -1.0, 0.0)
     }
 
     @Test
@@ -172,6 +184,35 @@ class TrainIqRepositoryTest {
 
         assertEquals("Deze maaltijd bevat een verwijderd product of recept.", error.message)
     }
+
+    private fun progressOverviewForWeeklyVolumes(volumes: List<Double>) = buildProgressOverviewFromHistory(
+        measurements = emptyList(),
+        sessions = volumes.indices.map { index ->
+            WorkoutSessionEntity(
+                id = index.toLong() + 1L,
+                date = java.time.LocalDate.of(2026, 1, 5)
+                    .plusWeeks(index.toLong())
+                    .atStartOfDay(java.time.ZoneId.systemDefault())
+                    .toInstant()
+                    .toEpochMilli(),
+                duration = 1_800,
+                status = "COMPLETED",
+                completed = true,
+            )
+        },
+        sets = volumes.mapIndexed { index, volume ->
+            WorkoutSetEntity(
+                id = index.toLong() + 1L,
+                sessionId = index.toLong() + 1L,
+                exerciseId = 10L,
+                weight = volume,
+                reps = 1,
+                rpe = 8.0,
+                setType = SetType.NORMAL.name,
+            )
+        },
+        analyticsEngine = AnalyticsEngine(),
+    )
 
     @Test
     fun buildMealItemSnapshots_scalesRecipeFromPositiveCookedGrams() {

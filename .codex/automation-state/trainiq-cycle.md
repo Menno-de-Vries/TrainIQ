@@ -1,5 +1,23 @@
 # Automation State: trainiq-cycle
 
+Last run: 2026-07-12
+Mode: polish
+Selected next action: Complete the bounded trust, navigation and Trend recovery batch
+Current target-state alignment: 98%
+Last useful change: Removed hidden top-level swipe navigation, clarified local coach and weekly-load semantics, and made fatal Trend observations retryable through the shared reload path.
+Consecutive no-op runs: 0
+Consecutive blocked runs: 0
+Open findings:
+- P0: none observed in this batch.
+- P1: release-owner/privacy/signing decisions, the intentionally absent hosted CI workflow, physical-device performance/accessibility acceptance, and the remaining Health Connect provider/permission-state matrix.
+- P2: Health Connect refresh single-flight/cancellation, workout-draft write coalescing, duplicated screen timers, Coach draft restoration, weekly-report input semantics, light-theme contrast, onboarding preference reuse, reminders/recovery context and broader adaptive-width polish.
+Next safest action: take Health Connect refresh single-flight and cancellation as a separate small data/performance batch, with focused concurrency guards and the same broad Android gates.
+Stop if: the next change requires a product, medical, privacy, legal, release-owner or credential decision; no safe device/profile exists; or verification cannot distinguish harness instability from an app regression.
+Blockers: hosted-CI policy, release signing/versioning and store declarations remain owner decisions; real-device performance, TalkBack/Switch Access and the complete Health Connect runtime matrix remain external acceptance work.
+Verification summary: PASS focused red/green navigation, repository, Home and Progress contracts; PASS `:app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:compileDebugAndroidTestKotlin`; PASS debug update install; PASS final cold launch with `Status: ok` and `TotalTime: 4836 ms`; PASS Trend render and horizontal-swipe containment; PASS return to Home; PASS empty TrainIQ crash/ANR slices; PASS independent final re-review with no critical or important issue.
+
+## Historical snapshot (superseded 2026-05-12)
+
 Last run: 2026-05-12
 Mode: polish
 Selected next action: Verify 360x640 compact/font-scale evidence and continue safest release blocker reduction

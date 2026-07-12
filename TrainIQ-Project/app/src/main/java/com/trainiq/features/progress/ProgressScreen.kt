@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -20,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -58,6 +60,7 @@ import com.trainiq.core.ui.TrainIqFormField
 import com.trainiq.core.ui.TrainIqFormFieldContext
 import com.trainiq.core.ui.UiMessage
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
+import com.trainiq.core.ui.reloadableObservation
 import com.trainiq.core.theme.spacing
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.core.util.ChartComposable
@@ -80,6 +83,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -186,7 +190,9 @@ class ProgressViewModel @Inject constructor(
     private val addMeasurementUseCase: AddMeasurementUseCase,
     private val deleteMeasurementUseCase: DeleteMeasurementUseCase,
 ) : ViewModel() {
-    private val overview: StateFlow<ProgressOverview?> = observeProgressUseCase()
+    private val reloads = MutableStateFlow(0)
+    private val overview: StateFlow<Result<ProgressOverview>?> =
+        reloadableObservation(reloads) { observeProgressUseCase() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val _message = MutableStateFlow<UiMessage?>(null)
@@ -215,7 +221,7 @@ class ProgressViewModel @Inject constructor(
     }
 
     fun deleteMeasurement(measurementId: Long) {
-        if (overview.value?.measurements?.none { it.id == measurementId } != false) {
+        if (overview.value?.getOrNull()?.measurements?.none { it.id == measurementId } != false) {
             emitMessage("Meting kon niet worden gevonden.")
             return
         }
@@ -245,6 +251,10 @@ class ProgressViewModel @Inject constructor(
         _message.value = UiMessage(text)
     }
 
+    fun retry() {
+        reloads.update { it + 1 }
+    }
+
     fun clearMessage(id: Long? = null) {
         if (id == null || _message.value?.id == id) {
             _message.value = null
@@ -268,6 +278,7 @@ fun ProgressRoute(
         uiState = uiState,
         onAddMeasurement = viewModel::addMeasurement,
         onDeleteMeasurement = viewModel::deleteMeasurement,
+        onRetry = viewModel::retry,
         onDismissMessage = viewModel::clearMessage,
         pendingScaleWeight = pendingScaleWeight,
         pendingScaleBodyFat = pendingScaleBodyFat,
@@ -290,6 +301,7 @@ fun ProgressScreen(
     uiState: ProgressUiState,
     onAddMeasurement: (String, String, String) -> Unit,
     onDeleteMeasurement: (Long) -> Unit,
+    onRetry: () -> Unit,
     onDismissMessage: (Long) -> Unit,
     pendingScaleWeight: String? = null,
     pendingScaleBodyFat: String? = null,
@@ -399,6 +411,10 @@ fun ProgressScreen(
                     AppCard(modifier = Modifier.fillMaxWidth()) {
                         Text("Voortgang niet beschikbaar", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                         Text(uiState.message, color = MaterialTheme.trainIqColors.mutedText)
+                        Button(
+                            onClick = onRetry,
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) { Text("Opnieuw proberen") }
                     }
                 }
                 return@LazyColumn
@@ -504,7 +520,7 @@ fun ProgressScreen(
                 item {
                     EmptyStateCard(
                         title = "Nog geen trainingsprogressie",
-                        body = "Rond een workout af om geschatte 1RM, vermoeidheid en trainingsvolume te zien.",
+                        body = "Rond een workout af om geschatte 1RM, weekbelasting en trainingsvolume te zien.",
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -514,7 +530,12 @@ fun ProgressScreen(
                     MetricCard("Geschatte 1RM", estimatedOneRepMaxText(overview.estimatedOneRepMax), "Beste geschatte maximale kracht uit je gelogde sets", Modifier.fillMaxWidth())
                 }
                 item {
-                    MetricCard("Vermoeidheidsindex", String.format(Locale.getDefault(), "%.2f", overview.fatigueIndex), "Waarschuwing bij snelle volume + RPE stijging", Modifier.fillMaxWidth())
+                    MetricCard(
+                        "Weekbelasting",
+                        weeklyLoadRatioText(overview.weeklyLoadRatio),
+                        weeklyLoadRatioSupportingText(overview.weeklyLoadRatio),
+                        Modifier.fillMaxWidth(),
+                    )
                 }
                 item { ChartComposable("Krachtprogressie", overview.strengthTrend, Modifier.fillMaxWidth()) }
                 item { ChartComposable("Trainingsvolume", overview.volumeTrend, Modifier.fillMaxWidth()) }
@@ -556,8 +577,25 @@ fun ProgressScreen(
     }
 }
 
-internal fun progressUiState(overview: ProgressOverview?, message: UiMessage?): ProgressUiState =
-    overview?.let { ProgressUiState.Success(overview = it, message = message) } ?: ProgressUiState.Loading
+internal fun progressUiState(observation: Result<ProgressOverview>?, message: UiMessage?): ProgressUiState {
+    val currentObservation = observation ?: return ProgressUiState.Loading
+    return when {
+        currentObservation.isFailure -> ProgressUiState.Error("Voortgang kon niet worden geladen.")
+        else -> ProgressUiState.Success(overview = currentObservation.getOrThrow(), message = message)
+    }
+}
+
+internal fun weeklyLoadRatioText(ratio: Double?): String =
+    ratio?.takeIf { it.isFinite() && it >= 0.0 }
+        ?.let { String.format(Locale.US, "%.2f×", it) }
+        ?: "Nog geen vergelijking"
+
+internal fun weeklyLoadRatioSupportingText(ratio: Double?): String =
+    if (ratio == null || !ratio.isFinite() || ratio < 0.0) {
+        "Minstens twee trainingsweken nodig"
+    } else {
+        "Laatste trainingsweek versus gemiddeld volume van maximaal drie voorgaande trainingsweken"
+    }
 
 private enum class ProgressSectionTab(val key: String, val label: String) {
     Body("body", "Lichaam"),

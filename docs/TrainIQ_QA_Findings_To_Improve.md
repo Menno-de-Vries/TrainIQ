@@ -6,6 +6,18 @@ Refresh date: 2026-05-10, current worktree
 
 Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emulator smoke, Health Connect, Gemini/AI, Room/data, UI/UX/accessibility, release readiness.
 
+## 2026-07-12 Trust and Interaction Polish
+
+- status: done for this bounded batch; no known regression was found in the covered debug gates or emulator journey.
+- navigation: removed the hidden full-screen horizontal swipe between top-level destinations. The visible Material navigation bar/rail remains the single typed navigation path, including its existing haptic feedback, so horizontal gestures inside screen content no longer compete with app navigation.
+- trust copy: Home now labels its deterministic local summary as `Coach-inzicht` and `Lokale analyse`; no Gemini/provider behavior changed.
+- progress semantics: the former fatigue-style percentage is now a nullable weekly load ratio. It compares the latest positive training week with the average of at most three preceding positive training weeks and stays unavailable until at least two training weeks exist. UI copy no longer implies fatigue or RPE measurement.
+- recovery: a fatal Trend observation can now resubscribe through the shared reloadable-observation path. The error card exposes an accessible `Opnieuw proberen` action with a 48 dp minimum height.
+- regression evidence: focused tests were written red-first for each changed contract. `:app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:compileDebugAndroidTestKotlin` passed, followed by a successful debug install and cold emulator launch (`Status: ok`, `TotalTime: 4836 ms`). Trend rendered, a horizontal swipe stayed on Trend, Home remained reachable, and the TrainIQ crash/ANR slices were empty.
+- independent review: the first review found a sparse-week baseline edge case; a new regression test exposed it, the calculation was corrected to select positive weeks before choosing the baseline window, and the final re-review reported no remaining critical or important issue.
+- intentionally unchanged: no dependency, Room schema, AI provider, persistence model, broad redesign or CI workflow change is part of this batch.
+- remaining risk: physical-device gesture feel and release-mode performance still require their existing owner/device acceptance paths.
+
 ## 2026-07-12 Home Finite-Scroll and Momentum Tile Balance
 
 - status: partially-done; the reported clipped-Macro regression is fixed in source and broad Android gates pass, while real-device visual confirmation remains open.

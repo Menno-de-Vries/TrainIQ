@@ -504,7 +504,7 @@ data class HomeDashboard(
     val steps: Int?,
     val nextWorkout: WorkoutDay?,
     val streak: Int,
-    val aiInsight: String,
+    val coachInsight: String,
 )
 
 data class ProgressOverview(
@@ -515,7 +515,7 @@ data class ProgressOverview(
     val strengthTrend: List<ChartPoint>,
     val volumeTrend: List<ChartPoint>,
     val estimatedOneRepMax: Double,
-    val fatigueIndex: Double,
+    val weeklyLoadRatio: Double?,
 )
 
 data class CoachOverview(

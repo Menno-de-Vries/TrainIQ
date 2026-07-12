@@ -398,7 +398,7 @@ fun HomeScreen(
                             )
                         } else {
                             CoachInsightCard(
-                                insight = dashboard.aiInsight,
+                                insight = dashboard.coachInsight,
                                 onOpenCoach = onOpenCoach,
                             )
                         }
@@ -798,8 +798,8 @@ private fun CoachInsightCard(
                 .padding(MaterialTheme.spacing.medium),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
-            Text("AI-inzicht", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.amber, fontWeight = FontWeight.SemiBold)
-            Text("Coach vandaag", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+            Text("Coach-inzicht", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.amber, fontWeight = FontWeight.SemiBold)
+            Text("Lokale analyse", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
             Text(insight, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
             SecondaryActionButton(onClick = onOpenCoach, modifier = Modifier.fillMaxWidth()) { Text("Coach openen") }
         }

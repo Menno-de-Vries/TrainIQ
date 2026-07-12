@@ -205,7 +205,7 @@ class TrainIqDataCoordinator @Inject constructor(
             steps = steps.takeIf { it > 0 },
             nextWorkout = nextWorkout,
             streak = computeStreak(snapshot.sessions, snapshot.meals),
-            aiInsight = buildDashboardInsight(snapshot, nextWorkout),
+            coachInsight = buildDashboardInsight(snapshot, nextWorkout),
         )
     }.flowOn(Dispatchers.Default)
 
@@ -1368,7 +1368,11 @@ class TrainIqDataCoordinator @Inject constructor(
             insights += "Er is nog geen trainingshistorie. Rond een workout af om volume en herstel te volgen."
         } else {
             insights += "Je beste geschatte 1RM staat op ${formatSummaryWeight(progress.estimatedOneRepMax)} kg."
-            insights += "De huidige fatigue index is ${"%.2f".format(progress.fatigueIndex)}."
+            progress.weeklyLoadRatio?.let { ratio ->
+                insights += "Je laatste trainingsweek zat op ${"%.2f".format(ratio)}x het gemiddelde van de voorgaande trainingsweken."
+            } ?: run {
+                insights += "Log minstens twee trainingsweken om je weekbelasting te vergelijken."
+            }
         }
         return insights
     }
@@ -2727,14 +2731,15 @@ internal fun buildProgressOverviewFromHistory(
         ChartPoint(session.date.toReadableDate(), bestOneRepMax)
     }
     val estimatedOneRepMax = strengthTrend.maxOfOrNull { it.value } ?: 0.0
-    val weeklyVolume = weeklyVolumeTrend.lastOrNull()?.value ?: 0.0
-    val baseline = weeklyVolumeTrend
+    val positiveWeeklyVolumes = weeklyVolumeTrend
+        .map { it.value }
+        .filter { it > 0.0 }
+    val weeklyVolume = positiveWeeklyVolumes.lastOrNull() ?: 0.0
+    val baseline = positiveWeeklyVolumes
         .dropLast(1)
         .takeLast(3)
-        .map { it.value }
-        .average()
-        .takeIf { !it.isNaN() && it > 0.0 }
-        ?: weeklyVolume
+        .takeIf { it.isNotEmpty() }
+        ?.average()
 
     return ProgressOverview(
         measurements = measurements,
@@ -2744,7 +2749,9 @@ internal fun buildProgressOverviewFromHistory(
         strengthTrend = strengthTrend,
         volumeTrend = weeklyVolumeTrend,
         estimatedOneRepMax = estimatedOneRepMax,
-        fatigueIndex = if (weeklyVolume == 0.0 || baseline == 0.0) 0.0 else analyticsEngine.fatigueIndex(weeklyVolume, baseline),
+        weeklyLoadRatio = baseline
+            ?.takeIf { weeklyVolume > 0.0 }
+            ?.let { analyticsEngine.weeklyLoadRatio(weeklyVolume, it) },
     )
 }
 

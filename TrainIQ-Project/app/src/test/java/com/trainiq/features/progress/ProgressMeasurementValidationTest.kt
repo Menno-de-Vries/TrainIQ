@@ -3,6 +3,7 @@ package com.trainiq.features.progress
 import com.trainiq.domain.model.BodyMeasurement
 import com.trainiq.core.ui.UiMessage
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -95,6 +96,18 @@ class ProgressMeasurementValidationTest {
     }
 
     @Test
+    fun weeklyLoadRatioCopyAvoidsFatigueAndRpeClaims() {
+        assertEquals("Nog geen vergelijking", weeklyLoadRatioText(null))
+        assertEquals("1.20×", weeklyLoadRatioText(1.2))
+        assertTrue(weeklyLoadRatioSupportingText(null).contains("twee trainingsweken"))
+        assertTrue(weeklyLoadRatioSupportingText(1.2).contains("maximaal drie voorgaande trainingsweken"))
+
+        val source = java.io.File("src/main/java/com/trainiq/features/progress/ProgressScreen.kt").readText()
+        assertFalse(source.contains("Vermoeidheidsindex"))
+        assertFalse(source.contains("volume + RPE"))
+    }
+
+    @Test
     fun progressUiState_usesSingleSealedScreenState() {
         val overview = com.trainiq.domain.model.ProgressOverview(
             measurements = emptyList(),
@@ -104,14 +117,18 @@ class ProgressMeasurementValidationTest {
             strengthTrend = emptyList(),
             volumeTrend = emptyList(),
             estimatedOneRepMax = 0.0,
-            fatigueIndex = 0.0,
+            weeklyLoadRatio = null,
         )
 
         val message = UiMessage("Meting opgeslagen.", id = 1L)
-        assertEquals(ProgressUiState.Loading, progressUiState(overview = null, message = null))
+        assertEquals(ProgressUiState.Loading, progressUiState(observation = null, message = null))
+        assertEquals(
+            ProgressUiState.Error("Voortgang kon niet worden geladen."),
+            progressUiState(observation = Result.failure(IllegalStateException("Room unavailable")), message = null),
+        )
         assertEquals(
             ProgressUiState.Success(overview = overview, message = message),
-            progressUiState(overview = overview, message = message),
+            progressUiState(observation = Result.success(overview), message = message),
         )
     }
 

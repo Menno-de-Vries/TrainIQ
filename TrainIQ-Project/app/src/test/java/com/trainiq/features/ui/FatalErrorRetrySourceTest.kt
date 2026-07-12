@@ -9,14 +9,18 @@ class FatalErrorRetrySourceTest {
     fun fatalErrorsExposeAccessibleRetryActionsBackedByViewModelReloads() {
         val nutrition = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
         val coach = File("src/main/java/com/trainiq/features/coach/CoachScreen.kt").readText()
+        val progress = File("src/main/java/com/trainiq/features/progress/ProgressScreen.kt").readText()
         val settings = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
 
         assertRetryContract(nutrition, "Nutrition")
         assertRetryContract(coach, "Coach")
+        assertRetryContract(progress, "Progress")
         assertRetryContract(settings, "Settings")
         assertTrue(nutrition.contains("preferencesRepository.aiPreferences") && nutrition.contains("reloadableObservation(reloads)"))
         assertTrue(coach.contains("observeUserProfileUseCase()") && coach.contains("observeSavedGoalAdviceUseCase()"))
         assertTrue(coach.split("reloadableObservation(reloads)").size >= 4)
+        assertTrue(progress.contains("reloadableObservation(reloads) { observeProgressUseCase() }"))
+        assertTrue(progress.contains("currentObservation.isFailure -> ProgressUiState.Error"))
         assertTrue(settings.contains("externalInputs == null -> SettingsUiState.Loading"))
         assertTrue(settings.contains("externalInputs.isFailure -> SettingsUiState.Error"))
         assertTrue(settings.split("reloadableObservation(reloads)").size == 2)

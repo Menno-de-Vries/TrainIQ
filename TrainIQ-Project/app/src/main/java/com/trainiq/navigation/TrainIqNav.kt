@@ -22,8 +22,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,9 +52,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
@@ -91,7 +86,6 @@ import com.trainiq.core.diagnostics.DiagnosticsTracker
 import com.trainiq.core.theme.radii
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.core.ui.AppScaffold
-import kotlin.math.abs
 import kotlin.reflect.KClass
 import kotlinx.serialization.Serializable
 
@@ -175,7 +169,6 @@ fun TrainIqApp(
     val currentTopLevelIndex = items.indexOfFirst { screen ->
         currentDestination?.hierarchy?.any { it.hasRoute(screen.routeClass) } == true
     }.takeIf { it >= 0 }
-    val isNutritionDestination = currentDestination?.hierarchy?.any { it.hasRoute(Nutrition::class) } == true
     val isOnboardingDestination = currentDestination?.hierarchy?.any { it.hasRoute(Onboarding::class) } == true
     val density = LocalDensity.current
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
@@ -189,9 +182,6 @@ fun TrainIqApp(
     } else {
         bottomNavigationDestinations(items = items, windowWidthClass = windowWidthClass)
     }
-    val currentNavigationIndex = navigationItems.indexOfFirst { screen ->
-        currentDestination?.hierarchy?.any { it.hasRoute(screen.routeClass) } == true
-    }.takeIf { it >= 0 }
     var navVisible by remember { mutableStateOf(true) }
     var trainDetailMode by remember { mutableStateOf(false) }
     var guidedTourIndex by remember(
@@ -346,22 +336,7 @@ fun TrainIqApp(
                 onboardingPreferences = onboardingPreferences,
                 onTrainDetailModeChanged = { trainDetailMode = it },
                 modifier = Modifier
-                    .padding(padding)
-                    .topLevelTabSwipeNavigation(
-                        enabled = currentNavigationIndex != null && !imeVisible && !isNutritionDestination,
-                        onSwipeLeft = {
-                            val currentIndex = currentNavigationIndex ?: return@topLevelTabSwipeNavigation
-                            val next = navigationItems.getOrNull(currentIndex + 1) ?: return@topLevelTabSwipeNavigation
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            navController.navigateTopLevel(next)
-                        },
-                        onSwipeRight = {
-                            val currentIndex = currentNavigationIndex ?: return@topLevelTabSwipeNavigation
-                            val previous = navigationItems.getOrNull(currentIndex - 1) ?: return@topLevelTabSwipeNavigation
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            navController.navigateTopLevel(previous)
-                        },
-                    ),
+                    .padding(padding),
             )
         }
         }
@@ -471,9 +446,6 @@ internal fun compactBottomNavigationRouteClasses(): List<KClass<*>> =
         ),
         windowWidthClass = TrainIqWindowWidthClass.Compact,
     ).map { it.routeClass }
-
-internal fun compactSwipeNavigationRouteClasses(): List<KClass<*>> =
-    compactBottomNavigationRouteClasses()
 
 internal fun guidedTourTopLevelRouteClasses(): List<KClass<*>> =
     listOf(Home::class, Train::class, Nutrition::class, Progress::class, Coach::class, Settings::class)
@@ -613,38 +585,6 @@ private fun GuidedTourOverlay(
                 ) {
                     Text(if (index == total - 1) "Tour afronden" else "Volgende", maxLines = 1)
                 }
-            }
-        }
-    }
-}
-
-private fun Modifier.topLevelTabSwipeNavigation(
-    enabled: Boolean,
-    onSwipeLeft: () -> Unit,
-    onSwipeRight: () -> Unit,
-): Modifier {
-    if (!enabled) return this
-    return pointerInput(onSwipeLeft, onSwipeRight) {
-        val threshold = 112.dp.toPx()
-        awaitEachGesture {
-            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Final)
-            var totalX = 0f
-            var totalY = 0f
-            var childConsumedGesture = false
-            do {
-                val event = awaitPointerEvent(pass = PointerEventPass.Final)
-                if (event.changes.any { it.isConsumed }) {
-                    childConsumedGesture = true
-                }
-                event.changes.forEach { change ->
-                    val delta = change.positionChange()
-                    totalX += delta.x
-                    totalY += delta.y
-                }
-            } while (event.changes.any { it.pressed })
-
-            if (!childConsumedGesture && abs(totalX) > threshold && abs(totalX) > abs(totalY) * 1.6f) {
-                if (totalX < 0f) onSwipeLeft() else onSwipeRight()
             }
         }
     }

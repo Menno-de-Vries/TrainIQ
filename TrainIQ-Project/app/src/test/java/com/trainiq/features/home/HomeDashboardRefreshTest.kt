@@ -303,6 +303,17 @@ class HomeDashboardRefreshTest {
     }
 
     @Test
+    fun deterministicHomeGuidanceIsLabeledAsLocalCoachInsight() {
+        val source = File("src/main/java/com/trainiq/features/home/HomeScreen.kt").readText()
+        val card = source.substringAfter("private fun CoachInsightCard(")
+            .substringBefore("private fun WelcomeConnectCard")
+
+        assertTrue(card.contains("Text(\"Coach-inzicht\""))
+        assertTrue(card.contains("Text(\"Lokale analyse\""))
+        assertFalse(card.contains("Text(\"AI-inzicht\""))
+    }
+
+    @Test
     fun connectedHealthStatusRemainsRefreshableAsACompactHomeRow() {
         val source = File("src/main/java/com/trainiq/features/home/HomeScreen.kt").readText()
         val successBody = source.substringAfter("is HomeUiState.Success ->")
