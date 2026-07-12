@@ -287,9 +287,28 @@ class HomeDashboardRefreshTest {
         val successBody = source.substringAfter("is HomeUiState.Success ->")
             .substringBefore("internal fun buildHomeRecoverySubtitle")
 
-        assertTrue(successBody.contains("if (showCompactHomeHealthCard(healthConnectStatus))"))
-        assertTrue(successBody.contains("HealthConnectSyncCard("))
+        assertTrue(successBody.contains("if (!showCompactHomeHealthCard(healthConnectStatus))"))
         assertTrue(successBody.contains("PermissionManagerCard("))
+    }
+
+    @Test
+    fun homeShowsOneContextualFocusCardAfterConnectedHealthStatus() {
+        val source = File("src/main/java/com/trainiq/features/home/HomeScreen.kt").readText()
+        val successBody = source.substringAfter("is HomeUiState.Success ->")
+            .substringBefore("internal fun buildHomeRecoverySubtitle")
+
+        assertTrue(successBody.contains("if (!showCompactHomeHealthCard(healthConnectStatus))"))
+        assertTrue(successBody.contains("if (dashboard.nextWorkout != null)"))
+        assertTrue(successBody.contains("CoachInsightCard("))
+    }
+
+    @Test
+    fun connectedHealthStatusRemainsRefreshableAsACompactHomeRow() {
+        val source = File("src/main/java/com/trainiq/features/home/HomeScreen.kt").readText()
+        val successBody = source.substringAfter("is HomeUiState.Success ->")
+            .substringBefore("internal fun buildHomeRecoverySubtitle")
+
+        assertTrue(successBody.contains("HomeHealthStatusRow("))
     }
 
     @Test
@@ -302,6 +321,16 @@ class HomeDashboardRefreshTest {
         assertTrue(source.contains("Stappen"))
         assertTrue(source.contains("Training"))
         assertTrue(source.contains("energyOutBreakdownRows"))
+    }
+
+    @Test
+    fun energyBalanceHeroKeepsSourcesAccessibleBehindAnExpandableDetailsControl() {
+        val source = File("src/main/java/com/trainiq/core/util/Formatters.kt").readText()
+
+        assertTrue(source.contains("rememberSaveable"))
+        assertTrue(source.contains("Bekijk verbranding"))
+        assertTrue(source.contains("Verberg verbranding"))
+        assertTrue(source.contains("AnimatedVisibility(visible = breakdownExpanded)"))
     }
 
     @Test

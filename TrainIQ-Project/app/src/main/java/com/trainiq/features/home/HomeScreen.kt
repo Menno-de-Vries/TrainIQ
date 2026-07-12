@@ -376,7 +376,7 @@ fun HomeScreen(
                         }
                         if (showCompactHomeHealthCard(healthConnectStatus)) {
                             item(span = { GridItemSpan(gridColumns) }) {
-                                HealthConnectSyncCard(
+                                HomeHealthStatusRow(
                                     status = healthConnectStatus,
                                     isRefreshingHealth = uiState.isRefreshingHealth,
                                     refreshMessage = uiState.refreshMessage,
@@ -386,7 +386,8 @@ fun HomeScreen(
                                     },
                                 )
                             }
-                        } else {
+                        }
+                        if (!showCompactHomeHealthCard(healthConnectStatus)) {
                             item(span = { GridItemSpan(gridColumns) }) {
                                 PermissionManagerCard(
                                     status = healthConnectStatus,
@@ -415,20 +416,21 @@ fun HomeScreen(
                             }
                         }
                         item(span = { GridItemSpan(gridColumns) }) {
-                            NextWorkoutCard(
-                                dashboard = dashboard,
-                                onOpenTrain = onOpenTrain,
-                                onStartWorkout = {
-                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    onStartWorkout(it)
-                                },
-                            )
-                        }
-                        item(span = { GridItemSpan(gridColumns) }) {
-                            CoachInsightCard(
-                                insight = dashboard.aiInsight,
-                                onOpenCoach = onOpenCoach,
-                            )
+                            if (dashboard.nextWorkout != null) {
+                                NextWorkoutCard(
+                                    dashboard = dashboard,
+                                    onOpenTrain = onOpenTrain,
+                                    onStartWorkout = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        onStartWorkout(it)
+                                    },
+                                )
+                            } else {
+                                CoachInsightCard(
+                                    insight = dashboard.aiInsight,
+                                    onOpenCoach = onOpenCoach,
+                                )
+                            }
                         }
                     }
                 }
@@ -468,17 +470,19 @@ private fun HomeMomentumCard(
                     color = MaterialTheme.trainIqColors.mutedText,
                 )
             }
-            Column(
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+                horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
             ) {
                 HomeMomentumMetricRow(
+                    modifier = Modifier.weight(1f),
                     title = "Reeks",
                     value = homeStreakValue(streak),
                     subtitle = homeStreakSubtitle(streak),
                     accent = MaterialTheme.trainIqColors.amber,
                 )
                 HomeMomentumMetricRow(
+                    modifier = Modifier.weight(1f),
                     title = "Stappen",
                     value = homeStepsValue(healthStatus),
                     subtitle = buildHomeRecoverySubtitle(
@@ -495,14 +499,14 @@ private fun HomeMomentumCard(
 
 @Composable
 private fun HomeMomentumMetricRow(
+    modifier: Modifier = Modifier,
     title: String,
     value: String,
     subtitle: String,
     accent: Color,
 ) {
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
+        modifier = modifier
             .defaultMinSize(minHeight = 96.dp),
         shape = MaterialTheme.shapes.large,
         color = accent.copy(alpha = 0.10f),
@@ -567,17 +571,26 @@ internal fun homeMomentumEncouragement(streak: Int, status: HealthConnectStatus)
 }
 
 @Composable
-private fun HealthConnectSyncCard(
+private fun HomeHealthStatusRow(
     status: HealthConnectStatus,
     isRefreshingHealth: Boolean,
     refreshMessage: String?,
     onRefresh: () -> Unit,
 ) {
-    AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.mint) {
-        Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.trainIqColors.cardElevated,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = BorderStroke(1.dp, MaterialTheme.trainIqColors.cardBorder.copy(alpha = 0.72f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(MaterialTheme.spacing.medium),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
+        ) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Health Connect", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                    Text("Health Connect", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
                     Text(
                         homeHealthCompactSummary(status),
                         style = MaterialTheme.typography.bodyMedium,
