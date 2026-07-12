@@ -1,6 +1,7 @@
 package com.trainiq.data.repository
 
 import com.google.gson.Gson
+import androidx.room.withTransaction
 import com.trainiq.core.database.ActiveWorkoutCollapsedExerciseEntity
 import com.trainiq.core.database.ActiveWorkoutDraftEntity
 import com.trainiq.core.database.ActiveWorkoutSessionEntity
@@ -14,6 +15,7 @@ import com.trainiq.core.database.PerformedExerciseEntity
 import com.trainiq.core.database.RecipeEntity
 import com.trainiq.core.database.RecipeIngredientEntity
 import com.trainiq.core.database.RoutineSetEntity
+import com.trainiq.core.database.SavedGoalAdviceEntity
 import com.trainiq.core.database.TrainIqDatabase
 import com.trainiq.core.database.UserProfileEntity
 import com.trainiq.core.database.WorkoutDayEntity
@@ -36,6 +38,7 @@ import com.trainiq.data.local.TrainIqStorageState
 import com.trainiq.data.local.WorkoutLogEventStorage
 import com.trainiq.data.migration.JsonRoomImportPlanner
 import com.trainiq.data.migration.RoomJsonImportSink
+import com.trainiq.data.mapper.toDomain
 import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.model.LoggedMealItemType
 import com.trainiq.domain.model.MealType
@@ -52,6 +55,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -145,13 +149,23 @@ class RoomTrainIqRuntimeStore @Inject constructor(
 
     suspend fun clearProfile() {
         mutex.withLock {
-            dao.clearMirrorUserProfile()
+            database.withTransaction {
+                dao.clearSavedGoalAdvice()
+                dao.clearMirrorUserProfile()
+            }
         }
     }
 
-    suspend fun saveProfile(profile: UserProfileEntity) {
+    fun observeSavedGoalAdvice() = dao.observeSavedGoalAdvice().map { it?.toDomain() }
+
+    suspend fun saveProfile(profile: UserProfileEntity, savedGoalAdvice: SavedGoalAdviceEntity? = null) {
         mutex.withLock {
-            dao.upsertUserProfile(profile)
+            database.withTransaction {
+                dao.upsertUserProfile(profile)
+                if (savedGoalAdvice != null) {
+                    dao.upsertSavedGoalAdvice(savedGoalAdvice)
+                }
+            }
         }
     }
 

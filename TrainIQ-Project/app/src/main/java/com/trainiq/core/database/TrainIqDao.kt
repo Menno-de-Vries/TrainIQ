@@ -47,6 +47,9 @@ interface TrainIqDao {
     @Query("DELETE FROM user_profile")
     suspend fun clearMirrorUserProfile()
 
+    @Query("DELETE FROM saved_goal_advice")
+    suspend fun clearSavedGoalAdvice()
+
     @Query("DELETE FROM workout_routines")
     suspend fun clearMirrorRoutines()
 
@@ -109,6 +112,7 @@ interface TrainIqDao {
 
     @Transaction
     suspend fun clearMirrorTables() {
+        clearSavedGoalAdvice()
         clearMirrorWorkoutLogEventSets()
         clearMirrorWorkoutLogEvents()
         clearMirrorActiveWorkoutSets()
@@ -134,6 +138,9 @@ interface TrainIqDao {
 
     @Upsert
     suspend fun upsertUserProfile(profile: UserProfileEntity)
+
+    @Upsert
+    suspend fun upsertSavedGoalAdvice(advice: SavedGoalAdviceEntity)
 
     @Upsert
     suspend fun insertRoutines(routines: List<WorkoutRoutineEntity>)
@@ -352,6 +359,9 @@ interface TrainIqDao {
 
     @Query("SELECT * FROM user_profile LIMIT 1")
     fun observeUserProfile(): Flow<UserProfileEntity?>
+
+    @Query("SELECT * FROM saved_goal_advice WHERE id = 1")
+    fun observeSavedGoalAdvice(): Flow<SavedGoalAdviceEntity?>
 
     @Query("SELECT * FROM workout_routines ORDER BY active DESC, id ASC")
     fun observeRoutines(): Flow<List<WorkoutRoutineEntity>>

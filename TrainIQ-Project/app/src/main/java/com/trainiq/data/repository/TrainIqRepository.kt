@@ -12,6 +12,7 @@ import com.trainiq.core.database.BodyMeasurementEntity
 import com.trainiq.core.database.ExerciseEntity
 import com.trainiq.core.database.PerformedExerciseEntity
 import com.trainiq.core.database.RoutineSetEntity
+import com.trainiq.data.mapper.toEntity
 import com.trainiq.core.database.UserProfileEntity
 import com.trainiq.core.database.WorkoutDayEntity
 import com.trainiq.core.database.WorkoutExerciseEntity
@@ -72,6 +73,7 @@ import com.trainiq.domain.model.NutritionOverview
 import com.trainiq.domain.model.ProgressOverview
 import com.trainiq.domain.model.ProgressionSuggestion
 import com.trainiq.domain.model.Recipe
+import com.trainiq.domain.model.SavedGoalAdvice
 import com.trainiq.domain.model.RecipeIngredient
 import com.trainiq.domain.model.RoutineSet
 import com.trainiq.domain.model.SetType
@@ -1251,7 +1253,9 @@ class TrainIqDataCoordinator @Inject constructor(
 
     fun observeUserProfile(): Flow<UserProfile?> = snapshotState.map { it.profile }
 
-    suspend fun saveProfile(profile: UserProfile) {
+    fun observeSavedGoalAdvice(): Flow<SavedGoalAdvice?> = runtimeStore.observeSavedGoalAdvice()
+
+    suspend fun saveProfile(profile: UserProfile, savedGoalAdvice: SavedGoalAdvice? = null) {
         runtimeStore.saveProfile(
             UserProfileEntity(
                 id = profile.id,
@@ -1269,6 +1273,7 @@ class TrainIqDataCoordinator @Inject constructor(
                 fatTarget = profile.fatTarget,
                 trainingFocus = profile.trainingFocus,
             ),
+            savedGoalAdvice?.toEntity(),
         )
     }
 

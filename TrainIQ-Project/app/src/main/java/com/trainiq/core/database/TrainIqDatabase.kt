@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
     entities = [
         RoomMirrorImportRunEntity::class,
         UserProfileEntity::class,
+        SavedGoalAdviceEntity::class,
         WorkoutRoutineEntity::class,
         WorkoutDayEntity::class,
         ExerciseEntity::class,
@@ -28,7 +29,7 @@ import androidx.room.RoomDatabase
         WorkoutLogEventSetEntity::class,
         BodyMeasurementEntity::class,
     ],
-    version = 15,
+    version = 16,
     exportSchema = true,
 )
 abstract class TrainIqDatabase : RoomDatabase() {

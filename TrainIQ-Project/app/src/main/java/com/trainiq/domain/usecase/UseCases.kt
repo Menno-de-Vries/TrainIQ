@@ -23,6 +23,7 @@ import com.trainiq.domain.model.MealType
 import com.trainiq.domain.model.ProgressionSuggestion
 import com.trainiq.domain.model.RoutineSet
 import com.trainiq.domain.model.SetType
+import com.trainiq.domain.model.SavedGoalAdvice
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WeeklyReportResult
 import com.trainiq.domain.model.WorkoutDay
@@ -497,8 +498,12 @@ class ObserveUserProfileUseCase @Inject constructor(private val repository: Coac
     operator fun invoke() = repository.observeUserProfile()
 }
 
+class ObserveSavedGoalAdviceUseCase @Inject constructor(private val repository: CoachRepository) {
+    operator fun invoke() = repository.observeSavedGoalAdvice()
+}
+
 class SaveUserProfileUseCase @Inject constructor(private val repository: CoachRepository) {
-    suspend operator fun invoke(profile: UserProfile) = repository.saveProfile(profile)
+    suspend operator fun invoke(profile: UserProfile, savedGoalAdvice: SavedGoalAdvice? = null) = repository.saveProfile(profile, savedGoalAdvice)
 }
 
 class ResetProfileUseCase @Inject constructor(

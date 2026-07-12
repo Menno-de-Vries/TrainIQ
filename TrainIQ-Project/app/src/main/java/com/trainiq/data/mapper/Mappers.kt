@@ -3,6 +3,7 @@ package com.trainiq.data.mapper
 import com.trainiq.core.database.BodyMeasurementEntity
 import com.trainiq.core.database.ExerciseEntity
 import com.trainiq.core.database.RoutineSetEntity
+import com.trainiq.core.database.SavedGoalAdviceEntity
 import com.trainiq.core.database.UserProfileEntity
 import com.trainiq.core.database.WorkoutDayEntity
 import com.trainiq.core.database.WorkoutExerciseEntity
@@ -19,6 +20,7 @@ import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.Exercise
 import com.trainiq.domain.model.HealthConnectMetrics
 import com.trainiq.domain.model.RoutineSet
+import com.trainiq.domain.model.SavedGoalAdvice
 import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WorkoutDay
@@ -35,6 +37,8 @@ import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import kotlin.math.roundToInt
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 
 fun UserProfileEntity.toDomain() = UserProfile(
     id = id,
@@ -51,6 +55,55 @@ fun UserProfileEntity.toDomain() = UserProfile(
     carbsTarget = carbsTarget,
     fatTarget = fatTarget,
     trainingFocus = trainingFocus,
+)
+
+fun SavedGoalAdviceEntity.toDomain() = SavedGoalAdvice(
+    advice = com.trainiq.domain.model.GoalAdvice(
+        bmr = bmr,
+        maintenanceCalories = maintenanceCalories,
+        activityMultiplier = activityMultiplier,
+        calorieTarget = calorieTarget,
+        proteinTarget = proteinTarget,
+        carbsTarget = carbsTarget,
+        fatTarget = fatTarget,
+        trainingFocus = trainingFocus,
+        summary = summary,
+        calorieAdvice = calorieAdvice,
+        macroAdvice = macroAdvice,
+        activityExplanation = activityExplanation,
+        attentionPoints = runCatching {
+            Gson().fromJson<List<String>>(attentionPointsJson, object : TypeToken<List<String>>() {}.type)
+        }.getOrDefault(emptyList()),
+        advice = advice,
+        dataQuality = dataQuality,
+        source = runCatching { com.trainiq.domain.model.GoalAdviceSource.valueOf(source) }
+            .getOrDefault(com.trainiq.domain.model.GoalAdviceSource.LOCAL_CALCULATION),
+        rawResponse = rawResponse,
+    ),
+    profileFingerprint = profileFingerprint,
+    savedAt = savedAt,
+)
+
+fun SavedGoalAdvice.toEntity() = SavedGoalAdviceEntity(
+    profileFingerprint = profileFingerprint,
+    savedAt = savedAt,
+    bmr = advice.bmr,
+    maintenanceCalories = advice.maintenanceCalories,
+    activityMultiplier = advice.activityMultiplier,
+    calorieTarget = advice.calorieTarget,
+    proteinTarget = advice.proteinTarget,
+    carbsTarget = advice.carbsTarget,
+    fatTarget = advice.fatTarget,
+    trainingFocus = advice.trainingFocus,
+    summary = advice.summary,
+    calorieAdvice = advice.calorieAdvice,
+    macroAdvice = advice.macroAdvice,
+    activityExplanation = advice.activityExplanation,
+    attentionPointsJson = Gson().toJson(advice.attentionPoints),
+    advice = advice.advice,
+    dataQuality = advice.dataQuality,
+    source = advice.source.name,
+    rawResponse = advice.rawResponse,
 )
 
 fun ExerciseEntity.toDomain() = Exercise(id, name, muscleGroup, equipment)

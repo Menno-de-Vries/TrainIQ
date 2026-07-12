@@ -735,6 +735,38 @@ object TrainIqMigrations {
         }
     }
 
+    val Migration15To16 = object : Migration(15, 16) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS saved_goal_advice (
+                    id INTEGER NOT NULL,
+                    profile_fingerprint TEXT NOT NULL,
+                    saved_at INTEGER NOT NULL,
+                    bmr INTEGER NOT NULL,
+                    maintenance_calories INTEGER NOT NULL,
+                    activity_multiplier REAL NOT NULL,
+                    calorie_target INTEGER NOT NULL,
+                    protein_target INTEGER NOT NULL,
+                    carbs_target INTEGER NOT NULL,
+                    fat_target INTEGER NOT NULL,
+                    training_focus TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    calorie_advice TEXT NOT NULL,
+                    macro_advice TEXT NOT NULL,
+                    activity_explanation TEXT NOT NULL,
+                    attention_points_json TEXT NOT NULL,
+                    advice TEXT NOT NULL,
+                    data_quality TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    raw_response TEXT,
+                    PRIMARY KEY(id)
+                )
+                """.trimIndent(),
+            )
+        }
+    }
+
     val All = arrayOf(
         Migration2To3,
         Migration3To4,
@@ -749,6 +781,7 @@ object TrainIqMigrations {
         Migration12To13,
         Migration13To14,
         Migration14To15,
+        Migration15To16,
     )
 
     private fun SupportSQLiteDatabase.recreateTable(

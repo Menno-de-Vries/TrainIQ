@@ -67,13 +67,16 @@ import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.CoachOverview
 import com.trainiq.domain.model.GoalAdvice
 import com.trainiq.domain.model.GoalAdviceSource
+import com.trainiq.domain.model.SavedGoalAdvice
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WeeklyReportResult
 import com.trainiq.domain.model.WeeklyReportSource
 import com.trainiq.domain.model.buildGoalBaseline
+import com.trainiq.domain.model.goalAdviceProfileFingerprint
 import com.trainiq.domain.usecase.GenerateGoalAdviceUseCase
 import com.trainiq.domain.usecase.GenerateWeeklyReportUseCase
 import com.trainiq.domain.usecase.ObserveCoachUseCase
+import com.trainiq.domain.usecase.ObserveSavedGoalAdviceUseCase
 import com.trainiq.domain.usecase.ObserveUserProfileUseCase
 import com.trainiq.domain.usecase.SaveUserProfileUseCase
 import com.trainiq.navigation.TrainIqWindowWidthClass
@@ -95,6 +98,7 @@ sealed interface CoachUiState {
         val overview: CoachOverview,
         val currentProfile: UserProfile?,
         val goalAdvice: GoalAdvice? = null,
+        val savedGoalAdvice: SavedGoalAdvice? = null,
         val generatedReport: WeeklyReportResult? = null,
         val message: String? = null,
         val isGeneratingAdvice: Boolean = false,
@@ -107,6 +111,7 @@ sealed interface CoachUiState {
 class CoachViewModel @Inject constructor(
     observeCoachUseCase: ObserveCoachUseCase,
     observeUserProfileUseCase: ObserveUserProfileUseCase,
+    observeSavedGoalAdviceUseCase: ObserveSavedGoalAdviceUseCase,
     private val generateGoalAdviceUseCase: GenerateGoalAdviceUseCase,
     private val generateWeeklyReportUseCase: GenerateWeeklyReportUseCase,
     private val saveUserProfileUseCase: SaveUserProfileUseCase,
@@ -124,15 +129,18 @@ class CoachViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     private val profile = observeUserProfileUseCase()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    private val savedGoalAdvice = observeSavedGoalAdviceUseCase()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     private val ephemeral = MutableStateFlow(CoachEphemeralState())
 
-    val uiState: StateFlow<CoachUiState> = combine(overview, profile, ephemeral) { currentOverview, currentProfile, temp ->
+    val uiState: StateFlow<CoachUiState> = combine(overview, profile, savedGoalAdvice, ephemeral) { currentOverview, currentProfile, persistedAdvice, temp ->
         when {
             currentOverview == null -> CoachUiState.Loading
             else -> CoachUiState.Success(
                 overview = currentOverview,
                 currentProfile = currentProfile,
-                goalAdvice = temp.goalAdvice,
+                goalAdvice = temp.goalAdvice ?: persistedAdvice?.advice,
+                savedGoalAdvice = persistedAdvice,
                 generatedReport = temp.generatedReport,
                 message = temp.message,
                 isGeneratingAdvice = temp.isGeneratingAdvice,
@@ -222,26 +230,34 @@ class CoachViewModel @Inject constructor(
         val advice = currentAdviceState.goalAdvice
             ?.takeIf { input == currentAdviceState.goalAdviceInput }
             ?: input.toDeterministicGoalAdvice()
+        val profile = UserProfile(
+            id = 1L,
+            name = input.name,
+            age = input.age,
+            sex = input.sex,
+            height = input.height,
+            weight = input.weight,
+            bodyFat = input.bodyFat,
+            activityLevel = input.activityLevel,
+            goal = input.goal,
+            calorieTarget = advice.calorieTarget,
+            proteinTarget = advice.proteinTarget,
+            carbsTarget = advice.carbsTarget,
+            fatTarget = advice.fatTarget,
+            trainingFocus = advice.trainingFocus,
+        )
+        val savedAdvice = currentAdviceState.goalAdvice
+            ?.takeIf { input == currentAdviceState.goalAdviceInput }
+            ?.let { generatedAdvice ->
+                SavedGoalAdvice(
+                    advice = generatedAdvice,
+                    profileFingerprint = profile.goalAdviceProfileFingerprint(),
+                    savedAt = System.currentTimeMillis(),
+                )
+            }
         viewModelScope.launch {
             runCatching {
-                saveUserProfileUseCase(
-                    UserProfile(
-                        id = 1L,
-                        name = input.name,
-                        age = input.age,
-                        sex = input.sex,
-                        height = input.height,
-                        weight = input.weight,
-                        bodyFat = input.bodyFat,
-                        activityLevel = input.activityLevel,
-                        goal = input.goal,
-                        calorieTarget = advice.calorieTarget,
-                        proteinTarget = advice.proteinTarget,
-                        carbsTarget = advice.carbsTarget,
-                        fatTarget = advice.fatTarget,
-                        trainingFocus = advice.trainingFocus,
-                    ),
-                )
+                saveUserProfileUseCase(profile, savedAdvice)
             }.onSuccess {
                 ephemeral.update {
                     it.copy(
@@ -784,7 +800,13 @@ fun CoachScreen(
                     if (selectedCoachTab == CoachSectionTab.Advice.key) item {
                         AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
                             state.goalAdvice?.let { advice ->
-                                GoalAdviceCard(advice = advice, activityLevel = activityLevel)
+                                GoalAdviceCard(
+                                    advice = advice,
+                                    activityLevel = activityLevel,
+                                    isOutdated = state.savedGoalAdvice?.let { savedAdvice ->
+                                        savedAdvice.profileFingerprint != state.currentProfile?.goalAdviceProfileFingerprint()
+                                    } ?: false,
+                                )
                             } ?: run {
                                 Text("Nog geen advies", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
                                 Text("Maak eerst een doeladvies onder Doelen. Daarna zie je hier calorieën, macro's, actiepunten en datakwaliteit los van het formulier.")
@@ -825,7 +847,7 @@ private fun CoachSectionTabSwitcher(
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
-private fun GoalAdviceCard(advice: GoalAdvice, activityLevel: String) {
+private fun GoalAdviceCard(advice: GoalAdvice, activityLevel: String, isOutdated: Boolean) {
     val difference = advice.calorieTarget - advice.maintenanceCalories
     val macroCalories = advice.proteinTarget * 4 + advice.carbsTarget * 4 + advice.fatTarget * 9
     Column(
@@ -854,6 +876,13 @@ private fun GoalAdviceCard(advice: GoalAdvice, activityLevel: String) {
         AdviceSurface {
             compactSentences(advice.summary, maxSentences = 2).forEach { sentence ->
                 Text(sentence, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            }
+            if (isOutdated) {
+                Text(
+                    "Dit opgeslagen advies is gebaseerd op een eerder profiel. Genereer en sla nieuw advies op om het te verversen.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             if (advice.dataQuality.isNotBlank()) {
                 Text(

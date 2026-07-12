@@ -146,6 +146,43 @@ class TrainIqDatabaseMigrationTest {
     }
 
     @Test
+    fun migration15To16CreatesEmptySavedGoalAdviceTableAndPreservesProfile() {
+        helper.createDatabase(TEST_DB, 15).apply {
+            seedVersion11RelationalData()
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            TEST_DB,
+            16,
+            true,
+            TrainIqMigrations.Migration15To16,
+        )
+
+        migrated.query("SELECT name FROM user_profile WHERE id = 1").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("Migration Athlete", cursor.getString(0))
+        }
+        migrated.execSQL(
+            """
+            INSERT INTO saved_goal_advice (
+                id, profile_fingerprint, saved_at, bmr, maintenance_calories, activity_multiplier,
+                calorie_target, protein_target, carbs_target, fat_target, training_focus, summary,
+                calorie_advice, macro_advice, activity_explanation, attention_points_json, advice,
+                data_quality, source, raw_response
+            ) VALUES (1, 'profile-v1', 1725000000000, 1820, 2750, 1.55, 2450, 180, 260, 75,
+                'Progressieve overload', 'Sterke basis.', '', '', '', '[]', 'Train vier keer per week.',
+                '', 'LOCAL_CALCULATION', NULL)
+            """.trimIndent(),
+        )
+        migrated.query("SELECT summary FROM saved_goal_advice WHERE id = 1").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("Sterke basis.", cursor.getString(0))
+        }
+        migrated.close()
+    }
+
+    @Test
     fun migration13To14RemovesDraftExerciseForeignKeysAndPreservesDraftState() {
         helper.createDatabase(TEST_DB, 13).apply {
             seedVersion11RelationalData()

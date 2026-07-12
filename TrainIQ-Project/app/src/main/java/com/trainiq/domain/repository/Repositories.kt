@@ -22,6 +22,7 @@ import com.trainiq.domain.model.NutritionOverview
 import com.trainiq.domain.model.ProgressOverview
 import com.trainiq.domain.model.ProgressionSuggestion
 import com.trainiq.domain.model.RoutineSet
+import com.trainiq.domain.model.SavedGoalAdvice
 import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.Recipe
 import com.trainiq.domain.model.UserProfile
@@ -205,5 +206,6 @@ interface CoachRepository {
     ): GoalAdvice
     suspend fun generateWeeklyReport(): WeeklyReportResult
     fun observeUserProfile(): Flow<UserProfile?>
-    suspend fun saveProfile(profile: UserProfile)
+    fun observeSavedGoalAdvice(): Flow<SavedGoalAdvice?>
+    suspend fun saveProfile(profile: UserProfile, savedGoalAdvice: SavedGoalAdvice? = null)
 }

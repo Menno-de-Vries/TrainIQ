@@ -20,6 +20,7 @@ import com.trainiq.domain.model.ProgressOverview
 import com.trainiq.domain.model.ProgressionSuggestion
 import com.trainiq.domain.model.Recipe
 import com.trainiq.domain.model.RoutineSet
+import com.trainiq.domain.model.SavedGoalAdvice
 import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WeeklyReportResult
@@ -154,5 +155,6 @@ class RoomCoachRepository @Inject constructor(
         delegate.generateGoalAdvice(height, weight, bodyFat, age, sex, activityLevel, goal, manualCalorieTarget)
     override suspend fun generateWeeklyReport(): WeeklyReportResult = delegate.generateWeeklyReport()
     override fun observeUserProfile(): Flow<UserProfile?> = delegate.observeUserProfile()
-    override suspend fun saveProfile(profile: UserProfile) = delegate.saveProfile(profile)
+    override fun observeSavedGoalAdvice(): Flow<SavedGoalAdvice?> = delegate.observeSavedGoalAdvice()
+    override suspend fun saveProfile(profile: UserProfile, savedGoalAdvice: SavedGoalAdvice?) = delegate.saveProfile(profile, savedGoalAdvice)
 }

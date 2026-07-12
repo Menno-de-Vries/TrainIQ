@@ -545,6 +545,28 @@ data class GoalAdvice(
     val rawResponse: String? = null,
 )
 
+data class SavedGoalAdvice(
+    val advice: GoalAdvice,
+    val profileFingerprint: String,
+    val savedAt: Long,
+)
+
+fun UserProfile.goalAdviceProfileFingerprint(): String = listOf(
+    name.trim(),
+    age.toString(),
+    sex.name,
+    height.toString(),
+    weight.toString(),
+    bodyFat.toString(),
+    activityLevel.trim(),
+    goal.trim(),
+    calorieTarget.toString(),
+    proteinTarget.toString(),
+    carbsTarget.toString(),
+    fatTarget.toString(),
+    trainingFocus.trim(),
+).joinToString(separator = "|")
+
 enum class GoalAdviceSource {
     GEMINI_2_5_FLASH,
     OPENAI,

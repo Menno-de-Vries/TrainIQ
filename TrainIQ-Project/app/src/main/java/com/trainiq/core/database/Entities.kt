@@ -47,6 +47,30 @@ data class UserProfileEntity(
     val trainingFocus: String,
 )
 
+@Entity(tableName = "saved_goal_advice")
+data class SavedGoalAdviceEntity(
+    @PrimaryKey val id: Long = 1L,
+    @ColumnInfo(name = "profile_fingerprint") val profileFingerprint: String,
+    @ColumnInfo(name = "saved_at") val savedAt: Long,
+    val bmr: Int,
+    @ColumnInfo(name = "maintenance_calories") val maintenanceCalories: Int,
+    @ColumnInfo(name = "activity_multiplier") val activityMultiplier: Double,
+    @ColumnInfo(name = "calorie_target") val calorieTarget: Int,
+    @ColumnInfo(name = "protein_target") val proteinTarget: Int,
+    @ColumnInfo(name = "carbs_target") val carbsTarget: Int,
+    @ColumnInfo(name = "fat_target") val fatTarget: Int,
+    @ColumnInfo(name = "training_focus") val trainingFocus: String,
+    val summary: String,
+    @ColumnInfo(name = "calorie_advice") val calorieAdvice: String,
+    @ColumnInfo(name = "macro_advice") val macroAdvice: String,
+    @ColumnInfo(name = "activity_explanation") val activityExplanation: String,
+    @ColumnInfo(name = "attention_points_json") val attentionPointsJson: String,
+    val advice: String,
+    @ColumnInfo(name = "data_quality") val dataQuality: String,
+    val source: String,
+    @ColumnInfo(name = "raw_response") val rawResponse: String?,
+)
+
 @Entity(tableName = "workout_routines")
 data class WorkoutRoutineEntity(
     @PrimaryKey val id: Long,
