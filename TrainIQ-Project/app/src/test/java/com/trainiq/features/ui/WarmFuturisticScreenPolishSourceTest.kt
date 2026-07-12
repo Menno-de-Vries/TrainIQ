@@ -17,7 +17,6 @@ class WarmFuturisticScreenPolishSourceTest {
         assertTrue(sources["progress"]!!.contains("MaterialTheme.trainIqColors.amber"))
         assertTrue(sources["coach"]!!.contains("MaterialTheme.trainIqColors.amber"))
         assertTrue(sources["settings"]!!.contains("SectionCard("))
-        assertFalse(sources["settings"]!!.contains("Voortgang openen"))
     }
 
     @Test

@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -83,6 +84,7 @@ import com.trainiq.domain.usecase.ObserveUserProfileUseCase
 import com.trainiq.domain.usecase.SaveUserProfileUseCase
 import com.trainiq.navigation.TrainIqWindowWidthClass
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.io.Serializable
 import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -110,13 +112,37 @@ sealed interface CoachUiState {
         val message: String? = null,
         val isGeneratingAdvice: Boolean = false,
         val isGeneratingReport: Boolean = false,
+        val profileDraft: CoachProfileDraft,
+        val isProfileDraftDirty: Boolean,
     ) : CoachUiState
     data class Error(val message: String) : CoachUiState
 }
 
+data class CoachProfileDraft(
+    val name: String = "",
+    val age: String = "30",
+    val sex: BiologicalSex = BiologicalSex.MALE,
+    val height: String = "",
+    val weight: String = "",
+    val bodyFat: String = "",
+    val activityLevel: String = "Gemiddeld actief",
+    val goal: String = "",
+    val manualCalorieTarget: String = "",
+) : Serializable {
+    private companion object {
+        const val serialVersionUID: Long = 1L
+    }
+}
+
+private data class CoachProfileDraftState(
+    val draft: CoachProfileDraft,
+    val isDirty: Boolean,
+)
+
 @HiltViewModel
 @OptIn(ExperimentalCoroutinesApi::class)
 class CoachViewModel @Inject constructor(
+    private val savedStateHandle: SavedStateHandle,
     private val observeCoachUseCase: ObserveCoachUseCase,
     private val observeUserProfileUseCase: ObserveUserProfileUseCase,
     private val observeSavedGoalAdviceUseCase: ObserveSavedGoalAdviceUseCase,
@@ -141,8 +167,29 @@ class CoachViewModel @Inject constructor(
     private val savedGoalAdvice = reloadableObservation(reloads) { observeSavedGoalAdviceUseCase() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     private val ephemeral = MutableStateFlow(CoachEphemeralState())
+    private val profileDraft = savedStateHandle.getStateFlow(
+        CoachProfileDraftKey,
+        savedStateHandle.get<CoachProfileDraft>(CoachProfileDraftKey) ?: CoachProfileDraft(),
+    )
+    private val isProfileDraftDirty = savedStateHandle.getStateFlow(CoachProfileDraftDirtyKey, false)
+    private val profileDraftState = combine(profileDraft, isProfileDraftDirty, ::CoachProfileDraftState)
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            CoachProfileDraftState(profileDraft.value, isProfileDraftDirty.value),
+        )
 
-    val uiState: StateFlow<CoachUiState> = combine(overview, profile, savedGoalAdvice, ephemeral) { currentOverview, currentProfile, persistedAdvice, temp ->
+    init {
+        viewModelScope.launch {
+            profile.collect { result ->
+                if (result?.isSuccess == true && !isProfileDraftDirty.value) {
+                    hydrateProfileDraft(result.getOrThrow())
+                }
+            }
+        }
+    }
+
+    val uiState: StateFlow<CoachUiState> = combine(overview, profile, savedGoalAdvice, ephemeral, profileDraftState) { currentOverview, currentProfile, persistedAdvice, temp, draftState ->
         when {
             currentOverview == null || currentProfile == null || persistedAdvice == null -> CoachUiState.Loading
             currentOverview.isFailure -> CoachUiState.Error("Coachgegevens konden niet worden geladen.")
@@ -156,6 +203,8 @@ class CoachViewModel @Inject constructor(
                 message = temp.message,
                 isGeneratingAdvice = temp.isGeneratingAdvice,
                 isGeneratingReport = temp.isGeneratingReport,
+                profileDraft = draftState.draft,
+                isProfileDraftDirty = draftState.isDirty,
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CoachUiState.Loading)
@@ -164,19 +213,25 @@ class CoachViewModel @Inject constructor(
         reloads.update { it + 1 }
     }
 
-    fun generateGoalAdvice(
-        name: String,
-        height: String,
-        weight: String,
-        bodyFat: String,
-        age: String,
-        sex: BiologicalSex,
-        activityLevel: String,
-        goal: String,
-        manualCalorieTarget: String,
-    ) {
+    fun updateProfileDraft(draft: CoachProfileDraft) {
+        savedStateHandle[CoachProfileDraftDirtyKey] = true
+        savedStateHandle[CoachProfileDraftKey] = draft
+    }
+
+    fun generateGoalAdvice() {
+        val draft = profileDraft.value
         val input = when (
-            val result = validateGoalAdviceInput(name, height, weight, bodyFat, age, sex, activityLevel, goal, manualCalorieTarget)
+            val result = validateGoalAdviceInput(
+                draft.name,
+                draft.height,
+                draft.weight,
+                draft.bodyFat,
+                draft.age,
+                draft.sex,
+                draft.activityLevel,
+                draft.goal,
+                draft.manualCalorieTarget,
+            )
         ) {
             is GoalAdviceInputValidationResult.Valid -> result.input
             is GoalAdviceInputValidationResult.Invalid -> {
@@ -221,19 +276,20 @@ class CoachViewModel @Inject constructor(
         }
     }
 
-    fun saveProfile(
-        name: String,
-        height: String,
-        weight: String,
-        bodyFat: String,
-        age: String,
-        sex: BiologicalSex,
-        activityLevel: String,
-        goal: String,
-        manualCalorieTarget: String,
-    ) {
+    fun saveProfile() {
+        val draft = profileDraft.value
         val input = when (
-            val result = validateGoalAdviceInput(name, height, weight, bodyFat, age, sex, activityLevel, goal, manualCalorieTarget)
+            val result = validateGoalAdviceInput(
+                draft.name,
+                draft.height,
+                draft.weight,
+                draft.bodyFat,
+                draft.age,
+                draft.sex,
+                draft.activityLevel,
+                draft.goal,
+                draft.manualCalorieTarget,
+            )
         ) {
             is GoalAdviceInputValidationResult.Valid -> result.input
             is GoalAdviceInputValidationResult.Invalid -> {
@@ -274,6 +330,9 @@ class CoachViewModel @Inject constructor(
             runCatching {
                 saveUserProfileUseCase(profile, savedAdvice)
             }.onSuccess {
+                if (profileDraft.value == draft) {
+                    hydrateProfileDraft(profile)
+                }
                 ephemeral.update {
                     it.copy(
                         goalAdvice = advice,
@@ -290,7 +349,29 @@ class CoachViewModel @Inject constructor(
     fun clearMessage() {
         ephemeral.update { it.copy(message = null) }
     }
+
+    private fun hydrateProfileDraft(profile: UserProfile?) {
+        savedStateHandle[CoachProfileDraftKey] = profile.toCoachProfileDraft()
+        savedStateHandle[CoachProfileDraftDirtyKey] = false
+    }
 }
+
+private fun UserProfile?.toCoachProfileDraft(): CoachProfileDraft = this?.let { profile ->
+    CoachProfileDraft(
+        name = profile.name,
+        age = profile.age.toString(),
+        sex = profile.sex,
+        height = profile.height.toString(),
+        weight = profile.weight.toString(),
+        bodyFat = profile.bodyFat.toString(),
+        activityLevel = profile.activityLevel.toDutchActivityLevelLabel(),
+        goal = profile.goal,
+        manualCalorieTarget = profile.calorieTarget.takeIf { it > 0 }?.toString().orEmpty(),
+    )
+} ?: CoachProfileDraft()
+
+private const val CoachProfileDraftKey = "coach_profile_draft"
+private const val CoachProfileDraftDirtyKey = "coach_profile_draft_dirty"
 
 private fun GoalAdviceInput.toDeterministicGoalAdvice(): GoalAdvice {
     val baseline = buildGoalBaseline(
@@ -488,6 +569,7 @@ fun CoachRoute(
         onGenerateAdvice = viewModel::generateGoalAdvice,
         onGenerateWeeklyReport = viewModel::generateWeeklyReport,
         onSaveProfile = viewModel::saveProfile,
+        onProfileDraftChange = viewModel::updateProfileDraft,
         onDismissMessage = viewModel::clearMessage,
         onRetry = viewModel::retry,
     )
@@ -496,28 +578,29 @@ fun CoachRoute(
 @Composable
 fun CoachScreen(
     uiState: CoachUiState,
-    onGenerateAdvice: (String, String, String, String, String, BiologicalSex, String, String, String) -> Unit,
+    onGenerateAdvice: () -> Unit,
     onGenerateWeeklyReport: () -> Unit,
-    onSaveProfile: (String, String, String, String, String, BiologicalSex, String, String, String) -> Unit,
+    onSaveProfile: () -> Unit,
+    onProfileDraftChange: (CoachProfileDraft) -> Unit,
     onDismissMessage: () -> Unit,
     onRetry: () -> Unit,
 ) {
-    var name by remember { mutableStateOf("") }
-    var age by remember { mutableStateOf("30") }
-    var sex by remember { mutableStateOf(BiologicalSex.MALE) }
-    var height by remember { mutableStateOf("") }
-    var weight by remember { mutableStateOf("") }
-    var bodyFat by remember { mutableStateOf("") }
-    var activityLevel by remember { mutableStateOf("Gemiddeld actief") }
-    var goal by remember { mutableStateOf("") }
-    var manualCalorieTarget by remember { mutableStateOf("") }
     var manualCalorieTargetError by remember { mutableStateOf<String?>(null) }
     var profileInputError by remember { mutableStateOf<ProfileInputValidationError?>(null) }
     var selectedCoachTab by rememberSaveable { mutableStateOf(CoachSectionTab.Week.key) }
     val haptics = LocalHapticFeedback.current
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val profile = (uiState as? CoachUiState.Success)?.currentProfile
+    val draft = (uiState as? CoachUiState.Success)?.profileDraft ?: CoachProfileDraft()
+    val name = draft.name
+    val age = draft.age
+    val sex = draft.sex
+    val height = draft.height
+    val weight = draft.weight
+    val bodyFat = draft.bodyFat
+    val activityLevel = draft.activityLevel
+    val goal = draft.goal
+    val manualCalorieTarget = draft.manualCalorieTarget
     val message = (uiState as? CoachUiState.Success)?.message
     LaunchedEffect(message, profileInputError) {
         val currentMessage = message ?: return@LaunchedEffect
@@ -526,21 +609,6 @@ fun CoachScreen(
             onDismissMessage()
         }
     }
-    LaunchedEffect(profile) {
-        profile?.let {
-            name = it.name
-            age = it.age.toString()
-            sex = it.sex
-            height = it.height.toString()
-            weight = it.weight.toString()
-            bodyFat = it.bodyFat.toString()
-            activityLevel = it.activityLevel.toDutchActivityLevelLabel()
-            goal = it.goal
-            manualCalorieTarget = it.calorieTarget.takeIf { target -> target > 0 }?.toString().orEmpty()
-            manualCalorieTargetError = null
-        }
-    }
-
     Box(modifier = Modifier.fillMaxSize()) {
     AnimatedContent(targetState = uiState::class, label = "coach-ui-state") {
         val state = uiState
@@ -632,7 +700,7 @@ fun CoachScreen(
                                 TrainIqFormField(
                                     value = name,
                                     onValueChange = {
-                                        name = it
+                                        onProfileDraftChange(draft.copy(name = it))
                                         profileInputError = null
                                     },
                                     label = "Naam",
@@ -644,7 +712,7 @@ fun CoachScreen(
                                 TrainIqFormField(
                                     value = age,
                                     onValueChange = {
-                                        age = it
+                                        onProfileDraftChange(draft.copy(age = it))
                                         profileInputError = null
                                     },
                                     label = "Leeftijd",
@@ -661,7 +729,7 @@ fun CoachScreen(
                                             modifier = Modifier.height(48.dp),
                                             selected = sex == option,
                                             onClick = {
-                                                sex = option
+                                                onProfileDraftChange(draft.copy(sex = option))
                                                 profileInputError = null
                                             },
                                             label = { Text(option.displayLabel()) },
@@ -671,7 +739,7 @@ fun CoachScreen(
                                 TrainIqFormField(
                                     value = height,
                                     onValueChange = {
-                                        height = it
+                                        onProfileDraftChange(draft.copy(height = it))
                                         profileInputError = null
                                     },
                                     label = "Lengte (cm)",
@@ -684,7 +752,7 @@ fun CoachScreen(
                                 TrainIqFormField(
                                     value = weight,
                                     onValueChange = {
-                                        weight = it
+                                        onProfileDraftChange(draft.copy(weight = it))
                                         profileInputError = null
                                     },
                                     label = "Gewicht (kg)",
@@ -697,7 +765,7 @@ fun CoachScreen(
                                 TrainIqFormField(
                                     value = bodyFat,
                                     onValueChange = {
-                                        bodyFat = it
+                                        onProfileDraftChange(draft.copy(bodyFat = it))
                                         profileInputError = null
                                     },
                                     label = "Vetpercentage %",
@@ -719,7 +787,7 @@ fun CoachScreen(
                                             modifier = Modifier.height(48.dp),
                                             selected = activityLevel == option,
                                             onClick = {
-                                                activityLevel = option
+                                                onProfileDraftChange(draft.copy(activityLevel = option))
                                                 profileInputError = null
                                             },
                                             label = { Text(option) },
@@ -732,7 +800,7 @@ fun CoachScreen(
                                 TrainIqFormField(
                                     value = goal,
                                     onValueChange = {
-                                        goal = it
+                                        onProfileDraftChange(draft.copy(goal = it))
                                         profileInputError = null
                                     },
                                     label = "Doel",
@@ -744,7 +812,7 @@ fun CoachScreen(
                                 TrainIqFormField(
                                     value = manualCalorieTarget,
                                     onValueChange = {
-                                        manualCalorieTarget = it.take(4)
+                                        onProfileDraftChange(draft.copy(manualCalorieTarget = it.take(4)))
                                         manualCalorieTargetError = null
                                         profileInputError = null
                                     },
@@ -773,7 +841,7 @@ fun CoachScreen(
                                             ) {
                                                 is ProfileInputValidationResult.Valid -> {
                                                     profileInputError = null
-                                                    onGenerateAdvice(name, height, weight, bodyFat, age, sex, activityLevel, goal, manualCalorieTarget)
+                                                    onGenerateAdvice()
                                                 }
                                                 is ProfileInputValidationResult.Invalid -> {
                                                     profileInputError = result.error
@@ -804,7 +872,7 @@ fun CoachScreen(
                                                 ) {
                                                     is ProfileInputValidationResult.Valid -> {
                                                         profileInputError = null
-                                                        onSaveProfile(name, height, weight, bodyFat, age, sex, activityLevel, goal, manualCalorieTarget)
+                                                        onSaveProfile()
                                                     }
                                                     is ProfileInputValidationResult.Invalid -> {
                                                         profileInputError = result.error

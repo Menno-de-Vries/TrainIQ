@@ -1143,14 +1143,8 @@ class TrainIqDataCoordinator @Inject constructor(
         sourceType: FoodSourceType,
     ): FoodItem {
         val now = System.currentTimeMillis()
-        val state = runtimeStore.state.value
-        val existing = state.foods.firstOrNull { it.id == id }
-        val duplicateBarcode = barcode?.trim()?.takeIf { it.isNotBlank() }?.let { code ->
-            state.foods.firstOrNull { it.barcode == code && it.id != id }
-        }
-        val foodId = existing?.id ?: duplicateBarcode?.id ?: ((state.foods.maxOfOrNull { it.id } ?: 0L) + 1L)
         val storage = FoodItemStorage(
-            id = foodId,
+            id = id ?: 0L,
             name = name.trim(),
             barcode = barcode?.trim()?.takeIf { it.isNotBlank() },
             caloriesPer100g = caloriesPer100g,
@@ -1159,11 +1153,10 @@ class TrainIqDataCoordinator @Inject constructor(
             fatPer100g = fatPer100g,
             defaultServingGrams = defaultServingGrams.normalizedDefaultServingGrams(),
             sourceType = sourceType,
-            createdAt = existing?.createdAt ?: duplicateBarcode?.createdAt ?: now,
+            createdAt = now,
             updatedAt = now,
         )
-        runtimeStore.saveFood(storage)
-        return mapFood(storage)
+        return mapFood(runtimeStore.saveFood(storage))
     }
 
     suspend fun saveRecipe(

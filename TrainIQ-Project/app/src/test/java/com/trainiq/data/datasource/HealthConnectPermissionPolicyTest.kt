@@ -216,9 +216,9 @@ class HealthConnectPermissionPolicyTest {
     }
 
     @Test
-    fun successfulStepAggregateClearsOnlyEarlierStepTokenFailure() {
+    fun successfulStepAggregateClearsOnlyEarlierStepReadFailure() {
         val failures = mutableMapOf(
-            HealthMetricType.STEPS to "ChangesToken tijdelijk niet beschikbaar.",
+            HealthMetricType.STEPS to "Stappen konden niet worden gelezen.",
             HealthMetricType.HEART_RATE to "Hartslag kan nu niet worden gelezen.",
         )
 
@@ -248,6 +248,47 @@ class HealthConnectPermissionPolicyTest {
         )
 
         assertTrue(failures.containsKey(HealthMetricType.STEPS))
+    }
+
+    @Test
+    fun stepTokenAcquisitionFailureRemainsFailedAndRemovesExistingStoredToken() {
+        val failures = mutableMapOf(HealthMetricType.STEPS to "Stappen konden niet worden gelezen.")
+        failures.clearRecoveredStepFailure(
+            shouldRefreshSteps = true,
+            stepAggregateFailed = false,
+        )
+        failures[HealthMetricType.STEPS] = "ChangesToken tijdelijk niet beschikbaar."
+
+        val tokenUpdates = successfulFullSyncTokenUpdates(
+            acquiredTokens = emptyMap(),
+            metricFailures = failures,
+        )
+        val mergedTokens = mergeMetricChangesTokens(
+            storedTokens = mapOf(HealthMetricType.STEPS to "existing-steps-token"),
+            grantedMetrics = setOf(HealthMetricType.STEPS),
+            tokenUpdates = tokenUpdates,
+        )
+        val status = buildHealthMetricSyncStatuses(
+            metrics = setOf(HealthMetricType.STEPS),
+            failedMetrics = failures,
+            lastSyncedAt = 456L,
+        ).single()
+
+        assertEquals("", tokenUpdates[HealthMetricType.STEPS])
+        assertFalse(mergedTokens.containsKey(HealthMetricType.STEPS))
+        assertEquals(HealthMetricSyncState.FAILED, status.state)
+    }
+
+    @Test
+    fun fullSyncClearsRecoveredStepReadFailureBeforeTokenAcquisition() {
+        val source = File("src/main/java/com/trainiq/data/datasource/HealthConnectDataSource.kt").readText()
+        val fullSyncBody = source.substringAfter("private suspend fun performFullSync")
+            .substringBefore("private suspend fun readChangesTokensByMetric")
+
+        assertTrue(
+            fullSyncBody.indexOf("metricFailures.clearRecoveredStepFailure(") <
+                fullSyncBody.indexOf("readChangesTokensByMetric(client, metricsToSync, metricFailures)"),
+        )
     }
 
     @Test
@@ -477,6 +518,31 @@ class HealthConnectPermissionPolicyTest {
         assertEquals(654L, payload.lastSyncedAt)
         assertEquals(4321, payload.cacheState.toDomainMetrics().stepsToday)
         assertTrue(payload.metricStatuses.all { it.state == HealthMetricSyncState.FAILED })
+    }
+
+    @Test
+    fun fullSyncReadFailureRemovesExistingStoredTokenSoMetricStaysOnFullSync() {
+        val metricsToSync = setOf(HealthMetricType.STEPS, HealthMetricType.HEART_RATE)
+
+        val tokenUpdates = successfulFullSyncTokenUpdates(
+            acquiredTokens = mapOf(
+                HealthMetricType.STEPS to "steps-token",
+                HealthMetricType.HEART_RATE to "heart-rate-token",
+            ),
+            metricFailures = mapOf(
+                HealthMetricType.HEART_RATE to "Heart rate read failed.",
+            ),
+        )
+        val storedTokens = mergeMetricChangesTokens(
+            storedTokens = mapOf(HealthMetricType.HEART_RATE to "existing-heart-rate-token"),
+            grantedMetrics = metricsToSync,
+            tokenUpdates = tokenUpdates,
+        )
+
+        assertEquals("steps-token", tokenUpdates[HealthMetricType.STEPS])
+        assertEquals("", tokenUpdates[HealthMetricType.HEART_RATE])
+        assertFalse(storedTokens.keys == metricsToSync)
+        assertFalse(storedTokens.containsKey(HealthMetricType.HEART_RATE))
     }
 
     @Test

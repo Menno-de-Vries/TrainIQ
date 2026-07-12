@@ -156,19 +156,15 @@ fun TrainIqApp(
     val navController = rememberNavController()
     val haptics = LocalHapticFeedback.current
     val configuration = LocalConfiguration.current
-    val items = listOf(
-        TopLevelDestination(Home, Home::class, "Start", icon = Icons.Default.Home),
-        TopLevelDestination(Train, Train::class, "Training", icon = Icons.AutoMirrored.Filled.DirectionsRun),
-        TopLevelDestination(Nutrition, Nutrition::class, "Voeding", icon = Icons.Default.Restaurant),
-        TopLevelDestination(Progress, Progress::class, "Voortgang", icon = Icons.Default.AutoGraph),
-        TopLevelDestination(Coach, Coach::class, "Coach", icon = Icons.Default.SmartToy),
-        TopLevelDestination(Settings, Settings::class, "Instellingen", icon = Icons.Default.Settings),
-    )
+    val items = topLevelDestinations()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val currentTopLevelIndex = items.indexOfFirst { screen ->
         currentDestination?.hierarchy?.any { it.hasRoute(screen.routeClass) } == true
     }.takeIf { it >= 0 }
+    val compactSelectedRouteClass = compactSelectedNavigationRouteClass(
+        currentTopLevelIndex?.let { items[it].routeClass },
+    )
     val isOnboardingDestination = currentDestination?.hierarchy?.any { it.hasRoute(Onboarding::class) } == true
     val density = LocalDensity.current
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
@@ -283,7 +279,8 @@ fun TrainIqApp(
                             containerColor = androidx.compose.ui.graphics.Color.Transparent,
                         ) {
                             navigationItems.forEach { screen ->
-                                val selected = currentDestination?.hierarchy?.any { it.hasRoute(screen.routeClass) } == true
+                                val isCurrentRoute = currentDestination?.hierarchy?.any { it.hasRoute(screen.routeClass) } == true
+                                val selected = compactSelectedRouteClass == screen.routeClass
                                 NavigationBarItem(
                                     selected = selected,
                                     onClick = {
@@ -291,7 +288,7 @@ fun TrainIqApp(
                                         haptics.performHapticFeedback(
                                             if (screen.routeClass == Coach::class) HapticFeedbackType.LongPress else HapticFeedbackType.TextHandleMove,
                                         )
-                                        if (selected) return@NavigationBarItem
+                                        if (isCurrentRoute) return@NavigationBarItem
                                         navController.navigateTopLevel(screen)
                                     },
                                     icon = {
@@ -432,20 +429,31 @@ private fun bottomNavigationDestinations(
     items: List<TopLevelDestination>,
     windowWidthClass: TrainIqWindowWidthClass,
 ): List<TopLevelDestination> =
-    items
+    if (windowWidthClass == TrainIqWindowWidthClass.Compact) {
+        items.filterNot { it.routeClass == Progress::class }
+    } else {
+        items
+    }
+
+private fun topLevelDestinations(): List<TopLevelDestination> = listOf(
+    TopLevelDestination(Home, Home::class, "Start", icon = Icons.Default.Home),
+    TopLevelDestination(Train, Train::class, "Training", icon = Icons.AutoMirrored.Filled.DirectionsRun),
+    TopLevelDestination(Nutrition, Nutrition::class, "Voeding", icon = Icons.Default.Restaurant),
+    TopLevelDestination(Progress, Progress::class, "Voortgang", icon = Icons.Default.AutoGraph),
+    TopLevelDestination(Coach, Coach::class, "Coach", icon = Icons.Default.SmartToy),
+    TopLevelDestination(Settings, Settings::class, "Instellingen", icon = Icons.Default.Settings),
+)
 
 internal fun compactBottomNavigationRouteClasses(): List<KClass<*>> =
     bottomNavigationDestinations(
-        items = listOf(
-            TopLevelDestination(Home, Home::class, "Start", icon = Icons.Default.Home),
-            TopLevelDestination(Train, Train::class, "Training", icon = Icons.AutoMirrored.Filled.DirectionsRun),
-            TopLevelDestination(Nutrition, Nutrition::class, "Voeding", icon = Icons.Default.Restaurant),
-            TopLevelDestination(Progress, Progress::class, "Voortgang", icon = Icons.Default.AutoGraph),
-            TopLevelDestination(Coach, Coach::class, "Coach", icon = Icons.Default.SmartToy),
-            TopLevelDestination(Settings, Settings::class, "Instellingen", icon = Icons.Default.Settings),
-        ),
+        items = topLevelDestinations(),
         windowWidthClass = TrainIqWindowWidthClass.Compact,
     ).map { it.routeClass }
+
+internal fun navigationRailRouteClasses(): List<KClass<*>> = topLevelDestinations().map { it.routeClass }
+
+internal fun compactSelectedNavigationRouteClass(currentRouteClass: KClass<*>?): KClass<*>? =
+    if (currentRouteClass == Progress::class) Settings::class else currentRouteClass
 
 internal fun guidedTourTopLevelRouteClasses(): List<KClass<*>> =
     listOf(Home::class, Train::class, Nutrition::class, Progress::class, Coach::class, Settings::class)
@@ -669,6 +677,9 @@ private fun TrainIqNavHost(
         composable<Settings> {
             SettingsRoute(
                 windowWidthClass = windowWidthClass,
+                onOpenProgress = {
+                    navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Progress::class })
+                },
                 onOpenOnboarding = {
                     navController.navigate(Onboarding) {
                         launchSingleTop = true

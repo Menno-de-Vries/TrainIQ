@@ -537,15 +537,20 @@ class ClearAppDataUseCase @Inject constructor(
     }
 }
 
-class ExportAppDataUseCase @Inject constructor(
-    private val runtimeStore: RoomTrainIqRuntimeStore,
+class ExportAppDataUseCase internal constructor(
+    private val readExportSnapshot: suspend () -> TrainIqStorageState,
 ) {
+    @Inject
+    constructor(runtimeStore: RoomTrainIqRuntimeStore) : this(
+        readExportSnapshot = { runtimeStore.readExportSnapshot() },
+    )
+
     private val gson = Gson()
 
     suspend operator fun invoke(): String = gson.toJson(
         TrainIqJsonExport(
             exportedAt = Instant.now().toString(),
-            data = runtimeStore.state.value,
+            data = readExportSnapshot(),
         ),
     )
 }

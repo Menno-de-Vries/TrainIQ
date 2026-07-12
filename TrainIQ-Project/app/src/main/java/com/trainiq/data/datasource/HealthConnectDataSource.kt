@@ -348,10 +348,14 @@ class HealthConnectDataSource @Inject constructor(
             weightRecords = emptyList(),
             exerciseSessionRecords = exerciseSessionRecords,
         ).pruneForInstant(now)
-        val nextChangesTokens = readChangesTokensByMetric(client, metricsToSync, metricFailures)
         metricFailures.clearRecoveredStepFailure(
             shouldRefreshSteps = HealthMetricType.STEPS in metricsToSync,
             stepAggregateFailed = stepAggregateFailed,
+        )
+        val acquiredChangesTokens = readChangesTokensByMetric(client, metricsToSync, metricFailures)
+        val nextChangesTokens = successfulFullSyncTokenUpdates(
+            acquiredTokens = acquiredChangesTokens,
+            metricFailures = metricFailures,
         )
         val lastSyncedAt = System.currentTimeMillis()
 
@@ -1212,6 +1216,13 @@ internal fun mergeMetricChangesTokens(
             if (token.isBlank()) remove(metric) else put(metric, token)
         }
     }
+
+internal fun successfulFullSyncTokenUpdates(
+    acquiredTokens: Map<HealthMetricType, String>,
+    metricFailures: Map<HealthMetricType, String>,
+): Map<HealthMetricType, String> = acquiredTokens.toMutableMap().apply {
+    metricFailures.keys.forEach { metric -> this[metric] = "" }
+}
 
 internal fun HealthConnectCacheState.onlyMetrics(metrics: Set<HealthMetricType>): HealthConnectCacheState = copy(
     aggregatedStepsToday = if (HealthMetricType.STEPS in metrics) aggregatedStepsToday else 0L,

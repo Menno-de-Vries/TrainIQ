@@ -2,9 +2,22 @@
 
 Audit date: 2026-05-09
 
-Refresh date: 2026-05-10, current worktree
+Refresh date: 2026-05-10, 2026-07-12 current worktree
 
 Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emulator smoke, Health Connect, Gemini/AI, Room/data, UI/UX/accessibility, release readiness.
+
+## 2026-07-12 Option 2 Balanced Improvement Batch
+
+- status: implemented and independently re-reviewed for Tasks 1-4; no Room schema version or dependency change was required.
+- backend/data: Nutrition no longer allocates new food IDs from stale `Flow.state.value`; explicit ID, barcode reuse, and fresh ID selection occur in the serialized Room transaction and return the persisted row. Export uses a one-shot transactional Room snapshot, so a just-written record is present without waiting for Flow invalidation.
+- Health Connect: failed full-sync metrics emit token tombstones so an old token cannot incorrectly force the next run onto incremental sync. Steps token acquisition failures remain visible after recovered reads, worker retry evaluates the full per-metric status, and Settings status refresh safely reconciles background scheduling while preserving coroutine cancellation.
+- performance/AI: meal and scale image preparation moved to a suspending IO boundary with bounds-first sampled decode, a 1,280 px maximum dimension, JPEG quality 82, and a 1,500,000-byte maximum prepared payload. Decode/compression failure no longer uploads the raw image and keeps the existing local fallback behavior.
+- functionality: Coach profile input is a lightweight `Serializable` draft plus dirty Boolean in `SavedStateHandle`. Dirty edits survive repository refresh and recreation; save completion cannot overwrite a newer in-flight edit.
+- UI/UX: the compact bar is exactly Start, Training, Voeding, Coach, and Meer. Voortgang remains a typed route, is directly reachable from Meer, visually selects Meer while open, and stays visible as its own destination in the six-item navigation rail.
+- CI/release: `.github/workflows/android.yml` automatically validates pull requests only, using read-only permissions and immutable action SHAs. Manual dispatch can generate Room migration markers or build secret-backed signed APK/AAB artifacts after fresh marker generation. Neither path publishes or deploys artifacts.
+- regression evidence: the Task 1 Room suite passed 29/29 on `Medium_Phone_2 (AVD) - API 16`; Health Connect focused/broad suites, the bounded-image 4096 x 2048 instrumentation regression, and 51 Coach/navigation/Settings tests passed. Individual tasks also passed proportional debug assemble/lint/Android-test compile gates and final independent re-review.
+- intentionally unchanged: active-workout snapshot architecture, Room v16 schema/migrations, provider selection, AI prompt contracts, image limits, and the existing saved-goal-advice entity were not broadened or replaced.
+- remaining risk: the first hosted workflow run can still reveal runner/emulator infrastructure issues; signed release requires owner-managed repository secrets; provider/permission mutation and exact Samsung Health parity still require their existing disposable-profile and physical-device acceptance paths.
 
 ## 2026-07-12 Trust and Interaction Polish
 

@@ -2,6 +2,17 @@
 
 Updated date: 2026-07-12
 
+## 2026-07-12 Balanced Reliability, Performance and CI
+
+- Nutrition food identity allocation now resolves explicit IDs, duplicate barcodes, and fresh IDs inside the serialized Room transaction. Immediate export reads one consistent Room snapshot instead of relying on asynchronous observed state.
+- Health Connect full-sync failures remove any stale per-metric token, including token-acquisition failures after a recovered steps read. Background work retries global or per-metric transient failures without looping on denied/unavailable states, and Settings refresh reconciles the existing unique schedule.
+- Meal and scale image preparation is suspending and off-main, decodes bounds before sampled pixels, keeps the 1,280 px / JPEG quality 82 / 1,500,000-byte limits, and rejects invalid uploads so existing local fallbacks remain authoritative.
+- Coach profile drafts and dirty state now live in Bundle-safe `SavedStateHandle` state. Repository hydration cannot overwrite an edited draft, recreation restores it, and a completed save only clears dirty state when it still matches the submitted draft.
+- Compact navigation now exposes Start, Training, Voeding, Coach, and Meer. Voortgang remains a typed route, maps its compact selection to Meer, has a direct action in Settings/Meer, and remains one of six rail destinations on wider layouts.
+- `.github/workflows/android.yml` restores enforceable PR-only debug validation with read-only permissions and immutable action SHAs. Emulator-backed Room markers and secret-backed signed release artifacts are explicit manual operations; no push trigger, publication, or deployment was added.
+- Focused red/green regression suites, targeted Room/image instrumentation, debug assembly, lint, and Android-test compilation passed during the individual tasks. The workflow YAML parses locally and its Gradle task graph is validated separately; a first hosted Actions run, release-owner signing run, mutable Health Connect matrix, and physical Samsung acceptance remain external gates.
+- Alignment remains `98%`: the selected high-value defects and missing CI definition are addressed without a schema or dependency change, but hosted/release-owner and physical-device acceptance are not claimed complete.
+
 ## 2026-07-12 Trust, Navigation and Progress Recovery
 
 - Hidden full-screen tab swiping is removed; visible typed Material navigation remains the only top-level route switcher. This reduces gesture competition without changing destination contracts or screen state.

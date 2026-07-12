@@ -1,6 +1,7 @@
 package com.trainiq.navigation
 
 import com.trainiq.features.settings.settingsOverflowSectionBody
+import com.trainiq.features.settings.settingsOpenProgressActionLabel
 import com.trainiq.features.settings.settingsOverflowSectionTitle
 import java.io.File
 import org.junit.Assert.assertFalse
@@ -15,15 +16,18 @@ class AdaptiveNavigationPolicyTest {
     }
 
     @Test
-    fun compactBottomNavigationKeepsTrendVisible() {
+    fun compactBottomNavigationUsesFivePrimaryDestinationsAndKeepsProgressInRail() {
         val visibleRoutes = compactBottomNavigationRouteClasses()
 
-        assertTrue(visibleRoutes.size >= 6)
-        assertTrue(Progress::class in visibleRoutes)
-        assertTrue(Settings::class in visibleRoutes)
-        assertEquals(Settings::class, visibleRoutes.last())
-        assertEquals("Trend", bottomNavigationLabel("Voortgang"))
+        assertEquals(listOf(Home::class, Train::class, Nutrition::class, Coach::class, Settings::class), visibleRoutes)
+        assertFalse(Progress::class in visibleRoutes)
+        assertEquals(
+            listOf(Home::class, Train::class, Nutrition::class, Progress::class, Coach::class, Settings::class),
+            navigationRailRouteClasses(),
+        )
         assertEquals("Meer", bottomNavigationLabel("Instellingen"))
+        assertEquals(Settings::class, compactSelectedNavigationRouteClass(Progress::class))
+        assertEquals(Home::class, compactSelectedNavigationRouteClass(Home::class))
     }
 
     @Test
@@ -35,10 +39,10 @@ class AdaptiveNavigationPolicyTest {
     }
 
     @Test
-    fun compactOverflowSettingsDoesNotDuplicateTrendNavigation() {
+    fun compactOverflowSettingsMakesProgressDirectlyDiscoverable() {
         assertEquals("Meer", settingsOverflowSectionTitle())
-        assertTrue(settingsOverflowSectionBody().contains("Trend"))
-        assertFalse(settingsOverflowSectionBody().contains("Voortgang openen"))
+        assertTrue(settingsOverflowSectionBody().contains("Voortgang"))
+        assertEquals("Voortgang openen", settingsOpenProgressActionLabel())
     }
 
     @Test

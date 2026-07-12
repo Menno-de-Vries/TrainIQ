@@ -29,6 +29,9 @@ import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.trainiq.domain.model.buildGoalBaseline
 import com.trainiq.domain.model.suggestMealType
 
@@ -41,6 +44,7 @@ class MealAnalysisUnavailableException(
 class MealAnalysisService internal constructor(
     private val aiJsonGenerator: AiJsonGenerator,
     private val isAiReady: suspend () -> Boolean,
+    private val imageBytesProvider: suspend (File) -> ByteArray?,
 ) {
     internal constructor(
         api: GeminiApi,
@@ -48,15 +52,18 @@ class MealAnalysisService internal constructor(
     ) : this(
         aiJsonGenerator = GeminiOnlyJsonGenerator(api, apiKeyProvider),
         isAiReady = { apiKeyProvider() != null },
+        imageBytesProvider = ::prepareMealScanImageBytes,
     )
 
     internal constructor(
         api: GeminiApi,
         isAiReady: suspend () -> Boolean,
         apiKeyProvider: suspend () -> String?,
+        imageBytesProvider: suspend (File) -> ByteArray?,
     ) : this(
         aiJsonGenerator = GeminiOnlyJsonGenerator(api, apiKeyProvider),
         isAiReady = isAiReady,
+        imageBytesProvider = imageBytesProvider,
     )
 
     @Inject
@@ -66,6 +73,7 @@ class MealAnalysisService internal constructor(
     ) : this(
         aiJsonGenerator = aiProviderRouter,
         isAiReady = { aiUsageGate.isAiReady() },
+        imageBytesProvider = ::prepareMealScanImageBytes,
     )
 
     private val gson = Gson()
@@ -85,7 +93,7 @@ class MealAnalysisService internal constructor(
             append("Voorgesteld maaltijdtype: ${suggestedMealType.promptLabel()}. ")
             append(sanitizedUserContext.ifBlank { "Herken de voeding, schat porties en geef exacte macro's terug." })
         }
-        val imageBytes = prepareMealScanImageBytes(file) ?: return fallbackMealScan()
+        val imageBytes = imageBytesProvider(file) ?: return fallbackMealScan()
         val routed = runCatching {
             aiJsonGenerator.generateJson(
                 AiRouteRequest(
@@ -481,36 +489,67 @@ internal fun requireAiRawResponseWithinLimit(text: String): String {
     return text
 }
 
-internal fun prepareMealScanImageBytes(file: File): ByteArray? {
-    if (!file.exists() || file.length() <= 0L || file.length() > MaxMealImageSourceBytes) return null
-    val raw = file.readBytes()
-    if (raw.size <= MaxMealImageUploadBytes) {
-        return runCatching { compressMealImageForAiUpload(raw) }.getOrDefault(raw)
-    }
-    return runCatching { compressMealImageForAiUpload(raw) }
+internal suspend fun prepareMealScanImageBytes(
+    file: File,
+    ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    imageCompressor: (File) -> ByteArray? = ::compressMealImageForAiUpload,
+): ByteArray? = withContext(ioDispatcher) {
+    val sourceLength = file.takeIf { it.exists() }?.length() ?: return@withContext null
+    if (sourceLength <= 0L || sourceLength > MaxMealImageSourceBytes) return@withContext null
+
+    runCatching { imageCompressor(file) }
         .getOrNull()
         ?.takeIf { it.size <= MaxMealImageUploadBytes }
 }
 
-private fun compressMealImageForAiUpload(raw: ByteArray): ByteArray {
-    val source = BitmapFactory.decodeByteArray(raw, 0, raw.size) ?: return raw
-    val scale = minOf(
-        1f,
-        MaxMealImageDimensionPx.toFloat() / maxOf(source.width, source.height).coerceAtLeast(1),
-    )
-    val bitmap = if (scale < 1f) {
-        Bitmap.createScaledBitmap(
-            source,
-            (source.width * scale).toInt().coerceAtLeast(1),
-            (source.height * scale).toInt().coerceAtLeast(1),
-            true,
-        )
-    } else {
-        source
+internal fun calculateImageSampleSize(width: Int, height: Int, maxDimensionPx: Int): Int {
+    val largestDimension = maxOf(width, height).coerceAtLeast(1)
+    var sampleSize = 1
+    while (largestDimension / (sampleSize * 2L) >= maxDimensionPx) {
+        sampleSize *= 2
     }
-    return ByteArrayOutputStream().use { output ->
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 82, output)
-        output.toByteArray()
+    return sampleSize
+}
+
+private fun compressMealImageForAiUpload(file: File): ByteArray? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(file.absolutePath, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+    val source = BitmapFactory.decodeFile(
+        file.absolutePath,
+        BitmapFactory.Options().apply {
+            inSampleSize = calculateImageSampleSize(
+                width = bounds.outWidth,
+                height = bounds.outHeight,
+                maxDimensionPx = MaxMealImageDimensionPx,
+            )
+        },
+    ) ?: return null
+    var prepared: Bitmap? = null
+    return try {
+        val scale = minOf(
+            1f,
+            MaxMealImageDimensionPx.toFloat() / maxOf(source.width, source.height).coerceAtLeast(1),
+        )
+        val target = if (scale < 1f) {
+            Bitmap.createScaledBitmap(
+                source,
+                (source.width * scale).toInt().coerceAtLeast(1),
+                (source.height * scale).toInt().coerceAtLeast(1),
+                true,
+            )
+        } else {
+            source
+        }
+        prepared = target
+        ByteArrayOutputStream().use { output ->
+            if (!target.compress(Bitmap.CompressFormat.JPEG, 82, output)) return@use null
+            output.toByteArray()
+        }
+    } finally {
+        prepared?.takeIf { it !== source && !it.isRecycled }?.recycle()
+        source.takeIf { !it.isRecycled }?.recycle()
     }
 }
 

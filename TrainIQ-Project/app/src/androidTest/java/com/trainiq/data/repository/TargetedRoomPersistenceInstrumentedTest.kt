@@ -1,8 +1,10 @@
 package com.trainiq.data.repository
 
+import android.content.ContextWrapper
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.google.gson.JsonParser
 import com.trainiq.core.database.ActiveWorkoutCollapsedExerciseEntity
 import com.trainiq.core.database.ActiveWorkoutDraftEntity
 import com.trainiq.core.database.ActiveWorkoutSessionEntity
@@ -25,6 +27,17 @@ import com.trainiq.core.database.WorkoutLogEventSetEntity
 import com.trainiq.core.database.WorkoutRoutineEntity
 import com.trainiq.core.database.WorkoutSessionEntity
 import com.trainiq.core.database.WorkoutSetEntity
+import com.trainiq.data.local.FoodItemStorage
+import com.trainiq.data.local.TrainIqLocalStore
+import com.trainiq.data.migration.JsonRoomImportPlanner
+import com.trainiq.data.migration.RoomImportDryRun
+import com.trainiq.data.migration.RoomJsonImportSink
+import com.trainiq.data.migration.RoomMigrationChainVerificationMarker
+import com.trainiq.data.migration.RoomMigrationChainVerificationMarkerSource
+import com.trainiq.data.migration.RoomMigrationChainVerificationProvider
+import com.trainiq.data.migration.RoomRuntimeReadinessGate
+import com.trainiq.domain.model.FoodSourceType
+import com.trainiq.domain.usecase.ExportAppDataUseCase
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -50,6 +63,60 @@ class TargetedRoomPersistenceInstrumentedTest {
     fun tearDown() {
         database.close()
         context.deleteDatabase(dbName)
+    }
+
+    @Test
+    fun targetedSequentialAiFoodSavesAllocateDistinctIdsWithoutFlowWait() = runTest {
+        val runtimeStore = runtimeStore()
+
+        val firstSaved = runtimeStore.saveFood(
+            FoodItemStorage(
+                name = "AI havermout",
+                caloriesPer100g = 370.0,
+                sourceType = FoodSourceType.AI,
+                createdAt = 1_000L,
+                updatedAt = 1_000L,
+            ),
+        )
+        val secondSaved = runtimeStore.saveFood(
+            FoodItemStorage(
+                name = "AI banaan",
+                caloriesPer100g = 89.0,
+                sourceType = FoodSourceType.AI,
+                createdAt = 2_000L,
+                updatedAt = 2_000L,
+            ),
+        )
+
+        val savedFoods = database.dao().observeFoodItems().first()
+        assertTrue(firstSaved.id > 0L)
+        assertTrue(secondSaved.id > 0L)
+        assertTrue(firstSaved.id != secondSaved.id)
+        assertEquals(2, savedFoods.size)
+        assertEquals(setOf(firstSaved.id, secondSaved.id), savedFoods.map { it.id }.toSet())
+    }
+
+    @Test
+    fun targetedImmediateExportReadsNewRoomRecordWithoutFlowWait() = runTest {
+        val runtimeStore = runtimeStore()
+        val persisted = runtimeStore.saveFood(
+            FoodItemStorage(
+                name = "Direct Room exportproduct",
+                caloriesPer100g = 123.0,
+                sourceType = FoodSourceType.AI,
+                createdAt = 3_000L,
+                updatedAt = 3_000L,
+            ),
+        )
+
+        val json = JsonParser.parseString(ExportAppDataUseCase(runtimeStore).invoke()).asJsonObject
+        val exportedFood = json.getAsJsonObject("data")
+            .getAsJsonArray("foods")
+            .map { it.asJsonObject }
+            .single { it.get("id").asLong == persisted.id }
+
+        assertEquals("Direct Room exportproduct", exportedFood.get("name").asString)
+        assertEquals(123.0, exportedFood.get("caloriesPer100g").asDouble, 0.0)
     }
 
     @Test
@@ -1394,4 +1461,24 @@ class TargetedRoomPersistenceInstrumentedTest {
 
     private fun openDatabase(): TrainIqDatabase =
         Room.databaseBuilder(context, TrainIqDatabase::class.java, dbName).build()
+
+    private fun runtimeStore(): RoomTrainIqRuntimeStore {
+        val isolatedFilesContext = object : ContextWrapper(context) {
+            override fun getFilesDir() = context.cacheDir.resolve("targeted-room-runtime-store").also { it.mkdirs() }
+        }
+        isolatedFilesContext.filesDir.resolve("trainiq-state.json").delete()
+        val planner = JsonRoomImportPlanner()
+        val sink = RoomJsonImportSink(database)
+        val legacyStore = TrainIqLocalStore(
+            context = isolatedFilesContext,
+            roomImportDryRun = RoomImportDryRun(planner, sink),
+            roomRuntimeReadinessGate = RoomRuntimeReadinessGate(database.dao()),
+            roomMigrationChainVerificationProvider = RoomMigrationChainVerificationProvider(
+                markerSource = object : RoomMigrationChainVerificationMarkerSource {
+                    override fun latestMarker(): RoomMigrationChainVerificationMarker? = null
+                },
+            ),
+        )
+        return RoomTrainIqRuntimeStore(database, legacyStore)
+    }
 }

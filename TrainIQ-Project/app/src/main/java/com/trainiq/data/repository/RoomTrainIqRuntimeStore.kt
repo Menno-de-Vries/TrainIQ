@@ -141,6 +141,40 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         )
     }.stateIn(scope, SharingStarted.Eagerly, TrainIqStorageState())
 
+    suspend fun readExportSnapshot(): TrainIqStorageState = mutex.withLock {
+        database.withTransaction {
+            val active = ActiveWorkoutTables(
+                sessions = dao.readActiveWorkoutSessionsForExport(),
+                drafts = dao.readActiveWorkoutDraftsForExport(),
+                collapsed = dao.readActiveWorkoutCollapsedExercisesForExport(),
+                sets = dao.readActiveWorkoutSetsForExport(),
+                events = dao.readWorkoutLogEventsForExport(),
+            )
+            val eventSets = dao.readWorkoutLogEventSetsForExport()
+            TrainIqStorageState(
+                profile = dao.readUserProfileForExport(),
+                routines = dao.readRoutinesForExport(),
+                days = dao.readWorkoutDaysForExport(),
+                exercises = dao.readExercisesForExport(),
+                workoutExercises = dao.readWorkoutExercisesForExport(),
+                routineSets = dao.readRoutineSetsForExport(),
+                foods = dao.readFoodItemsForExport().map { it.toStorage() },
+                recipes = dao.readRecipesForExport().map { it.toStorage() },
+                recipeIngredients = dao.readRecipeIngredientsForExport().map { it.toStorage() },
+                meals = dao.readMealsForExport().map { it.toStorage() },
+                mealItems = dao.readMealItemsForExport().map { it.toStorage() },
+                measurements = dao.readMeasurementsForExport(),
+                sessions = dao.readWorkoutSessionsForExport(),
+                performedExercises = dao.readPerformedExercisesForExport(),
+                workoutSets = dao.readWorkoutSetsForExport(),
+                activeWorkoutSession = active.toStorage(),
+                workoutLogEvents = active.events.map { event ->
+                    event.toStorage(eventSets.filter { set -> set.eventId == event.id })
+                },
+            )
+        }
+    }
+
     suspend fun clearAll() {
         mutex.withLock {
             database.dao().clearMirrorTables()
@@ -547,9 +581,20 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         }
     }
 
-    suspend fun saveFood(food: FoodItemStorage) {
-        mutex.withLock {
-            dao.insertFoodItems(listOf(food.toFoodItemEntity()))
+    suspend fun saveFood(food: FoodItemStorage): FoodItemStorage = mutex.withLock {
+        database.withTransaction {
+            val existing = food.id.takeIf { it > 0L }?.let { dao.getFoodItem(it) }
+            val duplicateBarcode = food.barcode
+                ?.takeIf { it.isNotBlank() }
+                ?.let { dao.getFoodItemByBarcode(it) }
+                ?.takeIf { it.id != food.id }
+            val matched = existing ?: duplicateBarcode
+            val persisted = food.copy(
+                id = matched?.id ?: ((dao.getMaxFoodItemId() ?: 0L) + 1L),
+                createdAt = matched?.createdAt ?: food.createdAt,
+            )
+            dao.insertFoodItems(listOf(persisted.toFoodItemEntity()))
+            persisted
         }
     }
 

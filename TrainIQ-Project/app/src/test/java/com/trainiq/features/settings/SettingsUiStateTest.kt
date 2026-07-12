@@ -16,6 +16,8 @@ import com.trainiq.domain.model.HealthMetricType
 import java.io.File
 import java.time.Instant
 import java.time.ZoneId
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -23,6 +25,124 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SettingsUiStateTest {
+    @Test
+    fun healthConnectStatusRefreshPublishesBeforeReconcilingBackgroundWorkExactlyOnce() = runTest {
+        val events = mutableListOf<String>()
+        val refreshedStatus = HealthConnectStatus(
+            state = HealthConnectState.CONNECTED,
+            message = "Connected.",
+        )
+
+        refreshHealthConnectStatusAndReconcile(
+            loadStatus = {
+                events += "loaded"
+                refreshedStatus
+            },
+            fallbackStatus = {
+                error("Fallback should not be used for a successful refresh.")
+            },
+            publishStatus = { status ->
+                assertEquals(refreshedStatus, status)
+                events += "published"
+            },
+            reconcileBackgroundSync = {
+                events += "reconciled"
+            },
+        )
+
+        assertEquals(listOf("loaded", "published", "reconciled"), events)
+        assertEquals(1, events.count { it == "reconciled" })
+    }
+
+    @Test
+    fun healthConnectStatusRefreshUsesFallbackAndStillReconcilesAfterLoadFailure() = runTest {
+        val events = mutableListOf<String>()
+        val fallbackStatus = HealthConnectStatus(
+            state = HealthConnectState.ERROR,
+            message = "Health Connect kan nu niet worden bijgewerkt.",
+        )
+
+        refreshHealthConnectStatusAndReconcile(
+            loadStatus = { error("provider unavailable") },
+            fallbackStatus = {
+                events += "fallback"
+                fallbackStatus
+            },
+            publishStatus = { status ->
+                assertEquals(fallbackStatus, status)
+                events += "published"
+            },
+            reconcileBackgroundSync = { events += "reconciled" },
+        )
+
+        assertEquals(listOf("fallback", "published", "reconciled"), events)
+    }
+
+    @Test
+    fun healthConnectStatusRefreshRethrowsCancellationWithoutPublishingOrReconciling() = runTest {
+        var published = false
+        var reconciled = false
+
+        try {
+            refreshHealthConnectStatusAndReconcile(
+                loadStatus = { throw CancellationException("screen left") },
+                fallbackStatus = {
+                    error("Cancellation must not be converted to fallback state.")
+                },
+                publishStatus = { published = true },
+                reconcileBackgroundSync = { reconciled = true },
+            )
+            error("Expected CancellationException")
+        } catch (_: CancellationException) {
+            // Expected: structured cancellation must reach the parent scope.
+        }
+
+        assertFalse(published)
+        assertFalse(reconciled)
+    }
+
+    @Test
+    fun healthConnectStatusRefreshBoundsSchedulerFailureAfterPublishing() = runTest {
+        val refreshedStatus = HealthConnectStatus(
+            state = HealthConnectState.CONNECTED,
+            message = "Connected.",
+        )
+        var published: HealthConnectStatus? = null
+        var schedulerFailure: Throwable? = null
+
+        refreshHealthConnectStatusAndReconcile(
+            loadStatus = { refreshedStatus },
+            fallbackStatus = { error("Fallback should not be used.") },
+            publishStatus = { published = it },
+            reconcileBackgroundSync = { error("WorkManager unavailable") },
+            onReconcileFailure = { schedulerFailure = it },
+        )
+
+        assertEquals(refreshedStatus, published)
+        assertEquals("WorkManager unavailable", schedulerFailure?.message)
+    }
+
+    @Test
+    fun healthConnectStatusRefreshRethrowsSchedulerCancellation() = runTest {
+        val refreshedStatus = HealthConnectStatus(
+            state = HealthConnectState.CONNECTED,
+            message = "Connected.",
+        )
+
+        try {
+            refreshHealthConnectStatusAndReconcile(
+                loadStatus = { refreshedStatus },
+                fallbackStatus = { error("Fallback should not be used.") },
+                publishStatus = {},
+                reconcileBackgroundSync = { throw CancellationException("scope cancelled") },
+                onReconcileFailure = { error("Cancellation must not be bounded.") },
+            )
+            error("Expected CancellationException")
+        } catch (_: CancellationException) {
+            // Expected.
+        }
+    }
+
     @Test
     fun settingsUsesOnePrecomposedFiniteScrollContainer() {
         val source = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
@@ -361,14 +481,17 @@ class SettingsUiStateTest {
     }
 
     @Test
-    fun compactSettingsReadsAsOverflowWithoutDuplicatingTrendNavigation() {
+    fun compactSettingsReadsAsOverflowAndExposesProgressAction() {
         assertEquals("Meer", settingsOverflowSectionTitle())
         assertTrue(settingsOverflowSectionBody().contains("Compacte navigatie"))
-        assertTrue(settingsOverflowSectionBody().contains("Trend"))
+        assertTrue(settingsOverflowSectionBody().contains("Voortgang"))
+        assertEquals("Voortgang openen", settingsOpenProgressActionLabel())
 
         val source = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
-        assertFalse(source.contains("Voortgang openen"))
-        assertFalse(source.contains("settingsOpenProgressActionLabel"))
+        val overflowSection = source.substringAfter("SectionCard(title = settingsOverflowSectionTitle())")
+            .substringBefore("SectionCard(title = \"Onboarding\")")
+        assertTrue(overflowSection.contains("onClick = onOpenProgress"))
+        assertTrue(overflowSection.contains("settingsOpenProgressActionLabel()"))
     }
 
     @Test

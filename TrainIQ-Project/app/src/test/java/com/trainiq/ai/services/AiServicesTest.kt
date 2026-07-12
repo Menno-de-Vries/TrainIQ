@@ -12,6 +12,7 @@ import com.trainiq.domain.model.WeeklyReportSource
 import java.io.File
 import java.io.RandomAccessFile
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import okhttp3.ResponseBody.Companion.toResponseBody
@@ -22,8 +23,50 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import retrofit2.HttpException
 import retrofit2.Response
+import kotlin.coroutines.CoroutineContext
 
 class AiServicesTest {
+    @Test
+    fun calculateImageSampleSize_largeImageBoundsAvoidsFullResolutionDecode() {
+        assertEquals(4, calculateImageSampleSize(width = 5_120, height = 2_880, maxDimensionPx = 1_280))
+    }
+
+    @Test
+    fun prepareMealScanImageBytes_usesProvidedBackgroundDispatcher() = runTest {
+        var dispatchCount = 0
+        val recordingDispatcher = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                dispatchCount += 1
+                block.run()
+            }
+        }
+        val file = File.createTempFile("meal-scan-dispatcher", ".jpg").apply {
+            writeBytes(byteArrayOf(1, 2, 3))
+            deleteOnExit()
+        }
+
+        val prepared = prepareMealScanImageBytes(
+            file = file,
+            ioDispatcher = recordingDispatcher,
+            imageCompressor = { byteArrayOf(1, 2, 3) },
+        )
+
+        assertEquals(listOf<Byte>(1, 2, 3), prepared?.toList())
+        assertTrue("Image preparation should dispatch off the caller context", dispatchCount > 0)
+    }
+
+    @Test
+    fun prepareMealScanImageBytes_rejectsUndecodableInputInsteadOfUploadingRawBytes() = runTest {
+        val file = File.createTempFile("meal-scan-invalid", ".jpg").apply {
+            writeBytes(byteArrayOf(1, 2, 3))
+            deleteOnExit()
+        }
+
+        val prepared = prepareMealScanImageBytes(file)
+
+        assertEquals(null, prepared)
+    }
+
     @Test
     fun geminiRequest_serializesOfficialRestGenerationConfigShape() {
         val json = Gson().toJson(
@@ -85,7 +128,12 @@ class AiServicesTest {
                 ),
             ),
         )
-        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
 
         val result = service.analyzeMealImage(tempImagePath(), "", 43_200_000L)
 
@@ -188,7 +236,12 @@ class AiServicesTest {
     @Test
     fun analyzeMealImage_withOversizedImageReturnsFallbackWithoutCallingGemini() = runTest {
         val api = FakeGeminiApi(response = mealScanResponse("""{"items":[],"suggestedMealType":"LUNCH"}"""))
-        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
 
         val result = service.analyzeMealImage(oversizedImagePath(), "", 43_200_000L)
 
@@ -228,7 +281,12 @@ class AiServicesTest {
                 """.trimIndent(),
             ),
         )
-        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
 
         val result = service.analyzeMealImage(tempImagePath(), "ontbijt", 1_800_000L)
 
@@ -260,7 +318,12 @@ class AiServicesTest {
         val api = FakeGeminiApi(
             response = mealScanResponse("""{"items":[$items],"suggestedMealType":"LUNCH"}"""),
         )
-        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
 
         val result = service.analyzeMealImage(tempImagePath(), "", 43_200_000L)
 
@@ -290,7 +353,12 @@ class AiServicesTest {
                 """.trimIndent(),
             ),
         )
-        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
 
         val result = service.analyzeMealImage(tempImagePath(), "kip 200g", 72_000_000L)
 
@@ -330,7 +398,12 @@ class AiServicesTest {
                 """.trimIndent(),
             ),
         )
-        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
 
         val result = service.analyzeMealImage(
             tempImagePath(),
@@ -362,7 +435,12 @@ class AiServicesTest {
                 """.trimIndent(),
             ),
         )
-        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
 
         val result = service.analyzeMealImage(
             tempImagePath(),
@@ -394,7 +472,12 @@ class AiServicesTest {
                 """.trimIndent(),
             ),
         )
-        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
 
         val result = service.analyzeMealImage(
             tempImagePath(),
@@ -419,7 +502,12 @@ class AiServicesTest {
     @Test
     fun analyzeMealImage_withStructuredEmptyItems_returnsApiEmptyResult() = runTest {
         val api = FakeGeminiApi(response = mealScanResponse("""{"items":[],"suggestedMealType":"LUNCH"}"""))
-        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
 
         val result = service.analyzeMealImage(tempImagePath(), "", 43_200_000L)
 
@@ -456,7 +544,12 @@ class AiServicesTest {
                 """.trimIndent(),
             ),
         )
-        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
 
         val result = service.analyzeMealImage(tempImagePath(), "", 1_800_000L)
 
@@ -467,7 +560,12 @@ class AiServicesTest {
     @Test
     fun analyzeMealImage_whenApiFails_returnsExplicitLocalFallback() = runTest {
         val api = FakeGeminiApi(error = IllegalStateException("network down"))
-        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
 
         val result = service.analyzeMealImage(tempImagePath(), "", 43_200_000L)
 
@@ -479,7 +577,12 @@ class AiServicesTest {
     @Test
     fun analyzeMealImage_whenCallerCancels_propagatesCancellationInsteadOfFallback() = runTest {
         val api = FakeGeminiApi(error = CancellationException("screen stopped"))
-        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
 
         val error = runCatching {
             service.analyzeMealImage(tempImagePath(), "", 43_200_000L)
@@ -492,7 +595,12 @@ class AiServicesTest {
     @Test
     fun analyzeMealImage_withoutApiConfig_returnsExplicitLocalFallback() = runTest {
         val api = FakeGeminiApi()
-        val service = MealAnalysisService(api, isAiReady = { false }, apiKeyProvider = { null })
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { false },
+            apiKeyProvider = { null },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
 
         val result = service.analyzeMealImage(tempImagePath(), "", 43_200_000L)
 
@@ -989,6 +1097,10 @@ class AiServicesTest {
             writeBytes(byteArrayOf(1, 2, 3))
             deleteOnExit()
         }.absolutePath
+
+    private fun testPreparedImageBytes(file: File): ByteArray? =
+        file.takeIf { it.exists() && it.length() in 1..(6L * 1024L * 1024L) }
+            ?.let { byteArrayOf(1, 2, 3) }
 
     private fun oversizedImagePath(): String =
         File.createTempFile("meal-scan-oversized", ".jpg").apply {

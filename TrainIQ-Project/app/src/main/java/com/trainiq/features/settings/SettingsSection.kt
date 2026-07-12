@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.AnimatedVisibility
@@ -78,6 +79,7 @@ import com.trainiq.core.datastore.AiPreferences
 import com.trainiq.core.datastore.OnboardingPreferences
 import com.trainiq.core.datastore.ReminderPreferences
 import com.trainiq.core.datastore.WorkoutFeedbackPreferences
+import com.trainiq.core.health.HealthConnectBackgroundSyncScheduler
 import com.trainiq.core.health.HealthConnectRefreshOnResume
 import com.trainiq.core.health.healthConnectStepSourceLabel
 import com.trainiq.core.health.rememberHealthConnectPermissionRequester
@@ -129,6 +131,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -200,6 +203,7 @@ class SettingsViewModel @Inject constructor(
     private val importAppDataUseCase: ImportAppDataUseCase,
     private val reopenOnboardingUseCase: ReopenOnboardingUseCase,
     private val reminderScheduler: TrainIqReminderScheduler,
+    private val healthConnectBackgroundSyncScheduler: HealthConnectBackgroundSyncScheduler,
 ) : ViewModel() {
     private val reloads = MutableStateFlow(0)
     private val apiKeyRefreshes = MutableStateFlow(0)
@@ -391,13 +395,22 @@ class SettingsViewModel @Inject constructor(
 
     fun refreshHealthConnectStatus() {
         viewModelScope.launch {
-            _healthStatus.value = runCatching { getHealthConnectStatusUseCase() }
-                .getOrElse {
+            refreshHealthConnectStatusAndReconcile(
+                loadStatus = { getHealthConnectStatusUseCase() },
+                fallbackStatus = {
                     HealthConnectStatus(
                         state = HealthConnectState.ERROR,
                         message = "Health Connect kan nu niet worden bijgewerkt.",
                     )
-                }
+                },
+                publishStatus = { _healthStatus.value = it },
+                reconcileBackgroundSync = {
+                    healthConnectBackgroundSyncScheduler.scheduleIfBackgroundReadAvailable()
+                },
+                onReconcileFailure = { error ->
+                    Log.w(SettingsLogTag, "Health Connect background sync reconciliation failed.", error)
+                },
+            )
         }
     }
 
@@ -574,10 +587,35 @@ class SettingsViewModel @Inject constructor(
 
 }
 
+internal suspend fun refreshHealthConnectStatusAndReconcile(
+    loadStatus: suspend () -> HealthConnectStatus,
+    fallbackStatus: () -> HealthConnectStatus,
+    publishStatus: (HealthConnectStatus) -> Unit,
+    reconcileBackgroundSync: suspend () -> Unit,
+    onReconcileFailure: (Throwable) -> Unit = {},
+) {
+    val refreshedStatus = try {
+        loadStatus()
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Exception) {
+        fallbackStatus()
+    }
+    publishStatus(refreshedStatus)
+    try {
+        reconcileBackgroundSync()
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        onReconcileFailure(error)
+    }
+}
+
 @Composable
 fun SettingsRoute(
     windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
     onOpenOnboarding: () -> Unit = {},
+    onOpenProgress: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -710,6 +748,7 @@ fun SettingsRoute(
                 onOpenOnboarding = {
                     onOpenOnboarding()
                 },
+                onOpenProgress = onOpenProgress,
             )
         }
     }
@@ -808,6 +847,7 @@ fun SettingsScreen(
     onConfirmImport: () -> Unit,
     onDismissImportPreview: () -> Unit,
     onOpenOnboarding: () -> Unit,
+    onOpenProgress: () -> Unit,
 ) {
     var geminiKeyInput by remember { mutableStateOf("") }
     var openAiKeyInput by remember { mutableStateOf("") }
@@ -857,6 +897,14 @@ fun SettingsScreen(
                 Text("Thema: ${themeMode.displayLabel()}")
                 Text("AI: ${if (aiStatus.enabled && (aiStatus.hasGeminiKey || aiStatus.hasOpenAiKey)) "Klaar voor expliciet gebruik" else "Alleen handmatig"}")
                 Text("Health Connect: ${healthStatusLabel(healthStatus)}")
+                Button(
+                    onClick = onOpenProgress,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .settingsActionLabel(settingsOpenProgressActionLabel()),
+                ) {
+                    Text(settingsOpenProgressActionLabel())
+                }
         }
         SectionCard(title = "Onboarding") {
                 Text(
@@ -1563,7 +1611,9 @@ internal fun aiProviderStatusLabel(aiStatus: SettingsAiStatus): String = when {
 internal fun settingsOverflowSectionTitle(): String = "Meer"
 
 internal fun settingsOverflowSectionBody(): String =
-    "Compacte navigatie: instellingen, voorkeuren en appbeheer staan hier. Trends en grafieken staan direct in de tab Trend."
+    "Compacte navigatie: instellingen, voorkeuren en appbeheer staan hier. Trends en grafieken open je via Voortgang hieronder."
+
+internal fun settingsOpenProgressActionLabel(): String = "Voortgang openen"
 
 internal fun themeModeAccessibilityLabel(mode: ThemeMode): String = "Themamodus: ${mode.displayLabel()}"
 
@@ -1586,6 +1636,7 @@ private fun Context.startActivityIfResolvable(intent: Intent): Boolean {
 }
 
 private const val SamsungHealthPackageName = "com.sec.android.app.shealth"
+private const val SettingsLogTag = "TrainIQSettings"
 
 private fun ProfileInputValidationError?.isFor(field: ProfileInputField): Boolean = this?.field == field
 
