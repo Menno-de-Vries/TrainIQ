@@ -1,110 +1,86 @@
 # TrainIQ Agent Contract
 
-This file is the leading engineering contract for TrainIQ. Optimize for long-term code health: scalable, maintainable, performant, privacy-conscious, and AI-native.
+TrainIQ turns passive health data into proactive coaching: `Health Connect -> Gemini 2.5 Flash -> Material 3 -> Personal action`. Build toward an invisible coach with multi-metric sync, recovery/training insights, multimodal meal/label/posture scanning, and Gemini Nano where local feedback is suitable. Optimize for long-term code health.
 
-## Product and roadmap
+## Priorities and evidence
 
-TrainIQ turns passive health data into proactive, personal coaching:
+Platform instructions remain authoritative. Within this repository use: `Safety and authority -> explicit user intent -> architecture/product truth -> UX quality -> verification -> speed`.
 
-```text
-Health Connect -> Gemini 2.5 Flash -> Material 3 UI -> Personal action
-```
+Use evidence in this order: `repository code/config -> TrainIQ ADR or targeted guide -> current official primary source`. Keep stable rules here; verify volatile SDK, library, model, policy, and tool behavior against pinned versions and owning-vendor documentation. Browse only when requested or when current guidance can materially change the solution; record sources for lasting decisions and stop when evidence is sufficient. Preserve pinned behavior when guidance differs unless changing it is in scope.
 
-- Foundation: MVVM with Hilt, Room entities/repositories, and a Health Connect data source.
-- Modernization and precision: type-safe navigation, adaptive Material 3, incremental Health Connect sync, multi-metric support, Gemini 2.5 Flash, and bounded thinking budgets.
-- Invisible coach: proactive sleep/recovery/training insights, multimodal meal/label/posture scanning, and Gemini Nano for suitable local feedback.
+The app is under `TrainIQ-Project/`. Before narrow work, read relevant sections of `TrainIQ_Target_State_Blueprint.md`, `docs/TrainIQ_Architecture_Decisions.md`, and affected QA/security/release guides. For artifacts, signing, Play, privacy, or release, include `TrainIQ-Project/docs/play-privacy-release-evidence.md` and `TrainIQ-Project/docs/release/final-release-risk-register.md`; open owner gates remain blockers. Read governing documents fully for broad UI, cross-feature, migration, security, AI-boundary, privacy, or release work. Do not reread unchanged context in one task.
 
-## Scope and routing
+## Autonomous execution
 
-The Android project lives in `TrainIQ-Project/` and uses Kotlin, Jetpack Compose, Hilt, Room, Health Connect, CameraX, and Gemini. Preserve `MVVM + Clean Architecture + Unidirectional Data Flow` (`Data -> Domain -> UI`).
+Default loop: `Inspect -> Decide -> Implement -> Verify -> Commit -> Report`.
 
-- Put screens and feature ViewModels in `app/src/main/java/com/trainiq/features/`, business rules and use cases in `domain/`, persistence and external data access in `data/`, shared app code in `core/`, and routes in `navigation/`.
-- UI reads ViewModel state only. Each screen exposes one `uiState: StateFlow<T>` modeled as a sealed `Loading`, `Success`, or `Error` state. Keep mapping and business logic out of composables.
-- Use Hilt; repositories are `@Singleton` and ViewModel-owned dependencies are `@ViewModelScoped`.
-- Use Navigation 2.8+ type-safe `kotlinx.serialization` routes; never add string-based routes.
-- Mirror production packages under `app/src/test/` or `app/src/androidTest/`; keep Room schemas in `app/schemas/` and performance tests in `macrobenchmark/`.
+- Inspect status, branch, history, affected architecture, tests, and existing patterns before writing. Define acceptance criteria and risk level; decide material choices once from repository evidence.
+- Implement the smallest complete reversible change. Own in-scope diagnosis and fixes; retry a failed check only after new evidence or a changed hypothesis, implementation, or test condition.
+- Ask only for unavailable authority or unresolved material risk involving data loss, privacy/security, cost, downtime, stability, or genuinely ambiguous acceptance criteria. Do not pause for safe details the repository answers.
+- When the user says `autonoom`, own the scoped outcome end to end: research, planning, implementation, scalable tests, bounded recovery, focused local commits, and evidence-backed completion.
+- Autonomous mode never grants permission to push, open/merge a PR, release, deploy, sign, change secrets, grant/revoke permissions, mutate remote data, or perform destructive actions; each requires an explicit user request naming it.
+- Preserve user work and scope. Never stash, discard, overwrite, rename, or include unrelated changes. Delegate only when requested and the work is independent.
+
+## Architecture and routing
+
+Use Kotlin, Compose, Hilt, Room, Health Connect, CameraX, and Gemini with `MVVM + Clean Architecture + UDF` (`Data -> Domain -> UI`).
+
+- Put feature UI/ViewModels in `app/src/main/java/com/trainiq/features/`, rules/use cases in `domain/`, persistence/external access in `data/`, shared app code in `core/`, and routes in `navigation/`.
+- UI reads ViewModel state only; each screen exposes one `uiState: StateFlow<T>` as sealed `Loading`, `Success`, or `Error`. Keep mapping and business logic out of composables.
+- Use Hilt: repositories `@Singleton`, ViewModel-owned dependencies `@ViewModelScoped`. Use Navigation 2.8+ typed `kotlinx.serialization` routes; never string routes.
+- Mirror packages in `app/src/test/` or `app/src/androidTest/`; keep Room schemas in `app/schemas/` and performance code in `macrobenchmark/`.
 - Never edit generated `**/build/`, `.gradle/`, `TrainIQ-Project/dist/`, IDE output, or generated source/resource content.
 
-Before changing visible UI, product/health/AI copy, interaction, accessibility, responsive behavior, or navigation, read `TrainIQ_Target_State_Blueprint.md` and `docs/TrainIQ_Architecture_Decisions.md` fully; they govern product truth, states, layouts, inputs, and visual verification.
+## UI/UX definition of done
 
-Before changing Room, migrations, Health Connect, Gemini transport or keys, telemetry, sensitive data, permissions, manifests, or security boundaries, read `docs/TrainIQ_Architecture_Decisions.md` plus the relevant documents under `TrainIQ-Project/docs/security/` fully. Preserve Room as the app-owned source of truth and legacy JSON only as an import/export/backup bridge.
+- Follow the blueprint and reuse Material 3/design-system primitives. Use `MaterialTheme.colorScheme`, `MaterialTheme.typography`, Dynamic Color on Android 12+, concise actionable copy, calm hierarchy, and progressive disclosure.
+- Model every relevant loading/shimmer, empty, success, partial-data, offline, permission-denied, recoverable-error, and retry state. Preserve state through navigation, rotation, resize, background/foreground, lock/unlock, and process recreation where required.
+- Target Adaptive Optimized behavior for affected critical flows: compact phones, tablets/foldables, resizable/multi-window layouts, functional parity, dark mode, font scale, keyboard/external input, and no clipped or unreachable actions.
+- Provide semantics, logical focus/traversal, sufficient contrast and touch targets, meaningful labels, and reduced-motion-safe behavior. Screenshots never replace semantics/UI-tree or TalkBack/Switch Access evidence when relevant.
+- Use previews/fixtures for meaningful states and selective screenshot tests when deterministic infrastructure exists; cover only combinations with unique feedback and never silently update references.
+- Prefer subtle `AnimatedContent`, purposeful haptics, shimmer over generic spinners, and shared transitions for Home -> Active Workout, Workout List -> Detail, and Meal Scan -> Result when they improve continuity.
+- Keep Compose inputs stable, state ownership explicit, recomposition/animation bounded, and critical journeys represented in Baseline Profiles. Visually inspect every affected screen at the smallest representative device matrix.
 
-Before versioning, artifacts, APK/AAB, signing, Play Console, privacy declarations, or release work, read `TrainIQ-Project/docs/play-privacy-release-evidence.md`, `TrainIQ-Project/docs/release/final-release-risk-register.md`, and the relevant release checklist fully. Open owner gates remain blockers; never imply release readiness without their recorded evidence.
+## Health, AI, and data invariants
 
-## Product implementation rules
+- Health Connect: always check `HealthConnectClient.getSdkStatus()`, handle provider missing/update, explain value before the system prompt, request least privilege, and support denial, repeated cancellation, partial/revoked access, background-read availability, paging, and Manage Access. Use a `ChangesToken` per record type and fetch all pages of inserts, updates, and deletions since successful sync for steps, heart rate, sleep, active calories, and workout sessions.
+- Gemini: default to `gemini-2.5-flash` with the Senior Strength Coach persona and no unsupported medical claims. Require schema-backed JSON using `responseMimeType = "application/json"`; never regex free text into JSON or expose chain-of-thought. Use `thinkingBudget = 0` for fast scan/classification and `500-1000` for coaching, recovery, reports, debriefs, and recommendations.
+- Keep AI opt-in and context-minimal with bounded timeout/cancellation/retry, safe errors, and deterministic local fallback where practical. Never hardcode, log, or commit keys; retain Keystore-backed storage and fail closed on migration errors.
+- Room is authoritative for app-owned data; legacy JSON is import/export/backup only. Before persisted fields inspect `Entities.kt`, `DomainModels.kt`, `Mappers.kt`, DAOs, repositories, use cases, schemas, and navigation. Prefer `AutoMigration`; otherwise use verified SQL migrations. Preserve transactions, idempotent imports, and rollback on invalid data.
 
-### Material 3 and adaptive UX
+## Devices and scalable tests
 
-- Use `MaterialTheme.colorScheme` and `MaterialTheme.typography`, with Dynamic Color on Android 12+.
-- Prefer shimmer loading states, subtle `AnimatedContent` transitions, and haptics for important actions.
-- Support compact phones, tablets, and foldables through window-size-aware layouts; verify dark mode, font scale, accessibility semantics, and touch targets.
-- Use shared transitions where appropriate for Home -> Active Workout, Workout List -> Workout Detail, and Meal Scan -> Result.
-- Avoid unnecessary Compose recompositions and maintain Baseline Profiles for critical journeys.
+Put each test at the lowest layer with enough fidelity: pure rules/mappers/use cases in unit tests; ViewModels/reducers/flows in deterministic state tests; Room/migrations/transactions in contract/integration tests; Android/Health Connect/permissions/lifecycle/navigation in targeted instrumented tests; only critical journeys in UI/release smoke tests; performance in macrobenchmarks.
 
-### Health Connect
+Every behavior change proves its happy path, relevant boundary, and failure/recovery behavior. Use existing JUnit/Turbine patterns plus reusable fixtures/builders, controlled clocks/dispatchers, and deterministic fakes; use MockK only where justified. Avoid sleeps, shared mutable state, duplicated cross-layer assertions, implementation coupling, and oversized end-to-end suites. Never weaken, skip, or delete a valid test to pass a gate; diagnose flakes at their owning layer.
 
-- Always check `HealthConnectClient.getSdkStatus()` and handle provider-missing/update states safely.
-- Explain value and requested signals in the app-owned rationale/permission manager before opening the system permission prompt.
-- Request only necessary permissions and handle denial, partial grants, revocation, unavailable background reads, and paging.
-- Sync incrementally with a `ChangesToken` per metric/record type and fetch only changes since the last successful sync.
-- Supported core metrics are steps, heart rate, sleep, active calories, and workout sessions.
+For repeatable instrumented automation prefer a project-configured Gradle Managed Device; do not add that configuration during unrelated work. For interactive QA discover SDK tools from `local.properties`, `ANDROID_SDK_ROOT`/`ANDROID_HOME`, then standard OS paths; Android Studio is a fallback, not a runtime dependency.
 
-### Gemini
+- List devices/AVDs, select an isolated compatible target, wait for `sys.boot_completed`, and scope every `adb` call to its serial. Never commandeer, reset, wipe, reconfigure, or change permissions on an unknown physical device or user AVD.
+- If a target is occupied/uncertain, start another compatible AVD; if none exists, autonomous mode may create one uniquely named agent-owned AVD only from an installed image with sufficient capacity. Never silently download SDK assets, accept licenses, wipe/delete an AVD, or expand the device matrix.
+- Capture appropriate screenshot, UI-tree, lifecycle, and crash-log evidence. Run at most one agent-created emulator unless acceptance criteria require a matrix; stop only emulators the agent started and report any created AVD.
+- For Health Connect evidence, use `scripts/collect-health-connect-runtime-evidence.ps1` only on an approved safe profile/device.
 
-- Default to `gemini-2.5-flash` and preserve the Senior Strength Coach persona without unsupported medical claims.
-- Require structured JSON using `responseMimeType = "application/json"` and a response schema; never recover JSON from free text with regex and never expose chain-of-thought.
-- Fast scan/classification flows use `thinkingBudget = 0`; coach advice, weekly reports, recovery analysis, debriefs, and training recommendations use a bounded `500-1000` token budget.
-- Keep AI opt-in, minimize sent context, use bounded timeouts/cancellation/retries, show safe errors, and provide deterministic local fallback where practical.
-- Never hardcode, log, or commit API keys; retain Android Keystore-backed storage and fail closed on key migration errors.
+## Commands and risk-based gates
 
-### Room and tests
-
-- Before adding or changing persisted fields, inspect `Entities.kt`, `DomainModels.kt`, `Mappers.kt`, DAOs, repositories, use cases, existing schemas, and navigation impact.
-- Prefer `AutoMigration`; use explicit SQL migrations when required. Preserve transactions, idempotent import planning, and rollback on invalid data.
-- Add or update tests that prove changed behavior, especially mappers, use cases, repository/transaction logic, migrations, permissions, and UI-state reducers. Prefer JUnit, Turbine, and MockK where they fit existing patterns.
-
-## Commands
-
-Run Gradle from `TrainIQ-Project/` (use `gradlew` on Unix):
-
-```powershell
-.\gradlew.bat :app:assembleDebug --console=plain
-.\gradlew.bat :app:testDebugUnitTest --console=plain
-.\gradlew.bat :app:lintDebug --console=plain
-.\gradlew.bat :app:connectedDebugAndroidTest --console=plain
-```
-
-- Use the smallest relevant task during development; the local baseline is debug assemble, unit tests, and lint.
-- Device-dependent work uses `connectedDebugAndroidTest`; Health Connect evidence uses `scripts/collect-health-connect-runtime-evidence.ps1` only on an approved safe profile/device.
-- Performance validation uses `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:macrobenchmark:connectedProfileableAndroidTest`; trust performance numbers only from a physical device.
-- Release work also runs `:app:checkReleaseSigningReadiness` and the affected release/profileable gates. Never insert signing secrets into commands, source, `BuildConfig`, logs, or evidence.
-
-## Autonomy and safety
-
-Unless the user narrows the task, inspect first, make material choices once, implement the smallest reversible change, test it, and create focused local commits. Infer safe details from repository evidence; ask only for unavailable authority or unresolved choices involving data loss, privacy/security, cost, downtime, or stability. Browse only when current primary guidance can change the approach, stop when sufficient, delegate only when requested and independent, batch related work, and do not reread unchanged context.
-
-Preserve user work and scope. Do not stash, discard, overwrite, rename, or include unrelated changes. Never expose secrets, personal health data, photos, telemetry, or credentials. Add dependencies or alter unfamiliar services, permissions, configuration, schemas, or data formats only after understanding purpose, impact, migration needs, and safer alternatives.
-
-Pushes, pull requests, merges, releases, deployments, signing, secret changes, permission grants/revocations, and remote data mutations require an explicit user request naming that action. Never force-push, rewrite shared history, hard-reset, destructively clean, bypass protection, or delete data, branches, tags, releases, or unmerged work without separate exact authorization and verified targets.
-
-## Git workflow
-
-- Before writing, inspect status, branch, relevant history, and the architecture surfaces named above.
-- Start clean-`main` write work on `codex/<slug>`; continue an existing task branch. With unrelated user changes, use an isolated worktree without moving them; if changes overlap, stop for direction.
-- Keep changes small and consistent with existing naming. Do not duplicate entities, models, repositories, use cases, or routes.
-- Stage exact task paths, never blind `git add -A`; review the scoped diff and run `git diff --check` before committing.
-- Commit complete, revertible units with Conventional Commits: `feat`, `fix`, `test`, `docs`, `refactor`, `perf`, `build`, `chore`, `style`, or `revert`.
-- Remove an agent-owned branch or worktree only after confirmed merge and clean state.
-
-## Verification and completion
-
-- During work, run the smallest relevant check. Before a local commit, run focused tests and `git diff --check`.
-- Before an authorized push or PR, run debug assemble, unit tests, lint, and every affected device, migration, Health Connect, security, or performance gate.
-- Release, shared persistence/migration, verification tooling, or explicitly requested full validation requires all applicable local, connected, profileable, signing-readiness, privacy, and release gates—not one synthetic command.
-- Documentation-only work uses scoped content, path/link, and diff checks. Fail fast, fix in-scope root causes, report unrelated failures without changing them, and do not repeat unchanged checks or add CI workflows unless explicitly requested.
-- PR evidence states what and why, scope, exact commands/results, risks, linked issues, and applicable migration, privacy, security, AI-context, tooling, artifact, device, and visual evidence.
-- Report only material decisions, assumptions, blockers, deviations, and verification. Stop when acceptance criteria and required checks pass; do not add unrelated cleanup or polish.
+Run from `TrainIQ-Project/`: `./gradlew` on Unix or `gradlew.bat` on Windows.
 
 ```text
-Long-term code health > short-term speed
+:app:assembleDebug | :app:testDebugUnitTest | :app:lintDebug
+:app:connectedDebugAndroidTest
+:app:assembleProfileable | :macrobenchmark:assembleAndroidTest | :macrobenchmark:connectedProfileableAndroidTest
+:app:checkReleaseSigningReadiness
 ```
+
+During work run the smallest affected check. Before a local commit run focused tests and `git diff --check`. Before an authorized push/PR run debug assemble, unit tests, lint, and every affected device/migration/security/performance gate. Use physical hardware for trustworthy performance numbers. Release/shared-migration/tooling changes require all applicable connected, profileable, signing, privacy, and release gates. Documentation-only work uses scoped content/path/link/diff checks.
+
+## Git, safety, and completion
+
+- Start clean-`main` write work on `codex/<slug>`; continue an existing task branch. With unrelated changes use an isolated worktree without moving them; stop if changes overlap.
+- Add dependencies or change services, permissions, config, schemas, or formats only after understanding purpose, migration, impact, and safer alternatives. Never expose secrets, health data, photos, telemetry, credentials, or signing material.
+- Stage exact task paths—never `git add -A`—review scoped staged diff and risk, then create complete revertible Conventional Commits (`feat|fix|test|docs|refactor|perf|build|chore|style|revert`).
+- Never force-push, rewrite shared history, bypass protections, destructively clean, or delete data, branches, tags, releases, AVDs, or unmerged work without separate exact authorization and verified targets.
+- Fail fast, fix in-scope root causes, and report unrelated failures without changing them. Do not repeat unchanged checks, add CI, or introduce unrelated cleanup.
+- Report decisions, assumptions, exact verification and results, residual risks, blockers, deviations, and changed paths. PR evidence also covers purpose, scope, linked issues, and applicable migration/privacy/security/AI/tooling/artifact/device/visual evidence. Stop when acceptance criteria and required gates pass.
+
+`Long-term code health > short-term speed.`
