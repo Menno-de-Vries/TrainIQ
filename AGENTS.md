@@ -1,245 +1,110 @@
-# TrainIQ — Engineering Foundation \& Standards
+# TrainIQ Agent Contract
 
-Dit document is de leidende standaard voor technische keuzes binnen TrainIQ. Elke implementatie moet schaalbaar, onderhoudbaar, performant en AI-native blijven.
+This file is the leading engineering contract for TrainIQ. Optimize for long-term code health: scalable, maintainable, performant, privacy-conscious, and AI-native.
 
-\---
+## Product and roadmap
 
-## 🚀 Projectvisie
-
-**TrainIQ** zet passieve gezondheidsdata om in actieve coaching.
+TrainIQ turns passive health data into proactive, personal coaching:
 
 ```text
-Health Connect → Gemini 2.5 Flash → Material 3 UI → Persoonlijke actie
+Health Connect -> Gemini 2.5 Flash -> Material 3 UI -> Personal action
 ```
 
-**Doel:** een bijna onzichtbare gebruikerservaring waarbij data automatisch wordt verzameld en inzichten proactief worden aangeboden.
+- Foundation: MVVM with Hilt, Room entities/repositories, and a Health Connect data source.
+- Modernization and precision: type-safe navigation, adaptive Material 3, incremental Health Connect sync, multi-metric support, Gemini 2.5 Flash, and bounded thinking budgets.
+- Invisible coach: proactive sleep/recovery/training insights, multimodal meal/label/posture scanning, and Gemini Nano for suitable local feedback.
 
-\---
+## Scope and routing
 
-## 🗺️ Roadmap 2026
+The Android project lives in `TrainIQ-Project/` and uses Kotlin, Jetpack Compose, Hilt, Room, Health Connect, CameraX, and Gemini. Preserve `MVVM + Clean Architecture + Unidirectional Data Flow` (`Data -> Domain -> UI`).
 
-### Phase 1 — Foundation
+- Put screens and feature ViewModels in `app/src/main/java/com/trainiq/features/`, business rules and use cases in `domain/`, persistence and external data access in `data/`, shared app code in `core/`, and routes in `navigation/`.
+- UI reads ViewModel state only. Each screen exposes one `uiState: StateFlow<T>` modeled as a sealed `Loading`, `Success`, or `Error` state. Keep mapping and business logic out of composables.
+- Use Hilt; repositories are `@Singleton` and ViewModel-owned dependencies are `@ViewModelScoped`.
+- Use Navigation 2.8+ type-safe `kotlinx.serialization` routes; never add string-based routes.
+- Mirror production packages under `app/src/test/` or `app/src/androidTest/`; keep Room schemas in `app/schemas/` and performance tests in `macrobenchmark/`.
+- Never edit generated `**/build/`, `.gradle/`, `TrainIQ-Project/dist/`, IDE output, or generated source/resource content.
 
-* MVVM-structuur met Hilt DI
-* Room entities en repositories
-* Eerste Health Connect DataSource
-* Gemini 1.5/2.0-integratie aanwezig, maar update nodig
+Before changing visible UI, product/health/AI copy, interaction, accessibility, responsive behavior, or navigation, read `TrainIQ_Target_State_Blueprint.md` and `docs/TrainIQ_Architecture_Decisions.md` fully; they govern product truth, states, layouts, inputs, and visual verification.
 
-### Phase 2 — Modernization \& Precision
+Before changing Room, migrations, Health Connect, Gemini transport or keys, telemetry, sensitive data, permissions, manifests, or security boundaries, read `docs/TrainIQ_Architecture_Decisions.md` plus the relevant documents under `TrainIQ-Project/docs/security/` fully. Preserve Room as the app-owned source of truth and legacy JSON only as an import/export/backup bridge.
 
-* Type-safe navigation met `kotlinx.serialization`
-* Volledige Material 3 UI met Dynamic Color
-* Health Connect-sync met `ChangesToken`
-* Multi-metric support: steps, heart rate, sleep, active calories en workouts
-* Upgrade naar Gemini 2.5 Flash
-* Thinking Budget voor coach-, advies- en rapportagefeatures
+Before versioning, artifacts, APK/AAB, signing, Play Console, privacy declarations, or release work, read `TrainIQ-Project/docs/play-privacy-release-evidence.md`, `TrainIQ-Project/docs/release/final-release-risk-register.md`, and the relevant release checklist fully. Open owner gates remain blockers; never imply release readiness without their recorded evidence.
 
-### Phase 3 — Invisible Coach
+## Product implementation rules
 
-* Proactieve inzichten op basis van slaap, herstel en training
-* Multimodal scanning voor maaltijden, supplementlabels en fysieke houding
-* Gemini Nano voor snelle lokale feedback waar mogelijk
+### Material 3 and adaptive UX
 
-\---
+- Use `MaterialTheme.colorScheme` and `MaterialTheme.typography`, with Dynamic Color on Android 12+.
+- Prefer shimmer loading states, subtle `AnimatedContent` transitions, and haptics for important actions.
+- Support compact phones, tablets, and foldables through window-size-aware layouts; verify dark mode, font scale, accessibility semantics, and touch targets.
+- Use shared transitions where appropriate for Home -> Active Workout, Workout List -> Workout Detail, and Meal Scan -> Result.
+- Avoid unnecessary Compose recompositions and maintain Baseline Profiles for critical journeys.
 
-## 🛠️ Architectuur
+### Health Connect
 
-TrainIQ gebruikt:
+- Always check `HealthConnectClient.getSdkStatus()` and handle provider-missing/update states safely.
+- Explain value and requested signals in the app-owned rationale/permission manager before opening the system permission prompt.
+- Request only necessary permissions and handle denial, partial grants, revocation, unavailable background reads, and paging.
+- Sync incrementally with a `ChangesToken` per metric/record type and fetch only changes since the last successful sync.
+- Supported core metrics are steps, heart rate, sleep, active calories, and workout sessions.
 
-```text
-MVVM + Clean Architecture + Unidirectional Data Flow
+### Gemini
+
+- Default to `gemini-2.5-flash` and preserve the Senior Strength Coach persona without unsupported medical claims.
+- Require structured JSON using `responseMimeType = "application/json"` and a response schema; never recover JSON from free text with regex and never expose chain-of-thought.
+- Fast scan/classification flows use `thinkingBudget = 0`; coach advice, weekly reports, recovery analysis, debriefs, and training recommendations use a bounded `500-1000` token budget.
+- Keep AI opt-in, minimize sent context, use bounded timeouts/cancellation/retries, show safe errors, and provide deterministic local fallback where practical.
+- Never hardcode, log, or commit API keys; retain Android Keystore-backed storage and fail closed on key migration errors.
+
+### Room and tests
+
+- Before adding or changing persisted fields, inspect `Entities.kt`, `DomainModels.kt`, `Mappers.kt`, DAOs, repositories, use cases, existing schemas, and navigation impact.
+- Prefer `AutoMigration`; use explicit SQL migrations when required. Preserve transactions, idempotent import planning, and rollback on invalid data.
+- Add or update tests that prove changed behavior, especially mappers, use cases, repository/transaction logic, migrations, permissions, and UI-state reducers. Prefer JUnit, Turbine, and MockK where they fit existing patterns.
+
+## Commands
+
+Run Gradle from `TrainIQ-Project/` (use `gradlew` on Unix):
+
+```powershell
+.\gradlew.bat :app:assembleDebug --console=plain
+.\gradlew.bat :app:testDebugUnitTest --console=plain
+.\gradlew.bat :app:lintDebug --console=plain
+.\gradlew.bat :app:connectedDebugAndroidTest --console=plain
 ```
 
-Structuur:
+- Use the smallest relevant task during development; the local baseline is debug assemble, unit tests, and lint.
+- Device-dependent work uses `connectedDebugAndroidTest`; Health Connect evidence uses `scripts/collect-health-connect-runtime-evidence.ps1` only on an approved safe profile/device.
+- Performance validation uses `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:macrobenchmark:connectedProfileableAndroidTest`; trust performance numbers only from a physical device.
+- Release work also runs `:app:checkReleaseSigningReadiness` and the affected release/profileable gates. Never insert signing secrets into commands, source, `BuildConfig`, logs, or evidence.
 
-```text
-Data → Domain → UI
-```
+## Autonomy and safety
 
-Regels:
+Unless the user narrows the task, inspect first, make material choices once, implement the smallest reversible change, test it, and create focused local commits. Infer safe details from repository evidence; ask only for unavailable authority or unresolved choices involving data loss, privacy/security, cost, downtime, or stability. Browse only when current primary guidance can change the approach, stop when sufficient, delegate only when requested and independent, batch related work, and do not reread unchanged context.
 
-* Business logic staat in `UseCases`
-* UI gebruikt alleen state uit ViewModels
-* Elke screen heeft één `uiState: StateFlow<T>`
-* UI-state gebruikt een sealed interface: `Loading`, `Success`, `Error`
-* Dependency Injection gebeurt met Hilt
-* Repositories zijn `@Singleton`
-* ViewModel-afhankelijke objecten zijn `@ViewModelScoped`
-* Navigatie gebruikt Navigation 2.8.0+ type-safe routes
-* Geen string-based routes gebruiken
+Preserve user work and scope. Do not stash, discard, overwrite, rename, or include unrelated changes. Never expose secrets, personal health data, photos, telemetry, or credentials. Add dependencies or alter unfamiliar services, permissions, configuration, schemas, or data formats only after understanding purpose, impact, migration needs, and safer alternatives.
 
-Voorbeeld:
+Pushes, pull requests, merges, releases, deployments, signing, secret changes, permission grants/revocations, and remote data mutations require an explicit user request naming that action. Never force-push, rewrite shared history, hard-reset, destructively clean, bypass protection, or delete data, branches, tags, releases, or unmerged work without separate exact authorization and verified targets.
 
-```kotlin
-sealed interface UiState {
-    data object Loading : UiState
-    data class Success(...) : UiState
-    data class Error(val message: String) : UiState
-}
-```
+## Git workflow
 
-\---
+- Before writing, inspect status, branch, relevant history, and the architecture surfaces named above.
+- Start clean-`main` write work on `codex/<slug>`; continue an existing task branch. With unrelated user changes, use an isolated worktree without moving them; if changes overlap, stop for direction.
+- Keep changes small and consistent with existing naming. Do not duplicate entities, models, repositories, use cases, or routes.
+- Stage exact task paths, never blind `git add -A`; review the scoped diff and run `git diff --check` before committing.
+- Commit complete, revertible units with Conventional Commits: `feat`, `fix`, `test`, `docs`, `refactor`, `perf`, `build`, `chore`, `style`, or `revert`.
+- Remove an agent-owned branch or worktree only after confirmed merge and clean state.
 
-## 🎨 UI/UX Standards
+## Verification and completion
 
-TrainIQ moet modern, vloeiend en rustig aanvoelen.
-
-Verplicht:
-
-* Gebruik overal `MaterialTheme.colorScheme`
-* Gebruik overal `MaterialTheme.typography`
-* Ondersteun Dynamic Color op Android 12+
-* Gebruik shimmer states in plaats van standaard spinners
-* Gebruik subtiele animaties met `AnimatedContent`
-* Voeg haptic feedback toe bij belangrijke acties
-* Ondersteun tablets en foldables met `WindowSizeClass`
-
-Aanbevolen flows voor shared transitions:
-
-```text
-Home → Active Workout
-Workout List → Workout Detail
-Meal Scan → Result
-```
-
-\---
-
-## ❤️ Health Connect Standards
-
-Health Connect is de databron van TrainIQ en moet veilig, duidelijk en betrouwbaar werken.
-
-Verplicht:
-
-* Controleer altijd `HealthConnectClient.getSdkStatus()`
-* Handel `PROVIDER\\\_MISSING` netjes af
-* Toon eerst een Permission Manager-screen met uitleg
-* Toon pas daarna de systeem-permission prompt
-* Gebruik `ChangesToken` voor incrementele sync
-* Haal alleen gewijzigde data op sinds de laatste sync
-
-Belangrijke metrics:
-
-* Steps
-* Heart Rate
-* Sleep
-* Active Calories
-* Workout Sessions
-
-\---
-
-## 🤖 Gemini 2.5 Flash Standards
-
-Gemini is de reasoning engine van TrainIQ.
-
-### Fast Mode
-
-Voor snelle taken zoals meal scanning, barcodeherkenning en simpele classificatie.
-
-```text
-Thinking disabled
-```
-
-### Deep Mode
-
-Voor coachadvies, weekrapporten, herstelanalyse en trainingsaanbevelingen.
-
-```text
-Thinking Budget: 500–1000 tokens
-```
-
-AI-regels:
-
-* Gebruik standaard Gemini 2.5 Flash
-* Behoud de persona van een Senior Strength Coach
-* Output moet altijd JSON zijn
-* Gebruik `response\\\_mime\\\_type: "application/json"`
-* Gebruik nooit regex om JSON uit vrije tekst te halen
-
-\---
-
-## 🗄️ Database \& Quality
-
-### Room
-
-* Gebruik `AutoMigration` waar mogelijk
-* Gebruik handmatige SQL-migraties wanneer nodig
-* Controleer vóór nieuwe velden altijd:
-
-  * `Entities.kt`
-  * `DomainModels.kt`
-  * `Mappers.kt`
-
-### Performance
-
-* Gebruik Baseline Profiles tegen startup-lag en JIT-vertraging
-* Vermijd onnodige recompositions in Compose
-* Houd mapping en business logic buiten de UI-laag
-
-### Testing
-
-Verplicht testen voor:
-
-* `Mappers.kt`
-* `UseCases.kt`
-* Belangrijke repositorylogica
-
-Aanbevolen:
-
-* JUnit
-* Turbine
-* MockK
-
-\---
-
-## 🚦 Gemini CLI / Codex Workflow
-
-Gebruik bij elke wijziging deze volgorde:
-
-### 1\. Research
-
-Controleer eerst:
-
-```text
-Entities.kt
-DomainModels.kt
-Repositories
-UseCases
-Navigation routes
-```
-
-Voeg niets dubbel of inconsistent toe.
-
-### 2\. Act
-
-* Gebruik `replace` voor kleine, precieze wijzigingen
-* Houd wijzigingen klein en controleerbaar
-* Voeg bij nieuwe AI-calls Gemini 2.5 Flash-parameters toe
-* Respecteer bestaande architectuur en naming conventions
-
-### 3\. Validate
-
-Minimaal:
-
-```text
-Compile check
-```
-
-Waar relevant:
-
-* Unit tests
-* Mapper tests
-* UseCase tests
-* UI state checks
-
-\---
-
-## ✅ Hoofdregel
+- During work, run the smallest relevant check. Before a local commit, run focused tests and `git diff --check`.
+- Before an authorized push or PR, run debug assemble, unit tests, lint, and every affected device, migration, Health Connect, security, or performance gate.
+- Release, shared persistence/migration, verification tooling, or explicitly requested full validation requires all applicable local, connected, profileable, signing-readiness, privacy, and release gates—not one synthetic command.
+- Documentation-only work uses scoped content, path/link, and diff checks. Fail fast, fix in-scope root causes, report unrelated failures without changing them, and do not repeat unchanged checks or add CI workflows unless explicitly requested.
+- PR evidence states what and why, scope, exact commands/results, risks, linked issues, and applicable migration, privacy, security, AI-context, tooling, artifact, device, and visual evidence.
+- Report only material decisions, assumptions, blockers, deviations, and verification. Stop when acceptance criteria and required checks pass; do not add unrelated cleanup or polish.
 
 ```text
 Long-term code health > short-term speed
 ```
-
-TrainIQ moet groeien als een stabiele, moderne en AI-native health-app.
-
-
-
