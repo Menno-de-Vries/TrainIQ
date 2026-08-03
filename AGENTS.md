@@ -58,7 +58,7 @@ Use Kotlin, Compose, Hilt, Room, Health Connect, CameraX, and Gemini with `MVVM 
 
 ## Devices and canonical local gates
 
-- Prefer a configured Gradle Managed Device for repeatable instrumentation. Otherwise discover SDK tools from `local.properties`, `ANDROID_SDK_ROOT`/`ANDROID_HOME`, then standard paths; list targets, select one compatible isolated serial, wait for `sys.boot_completed`, and scope every `adb` call.
+- Use the configured `:app:connectedDebugAndroidTest` route for instrumentation. Discover SDK tools from `local.properties`, `ANDROID_SDK_ROOT`/`ANDROID_HOME`, then standard paths; list targets, select one compatible isolated serial, wait for `sys.boot_completed`, and scope every `adb` call.
 - Never commandeer, reset, wipe, reconfigure, or change permissions on an unknown physical/user device. If occupied/uncertain, start another installed compatible AVD; create one uniquely named agent-owned AVD only when necessary and within capacity. Never silently download/accept licenses, delete AVD data, or expand the matrix. Stop only emulators the agent started and report created AVDs.
 - Capture only required screenshot/UI-tree/lifecycle/crash evidence. Use `scripts/collect-health-connect-runtime-evidence.ps1` only on an approved safe profile/device; use physical hardware for performance claims.
 - Canonical local gates from `TrainIQ-Project/`: `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, `:app:connectedDebugAndroidTest`, `:app:generateDebugRoomMigrationChainVerificationMarker`, `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, `:macrobenchmark:connectedProfileableAndroidTest`, `:app:checkReleaseSigningReadiness`. Exact commands and evidence rules live in the testing guide.
