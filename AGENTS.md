@@ -8,7 +8,7 @@ Platform instructions remain authoritative. Within this repository use: `Safety 
 
 Use evidence in this order: `repository code/config -> TrainIQ ADR or targeted guide -> current official primary source`. Keep stable rules here; verify volatile SDK, library, model, policy, and tool behavior against pinned versions and owning-vendor documentation. Browse only when requested or when current guidance can materially change the solution; record sources for lasting decisions and stop when evidence is sufficient. Preserve pinned behavior when guidance differs unless changing it is in scope.
 
-The app is under `TrainIQ-Project/`. Before narrow work, read relevant sections of `TrainIQ_Target_State_Blueprint.md`, `docs/TrainIQ_Architecture_Decisions.md`, and affected QA/security/release guides. For artifacts, signing, Play, privacy, or release, include `TrainIQ-Project/docs/play-privacy-release-evidence.md` and `TrainIQ-Project/docs/release/final-release-risk-register.md`; open owner gates remain blockers. Read governing documents fully for broad UI, cross-feature, migration, security, AI-boundary, privacy, or release work. Do not reread unchanged context in one task.
+The app is under `TrainIQ-Project/`. Before narrow work, read relevant sections of `TrainIQ_Target_State_Blueprint.md`, `docs/TrainIQ_Architecture_Decisions.md`, and affected guides. Read `docs/agent-guides/local-testing.md` fully before behavior, test, UI/UX, platform, persistence, remote-boundary, performance, verification-tooling, PR-evidence, or release work. For artifacts, signing, Play, privacy, or release, include `TrainIQ-Project/docs/play-privacy-release-evidence.md` and `TrainIQ-Project/docs/release/final-release-risk-register.md`; open owner gates remain blockers. Read governing documents fully for broad/cross-feature, migration, security, AI-boundary, privacy, or release work. Do not reread unchanged context in one task.
 
 ## Autonomous execution
 
@@ -48,37 +48,26 @@ Use Kotlin, Compose, Hilt, Room, Health Connect, CameraX, and Gemini with `MVVM 
 - Keep AI opt-in and context-minimal with bounded timeout/cancellation/retry, safe errors, and deterministic local fallback where practical. Never hardcode, log, or commit keys; retain Keystore-backed storage and fail closed on migration errors.
 - Room is authoritative for app-owned data; legacy JSON is import/export/backup only. Before persisted fields inspect `Entities.kt`, `DomainModels.kt`, `Mappers.kt`, DAOs, repositories, use cases, schemas, and navigation. Prefer `AutoMigration`; otherwise use verified SQL migrations. Preserve transactions, idempotent imports, and rollback on invalid data.
 
-## Devices and scalable tests
+## Local-only scalable quality
 
-Put each test at the lowest layer with enough fidelity: pure rules/mappers/use cases in unit tests; ViewModels/reducers/flows in deterministic state tests; Room/migrations/transactions in contract/integration tests; Android/Health Connect/permissions/lifecycle/navigation in targeted instrumented tests; only critical journeys in UI/release smoke tests; performance in macrobenchmarks.
+- Track test source, deterministic fixtures, schemas, and essential reproducibility assets; run every build/test/evidence gate locally. Never add or use GitHub Actions, hosted runners, cloud test/device services, or remote build caches without a separate exact request. GitHub status is not test evidence; generated reports, binaries, logs, captures, traces, emulator data, and caches stay untracked.
+- Select tests from changed surfaces plus transitive risk, always at the lowest reliable layer: domain/mappers/use cases -> unit; ViewModel/reducer/Flow -> deterministic state/component; Compose -> state/semantics/selective visual; navigation/lifecycle/permissions -> targeted instrumented; Room/repository/migration -> contract/transaction/migration; Health Connect/CameraX -> fakes plus safe device; Gemini/remote/backend -> schema/timeout/error/fallback/privacy; cross-cutting/release/performance -> applicable full local matrix.
+- Every behavior proves happy path, material boundary, and failure/recovery without equivalent cross-layer assertions. Add broader tests only when cheaper layers cannot prove the risk; update/remove obsolete tests and fixtures with removed behavior. Never weaken, skip, or delete a valid test to pass a gate; treat flakes as defects.
+- Widen once per invalidated scope: `edit -> focused proof | pre-commit -> affected layers | authorized PR -> local baseline + affected gates | release -> applicable full matrix + owner/device evidence`. Reuse passing evidence until relevant code/config/dependency/fixture/schema/environment inputs change; do not rerun unchanged gates or use routine `clean`.
+- In `autonoom` mode classify surfaces/risk, add maintainable tests, run all required gates locally, diagnose failures, provision at most one safe emulator, and record exact evidence without asking choices this contract/guide answers.
 
-Every behavior change proves its happy path, relevant boundary, and failure/recovery behavior. Use existing JUnit/Turbine patterns plus reusable fixtures/builders, controlled clocks/dispatchers, and deterministic fakes; use MockK only where justified. Avoid sleeps, shared mutable state, duplicated cross-layer assertions, implementation coupling, and oversized end-to-end suites. Never weaken, skip, or delete a valid test to pass a gate; diagnose flakes at their owning layer.
+## Devices and canonical local gates
 
-For repeatable instrumented automation prefer a project-configured Gradle Managed Device; do not add that configuration during unrelated work. For interactive QA discover SDK tools from `local.properties`, `ANDROID_SDK_ROOT`/`ANDROID_HOME`, then standard OS paths; Android Studio is a fallback, not a runtime dependency.
-
-- List devices/AVDs, select an isolated compatible target, wait for `sys.boot_completed`, and scope every `adb` call to its serial. Never commandeer, reset, wipe, reconfigure, or change permissions on an unknown physical device or user AVD.
-- If a target is occupied/uncertain, start another compatible AVD; if none exists, autonomous mode may create one uniquely named agent-owned AVD only from an installed image with sufficient capacity. Never silently download SDK assets, accept licenses, wipe/delete an AVD, or expand the device matrix.
-- Capture appropriate screenshot, UI-tree, lifecycle, and crash-log evidence. Run at most one agent-created emulator unless acceptance criteria require a matrix; stop only emulators the agent started and report any created AVD.
-- For Health Connect evidence, use `scripts/collect-health-connect-runtime-evidence.ps1` only on an approved safe profile/device.
-
-## Commands and risk-based gates
-
-Run from `TrainIQ-Project/`: `./gradlew` on Unix or `gradlew.bat` on Windows.
-
-```text
-:app:assembleDebug | :app:testDebugUnitTest | :app:lintDebug
-:app:connectedDebugAndroidTest
-:app:assembleProfileable | :macrobenchmark:assembleAndroidTest | :macrobenchmark:connectedProfileableAndroidTest
-:app:checkReleaseSigningReadiness
-```
-
-During work run the smallest affected check. Before a local commit run focused tests and `git diff --check`. Before an authorized push/PR run debug assemble, unit tests, lint, and every affected device/migration/security/performance gate. Use physical hardware for trustworthy performance numbers. Release/shared-migration/tooling changes require all applicable connected, profileable, signing, privacy, and release gates. Documentation-only work uses scoped content/path/link/diff checks.
+- Prefer a configured Gradle Managed Device for repeatable instrumentation. Otherwise discover SDK tools from `local.properties`, `ANDROID_SDK_ROOT`/`ANDROID_HOME`, then standard paths; list targets, select one compatible isolated serial, wait for `sys.boot_completed`, and scope every `adb` call.
+- Never commandeer, reset, wipe, reconfigure, or change permissions on an unknown physical/user device. If occupied/uncertain, start another installed compatible AVD; create one uniquely named agent-owned AVD only when necessary and within capacity. Never silently download/accept licenses, delete AVD data, or expand the matrix. Stop only emulators the agent started and report created AVDs.
+- Capture only required screenshot/UI-tree/lifecycle/crash evidence. Use `scripts/collect-health-connect-runtime-evidence.ps1` only on an approved safe profile/device; use physical hardware for performance claims.
+- Canonical local gates from `TrainIQ-Project/`: `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, `:app:connectedDebugAndroidTest`, `:app:generateDebugRoomMigrationChainVerificationMarker`, `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, `:macrobenchmark:connectedProfileableAndroidTest`, `:app:checkReleaseSigningReadiness`. Exact commands and evidence rules live in the testing guide.
 
 ## Git, safety, and completion
 
 - Start clean-`main` write work on `codex/<slug>`; continue an existing task branch. With unrelated changes use an isolated worktree without moving them; stop if changes overlap.
 - Add dependencies or change services, permissions, config, schemas, or formats only after understanding purpose, migration, impact, and safer alternatives. Never expose secrets, health data, photos, telemetry, credentials, or signing material.
-- Stage exact task paths—never `git add -A`—review scoped staged diff and risk, then create complete revertible Conventional Commits (`feat|fix|test|docs|refactor|perf|build|chore|style|revert`).
+- Stage exact task paths; never `git add -A`. Review scoped staged diff and risk, then create complete revertible Conventional Commits (`feat|fix|test|docs|refactor|perf|build|chore|style|revert`).
 - Never force-push, rewrite shared history, bypass protections, destructively clean, or delete data, branches, tags, releases, AVDs, or unmerged work without separate exact authorization and verified targets.
 - Fail fast, fix in-scope root causes, and report unrelated failures without changing them. Do not repeat unchanged checks, add CI, or introduce unrelated cleanup.
 - Report decisions, assumptions, exact verification and results, residual risks, blockers, deviations, and changed paths. PR evidence also covers purpose, scope, linked issues, and applicable migration/privacy/security/AI/tooling/artifact/device/visual evidence. Stop when acceptance criteria and required gates pass.
