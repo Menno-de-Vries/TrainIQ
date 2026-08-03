@@ -45,12 +45,13 @@ Document current Windows commands from `TrainIQ-Project/`:
 .\gradlew.bat :app:testDebugUnitTest --console=plain
 .\gradlew.bat :app:lintDebug --console=plain
 .\gradlew.bat :app:connectedDebugAndroidTest --console=plain
+.\gradlew.bat :app:generateDebugRoomMigrationChainVerificationMarker --console=plain
 .\gradlew.bat :app:assembleProfileable :macrobenchmark:assembleAndroidTest --console=plain --no-daemon
 .\gradlew.bat :macrobenchmark:connectedProfileableAndroidTest --console=plain --no-daemon
 .\gradlew.bat :app:checkReleaseSigningReadiness --console=plain
 ```
 
-Route Health Connect evidence to `scripts/collect-health-connect-runtime-evidence.ps1` and retain physical-device requirements for trustworthy performance numbers.
+Run the migration marker after connected migration coverage; it provides canonical migration evidence. Route Health Connect evidence to `scripts/collect-health-connect-runtime-evidence.ps1` and retain physical-device requirements for trustworthy performance numbers.
 
 - [ ] **Step 4: Define widening, autonomy, failure, and sustainability rules**
 
@@ -107,9 +108,11 @@ Verify every matrix surface, local-only boundary, autonomous behavior, command, 
 
 - [ ] **Step 2: Check compactness and diffs**
 
-Compare `AGENTS.md` line count with 86, inspect scoped diffs, validate Markdown links/paths, and run `git diff --check`. Android build/test tasks are `NOT RUN` because implementation changes only policy documentation.
+Compare `AGENTS.md` line count with 86, inspect scoped diffs, validate Markdown links/paths, and run `git diff --check`. Local baseline `PASS`: `.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug --console=plain`. Connected-device, migration-marker, macrobenchmark, and release-signing gates are `NOT RUN` because the implementation changes only policy documentation.
 
 - [ ] **Step 3: Commit exact paths**
+
+The design spec was committed separately in `c4b5f48` and remained unchanged during implementation, so it is intentionally excluded from this commit.
 
 ```powershell
 git add -- AGENTS.md docs/agent-guides/local-testing.md docs/superpowers/plans/2026-08-03-scalable-local-testing-contract.md

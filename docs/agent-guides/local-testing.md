@@ -64,11 +64,13 @@ Local baseline:
 .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug --console=plain
 ```
 
-Connected Android tests:
+Connected Android tests are the project's configured instrumentation route:
 
 ```powershell
 .\gradlew.bat :app:connectedDebugAndroidTest --console=plain
 ```
+
+Inspect the generated HTML report under `app/build/reports/androidTests/connected/debug/` and machine-readable results under `app/build/outputs/androidTest-results/connected/debug/`; keep both untracked.
 
 Room migration marker after connected migration coverage:
 
