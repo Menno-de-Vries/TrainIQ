@@ -1016,3 +1016,34 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
 - Crash evidence: PASS, `.codex/device-qa/2026-05-10-training-setup-to-completion-polish/40-after-save-crash-buffer.txt` was empty.
 - External sources used: None. Local runtime evidence and existing app tests were sufficient.
 - Remaining risk: completion with Gemini-enabled debrief still needs API-key/network-path evidence; this pass verified local fallback completion.
+
+## 2026-08-05 Coach Profile Draft Recreation Polish
+
+### QA-2026-08-05-023
+
+- finding_id: QA-2026-08-05-023
+- priority: P2
+- area: Android lifecycle, UX, tests
+- status: done
+- owner suggestion: Android UI owner
+- current evidence with file references:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/coach/CoachScreen.kt` held every unsaved profile/goal field, biological-sex choice, activity-level choice, and validation error in ordinary `remember` state.
+  - The target-state blueprint requires onboarding input to survive rotation, resize, app switching, and process recreation where feasible.
+  - A real `MainActivity` instrumentation test reproduced the defect: `Rotatieprofiel` was entered and `Vrouw` selected, then `ActivityScenario.recreate()` reset the name field to empty.
+- external sources used: None. Repository target-state requirements, Compose behavior, and local instrumentation evidence were sufficient.
+- expected target-state behavior: Unsaved Coach profile/goal input remains intact across Activity recreation until the user saves or explicitly changes it.
+- concrete implemented fix: `CoachScreen` now uses `rememberSaveable` for all editable profile/goal strings, `BiologicalSex`, activity level, and the current validation error while leaving persisted profile hydration and Room ownership unchanged.
+- files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/coach/CoachScreen.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
+- regression risk: Low. The change affects only ephemeral pre-save UI state; persisted profile mapping, validation, use cases, and Room writes are unchanged.
+- verification evidence:
+  - RED: the focused connected test failed after recreation with `EditableText = ''` while expecting `Rotatieprofiel`.
+  - PASS: the same focused connected test after `rememberSaveable` implementation.
+  - PASS: focused `ProfileInputValidationTest`.
+  - PASS: local baseline surfaces `:app:assembleDebug`, `:app:testDebugUnitTest`, and `:app:lintDebug`.
+  - PASS: `:app:generateDebugRoomMigrationChainVerificationMarker`, including 45 connected tests on agent-owned `Pixel_8_API_36` / Android 16 with 0 failures.
+  - PASS: `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
+  - PASS: post-fix debug install and cold launch returned `Status: ok`, `TotalTime: 1832`, with empty crash and TrainIQ fatal/ANR slices.
+- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#profileDraftSurvivesActivityRecreationBeforeSave" --console=plain --no-configuration-cache`.
+- remaining risk: This test proves Activity recreation. Full OS-killed process restoration remains bounded by Android's saveable-state delivery and should be rechecked if navigation state restoration changes.

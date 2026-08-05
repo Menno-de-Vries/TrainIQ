@@ -2,15 +2,20 @@ package com.trainiq.flow
 
 import android.content.Context
 import android.content.Intent
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -74,6 +79,28 @@ class TrainIqFlowSmokeInstrumentedTest {
         }
     }
 
+    @Test
+    fun profileDraftSurvivesActivityRecreationBeforeSave() {
+        ActivityScenario.launch<MainActivity>(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ).use { scenario ->
+            waitForText("Instellen starten")
+            tap("Instellen starten")
+            waitForText("Doeladvies")
+
+            compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("Rotatieprofiel")
+            compose.onAllNodes(hasSetTextAction())[0].assertTextContains("Rotatieprofiel")
+            compose.onNodeWithText("Vrouw").performClick()
+            waitForSelectedText("Vrouw")
+
+            scenario.recreate()
+
+            waitForText("Doeladvies")
+            compose.onAllNodes(hasSetTextAction())[0].assertTextContains("Rotatieprofiel")
+            compose.onNodeWithText("Vrouw").assertIsSelected()
+        }
+    }
+
     private fun deleteAppLocalFile(relativePath: String) {
         val dataRoot = context.filesDir.parentFile ?: return
         val target = File(dataRoot, relativePath).canonicalFile
@@ -120,6 +147,12 @@ class TrainIqFlowSmokeInstrumentedTest {
     private fun waitForText(text: String) {
         compose.waitUntil(timeoutMillis = 10_000L) {
             compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    private fun waitForSelectedText(text: String) {
+        compose.waitUntil(timeoutMillis = 10_000L) {
+            compose.onAllNodes(hasText(text) and isSelected()).fetchSemanticsNodes().isNotEmpty()
         }
     }
 

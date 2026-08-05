@@ -1,16 +1,17 @@
 # TrainIQ Target-State Progress
 
-Updated date: 2026-05-12
+Updated date: 2026-08-05
 
 ## Alignment Score
 
 - Previous alignment: 93%
 - Current estimated alignment: 95%
 - Delta: +1 percentage point
-- Reason: 2026-05-10 and 2026-05-11 polish enhanced the blueprint/state docs, moved additional routine/workout/nutrition mutations to targeted Room writes, added representative process-restart instrumentation coverage, captured partial Health Connect runtime evidence with focused Health Connect unit tests, and verified/fixed AI routine plus representative active-workout compact/font-scale semantics, including logged-set correction controls, deeper AI routine controls, and seeded 360x640 active-workout route top/scrolled states. Manual accessibility evidence, performance owner gates, Health Connect edge-state runtime evidence, broader compact screen signoff, and owner release decisions remain open.
+- Reason: Earlier polish moved routine/workout/nutrition mutations to targeted Room writes and expanded runtime/accessibility evidence. The 2026-08-05 closed loop additionally preserved the complete unsaved Coach profile/goal draft across Activity recreation and added real-UI regression coverage. Manual accessibility evidence, performance owner gates, Health Connect edge-state runtime evidence, broader compact screen signoff, and owner release decisions remain open, so the rounded alignment score remains 95%.
 
 ## Completed Findings
 
+- QA-2026-08-05-023 (P2): Unsaved Coach profile/goal input and choices now survive Activity recreation through saveable Compose state, verified through `MainActivity` instrumentation.
 - QA-2026-05-09-009 (P2): Canvas line charts now expose semantic summaries with datapoint count, latest value, range, and trend.
 - QA-2026-05-09-004 (P1): Home periodic dashboard refresh now runs from `HomeRoute` under lifecycle `STARTED` collection instead of a retained `HomeViewModel` loop.
 - QA-2026-05-09-008 (P2): Camera permission denial and camera error state now survive configuration recreation through saveable scanner state; capture-in-progress remains transient by design.
@@ -304,6 +305,8 @@ Updated date: 2026-05-12
 - Emulator smoke PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; `adb -s emulator-5554 shell am start -W -n com.trainiq/.MainActivity` returned `Status: ok`, `WaitTime: 11091`; crash buffer was empty.
 
 ## Known Blockers
+
+- 2026-08-05 verification note: combining `:app:lintDebug` and `:app:generateDebugRoomMigrationChainVerificationMarker` in one Gradle 9.3.1 invocation exposes an existing implicit output-dependency validation error. Both canonical gates pass when run in the documented sequence (lint separately, then marker after connected coverage); no release claim relies on the invalid combined invocation.
 
 - Owner/legal/release signoff is still required for Play/Data Safety, privacy, signing, production AI boundary, and manual assistive-tech certification; 2026-05-10 `:app:checkReleaseSigningReadiness` still reports release signing is not configured.
 - Physical-device performance thresholds, approved device matrix, broader repeated-flow memory evidence, and owner signoff are not available from this implementation pass; startup/navigation/active-workout logging profileable evidence exists on SM-S931B.
