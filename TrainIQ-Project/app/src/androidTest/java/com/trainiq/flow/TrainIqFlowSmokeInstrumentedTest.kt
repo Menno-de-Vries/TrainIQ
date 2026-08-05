@@ -101,6 +101,31 @@ class TrainIqFlowSmokeInstrumentedTest {
         }
     }
 
+    @Test
+    fun aiRoutineDraftSurvivesActivityRecreationBeforeGenerate() {
+        ActivityScenario.launch<MainActivity>(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ).use { scenario ->
+            waitForText("Training")
+            tap("Training")
+            waitForText("Routine maken")
+            tap("Met AI genereren")
+            waitForText("AI-routine genereren")
+
+            val draftFields = compose.onAllNodes(hasSetTextAction())
+            draftFields[0].performTextReplacement("Herstelgericht")
+            draftFields[1].performTextReplacement("4")
+            draftFields[2].performTextReplacement("Dumbbells")
+
+            scenario.recreate()
+
+            waitForText("AI-routine genereren")
+            compose.onAllNodes(hasSetTextAction())[0].assertTextContains("Herstelgericht")
+            compose.onAllNodes(hasSetTextAction())[1].assertTextContains("4")
+            compose.onAllNodes(hasSetTextAction())[2].assertTextContains("Dumbbells")
+        }
+    }
+
     private fun deleteAppLocalFile(relativePath: String) {
         val dataRoot = context.filesDir.parentFile ?: return
         val target = File(dataRoot, relativePath).canonicalFile

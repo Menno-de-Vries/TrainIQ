@@ -1047,3 +1047,39 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
   - PASS: post-fix debug install and cold launch returned `Status: ok`, `TotalTime: 1832`, with empty crash and TrainIQ fatal/ANR slices.
 - minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#profileDraftSurvivesActivityRecreationBeforeSave" --console=plain --no-configuration-cache`.
 - remaining risk: This test proves Activity recreation. Full OS-killed process restoration remains bounded by Android's saveable-state delivery and should be rechecked if navigation state restoration changes.
+
+### QA-2026-08-06-024
+
+- finding_id: QA-2026-08-06-024
+- priority: P2
+- area: Android lifecycle, UX, tests
+- status: done
+- owner suggestion: Android UI owner
+- current evidence with file references:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt` kept the AI-routine dialog visibility and every unsaved generator input in ordinary `remember` state.
+  - The target-state blueprint requires user-entered state to survive rotation, resize, app switching, and Activity recreation where feasible, and names AI routine generation as a critical compact-screen flow.
+  - A real `MainActivity` instrumentation test reproduced the defect on Android 16: after entering `Herstelgericht`, `4`, and `Dumbbells`, `ActivityScenario.recreate()` closed the dialog and discarded the draft.
+- external sources used: None. Repository target-state requirements, Compose behavior, and local instrumentation evidence were sufficient.
+- expected target-state behavior: The AI-routine dialog remains open and preserves all unsaved generator input across Activity recreation until the user generates or dismisses it.
+- implementation plan:
+  1. Add a red connected regression test that enters a representative AI-routine draft and recreates `MainActivity`.
+  2. Make routine-dialog visibility and user-editable routine draft state saveable without moving persistence or business logic into the UI.
+  3. Re-run the focused test, then the local baseline, connected suite, migration marker, profileable packaging, signing-readiness check, and runtime crash smoke.
+  4. Produce an explicitly non-production debug APK for user testing; retain production release blockers unchanged.
+- concrete implemented fix: `WorkoutScreen` now uses `rememberSaveable` for AI/empty-routine dialog visibility, the empty-routine name, and the AI generator focus, day count, equipment, experience, duration, and deload choice. Generation remains ViewModel-driven and Room/domain behavior is unchanged.
+- files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
+- regression risk: Low. The change affects only ephemeral pre-submit UI state; generation validation, AI calls, generated-routine persistence, and Room writes are unchanged.
+- verification evidence:
+  - Baseline PASS: `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug`.
+  - RED: the focused connected test timed out waiting for `AI-routine genereren` after Activity recreation because the dialog had closed.
+  - PASS: the same focused connected test after the `rememberSaveable` implementation on agent-owned `Pixel_8_API_36` / Android 16.
+  - PASS: after-change `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin`.
+  - PASS: full `:app:connectedDebugAndroidTest` with 46 tests, 0 failures, 0 errors, and 0 skipped on the same emulator.
+  - PASS: `:app:generateDebugRoomMigrationChainVerificationMarker` in the documented separate invocation.
+  - PASS: `:app:assembleProfileable :macrobenchmark:assembleAndroidTest :app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
+  - PASS: debug install and cold launch returned `Status: ok`, `TotalTime: 2522`; crash buffer and TrainIQ fatal/ANR slices were empty.
+  - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 51,117,413 bytes, SHA-256 `7A59676C7F69D74267EC07CB6A9E4454446BCF4DF7A1478DBB2622610172D3AA`.
+- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#aiRoutineDraftSurvivesActivityRecreationBeforeGenerate" --console=plain --no-configuration-cache`.
+- remaining risk: The connected test proves Activity recreation and representative text inputs. Full OS-killed process restoration remains bounded by Android saveable-state delivery; production AI, accessibility, performance, signing, and Health Connect release gates remain separate blockers.
