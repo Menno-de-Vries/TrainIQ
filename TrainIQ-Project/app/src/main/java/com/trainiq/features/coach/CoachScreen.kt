@@ -28,7 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -434,15 +434,15 @@ fun CoachScreen(
     onSaveProfile: (String, String, String, String, String, BiologicalSex, String, String) -> Unit,
     onDismissMessage: () -> Unit,
 ) {
-    var name by remember { mutableStateOf("") }
-    var age by remember { mutableStateOf("30") }
-    var sex by remember { mutableStateOf(BiologicalSex.MALE) }
-    var height by remember { mutableStateOf("") }
-    var weight by remember { mutableStateOf("") }
-    var bodyFat by remember { mutableStateOf("") }
-    var activityLevel by remember { mutableStateOf("Gemiddeld actief") }
-    var goal by remember { mutableStateOf("") }
-    var profileInputError by remember { mutableStateOf<ProfileInputValidationError?>(null) }
+    var name by rememberSaveable { mutableStateOf("") }
+    var age by rememberSaveable { mutableStateOf("30") }
+    var sex by rememberSaveable { mutableStateOf(BiologicalSex.MALE) }
+    var height by rememberSaveable { mutableStateOf("") }
+    var weight by rememberSaveable { mutableStateOf("") }
+    var bodyFat by rememberSaveable { mutableStateOf("") }
+    var activityLevel by rememberSaveable { mutableStateOf("Gemiddeld actief") }
+    var goal by rememberSaveable { mutableStateOf("") }
+    var profileInputError by rememberSaveable { mutableStateOf<ProfileInputValidationError?>(null) }
     val haptics = LocalHapticFeedback.current
 
     val profile = (uiState as? CoachUiState.Success)?.currentProfile
