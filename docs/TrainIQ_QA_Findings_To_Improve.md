@@ -1047,3 +1047,40 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
   - PASS: post-fix debug install and cold launch returned `Status: ok`, `TotalTime: 1832`, with empty crash and TrainIQ fatal/ANR slices.
 - minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#profileDraftSurvivesActivityRecreationBeforeSave" --console=plain --no-configuration-cache`.
 - remaining risk: This test proves Activity recreation. Full OS-killed process restoration remains bounded by Android's saveable-state delivery and should be rechecked if navigation state restoration changes.
+
+### QA-2026-08-06-025
+
+- finding_id: QA-2026-08-06-025
+- priority: P2
+- area: Android lifecycle, UX, tests
+- status: done
+- owner suggestion: Android UI owner
+- current evidence with file references:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt` kept the complete manual product draft, selected product ID, and field validation feedback in ordinary `remember` state.
+  - The target-state blueprint requires manual nutrition logging to remain reliable without AI and user-entered state to survive rotation, resize, app switching, and Activity recreation where feasible.
+  - A real `MainActivity` instrumentation test reproduced the defect on Android 16: after entering a complete `Rotatiehavermout` product draft and triggering fat validation feedback, `ActivityScenario.recreate()` reset the product name to empty and discarded the remaining draft.
+- external sources used: None. Repository target-state requirements, Compose behavior, and local instrumentation evidence were sufficient.
+- expected target-state behavior: Manual product name, barcode, nutrition values, edit selection, and current validation feedback remain intact across Activity recreation until the user saves, cancels, or explicitly changes them.
+- implementation plan:
+  1. Add a red connected regression test that enters all manual product fields, triggers representative validation feedback, and recreates `MainActivity`.
+  2. Make only the product editor's draft, selected product ID, and derived error feedback saveable; leave submit guards, ViewModel actions, domain validation, and Room persistence unchanged.
+  3. Re-run the focused test, then the local baseline, connected suite, migration marker, profileable packaging, signing-readiness check, and runtime crash smoke.
+  4. Produce an explicitly non-production debug APK for user testing; retain production release blockers unchanged.
+- concrete implemented fix: `NutritionScreen` now uses `rememberSaveable` for the selected product ID and manual product name, barcode, calories, protein, carbohydrates, and fat fields. A compact `listSaver` preserves `FoodFieldErrors` without making domain/storage models Android-specific.
+- files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
+- regression risk: Low. The change affects only ephemeral pre-submit UI state; validation rules, duplicate-submit guards, save use cases, targeted Room writes, and persisted food models are unchanged.
+- verification evidence:
+  - Baseline PASS: `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug`.
+  - RED: the focused connected test found `EditableText = ''` for `Productnaam` after Activity recreation while expecting `Rotatiehavermout`.
+  - PASS: the focused connected test after the saveable-state implementation, including preservation of all six fields and `Vul een niet-negatieve waarde in.` feedback, on agent-owned `Pixel_8_API_36` / Android 16.
+  - PASS: after-change `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin`.
+  - PASS: full `:app:connectedDebugAndroidTest` with 46 tests, 0 failures, 0 errors, and 0 skipped on the same emulator.
+  - PASS: `:app:generateDebugRoomMigrationChainVerificationMarker` in the documented separate invocation.
+  - PASS: `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness` in separate invocations; production signing remains intentionally unconfigured.
+  - Tooling note: the first combined no-daemon profileable/macrobenchmark/signing invocation exceeded the 120-second shell limit while Gradle was still active. After confirming the stop-requested daemon exited, the same three unchanged gates passed separately; no product failure was hidden or retried unchanged.
+  - PASS: debug install and cold launch returned `Status: ok`, `TotalTime: 6045`; crash buffer and TrainIQ fatal/ANR slices were empty.
+  - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 51,116,437 bytes, SHA-256 `E4EDA2C206E28F2E7D646FFBC715E46E9228D1F7D018E10B0C626A666D8B7503`.
+- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#manualFoodDraftSurvivesActivityRecreationBeforeSave" --console=plain --no-configuration-cache`.
+- remaining risk: The connected test proves Activity recreation and representative validation feedback. Full OS-killed process restoration remains bounded by Android saveable-state delivery; recipe, meal, and AI-result drafts remain separate future lifecycle batches.

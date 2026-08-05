@@ -47,6 +47,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -120,6 +121,27 @@ private sealed interface PendingNutritionDelete {
     data class Food(val id: Long) : PendingNutritionDelete
     data class Recipe(val id: Long) : PendingNutritionDelete
 }
+
+private val FoodFieldErrorsSaver = listSaver<FoodFieldErrors, String>(
+    save = { errors ->
+        listOf(
+            errors.name.orEmpty(),
+            errors.calories.orEmpty(),
+            errors.protein.orEmpty(),
+            errors.carbs.orEmpty(),
+            errors.fat.orEmpty(),
+        )
+    },
+    restore = { values ->
+        FoodFieldErrors(
+            name = values[0].ifBlank { null },
+            calories = values[1].ifBlank { null },
+            protein = values[2].ifBlank { null },
+            carbs = values[3].ifBlank { null },
+            fat = values[4].ifBlank { null },
+        )
+    },
+)
 
 sealed interface NutritionUiState {
     data object Loading : NutritionUiState
@@ -455,18 +477,18 @@ fun NutritionScreen(
     var showAddToMealActions by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<PendingNutritionDelete?>(null) }
     var addToMealType by remember { mutableStateOf(MealType.BREAKFAST) }
-    var selectedFoodId by remember { mutableStateOf<Long?>(null) }
+    var selectedFoodId by rememberSaveable { mutableStateOf<Long?>(null) }
     var selectedRecipeId by remember { mutableStateOf<Long?>(null) }
     val selectedFood = overview?.foods?.firstOrNull { it.id == selectedFoodId }
     val selectedRecipe = overview?.recipes?.firstOrNull { it.id == selectedRecipeId }
 
-    var foodName by remember { mutableStateOf("") }
-    var barcode by remember { mutableStateOf("") }
-    var calories by remember { mutableStateOf("") }
-    var protein by remember { mutableStateOf("") }
-    var carbs by remember { mutableStateOf("") }
-    var fat by remember { mutableStateOf("") }
-    var foodErrors by remember { mutableStateOf(FoodFieldErrors()) }
+    var foodName by rememberSaveable { mutableStateOf("") }
+    var barcode by rememberSaveable { mutableStateOf("") }
+    var calories by rememberSaveable { mutableStateOf("") }
+    var protein by rememberSaveable { mutableStateOf("") }
+    var carbs by rememberSaveable { mutableStateOf("") }
+    var fat by rememberSaveable { mutableStateOf("") }
+    var foodErrors by rememberSaveable(stateSaver = FoodFieldErrorsSaver) { mutableStateOf(FoodFieldErrors()) }
 
     var recipeName by remember { mutableStateOf("") }
     var recipeNotes by remember { mutableStateOf("") }

@@ -101,6 +101,40 @@ class TrainIqFlowSmokeInstrumentedTest {
         }
     }
 
+    @Test
+    fun manualFoodDraftSurvivesActivityRecreationBeforeSave() {
+        ActivityScenario.launch<MainActivity>(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ).use { scenario ->
+            waitForText("Voeding")
+            tap("Voeding")
+            waitForText("Producten")
+            tap("Producten")
+            waitForText("Productnaam")
+
+            val draftFields = compose.onAllNodes(hasSetTextAction())
+            draftFields[0].performTextReplacement("Rotatiehavermout")
+            draftFields[1].performTextReplacement("8712345678901")
+            draftFields[2].performTextReplacement("370")
+            draftFields[3].performTextReplacement("13")
+            draftFields[4].performTextReplacement("60")
+            draftFields[5].performTextReplacement("-7")
+            tap("Product opslaan")
+            waitForText("Vul een niet-negatieve waarde in.")
+
+            scenario.recreate()
+
+            waitForText("Productnaam")
+            compose.onAllNodes(hasSetTextAction())[0].assertTextContains("Rotatiehavermout")
+            compose.onAllNodes(hasSetTextAction())[1].assertTextContains("8712345678901")
+            compose.onAllNodes(hasSetTextAction())[2].assertTextContains("370")
+            compose.onAllNodes(hasSetTextAction())[3].assertTextContains("13")
+            compose.onAllNodes(hasSetTextAction())[4].assertTextContains("60")
+            compose.onAllNodes(hasSetTextAction())[5].assertTextContains("-7")
+            assertVisible("Vul een niet-negatieve waarde in.")
+        }
+    }
+
     private fun deleteAppLocalFile(relativePath: String) {
         val dataRoot = context.filesDir.parentFile ?: return
         val target = File(dataRoot, relativePath).canonicalFile

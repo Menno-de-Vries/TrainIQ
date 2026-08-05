@@ -1,16 +1,17 @@
 # TrainIQ Target-State Progress
 
-Updated date: 2026-08-05
+Updated date: 2026-08-06
 
 ## Alignment Score
 
-- Previous alignment: 93%
+- Previous alignment: 95%
 - Current estimated alignment: 95%
-- Delta: +1 percentage point
-- Reason: Earlier polish moved routine/workout/nutrition mutations to targeted Room writes and expanded runtime/accessibility evidence. The 2026-08-05 closed loop additionally preserved the complete unsaved Coach profile/goal draft across Activity recreation and added real-UI regression coverage. Manual accessibility evidence, performance owner gates, Health Connect edge-state runtime evidence, broader compact screen signoff, and owner release decisions remain open, so the rounded alignment score remains 95%.
+- Delta: 0 percentage points after rounding
+- Reason: The 2026-08-06 closed loop preserved all manual product editor fields, edit selection, and validation feedback across Activity recreation with real-UI regression coverage. This removes a concrete manual-logging data-loss defect but does not change the rounded score because recipe/meal draft lifecycle coverage, manual accessibility evidence, performance owner gates, Health Connect edge-state evidence, and owner release decisions remain open.
 
 ## Completed Findings
 
+- QA-2026-08-06-025 (P2): Manual product name, barcode, nutrition values, edit selection, and validation feedback now survive Activity recreation through saveable Compose state; a red/green `MainActivity` instrumentation test covers the complete product form.
 - QA-2026-08-05-023 (P2): Unsaved Coach profile/goal input and choices now survive Activity recreation through saveable Compose state, verified through `MainActivity` instrumentation.
 - QA-2026-05-09-009 (P2): Canvas line charts now expose semantic summaries with datapoint count, latest value, range, and trend.
 - QA-2026-05-09-004 (P1): Home periodic dashboard refresh now runs from `HomeRoute` under lifecycle `STARTED` collection instead of a retained `HomeViewModel` loop.
@@ -333,3 +334,14 @@ Updated date: 2026-08-05
 6. If product/security/legal approve credentials/network use, run Gemini-enabled workout debrief evidence; local fallback completion is already verified.
 7. If release owners close scope decisions, update Data Safety, background Health Connect, production AI boundary, signing/versioning, and final release docs before any upload.
 8. Optional engineering follow-up: expand process-restart correctness coverage per targeted mutation only if QA-2026-05-09-001 must be fully closed before owner gates move.
+
+## 2026-08-06 Manual Product Draft Recreation Polish
+
+- Finding: QA-2026-08-06-025.
+- QA result: static lifecycle review found the complete manual product editor draft, selected product ID, and validation feedback in ordinary `remember`; a connected Android 16 test reproduced draft loss after `ActivityScenario.recreate()`.
+- Implementation plan: first prove the defect with a red real-UI test; then save only product editor draft/error state; finally run focused, baseline, connected, migration, profileable, signing-readiness, and runtime smoke gates before producing the debug APK.
+- Implementation: `NutritionScreen.kt` now preserves the selected food ID, six product inputs, and `FoodFieldErrors` with `rememberSaveable` plus a compact `listSaver`.
+- Regression coverage: `TrainIqFlowSmokeInstrumentedTest.manualFoodDraftSurvivesActivityRecreationBeforeSave` enters all product fields, triggers a negative-fat validation error, recreates `MainActivity`, and asserts every value and the error remain.
+- Verification: baseline assemble/unit/lint PASS; focused connected test RED before implementation and PASS after implementation; after-change assemble/unit/lint/Android-test compile PASS; full connected suite PASS with 46 tests; Room migration marker PASS; profileable/macrobenchmark packaging/signing-readiness PASS in separate invocations after one combined shell timeout; debug install/cold launch PASS in 6045 ms with empty crash/fatal/ANR slices.
+- Artifact: non-production `app-debug.apk`, 51,116,437 bytes, SHA-256 `E4EDA2C206E28F2E7D646FFBC715E46E9228D1F7D018E10B0C626A666D8B7503`.
+- Remaining risk: recipe, meal, and AI-result draft restoration remain separate future lifecycle batches. Production release remains blocked by the existing owner/manual/device gates; the deliverable from this cycle is a non-production debug APK.
