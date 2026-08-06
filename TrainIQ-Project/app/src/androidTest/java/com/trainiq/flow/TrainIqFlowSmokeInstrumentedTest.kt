@@ -11,6 +11,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -101,6 +102,163 @@ class TrainIqFlowSmokeInstrumentedTest {
         }
     }
 
+    @Test
+    fun manualFoodDraftSurvivesActivityRecreationBeforeSave() {
+        ActivityScenario.launch<MainActivity>(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ).use { scenario ->
+            waitForText("Voeding")
+            tap("Voeding")
+            waitForText("Producten")
+            tap("Producten")
+            waitForText("Productnaam")
+
+            val draftFields = compose.onAllNodes(hasSetTextAction())
+            draftFields[0].performTextReplacement("Rotatiehavermout")
+            draftFields[1].performTextReplacement("8712345678901")
+            draftFields[2].performTextReplacement("370")
+            draftFields[3].performTextReplacement("13")
+            draftFields[4].performTextReplacement("60")
+            draftFields[5].performTextReplacement("-7")
+            tap("Product opslaan")
+            waitForText("Vul een niet-negatieve waarde in.")
+
+            scenario.recreate()
+
+            waitForText("Productnaam")
+            compose.onAllNodes(hasSetTextAction())[0].assertTextContains("Rotatiehavermout")
+            compose.onAllNodes(hasSetTextAction())[1].assertTextContains("8712345678901")
+            compose.onAllNodes(hasSetTextAction())[2].assertTextContains("370")
+            compose.onAllNodes(hasSetTextAction())[3].assertTextContains("13")
+            compose.onAllNodes(hasSetTextAction())[4].assertTextContains("60")
+            compose.onAllNodes(hasSetTextAction())[5].assertTextContains("-7")
+            assertVisible("Vul een niet-negatieve waarde in.")
+        }
+    }
+
+    @Test
+    fun recipeDraftSurvivesActivityRecreationBeforeSave() {
+        ActivityScenario.launch<MainActivity>(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ).use { scenario ->
+            waitForText("Voeding")
+            tap("Voeding")
+            waitForText("Recepten")
+            tap("Recepten")
+            waitForText("Receptnaam")
+
+            var draftFields = compose.onAllNodes(hasSetTextAction())
+            draftFields[0].performTextReplacement("Rotatierecept")
+            draftFields[1].performTextReplacement("Bewaar dit concept")
+            draftFields[2].performTextReplacement("450")
+            draftFields[3].performTextReplacement("80")
+            draftFields[4].performTextReplacement("Rotatiehavermout")
+            draftFields[5].performTextReplacement("8712345678901")
+            draftFields[6].performTextReplacement("370")
+            draftFields[7].performTextReplacement("13")
+            draftFields[8].performTextReplacement("60")
+            draftFields[9].performTextReplacement("7")
+            tap("Ingrediënt opslaan en toevoegen")
+            waitForText("80g gebruikt")
+
+            draftFields = compose.onAllNodes(hasSetTextAction())
+            draftFields[3].performTextReplacement("75")
+            draftFields[4].performTextReplacement("Rotatiecacao")
+            draftFields[5].performTextReplacement("8712345678902")
+            draftFields[6].performTextReplacement("400")
+            draftFields[7].performTextReplacement("20")
+            draftFields[8].performTextReplacement("50")
+            draftFields[9].performTextReplacement("-4")
+            tap("Ingrediënt opslaan en toevoegen")
+            waitForText("Vul een niet-negatieve waarde in.")
+
+            scenario.recreate()
+
+            waitForText("Receptnaam")
+            draftFields = compose.onAllNodes(hasSetTextAction())
+            draftFields[0].assertTextContains("Rotatierecept")
+            draftFields[1].assertTextContains("Bewaar dit concept")
+            draftFields[2].assertTextContains("450")
+            draftFields[3].assertTextContains("75")
+            draftFields[4].assertTextContains("Rotatiecacao")
+            draftFields[5].assertTextContains("8712345678902")
+            draftFields[6].assertTextContains("400")
+            draftFields[7].assertTextContains("20")
+            draftFields[8].assertTextContains("50")
+            draftFields[9].assertTextContains("-4")
+            assertExists("80g gebruikt")
+            assertVisible("Vul een niet-negatieve waarde in.")
+        }
+    }
+
+    @Test
+    fun mealDraftSurvivesActivityRecreationBeforeSave() {
+        ActivityScenario.launch<MainActivity>(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ).use { scenario ->
+            waitForText("Voeding")
+            tap("Voeding")
+            waitForText("Producten")
+            tap("Producten")
+            waitForText("Productnaam")
+
+            val productFields = compose.onAllNodes(hasSetTextAction())
+            productFields[0].performTextReplacement("Rotatiemaaltijdproduct")
+            productFields[1].performTextReplacement("8712345678903")
+            productFields[2].performTextReplacement("250")
+            productFields[3].performTextReplacement("12")
+            productFields[4].performTextReplacement("30")
+            productFields[5].performTextReplacement("8")
+            tap("Product opslaan")
+            waitForText("Rotatiemaaltijdproduct opgeslagen.")
+            assertVisible("Aan maaltijd toevoegen")
+
+            compose.onNodeWithContentDescription("Gram bij toevoegen aan maaltijd")
+                .performTextReplacement("125")
+            tapLast("Aan maaltijd toevoegen")
+            waitForText("Maaltijd controleren")
+
+            tap("Avond")
+            waitForSelectedText("Avond")
+            compose.onNodeWithContentDescription("Maaltijdnaam").performTextReplacement("")
+            compose.onNodeWithContentDescription("Notities").performTextReplacement("Bewaar dit maaltijdconcept")
+            compose.onNodeWithContentDescription("Gram").performTextReplacement("175")
+            tap("Maaltijd opslaan")
+            waitForText("Naam is verplicht.")
+
+            scenario.recreate()
+
+            waitForText("Maaltijd controleren")
+            waitForSelectedText("Avond")
+            compose.onNodeWithContentDescription("Notities").assertTextContains("Bewaar dit maaltijdconcept")
+            compose.onNodeWithContentDescription("Gram").assertTextContains("175")
+            assertVisible("Rotatiemaaltijdproduct")
+            assertVisible("Naam is verplicht.")
+        }
+    }
+
+    @Test
+    fun aiMealContextSurvivesActivityRecreationBeforeScan() {
+        ActivityScenario.launch<MainActivity>(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ).use { scenario ->
+            waitForText("Voeding")
+            tap("Voeding")
+            waitForText("AI-resultaat")
+            tap("AI-resultaat")
+            waitForText("Optionele context")
+
+            compose.onNodeWithContentDescription("Optionele context")
+                .performTextReplacement("Vegetarische maaltijd na krachttraining")
+
+            scenario.recreate()
+
+            waitForText("Optionele context")
+            compose.onNodeWithContentDescription("Optionele context")
+                .assertTextContains("Vegetarische maaltijd na krachttraining")
+        }
+    }
+
     private fun deleteAppLocalFile(relativePath: String) {
         val dataRoot = context.filesDir.parentFile ?: return
         val target = File(dataRoot, relativePath).canonicalFile
@@ -120,7 +278,7 @@ class TrainIqFlowSmokeInstrumentedTest {
         scrollUntilText(text)
         val matches = compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes()
         check(matches.isNotEmpty()) { "Text not found for tap: $text" }
-        compose.onAllNodesWithText(text, substring = true)[matches.lastIndex].performClick()
+        compose.onAllNodesWithText(text, substring = true)[matches.lastIndex].performScrollTo().performClick()
     }
 
     private fun assertVisible(text: String) {
@@ -166,10 +324,13 @@ class TrainIqFlowSmokeInstrumentedTest {
                 compose.onNodeWithText(text).performScrollTo()
             }
             if (compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty()) return
-            runCatching {
-                compose.onNode(hasScrollAction()).performScrollToNode(hasText(text))
+            val scrollNodeCount = compose.onAllNodes(hasScrollAction()).fetchSemanticsNodes().size
+            repeat(scrollNodeCount) { index ->
+                runCatching {
+                    compose.onAllNodes(hasScrollAction())[index].performScrollToNode(hasText(text))
+                }
+                if (compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty()) return
             }
-            if (compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty()) return
         }
     }
 }
