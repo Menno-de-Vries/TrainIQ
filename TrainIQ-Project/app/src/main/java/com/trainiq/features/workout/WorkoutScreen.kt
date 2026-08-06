@@ -108,7 +108,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -306,6 +305,7 @@ data class WorkoutUiContent(
     val message: String?,
     val pendingGeneratedRoutine: GeneratedRoutine?,
     val isSavingGeneratedRoutine: Boolean,
+    val isGeneratingAiRoutine: Boolean,
 )
 
 internal fun workoutScreenUiState(content: WorkoutUiContent): ScreenUiState<WorkoutUiContent> =
@@ -321,6 +321,7 @@ private fun ScreenUiState<WorkoutUiContent>.workoutContentOrDefault(): WorkoutUi
             message = null,
             pendingGeneratedRoutine = null,
             isSavingGeneratedRoutine = false,
+            isGeneratingAiRoutine = false,
         )
         is ScreenUiState.Success -> content
     }
@@ -461,6 +462,8 @@ class WorkoutViewModel @Inject constructor(
     private val pendingGeneratedRoutine: StateFlow<GeneratedRoutine?> = _pendingGeneratedRoutine.asStateFlow()
     private val _isSavingGeneratedRoutine = MutableStateFlow(false)
     private val isSavingGeneratedRoutine: StateFlow<Boolean> = _isSavingGeneratedRoutine.asStateFlow()
+    private val _isGeneratingAiRoutine = MutableStateFlow(false)
+    private val isGeneratingAiRoutine: StateFlow<Boolean> = _isGeneratingAiRoutine.asStateFlow()
 
     private val _events = MutableSharedFlow<WorkoutUiEvent>(extraBufferCapacity = 1)
     val events: SharedFlow<WorkoutUiEvent> = _events.asSharedFlow()
@@ -534,12 +537,17 @@ class WorkoutViewModel @Inject constructor(
                 message = currentMessage,
                 pendingGeneratedRoutine = generatedRoutine,
                 isSavingGeneratedRoutine = false,
+                isGeneratingAiRoutine = false,
             )
         },
         isSavingGeneratedRoutine,
-    ) { content, savingGeneratedRoutine ->
+        isGeneratingAiRoutine,
+    ) { content, savingGeneratedRoutine, generatingAiRoutine ->
         workoutScreenUiState(
-            content.copy(isSavingGeneratedRoutine = savingGeneratedRoutine),
+            content.copy(
+                isSavingGeneratedRoutine = savingGeneratedRoutine,
+                isGeneratingAiRoutine = generatingAiRoutine,
+            ),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScreenUiState.Loading)
 
@@ -831,6 +839,8 @@ class WorkoutViewModel @Inject constructor(
         sessionDurationMinutes: Int,
         includeDeload: Boolean,
     ) {
+        if (_isGeneratingAiRoutine.value) return
+        _isGeneratingAiRoutine.value = true
         lastGenerationRequest = RoutineGenerationRequest(
             daysPerWeek = daysPerWeek,
             equipment = equipment,
@@ -855,6 +865,8 @@ class WorkoutViewModel @Inject constructor(
                 _message.value = "Routine gegenereerd."
             }.onFailure {
                 _message.value = it.toAiUserMessage("Routine genereren is mislukt.")
+            }.also {
+                _isGeneratingAiRoutine.value = false
             }
         }
     }
@@ -1309,6 +1321,7 @@ fun WorkoutRoute(
         message = content.message,
         pendingGeneratedRoutine = content.pendingGeneratedRoutine,
         isSavingGeneratedRoutine = content.isSavingGeneratedRoutine,
+        isGeneratingAiRoutine = content.isGeneratingAiRoutine,
         onDismissMessage = viewModel::clearMessage,
         onStartWorkout = onStartWorkout,
         onOpenExerciseHistory = onOpenExerciseHistory,
@@ -1345,6 +1358,7 @@ fun WorkoutScreen(
     message: String?,
     pendingGeneratedRoutine: GeneratedRoutine?,
     isSavingGeneratedRoutine: Boolean,
+    isGeneratingAiRoutine: Boolean,
     onDismissMessage: () -> Unit,
     onStartWorkout: (Long) -> Unit,
     onOpenExerciseHistory: (Long) -> Unit,
@@ -1372,9 +1386,8 @@ fun WorkoutScreen(
     onMoveRoutineSet: (Long, List<Long>) -> Unit,
     onDeleteWorkoutSession: (Long) -> Unit,
 ) {
-    var showAiDialog by remember { mutableStateOf(false) }
+    var showAiDialog by rememberSaveable { mutableStateOf(false) }
     var showCreateDialog by rememberSaveable { mutableStateOf(false) }
-    var isGenerating by remember { mutableStateOf(false) }
     var selectedRoutineId by rememberSaveable { mutableStateOf<Long?>(null) }
     val trainingListState = rememberLazyListState()
     LaunchedEffect(selectedRoutineId) {
@@ -1388,7 +1401,6 @@ fun WorkoutScreen(
     }
     LaunchedEffect(message) {
         if (message == "Routine gegenereerd." || message?.contains("mislukt", ignoreCase = true) == true) {
-            isGenerating = false
             showAiDialog = false
         }
     }
@@ -1409,7 +1421,6 @@ fun WorkoutScreen(
             isSaving = isSavingGeneratedRoutine,
             onSave = onSaveGeneratedRoutine,
             onRetry = {
-                isGenerating = true
                 showAiDialog = true
                 onRetryGeneratedRoutine()
             },
@@ -1427,10 +1438,9 @@ fun WorkoutScreen(
     }
     if (showAiDialog) {
         RoutineGeneratorDialog(
-            isLoading = isGenerating,
-            onDismiss = { if (!isGenerating) showAiDialog = false },
+            isLoading = isGeneratingAiRoutine,
+            onDismiss = { if (!isGeneratingAiRoutine) showAiDialog = false },
             onGenerate = { days, equipment, focus, level, duration, includeDeload ->
-                isGenerating = true
                 onGenerateAiRoutine(days, equipment, focus, level, duration, includeDeload)
             },
         )
@@ -1828,12 +1838,12 @@ private fun RoutineGeneratorDialog(
     onDismiss: () -> Unit,
     onGenerate: (Int, String, String, String, Int, Boolean) -> Unit,
 ) {
-    var focus by remember { mutableStateOf("") }
-    var daysPerWeek by remember { mutableStateOf("3") }
-    var equipment by remember { mutableStateOf("") }
-    var experienceLevel by remember { mutableStateOf("intermediate") }
-    var sessionDuration by remember { mutableFloatStateOf(60f) }
-    var includeDeload by remember { mutableStateOf(true) }
+    var focus by rememberSaveable { mutableStateOf("") }
+    var daysPerWeek by rememberSaveable { mutableStateOf("3") }
+    var equipment by rememberSaveable { mutableStateOf("") }
+    var experienceLevel by rememberSaveable { mutableStateOf("intermediate") }
+    var sessionDuration by rememberSaveable { mutableStateOf(60f) }
+    var includeDeload by rememberSaveable { mutableStateOf(true) }
     val focusSuggestions = remember { listOf("Push/pull/legs", "Upper/lower", "Volledig lichaam", "Onderlichaam", "Kracht") }
 
     AlertDialog(

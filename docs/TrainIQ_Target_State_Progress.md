@@ -7,10 +7,11 @@ Updated date: 2026-08-06
 - Previous alignment: 95%
 - Current estimated alignment: 95%
 - Delta: 0 percentage points after rounding
-- Reason: The 2026-08-06 closed loops now preserve manual Nutrition state, synthetic AI-result routing, and profile drafts across restoration; Coach also rejects a restored draft when the authoritative profile ID or editor-source content changed. These concrete lifecycle fixes do not change the rounded score because manual accessibility evidence, performance owner gates, Health Connect/scanner safe-device evidence, signing, and owner release decisions remain open.
+- Reason: The 2026-08-06 closed loops now preserve manual Nutrition state, synthetic AI-result routing, profile drafts, and AI routine-generator input across restoration; Coach also rejects a restored draft when the authoritative profile ID or editor-source content changed, while in-flight routine generation remains blocked across Activity recreation. These concrete lifecycle fixes do not change the rounded score because manual accessibility evidence, performance owner gates, Health Connect/scanner safe-device evidence, signing, and owner release decisions remain open.
 
 ## Completed Findings
 
+- QA-2026-08-06-034 (P2): AI routine-generator visibility and all pre-submit inputs survive Activity recreation; ViewModel-owned generation state keeps the dialog blocked while an existing request is in flight and rejects duplicate submissions.
 - QA-2026-08-06-033 (P2): Unsaved Coach edits survive same-profile save/restore, while an exact saveable source snapshot rejects stale drafts when any persisted editor-source field changed, including hash-colliding values.
 - QA-2026-08-06-031 (P2): Settings profile input and field-specific validation feedback now survive Activity recreation; keyed saveable state replaces a lifecycle effect that overwrote restored drafts.
 - QA-2026-08-06-030 (P2): The recipe destination of a restored synthetic AI result now survives Compose save/restore, so recipe scans continue to `Fotocontrole`; deterministic regression coverage invokes no Gemini, camera, credential, network, or persistence boundary.
@@ -448,3 +449,15 @@ Updated date: 2026-08-06
 - Artifact: non-production `app-debug.apk`, 51,116,755 bytes, SHA-256 `34BD888399638945ED37D5B86288A4FB4752502058611FB5E76168481BCA2A88`.
 - Alignment: the rounded target-state estimate remains 95%; this closes one repository-proven Coach lifecycle gap without altering the owner/manual/device release gates.
 - Remaining risk: local Compose restoration is proven for matching and mismatching profile sources; full OS-killed end-to-end restoration remains bounded by Android saveable-state delivery. Production release remains blocked.
+
+## 2026-08-06 AI Routine Draft Restoration Polish
+
+- Finding: QA-2026-08-06-034.
+- QA result: repository inspection confirmed the AI routine-generator dialog and its six pre-submit values used transient Compose state, matching the restoration risk retained by QA-2026-08-06-032. A second focused RED proved that restoring the now-saveable dialog during an in-flight request re-enabled `Genereren`, allowing a duplicate submission.
+- Implementation plan: prove draft and in-flight boundaries without invoking Gemini; save only serializable form state in Compose; hoist request progress into `WorkoutViewModel`; reject duplicate requests; then run the complete local matrix and produce a non-production APK.
+- Implementation: dialog visibility, focus, days, equipment, experience, duration, and deload preference use saveable state. `WorkoutViewModel` owns `isGeneratingAiRoutine`, sets it synchronously before launching, clears it after success/failure, and ignores a second request while true. `WorkoutRoute` supplies that state to the dialog so recreation cannot re-enable its generate/dismiss actions.
+- Regression coverage: `TrainIqFlowSmokeInstrumentedTest.aiRoutineDraftSurvivesActivityRecreationBeforeGenerate` recreates `MainActivity` after editing representative values. `WorkoutAiRoutineGenerationStateRestorationInstrumentedTest` proves that an externally owned in-flight state remains blocked through Compose save/restore without Room, Gemini, network, credentials, camera, or persistence access.
+- Verification: the Activity test was RED because the dialog disappeared after recreation, then GREEN after saveable-state implementation. The in-flight component test was RED because `Genereren` reappeared after restoration, then GREEN after state hoisting. Final build/unit/lint/Android-test compile PASS; full isolated suite and Room-marker dependency each PASS with 58 tests and no failures/errors/skips; profileable/macrobenchmark packaging and signing-readiness PASS; debug install/cold launch PASS in 2906 ms with 0 TrainIQ fatal/ANR matches. Android 16 screenshot and UI-tree inspection confirmed one visible `AI-routine genereren` dialog and one enabled pre-submit `Genereren` action without clipping.
+- Artifact: non-production `app-debug.apk`, 50,835,498 bytes, SHA-256 `7AB130F142D7C1F0DDE5C6B4E2121167499A4694275C86ABD861FDA4EF6A46E3`.
+- Alignment: the rounded target-state estimate remains 95%; this closes one repository-proven Training lifecycle gap without altering owner/manual/device release gates.
+- Remaining risk: Activity and local Compose restoration are proven; a process kill correctly cancels the process-owned request and starts a new ViewModel with no stuck loading flag, while draft restoration remains bounded by Android saveable-state delivery. Physical-device macrobenchmarking was not applicable to this non-performance UI-state change and remains an existing owner/device gate. Production release remains blocked.

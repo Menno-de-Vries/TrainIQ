@@ -2,6 +2,7 @@ package com.trainiq.flow
 
 import android.content.Context
 import android.content.Intent
+import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
@@ -149,6 +150,50 @@ class TrainIqFlowSmokeInstrumentedTest {
             waitForText("Routinenaam")
             compose.onNode(hasText("Routinenaam") and hasSetTextAction())
                 .assertTextContains("Rotatieroutine")
+        }
+    }
+
+    @Test
+    fun aiRoutineDraftSurvivesActivityRecreationBeforeGenerate() {
+        ActivityScenario.launch<MainActivity>(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ).use { scenario ->
+            waitForText("Training")
+            tap("Training")
+            waitForText("Met AI genereren")
+            tap("Met AI genereren")
+            waitForText("AI-routine genereren")
+
+            compose.onNode(hasText("Trainingsfocus / split") and hasSetTextAction())
+                .performTextReplacement("Rotatie upper/lower")
+            compose.onNode(hasText("Dagen per week") and hasSetTextAction())
+                .performTextReplacement("4")
+            compose.onNode(hasText("Beschikbaar materiaal") and hasSetTextAction())
+                .performScrollTo()
+                .performTextReplacement("Dumbbells en bank")
+            compose.onNodeWithText("Gevorderd")
+                .performScrollTo()
+                .performClick()
+            compose.onNodeWithContentDescription("Deload-richtlijn opnemen")
+                .performScrollTo()
+                .performClick()
+
+            scenario.recreate()
+
+            waitForText("AI-routine genereren")
+            compose.onNode(hasText("Trainingsfocus / split") and hasSetTextAction())
+                .assertTextContains("Rotatie upper/lower")
+            compose.onNode(hasText("Dagen per week") and hasSetTextAction())
+                .assertTextContains("4")
+            compose.onNode(hasText("Beschikbaar materiaal") and hasSetTextAction())
+                .performScrollTo()
+                .assertTextContains("Dumbbells en bank")
+            compose.onNodeWithText("Gevorderd")
+                .performScrollTo()
+                .assertIsSelected()
+            compose.onNodeWithContentDescription("Deload-richtlijn opnemen")
+                .performScrollTo()
+                .assertIsOff()
         }
     }
 

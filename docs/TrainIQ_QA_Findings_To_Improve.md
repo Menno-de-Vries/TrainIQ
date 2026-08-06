@@ -1392,3 +1392,43 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
   - Test-environment note: the first attempted RED run lost its agent AVD and left the owned emulator launcher/isolated adb transport stale. After resolving those exact owned processes, a cold snapshotless boot produced the authoritative RED, GREEN, full-suite, packaging, install, launch, and crash evidence.
 - minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.features.coach.CoachProfileStateRestorationInstrumentedTest" --console=plain --no-configuration-cache`.
 - remaining risk: The synthetic tests prove local Compose save/restore source validation; a full OS-killed end-to-end process path remains bounded by Android saveable-state delivery. Production release remains blocked by existing owner/manual/safe-device gates.
+
+### QA-2026-08-06-034
+
+- finding_id: QA-2026-08-06-034
+- priority: P2
+- area: Android lifecycle, Training UX, tests
+- status: done
+- owner suggestion: Android UI owner
+- current evidence with file references:
+  - Before the fix, `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt` held `showAiDialog` and every routine-generator field in ordinary `remember`, so Activity recreation discarded the entire unsaved workflow.
+  - QA-2026-08-06-032 explicitly retained AI routine-generator input restoration as an open lifecycle risk.
+  - After making the dialog saveable, a focused state-restoration test exposed the coupled safety defect: local `isGenerating` reset to false after restoration, making the request duplicate-submittable while the original ViewModel job was still running.
+- external sources used: None. Repository source, the recorded QA-2026-08-06-032 risk, existing state-hoisting patterns, and executable Android tests were sufficient.
+- expected target-state behavior: The open AI routine-generator and all entered pre-submit values survive Activity recreation. If generation is already running, recreation preserves the blocked loading state and cannot submit the same request again; process recreation must not restore a permanently stuck request flag.
+- implementation plan:
+  1. Add an Activity recreation test for dialog visibility and representative values, and retain its failing evidence against current production code.
+  2. Save dialog/form state with Compose saveable primitives without changing validation or generation inputs.
+  3. Add a component restoration test for an externally owned in-flight state, retain RED evidence, then hoist generation state to `WorkoutViewModel` with a duplicate-request guard.
+  4. Re-run focused tests plus the complete local build, unit, lint, connected, Room, profileable, packaging, signing-readiness, visual/runtime, and artifact matrix.
+- concrete implemented fix: `WorkoutScreen` and `RoutineGeneratorDialog` preserve the dialog plus focus, days, equipment, experience, duration, and deload fields with `rememberSaveable`. `WorkoutViewModel` exposes `isGeneratingAiRoutine` through `WorkoutUiContent`, sets it synchronously before starting generation, clears it after completion, and ignores duplicate calls. The composable consumes this authoritative state to keep generate/dismiss controls blocked across Activity recreation; a new process starts safely with false because its canceled request cannot still be active.
+- files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/workout/WorkoutUiStateReducerTest.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/features/workout/WorkoutAiRoutineGenerationStateRestorationInstrumentedTest.kt`
+- regression risk: Low-to-medium. The change affects ephemeral routine-generator UI/request state and duplicate-submit behavior; generation inputs, Gemini schema/timeout/error handling, Room ownership, navigation, and persistence remain unchanged.
+- verification evidence:
+  - RED: `aiRoutineDraftSurvivesActivityRecreationBeforeGenerate` timed out finding `AI-routine genereren` after `ActivityScenario.recreate()` because the dialog was lost.
+  - GREEN: the identical Activity test retained the dialog, `Rotatie upper/lower`, 4 days, `Dumbbells en bank`, advanced experience, and the disabled deload preference.
+  - RED: `inFlightGenerationRemainsBlockedAcrossStateRestoration` found one unexpected `Genereren` action after `emulateSaveAndRestore()`, proving local loading state had reset.
+  - GREEN: the identical component test kept the dialog present and `Genereren` absent after restoration once progress was hoisted.
+  - PASS: final `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, and `:app:compileDebugAndroidTestKotlin`.
+  - PASS: final full isolated `:app:connectedDebugAndroidTest` with 58 tests, 0 failures, 0 errors, and 0 skipped on agent-owned `TrainIQ_Agent_API36_20260806` / Android 16.
+  - PASS: final `:app:generateDebugRoomMigrationChainVerificationMarker`, including its second isolated 58-test connected dependency.
+  - PASS: final `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
+  - PASS: final debug install and cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 2906`; the TrainIQ fatal/ANR scan returned 0 matches.
+  - PASS: screenshot and UI-tree inspection at 1080x2400 showed one unclipped `AI-routine genereren` dialog, its inputs, deload semantics, and one pre-submit `Genereren` action.
+  - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 50,835,498 bytes, SHA-256 `7AB130F142D7C1F0DDE5C6B4E2121167499A4694275C86ABD861FDA4EF6A46E3`.
+- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#aiRoutineDraftSurvivesActivityRecreationBeforeGenerate,com.trainiq.features.workout.WorkoutAiRoutineGenerationStateRestorationInstrumentedTest" --console=plain --no-configuration-cache`.
+- remaining risk: Activity and local Compose restoration are proven. OS process death cancels the process-owned request and a new ViewModel deliberately starts unblocked; draft recovery still depends on Android delivering saveable state. Real Gemini execution was intentionally not invoked. Physical-device performance and production release remain governed by the existing owner/manual/safe-device gates.
