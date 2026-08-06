@@ -131,6 +131,28 @@ class TrainIqFlowSmokeInstrumentedTest {
     }
 
     @Test
+    fun manualRoutineDraftSurvivesActivityRecreationBeforeCreate() {
+        ActivityScenario.launch<MainActivity>(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ).use { scenario ->
+            waitForText("Training")
+            tap("Training")
+            waitForText("Lege routine maken")
+            tap("Lege routine maken")
+            waitForText("Routinenaam")
+
+            compose.onNode(hasText("Routinenaam") and hasSetTextAction())
+                .performTextReplacement("Rotatieroutine")
+
+            scenario.recreate()
+
+            waitForText("Routinenaam")
+            compose.onNode(hasText("Routinenaam") and hasSetTextAction())
+                .assertTextContains("Rotatieroutine")
+        }
+    }
+
+    @Test
     fun manualFoodDraftSurvivesActivityRecreationBeforeSave() {
         ActivityScenario.launch<MainActivity>(
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
