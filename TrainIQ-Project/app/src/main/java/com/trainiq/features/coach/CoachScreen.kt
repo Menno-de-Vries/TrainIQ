@@ -25,6 +25,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -433,19 +434,49 @@ fun CoachScreen(
     onSaveProfile: (String, String, String, String, String, BiologicalSex, String, String) -> Unit,
     onDismissMessage: () -> Unit,
 ) {
+    val isProfileResolved = uiState is CoachUiState.Success
     val profile = (uiState as? CoachUiState.Success)?.currentProfile
-    var name by rememberSaveable(profile) { mutableStateOf(profile?.name.orEmpty()) }
-    var age by rememberSaveable(profile) { mutableStateOf(profile?.age?.toString() ?: "30") }
-    var sex by rememberSaveable(profile) { mutableStateOf(profile?.sex ?: BiologicalSex.MALE) }
-    var height by rememberSaveable(profile) { mutableStateOf(profile?.height?.toString().orEmpty()) }
-    var weight by rememberSaveable(profile) { mutableStateOf(profile?.weight?.toString().orEmpty()) }
-    var bodyFat by rememberSaveable(profile) { mutableStateOf(profile?.bodyFat?.toString().orEmpty()) }
-    var activityLevel by rememberSaveable(profile) {
+    val currentProfileId = profile?.id
+    val currentProfileFingerprint = profile?.coachDraftFingerprint()
+    var draftProfileSourceResolved by rememberSaveable { mutableStateOf(isProfileResolved) }
+    var draftProfileId by rememberSaveable { mutableStateOf(if (isProfileResolved) currentProfileId else null) }
+    var draftProfileFingerprint by rememberSaveable {
+        mutableStateOf(if (isProfileResolved) currentProfileFingerprint else null)
+    }
+    var name by rememberSaveable { mutableStateOf(profile?.name.orEmpty()) }
+    var age by rememberSaveable { mutableStateOf(profile?.age?.toString() ?: "30") }
+    var sex by rememberSaveable { mutableStateOf(profile?.sex ?: BiologicalSex.MALE) }
+    var height by rememberSaveable { mutableStateOf(profile?.height?.toString().orEmpty()) }
+    var weight by rememberSaveable { mutableStateOf(profile?.weight?.toString().orEmpty()) }
+    var bodyFat by rememberSaveable { mutableStateOf(profile?.bodyFat?.toString().orEmpty()) }
+    var activityLevel by rememberSaveable {
         mutableStateOf(profile?.activityLevel?.toDutchActivityLevelLabel() ?: "Gemiddeld actief")
     }
-    var goal by rememberSaveable(profile) { mutableStateOf(profile?.goal.orEmpty()) }
-    var profileInputError by rememberSaveable(profile) { mutableStateOf<ProfileInputValidationError?>(null) }
+    var goal by rememberSaveable { mutableStateOf(profile?.goal.orEmpty()) }
+    var profileInputError by rememberSaveable { mutableStateOf<ProfileInputValidationError?>(null) }
     val haptics = LocalHapticFeedback.current
+
+    LaunchedEffect(isProfileResolved, currentProfileId, currentProfileFingerprint) {
+        if (
+            isProfileResolved &&
+            (!draftProfileSourceResolved ||
+                draftProfileId != currentProfileId ||
+                draftProfileFingerprint != currentProfileFingerprint)
+        ) {
+            name = profile?.name.orEmpty()
+            age = profile?.age?.toString() ?: "30"
+            sex = profile?.sex ?: BiologicalSex.MALE
+            height = profile?.height?.toString().orEmpty()
+            weight = profile?.weight?.toString().orEmpty()
+            bodyFat = profile?.bodyFat?.toString().orEmpty()
+            activityLevel = profile?.activityLevel?.toDutchActivityLevelLabel() ?: "Gemiddeld actief"
+            goal = profile?.goal.orEmpty()
+            profileInputError = null
+            draftProfileSourceResolved = true
+            draftProfileId = currentProfileId
+            draftProfileFingerprint = currentProfileFingerprint
+        }
+    }
 
     AnimatedContent(targetState = uiState, label = "coach-ui-state") { state ->
         LazyColumn(
@@ -809,6 +840,18 @@ private fun String.toDutchActivityLevelLabel(): String = when (trim().lowercase(
     "very active" -> "Zeer actief"
     "athlete" -> "Atleet"
     else -> this
+}
+
+private fun UserProfile.coachDraftFingerprint(): Int {
+    var result = name.hashCode()
+    result = 31 * result + age
+    result = 31 * result + sex.name.hashCode()
+    result = 31 * result + height.hashCode()
+    result = 31 * result + weight.hashCode()
+    result = 31 * result + bodyFat.hashCode()
+    result = 31 * result + activityLevel.hashCode()
+    result = 31 * result + goal.hashCode()
+    return result
 }
 
 internal fun goalAdviceEnergyDifferenceLabel(difference: Int): String = when {

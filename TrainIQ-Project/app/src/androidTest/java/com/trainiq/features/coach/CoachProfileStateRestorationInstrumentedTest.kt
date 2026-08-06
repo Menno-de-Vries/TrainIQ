@@ -1,5 +1,6 @@
 package com.trainiq.features.coach
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.StateRestorationTester
 import androidx.compose.ui.test.assertTextContains
@@ -21,15 +22,7 @@ class CoachProfileStateRestorationInstrumentedTest {
         val restorationTester = StateRestorationTester(this)
 
         restorationTester.setContent {
-            TrainIqTheme(dynamicColor = false) {
-                CoachScreen(
-                    uiState = syntheticCoachUiState(),
-                    onGenerateAdvice = { _, _, _, _, _, _, _, _ -> },
-                    onGenerateWeeklyReport = {},
-                    onSaveProfile = { _, _, _, _, _, _, _, _ -> },
-                    onDismissMessage = {},
-                )
-            }
+            SyntheticCoachScreen(profile = syntheticProfile())
         }
 
         onNode(hasSetTextAction() and hasText("Bestaand profiel"))
@@ -44,26 +37,91 @@ class CoachProfileStateRestorationInstrumentedTest {
             .performScrollTo()
             .assertTextContains("Onopgeslagen coachnaam")
     }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun restoredDraftIsDiscardedWhenProfileIdChanges() = runComposeUiTest {
+        val restorationTester = StateRestorationTester(this)
+        var currentProfile = syntheticProfile()
+
+        restorationTester.setContent {
+            SyntheticCoachScreen(profile = currentProfile)
+        }
+
+        onNode(hasSetTextAction() and hasText("Bestaand profiel"))
+            .performScrollTo()
+            .performTextReplacement("Onopgeslagen coachnaam")
+        currentProfile = syntheticProfile(id = 2L, name = "Ander profiel")
+
+        restorationTester.emulateSaveAndRestore()
+
+        onNode(hasSetTextAction() and hasText("Ander profiel"))
+            .performScrollTo()
+            .assertTextContains("Ander profiel")
+        onNode(hasSetTextAction() and hasText("Onopgeslagen coachnaam"))
+            .assertDoesNotExist()
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun restoredDraftIsDiscardedWhenSameProfileIdHasNewContent() = runComposeUiTest {
+        val restorationTester = StateRestorationTester(this)
+        var currentProfile = syntheticProfile()
+
+        restorationTester.setContent {
+            SyntheticCoachScreen(profile = currentProfile)
+        }
+
+        onNode(hasSetTextAction() and hasText("Bestaand profiel"))
+            .performScrollTo()
+            .performTextReplacement("Onopgeslagen coachnaam")
+        currentProfile = syntheticProfile(name = "Bijgewerkt profiel")
+
+        restorationTester.emulateSaveAndRestore()
+
+        onNode(hasSetTextAction() and hasText("Bijgewerkt profiel"))
+            .performScrollTo()
+            .assertTextContains("Bijgewerkt profiel")
+        onNode(hasSetTextAction() and hasText("Onopgeslagen coachnaam"))
+            .assertDoesNotExist()
+    }
 }
 
-private fun syntheticCoachUiState(): CoachUiState.Success {
-    val profile = UserProfile(
-        id = 1L,
-        name = "Bestaand profiel",
-        age = 34,
-        sex = BiologicalSex.FEMALE,
-        height = 172.0,
-        weight = 68.0,
-        bodyFat = 24.0,
-        activityLevel = "Moderately active",
-        goal = "Sterker worden",
-        calorieTarget = 2_100,
-        proteinTarget = 130,
-        carbsTarget = 240,
-        fatTarget = 70,
-        trainingFocus = "Progressieve overload",
-    )
-    return CoachUiState.Success(
+@Composable
+private fun SyntheticCoachScreen(profile: UserProfile) {
+    TrainIqTheme(dynamicColor = false) {
+        CoachScreen(
+            uiState = syntheticCoachUiState(profile),
+            onGenerateAdvice = { _, _, _, _, _, _, _, _ -> },
+            onGenerateWeeklyReport = {},
+            onSaveProfile = { _, _, _, _, _, _, _, _ -> },
+            onDismissMessage = {},
+        )
+    }
+}
+
+private fun syntheticProfile(
+    id: Long = 1L,
+    name: String = "Bestaand profiel",
+): UserProfile = UserProfile(
+    id = id,
+    name = name,
+    age = 34,
+    sex = BiologicalSex.FEMALE,
+    height = 172.0,
+    weight = 68.0,
+    bodyFat = 24.0,
+    activityLevel = "Moderately active",
+    goal = "Sterker worden",
+    calorieTarget = 2_100,
+    proteinTarget = 130,
+    carbsTarget = 240,
+    fatTarget = 70,
+    trainingFocus = "Progressieve overload",
+)
+
+private fun syntheticCoachUiState(profile: UserProfile): CoachUiState.Success =
+    CoachUiState.Success(
         overview = CoachOverview(
             weeklyReport = "Synthetisch weekrapport",
             trainingInsights = emptyList(),
@@ -72,4 +130,3 @@ private fun syntheticCoachUiState(): CoachUiState.Success {
         ),
         currentProfile = profile,
     )
-}

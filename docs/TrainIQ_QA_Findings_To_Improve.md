@@ -1351,17 +1351,20 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
 - status: done
 - owner suggestion: Android UI owner
 - current evidence with file references:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/coach/CoachScreen.kt` restores editable fields with `rememberSaveable`, but an unconditional `LaunchedEffect(profile)` overwrites that restored draft whenever an existing persisted profile is present in a new composition.
+  - Before the first fix, `TrainIQ-Project/app/src/main/java/com/trainiq/features/coach/CoachScreen.kt` restored editable fields with `rememberSaveable`, but an unconditional `LaunchedEffect(profile)` overwrote that restored draft whenever an existing persisted profile was present in a new composition.
   - QA-2026-08-05-023 covered Activity recreation only while `currentProfile` was null, so the profile-hydration branch was never exercised.
-  - A deterministic Compose state-restoration test now supplies an existing synthetic profile, edits its name without saving, and checks the restored draft without invoking Room, Gemini, network, credentials, or a camera.
-- external sources used: None. Repository target-state requirements and current Compose behavior provide sufficient evidence.
+  - PR #10 review correctly identified that `rememberSaveable(profile)` does not validate restored values against the current inputs, leaving a draft from another or changed profile eligible for restoration.
+  - Deterministic Compose state-restoration tests now cover the same profile, a different profile ID, and changed profile content under the same ID without invoking Room, Gemini, network, credentials, or a camera.
+- external sources used:
+  - Android Developers, `rememberSaveable`, accessed 2026-08-06: https://developer.android.com/reference/kotlin/androidx/compose/runtime/saveable/rememberSaveable.composable. Confirms that restoration does not validate saved values against prior inputs.
+  - AndroidX source, `DisposableSaveableStateRegistry.android.kt`, accessed 2026-08-06: https://android.googlesource.com/platform/frameworks/support/+/785a1d4b45c8964d32c110c788d9146d875f63a3/compose/ui/ui/src/androidMain/kotlin/androidx/compose/ui/platform/DisposableSaveableStateRegistry.android.kt. Confirms Android saveable-state accepts `Serializable`; the review request for an explicit enum saver is therefore not applicable to the pinned Android behavior and was additionally disproven by the existing validation-error recreation test.
 - expected target-state behavior: Unsaved Coach profile and goal edits survive state restoration even when the form was initially hydrated from an existing persisted profile; genuinely changed persisted profile content remains authoritative.
 - implementation plan:
   1. Run the focused synthetic restoration test unchanged against current production code and retain the failing evidence.
-  2. Initialize every profile-derived saveable field and its validation error with `profile` as its input key, then remove the lifecycle effect that overwrites restored state.
+  2. Persist a stable marker for the resolved profile source and rehydrate the saveable editor only when the current profile ID or source-field fingerprint differs.
   3. Re-run the focused test and the full local build, unit, lint, connected, Room, profileable, packaging, signing-readiness, and runtime matrix.
   4. Produce an explicitly non-production debug APK while retaining every production release gate.
-- concrete implemented fix: `CoachScreen` now initializes all profile-derived editor values and `ProfileInputValidationError` through `rememberSaveable(profile)`. Removing the unconditional `LaunchedEffect(profile)` lets Android restore the unsaved draft while a genuinely changed persisted `profile` still resets the keyed editor to authoritative values.
+- concrete implemented fix: `CoachScreen` keeps the editable values saveable and also saves whether their source was resolved, the source profile ID, and a fingerprint of every profile field that hydrates the editor. A guarded `LaunchedEffect` preserves a same-source draft but rehydrates all inputs and clears stale validation feedback when the resolved Room profile ID or content fingerprint differs.
 - files changed:
   - `TrainIQ-Project/app/src/main/java/com/trainiq/features/coach/CoachScreen.kt`
   - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/features/coach/CoachProfileStateRestorationInstrumentedTest.kt`
@@ -1376,5 +1379,14 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
   - PASS: `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
   - PASS: debug install and cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 2996`; the TrainIQ fatal/ANR scan returned 0 matches.
   - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 51,116,755 bytes, SHA-256 `34121DF393D5F3191AE578DF96799543A04ED6DB3C036FC9A4FAAD1169BD2F20`.
+  - PR review RED: the expanded three-test restoration class passed the same-profile case but failed 2/3 because neither `Ander profiel` nor `Bijgewerkt profiel` replaced the restored stale draft.
+  - PR review GREEN: the identical focused class passed 3/3 after adding resolved-source, profile-ID, and content-fingerprint validation.
+  - PASS: review follow-up `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, and `:app:compileDebugAndroidTestKotlin`.
+  - PASS: review follow-up full isolated `:app:connectedDebugAndroidTest` with 56 tests, 0 failures, 0 errors, and 0 skipped on agent-owned `TrainIQ_Agent_API36_20260806` / Android 16.
+  - PASS: review follow-up `:app:generateDebugRoomMigrationChainVerificationMarker`, including its second isolated 56-test connected dependency.
+  - PASS: review follow-up `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
+  - PASS: final debug install and cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 3627`; the TrainIQ fatal/ANR scan returned 0 matches.
+  - PASS: final review-hardened debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 51,116,755 bytes, SHA-256 `272E49158F32223C6A39E305E5C711DDDF7C16D69E1B5D7DAB7C67A78687C8A4`.
+  - Test-environment note: the first attempted RED run lost its agent AVD and left the owned emulator launcher/isolated adb transport stale. After resolving those exact owned processes, a cold snapshotless boot produced the authoritative RED, GREEN, full-suite, packaging, install, launch, and crash evidence.
 - minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.features.coach.CoachProfileStateRestorationInstrumentedTest" --console=plain --no-configuration-cache`.
-- remaining risk: The synthetic test proves Compose save/restore with an existing profile. Full OS-killed process restoration remains bounded by Android saveable-state delivery; production release remains blocked by existing owner/manual/safe-device gates.
+- remaining risk: The synthetic tests prove local Compose save/restore source validation; a full OS-killed end-to-end process path remains bounded by Android saveable-state delivery. Production release remains blocked by existing owner/manual/safe-device gates.
