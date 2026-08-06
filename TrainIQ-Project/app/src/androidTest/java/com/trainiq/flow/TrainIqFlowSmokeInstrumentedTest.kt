@@ -135,6 +135,61 @@ class TrainIqFlowSmokeInstrumentedTest {
         }
     }
 
+    @Test
+    fun recipeDraftSurvivesActivityRecreationBeforeSave() {
+        ActivityScenario.launch<MainActivity>(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ).use { scenario ->
+            waitForText("Voeding")
+            tap("Voeding")
+            waitForText("Recepten")
+            tap("Recepten")
+            waitForText("Receptnaam")
+
+            var draftFields = compose.onAllNodes(hasSetTextAction())
+            draftFields[0].performTextReplacement("Rotatierecept")
+            draftFields[1].performTextReplacement("Bewaar dit concept")
+            draftFields[2].performTextReplacement("450")
+            draftFields[3].performTextReplacement("80")
+            draftFields[4].performTextReplacement("Rotatiehavermout")
+            draftFields[5].performTextReplacement("8712345678901")
+            draftFields[6].performTextReplacement("370")
+            draftFields[7].performTextReplacement("13")
+            draftFields[8].performTextReplacement("60")
+            draftFields[9].performTextReplacement("7")
+            tap("Ingrediënt opslaan en toevoegen")
+            waitForText("80g gebruikt")
+
+            draftFields = compose.onAllNodes(hasSetTextAction())
+            draftFields[3].performTextReplacement("75")
+            draftFields[4].performTextReplacement("Rotatiecacao")
+            draftFields[5].performTextReplacement("8712345678902")
+            draftFields[6].performTextReplacement("400")
+            draftFields[7].performTextReplacement("20")
+            draftFields[8].performTextReplacement("50")
+            draftFields[9].performTextReplacement("-4")
+            tap("Ingrediënt opslaan en toevoegen")
+            waitForText("Vul een niet-negatieve waarde in.")
+
+            scenario.recreate()
+
+            waitForText("Receptnaam")
+            draftFields = compose.onAllNodes(hasSetTextAction())
+            draftFields[0].assertTextContains("Rotatierecept")
+            draftFields[1].assertTextContains("Bewaar dit concept")
+            draftFields[2].assertTextContains("450")
+            draftFields[3].assertTextContains("75")
+            draftFields[4].assertTextContains("Rotatiecacao")
+            draftFields[5].assertTextContains("8712345678902")
+            draftFields[6].assertTextContains("400")
+            draftFields[7].assertTextContains("20")
+            draftFields[8].assertTextContains("50")
+            draftFields[9].assertTextContains("-4")
+            assertExists("80g gebruikt")
+            assertVisible("Vul een niet-negatieve waarde in.")
+        }
+    }
+
     private fun deleteAppLocalFile(relativePath: String) {
         val dataRoot = context.filesDir.parentFile ?: return
         val target = File(dataRoot, relativePath).canonicalFile
