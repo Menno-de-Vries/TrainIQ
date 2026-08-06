@@ -7,10 +7,11 @@ Updated date: 2026-08-06
 - Previous alignment: 95%
 - Current estimated alignment: 95%
 - Delta: 0 percentage points after rounding
-- Reason: The 2026-08-06 closed loops preserved the complete manual product, recipe, and meal editor drafts across Activity recreation with real-UI regression coverage. These changes remove concrete manual-logging data-loss defects but do not change the rounded score because AI-result draft lifecycle coverage, manual accessibility evidence, performance owner gates, Health Connect edge-state evidence, and owner release decisions remain open.
+- Reason: The 2026-08-06 closed loops preserved the complete manual product, recipe, and meal editor drafts plus optional AI meal-scan context across Activity recreation with real-UI regression coverage. These changes remove concrete input-loss defects but do not change the rounded score because editable AI-result lifecycle coverage, manual accessibility evidence, performance owner gates, Health Connect edge-state evidence, and owner release decisions remain open.
 
 ## Completed Findings
 
+- QA-2026-08-06-028 (P2): Optional AI meal-scan context now survives Activity recreation without invoking Gemini, camera, credentials, or network; a red/green `MainActivity` test covers the disabled-AI fallback state.
 - QA-2026-08-06-027 (P2): Manual meal type, name/notes, edit identity, quick-add quantities, item requests, and validation feedback now survive Activity recreation; a red/green `MainActivity` test covers a locally created product, edited grams, and invalid unsaved meal.
 - QA-2026-08-06-026 (P2): Recipe identity, editable fields, ingredient draft, quick-ingredient input, and validation feedback now survive Activity recreation through saveable Compose state; a red/green `MainActivity` instrumentation test covers both a saved draft ingredient and unfinished invalid input.
 - QA-2026-08-06-025 (P2): Manual product name, barcode, nutrition values, edit selection, and validation feedback now survive Activity recreation through saveable Compose state; a red/green `MainActivity` instrumentation test covers the complete product form.
@@ -369,3 +370,14 @@ Updated date: 2026-08-06
 - Verification: baseline assemble/unit/lint PASS; corrected focused connected test RED before implementation and PASS after implementation; after-change assemble/unit/lint/Android-test compile PASS; deterministic test hardening PASS after broad-suite ordering evidence; full connected suite PASS with 48 tests and no failures/errors/skips; Room migration marker PASS; profileable and macrobenchmark packaging PASS; signing-readiness PASS while correctly reporting production signing unconfigured; debug install/cold launch PASS in 5581 ms with no TrainIQ fatal/ANR signal.
 - Artifact: non-production `app-debug.apk`, 51,116,437 bytes, SHA-256 `44C5CEC9B91534099F232AB33BC36B67551F34C97829162659D36A3991124FBD`.
 - Remaining risk: Activity recreation is proven, while OS-killed restoration remains bounded by Android saveable-state delivery. AI-result drafts remain separate. Production release remains blocked by the existing owner/manual/device gates.
+
+## 2026-08-06 AI Meal Context Recreation Polish
+
+- Finding: QA-2026-08-06-028.
+- QA result: the optional pre-scan AI meal context used ordinary `remember`; a connected Android 16 test entered a synthetic, non-sensitive context with AI disabled and reproduced its loss after `ActivityScenario.recreate()`.
+- Implementation plan: prove the local lifecycle defect without camera/Gemini/key/network access; switch only the context string to saveable state; run the focused and complete local verification matrix; produce a non-production debug APK.
+- Implementation: `NutritionScreen.kt` now preserves `aiContext` with `rememberSaveable`. AI opt-in, API-key storage, scanner navigation, analysis results, and remote behavior are unchanged.
+- Regression coverage: `TrainIqFlowSmokeInstrumentedTest.aiMealContextSurvivesActivityRecreationBeforeScan` enters `Vegetarische maaltijd na krachttraining`, recreates `MainActivity`, and asserts the exact context remains while AI is disabled.
+- Verification: baseline assemble/unit/lint PASS; focused connected test RED before implementation and PASS after implementation; after-change assemble/unit/lint/Android-test compile PASS; full connected suite PASS with 49 tests and no failures/errors/skips; Room migration marker PASS; profileable and macrobenchmark packaging PASS; signing-readiness PASS while correctly reporting production signing unconfigured; after one emulator disconnect/restart, debug install/cold launch PASS in 8785 ms with no TrainIQ fatal/ANR signal.
+- Artifact: non-production `app-debug.apk`, 51,116,437 bytes, SHA-256 `92630A82B52839FF5A61D7191C84B2324DA31BA1A2C87C7D4222E1D8DE492FB9`.
+- Remaining risk: editable AI result items and their validation feedback still require deterministic synthetic-result lifecycle coverage; no live camera or Gemini call should be used for that test. Production release remains blocked by the existing owner/manual/device gates.

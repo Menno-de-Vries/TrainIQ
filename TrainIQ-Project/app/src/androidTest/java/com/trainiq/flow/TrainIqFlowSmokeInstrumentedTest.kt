@@ -237,6 +237,28 @@ class TrainIqFlowSmokeInstrumentedTest {
         }
     }
 
+    @Test
+    fun aiMealContextSurvivesActivityRecreationBeforeScan() {
+        ActivityScenario.launch<MainActivity>(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ).use { scenario ->
+            waitForText("Voeding")
+            tap("Voeding")
+            waitForText("AI-resultaat")
+            tap("AI-resultaat")
+            waitForText("Optionele context")
+
+            compose.onNodeWithContentDescription("Optionele context")
+                .performTextReplacement("Vegetarische maaltijd na krachttraining")
+
+            scenario.recreate()
+
+            waitForText("Optionele context")
+            compose.onNodeWithContentDescription("Optionele context")
+                .assertTextContains("Vegetarische maaltijd na krachttraining")
+        }
+    }
+
     private fun deleteAppLocalFile(relativePath: String) {
         val dataRoot = context.filesDir.parentFile ?: return
         val target = File(dataRoot, relativePath).canonicalFile

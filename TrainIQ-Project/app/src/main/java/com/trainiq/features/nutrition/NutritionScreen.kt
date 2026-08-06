@@ -605,7 +605,7 @@ fun NutritionScreen(
     var mealFoodGramsErrors by rememberSaveable(stateSaver = QuickAddFieldErrorsSaver) { mutableStateOf(QuickAddFieldErrors()) }
     var mealRecipeGramsErrors by rememberSaveable(stateSaver = QuickAddFieldErrorsSaver) { mutableStateOf(QuickAddFieldErrors()) }
 
-    var aiContext by remember { mutableStateOf("") }
+    var aiContext by rememberSaveable { mutableStateOf("") }
     val editableAiItems = remember { mutableStateListOf<EditableAiItem>() }
     var aiItemErrors by remember { mutableStateOf<Map<Int, AiItemFieldErrors>>(emptyMap()) }
     var aiSaveProgress by remember { mutableStateOf(startAiBatchSaveProgress(0)) }
