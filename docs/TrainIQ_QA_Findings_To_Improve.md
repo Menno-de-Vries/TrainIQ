@@ -1266,3 +1266,41 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
   - Isolation note: an unisolated aggregate Gradle attempt discovered an unrelated emulator as well as the agent AVD. The agent device completed 51 tests green, while the unrelated emulator disconnected; authoritative connected and Room-marker evidence was rerun through an isolated local adb server exposing only the agent AVD.
 - minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.features.nutrition.NutritionAiResultStateRestorationInstrumentedTest" --no-daemon --stacktrace`.
 - remaining risk: No known local synthetic AI-result routing/restoration gap remains in this bounded Nutrition batch. Production release remains blocked by existing owner/manual/safe-device gates.
+
+### QA-2026-08-06-031
+
+- finding_id: QA-2026-08-06-031
+- priority: P2
+- area: Android lifecycle, Settings UX, tests
+- status: done
+- owner suggestion: Android UI owner
+- current evidence with file references:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/settings/SettingsSection.kt` declared editable profile fields with `rememberSaveable`, but an unconditional `LaunchedEffect(profile)` rehydrated every field and cleared `profileInputError` whenever a recreated Activity launched a new composition.
+  - `profileInputError` additionally used ordinary `remember`, so the invalid-field context itself was never registered for saveable restoration.
+  - A real `MainActivity` test entered `Rotatie-instellingen`, set age to `0`, triggered `Leeftijd moet tussen 1 en 120 zijn.`, and proved recreation restored the name as empty before the fix.
+  - The blueprint requires hostile display/lifecycle changes to recover cleanly and includes the Settings/profile form in critical lifecycle and profile evidence.
+- external sources used: None. Repository target-state requirements, local Compose behavior, and the existing keyed saveable-state pattern provide sufficient evidence.
+- expected target-state behavior: The complete Settings profile draft and its current validation feedback survive Activity recreation until the user edits input, saves successfully, resets the profile, clears app data, or receives a genuinely changed persisted profile.
+- implementation plan:
+  1. Add a red real-UI test with a non-empty name, invalid age, and field-specific error, then recreate `MainActivity`.
+  2. Key every profile-derived saveable field and its error to `profile`, and remove the lifecycle effect that overwrites restored state; retain current initialization when persisted profile content actually changes.
+  3. Re-run the focused test and full local build, unit, lint, connected, Room, profileable, packaging, signing-readiness, and runtime matrix.
+  4. Produce an explicitly non-production debug APK while retaining all production release gates.
+- concrete implemented fix: `SettingsScreen` now initializes its profile draft and `ProfileInputValidationError` through `rememberSaveable(profile)`. Removing the unconditional `LaunchedEffect(profile)` lets Android restore unsaved input/error state while a changed persisted `profile` still resets the keyed editors to the authoritative values.
+- files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/settings/SettingsSection.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
+- regression risk: Low. The change affects only ephemeral pre-submit Settings state. Profile validation, use cases, Room ownership, destructive confirmations, AI credentials, Health Connect, and network behavior are unchanged.
+- verification evidence:
+  - Baseline reuse PASS: the unchanged branch commit from the preceding cycle had passed `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin`, 51 connected tests, Room marker, profileable/macrobenchmark packaging, signing-readiness, and runtime smoke.
+  - RED: after Activity recreation the strengthened focused test found `EditableText = ''` for `Naam` while expecting `Rotatie-instellingen`; the invalid age and error were also no longer available.
+  - GREEN: the same focused test preserved `Rotatie-instellingen`, age `0`, and `Leeftijd moet tussen 1 en 120 zijn.` after the keyed saveable-state implementation.
+  - PASS: after-change `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin`.
+  - PASS: full isolated `:app:connectedDebugAndroidTest` with 52 tests, 0 failures, 0 errors, and 0 skipped on agent-owned `TrainIQ_Agent_API36_20260806` / Android 16.
+  - PASS: `:app:generateDebugRoomMigrationChainVerificationMarker`, including its isolated 52-test connected dependency.
+  - PASS: `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
+  - PASS: debug install and cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 3472`; the TrainIQ fatal/ANR scan returned 0 matches.
+  - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 51,116,437 bytes, SHA-256 `8A971D5891E1EB0636A5AC8F1732AFF3C44F48DCCE37CD5889346E34A608F586`.
+  - Test-debugging note: the first post-recreation assertion waited for the off-screen header instead of the restored profile section. After correcting that test condition, a one-line saveable error change still failed; systematic root-cause tracing identified the overwriting `LaunchedEffect(profile)` before the final implementation.
+- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#settingsProfileValidationErrorSurvivesActivityRecreation" --console=plain --no-configuration-cache`.
+- remaining risk: The test proves Activity recreation with a null persisted profile. Full OS-killed process restoration remains bounded by Android saveable-state delivery; production release remains blocked by existing owner/manual/safe-device gates.

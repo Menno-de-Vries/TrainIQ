@@ -103,6 +103,34 @@ class TrainIqFlowSmokeInstrumentedTest {
     }
 
     @Test
+    fun settingsProfileValidationErrorSurvivesActivityRecreation() {
+        ActivityScenario.launch<MainActivity>(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ).use { scenario ->
+            waitForText("Meer")
+            tap("Meer")
+            waitForText("Instellingen")
+            tap("Profiel opslaan")
+            waitForText("Naam is verplicht.")
+            compose.onNode(hasText("Naam") and hasSetTextAction())
+                .performTextReplacement("Rotatie-instellingen")
+            compose.onNode(hasText("Leeftijd") and hasSetTextAction())
+                .performTextReplacement("0")
+            tap("Profiel opslaan")
+            waitForText("Leeftijd moet tussen 1 en 120 zijn.")
+
+            scenario.recreate()
+
+            scrollUntilText("Profiel opslaan")
+            compose.onNode(hasText("Naam") and hasSetTextAction())
+                .assertTextContains("Rotatie-instellingen")
+            compose.onNode(hasText("Leeftijd") and hasSetTextAction())
+                .assertTextContains("0")
+            assertExists("Leeftijd moet tussen 1 en 120 zijn.")
+        }
+    }
+
+    @Test
     fun manualFoodDraftSurvivesActivityRecreationBeforeSave() {
         ActivityScenario.launch<MainActivity>(
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
