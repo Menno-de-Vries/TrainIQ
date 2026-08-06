@@ -1373,7 +1373,7 @@ fun WorkoutScreen(
     onDeleteWorkoutSession: (Long) -> Unit,
 ) {
     var showAiDialog by remember { mutableStateOf(false) }
-    var showCreateDialog by remember { mutableStateOf(false) }
+    var showCreateDialog by rememberSaveable { mutableStateOf(false) }
     var isGenerating by remember { mutableStateOf(false) }
     var selectedRoutineId by rememberSaveable { mutableStateOf<Long?>(null) }
     val trainingListState = rememberLazyListState()
@@ -1641,7 +1641,7 @@ class WorkoutProcessingViewModel @Inject constructor(
 
 @Composable
 private fun CreateRoutineDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    var name by remember { mutableStateOf("") }
+    var name by rememberSaveable { mutableStateOf("") }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     fun closeInput() {

@@ -1304,3 +1304,41 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
   - Test-debugging note: the first post-recreation assertion waited for the off-screen header instead of the restored profile section. After correcting that test condition, a one-line saveable error change still failed; systematic root-cause tracing identified the overwriting `LaunchedEffect(profile)` before the final implementation.
 - minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#settingsProfileValidationErrorSurvivesActivityRecreation" --console=plain --no-configuration-cache`.
 - remaining risk: The test proves Activity recreation with a null persisted profile. Full OS-killed process restoration remains bounded by Android saveable-state delivery; production release remains blocked by existing owner/manual/safe-device gates.
+
+### QA-2026-08-06-032
+
+- finding_id: QA-2026-08-06-032
+- priority: P2
+- area: Android lifecycle, training UX, tests
+- status: done
+- owner suggestion: Android UI owner
+- current evidence with file references:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt` kept both `showCreateDialog` and the unsaved `CreateRoutineDialog` name in ordinary `remember` state.
+  - A real `MainActivity` test opened `Lege routine maken`, entered `Rotatieroutine`, recreated the Activity, and timed out waiting for `Routinenaam` because the complete dialog disappeared.
+  - The blueprint requires unsaved form/workflow state to recover across Activity recreation and explicitly includes routine creation among lifecycle-sensitive training flows.
+- external sources used:
+  - Android Developers, `Start the emulator from the command line`, accessed 2026-08-06: https://developer.android.com/studio/run/emulator-commandline. Used only to recover the local Android test harness with an even explicit port and supported headless startup; the product defect and fix are established by repository/runtime evidence.
+- expected target-state behavior: The manual routine-creation dialog and its non-empty draft name survive Activity recreation until the user creates the routine or explicitly dismisses the dialog.
+- implementation plan:
+  1. Add a red real-UI test that opens the manual routine dialog, enters a unique name, recreates `MainActivity`, and asserts the dialog plus draft remain.
+  2. Make only the dialog visibility and name saveable; leave AI generation, loading, Room, navigation, and other workout state unchanged.
+  3. Re-run the focused test, local baseline, full connected/Room matrix, release-like packaging, signing-readiness, and runtime smoke.
+  4. Produce an explicitly non-production debug APK while retaining every production release gate.
+- concrete implemented fix: `WorkoutScreen` now stores `showCreateDialog` with `rememberSaveable`, and `CreateRoutineDialog` stores its name with `rememberSaveable`. Normal create/dismiss callbacks still remove the dialog and its ephemeral draft.
+- files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
+- regression risk: Low. The change affects only unsaved manual routine-creation UI state. Routine persistence, AI generation, workout execution, validation, Room, permissions, and network behavior are unchanged.
+- verification evidence:
+  - Baseline reuse PASS: exact `main` tree `cca2990a493596ea27d621375a3c9265b7b126a3` had passed build/unit/lint, 52 connected tests, Room marker, release-like packaging, signing-readiness, and runtime smoke in the preceding authorized cycle.
+  - RED: the focused real-Activity test failed 1/1 after recreation with a timeout on the second `Routinenaam` wait at `TrainIqFlowSmokeInstrumentedTest.kt:149`; unchanged production code had closed the dialog.
+  - GREEN: the identical focused test passed 1/1 after the two saveable-state changes and retained `Rotatieroutine`.
+  - PASS: `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin`.
+  - PASS: full `:app:connectedDebugAndroidTest` with 53 tests, 0 failures, 0 errors, and 0 skipped on agent-owned `Pixel_8_API_36` / Android 16.
+  - PASS: `:app:generateDebugRoomMigrationChainVerificationMarker`, including its 53-test connected dependency.
+  - PASS: `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
+  - PASS: debug install and cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 8069`; the TrainIQ fatal/ANR scan returned 0 matches.
+  - PASS: branch debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 50,834,984 bytes, SHA-256 `BD7D25618E1291B14450351E6755EE623E039D768E3600A675D5D5ED624A8D46`.
+  - Test-environment note: initial cold boots exceeded the first 55-second bound, and one pre-result run was terminated after its ADB transport stalled. Verbose, even-port headless startup isolated the problem to emulator boot/cleanup timing; the authoritative RED, GREEN, 53-test suite, packaging, install, launch, and crash evidence all ran afterward on the stable Pixel AVD.
+- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#manualRoutineDraftSurvivesActivityRecreationBeforeCreate" --console=plain --no-configuration-cache`.
+- remaining risk: Activity recreation is proven. Full OS-killed restoration remains bounded by Android saveable-state delivery; AI routine generation has separate transient form state and remains outside this manual-creation batch. Production release remains blocked by existing owner/manual/safe-device gates.

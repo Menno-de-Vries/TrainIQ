@@ -421,3 +421,16 @@ Updated date: 2026-08-06
 - Artifact: non-production `app-debug.apk`, 51,116,437 bytes, SHA-256 `8A971D5891E1EB0636A5AC8F1732AFF3C44F48DCCE37CD5889346E34A608F586`.
 - Alignment: the rounded target-state estimate remains 95%; this closes one repository-proven Settings lifecycle gap without altering the owner/manual/device release gates.
 - Remaining risk: Activity recreation is proven; OS-killed restoration remains bounded by Android saveable-state delivery. Production release remains blocked.
+
+## 2026-08-06 Manual Routine Draft Restoration Polish
+
+- Finding: QA-2026-08-06-032.
+- QA result: static inspection and a red `MainActivity` test proved that Activity recreation closed the manual routine-creation dialog and discarded its non-empty name because both states used ordinary `remember`.
+- Implementation plan: prove the user-visible loss first; make only dialog visibility and its draft name saveable; run the complete local matrix and produce a non-production APK.
+- Implementation: `WorkoutScreen` and `CreateRoutineDialog` now retain the manual routine workflow through `rememberSaveable`; create/dismiss behavior and all persistence, AI, navigation, and workout logic are unchanged.
+- Regression coverage: `TrainIqFlowSmokeInstrumentedTest.manualRoutineDraftSurvivesActivityRecreationBeforeCreate` enters `Rotatieroutine`, recreates `MainActivity`, and verifies the dialog plus draft remain.
+- Verification: exact-main baseline evidence reused; focused connected test RED then GREEN; after-change build/unit/lint/Android-test compile PASS; full connected suite and Room-marker dependency PASS with 53 tests and no failures/errors/skips; profileable/macrobenchmark packaging and signing-readiness PASS; debug install/cold launch PASS in 8069 ms with 0 TrainIQ fatal/ANR matches.
+- Tooling research: Android Developers' command-line emulator guidance (accessed 2026-08-06) supported recovery from a slow/stalled cold boot using an even explicit port and supported headless mode: https://developer.android.com/studio/run/emulator-commandline.
+- Artifact: non-production `app-debug.apk`, 50,834,984 bytes, SHA-256 `BD7D25618E1291B14450351E6755EE623E039D768E3600A675D5D5ED624A8D46`.
+- Alignment: the rounded target-state estimate remains 95%; this closes one repository-proven manual routine lifecycle gap without altering the owner/manual/device release gates.
+- Remaining risk: Activity recreation is proven; OS-killed restoration remains bounded by Android saveable-state delivery. AI routine-generator input restoration remains outside this focused manual-creation batch. Production release remains blocked.
