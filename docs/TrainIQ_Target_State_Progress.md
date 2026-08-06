@@ -7,10 +7,11 @@ Updated date: 2026-08-06
 - Previous alignment: 95%
 - Current estimated alignment: 95%
 - Delta: 0 percentage points after rounding
-- Reason: The 2026-08-06 closed loops now preserve manual Nutrition state, synthetic AI-result routing, and the complete Settings profile draft plus validation feedback across restoration. These concrete lifecycle fixes do not change the rounded score because manual accessibility evidence, performance owner gates, Health Connect/scanner safe-device evidence, signing, and owner release decisions remain open.
+- Reason: The 2026-08-06 closed loops now preserve manual Nutrition state, synthetic AI-result routing, and profile drafts across restoration, including Coach forms hydrated from an existing persisted profile. These concrete lifecycle fixes do not change the rounded score because manual accessibility evidence, performance owner gates, Health Connect/scanner safe-device evidence, signing, and owner release decisions remain open.
 
 ## Completed Findings
 
+- QA-2026-08-06-033 (P2): Unsaved Coach edits now survive save/restore when an existing persisted profile hydrates the form; keyed saveable state prevents lifecycle rehydration from overwriting the draft.
 - QA-2026-08-06-031 (P2): Settings profile input and field-specific validation feedback now survive Activity recreation; keyed saveable state replaces a lifecycle effect that overwrote restored drafts.
 - QA-2026-08-06-030 (P2): The recipe destination of a restored synthetic AI result now survives Compose save/restore, so recipe scans continue to `Fotocontrole`; deterministic regression coverage invokes no Gemini, camera, credential, network, or persistence boundary.
 - QA-2026-08-06-029 (P2): User-edited AI meal-result rows and validation feedback now survive Compose save/restore while genuinely new scan results still initialize a fresh draft.
@@ -434,3 +435,15 @@ Updated date: 2026-08-06
 - Artifact: non-production `app-debug.apk`, 50,834,984 bytes, SHA-256 `BD7D25618E1291B14450351E6755EE623E039D768E3600A675D5D5ED624A8D46`.
 - Alignment: the rounded target-state estimate remains 95%; this closes one repository-proven manual routine lifecycle gap without altering the owner/manual/device release gates.
 - Remaining risk: Activity recreation is proven; OS-killed restoration remains bounded by Android saveable-state delivery. AI routine-generator input restoration remains outside this focused manual-creation batch. Production release remains blocked.
+
+## 2026-08-06 Coach Existing-Profile Restoration Polish
+
+- Finding: QA-2026-08-06-033.
+- QA result: static inspection plus a deterministic RED test proved that `LaunchedEffect(profile)` overwrote restored unsaved Coach edits when an existing profile hydrated a new composition; the earlier Coach recreation test covered only the null-profile branch.
+- Implementation plan: prove the existing-profile boundary without external services; key only profile-derived saveable form state to the authoritative profile; remove the overwriting effect; run the complete local matrix and produce a non-production APK.
+- Implementation: all Coach profile inputs and `ProfileInputValidationError` now use `rememberSaveable(profile)`. Genuinely changed persisted profile content still initializes a fresh editor, while save/restore retains the user's unsaved draft.
+- Regression coverage: `CoachProfileStateRestorationInstrumentedTest.existingProfileDraftSurvivesStateRestoration` injects a synthetic existing profile, edits its name, emulates save/restore, and verifies the unsaved value remains without Room, Gemini, network, credentials, or camera access.
+- Verification: exact-main baseline build/unit/lint/Android-test compile PASS; focused synthetic test RED then GREEN; after-change build/unit/lint/Android-test compile PASS; full isolated suite and Room-marker dependency PASS with 54 tests and no failures/errors/skips; profileable/macrobenchmark packaging and signing-readiness PASS; debug install/cold launch PASS in 2996 ms with 0 TrainIQ fatal/ANR matches.
+- Artifact: non-production `app-debug.apk`, 51,116,755 bytes, SHA-256 `34121DF393D5F3191AE578DF96799543A04ED6DB3C036FC9A4FAAD1169BD2F20`.
+- Alignment: the rounded target-state estimate remains 95%; this closes one repository-proven Coach lifecycle gap without altering the owner/manual/device release gates.
+- Remaining risk: Compose save/restore is proven with an existing profile; full OS-killed restoration remains bounded by Android saveable-state delivery. Production release remains blocked.

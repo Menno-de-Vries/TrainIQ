@@ -25,7 +25,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -434,30 +433,19 @@ fun CoachScreen(
     onSaveProfile: (String, String, String, String, String, BiologicalSex, String, String) -> Unit,
     onDismissMessage: () -> Unit,
 ) {
-    var name by rememberSaveable { mutableStateOf("") }
-    var age by rememberSaveable { mutableStateOf("30") }
-    var sex by rememberSaveable { mutableStateOf(BiologicalSex.MALE) }
-    var height by rememberSaveable { mutableStateOf("") }
-    var weight by rememberSaveable { mutableStateOf("") }
-    var bodyFat by rememberSaveable { mutableStateOf("") }
-    var activityLevel by rememberSaveable { mutableStateOf("Gemiddeld actief") }
-    var goal by rememberSaveable { mutableStateOf("") }
-    var profileInputError by rememberSaveable { mutableStateOf<ProfileInputValidationError?>(null) }
-    val haptics = LocalHapticFeedback.current
-
     val profile = (uiState as? CoachUiState.Success)?.currentProfile
-    LaunchedEffect(profile) {
-        profile?.let {
-            name = it.name
-            age = it.age.toString()
-            sex = it.sex
-            height = it.height.toString()
-            weight = it.weight.toString()
-            bodyFat = it.bodyFat.toString()
-            activityLevel = it.activityLevel.toDutchActivityLevelLabel()
-            goal = it.goal
-        }
+    var name by rememberSaveable(profile) { mutableStateOf(profile?.name.orEmpty()) }
+    var age by rememberSaveable(profile) { mutableStateOf(profile?.age?.toString() ?: "30") }
+    var sex by rememberSaveable(profile) { mutableStateOf(profile?.sex ?: BiologicalSex.MALE) }
+    var height by rememberSaveable(profile) { mutableStateOf(profile?.height?.toString().orEmpty()) }
+    var weight by rememberSaveable(profile) { mutableStateOf(profile?.weight?.toString().orEmpty()) }
+    var bodyFat by rememberSaveable(profile) { mutableStateOf(profile?.bodyFat?.toString().orEmpty()) }
+    var activityLevel by rememberSaveable(profile) {
+        mutableStateOf(profile?.activityLevel?.toDutchActivityLevelLabel() ?: "Gemiddeld actief")
     }
+    var goal by rememberSaveable(profile) { mutableStateOf(profile?.goal.orEmpty()) }
+    var profileInputError by rememberSaveable(profile) { mutableStateOf<ProfileInputValidationError?>(null) }
+    val haptics = LocalHapticFeedback.current
 
     AnimatedContent(targetState = uiState, label = "coach-ui-state") { state ->
         LazyColumn(
