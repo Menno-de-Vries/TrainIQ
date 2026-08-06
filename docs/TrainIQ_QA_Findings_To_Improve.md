@@ -1194,3 +1194,38 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
   - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 51,116,437 bytes, SHA-256 `92630A82B52839FF5A61D7191C84B2324DA31BA1A2C87C7D4222E1D8DE492FB9`.
 - minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#aiMealContextSurvivesActivityRecreationBeforeScan" --console=plain --no-configuration-cache`.
 - remaining risk: Activity recreation is proven; OS-killed restoration remains bounded by Android saveable-state delivery. User-edited AI result items and their validation feedback remain a separate lifecycle batch requiring deterministic synthetic-result test infrastructure, not live Gemini or camera use.
+
+### QA-2026-08-06-029
+
+- finding_id: QA-2026-08-06-029
+- priority: P2
+- area: Android lifecycle, Nutrition UX, tests
+- status: done
+- owner suggestion: Android UI owner
+- current evidence with file references:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt` held editable AI-result rows and per-field validation errors in ordinary `remember` state.
+  - `LaunchedEffect(scanResult)` also rebuilt those rows from the original analysis result after recreation, overwriting user corrections before save.
+  - A deterministic `StateRestorationTester` component test reproduced the defect without camera, Gemini, credentials, network, or persistence: after editing `Originele bowl` to `Bewerkte bowl`, changing grams to `180`, and entering invalid fat `-4`, restoration returned the name to `Originele bowl`.
+- external sources used: None. Repository target-state requirements, pinned local Compose test APIs, and synthetic local test evidence were sufficient.
+- expected target-state behavior: User corrections to every editable AI meal-result field and current validation feedback survive saveable-state restoration until the user saves, deletes, or receives a genuinely new analysis result.
+- implementation plan:
+  1. Prove result-state loss with one synthetic connected component test and representative validation feedback.
+  2. Serialize only editable row primitives and indexed field errors with compact Compose savers, keyed by the current scan result so a new analysis resets stale edits.
+  3. Remove unconditional result rehydration from the lifecycle effect; leave scanning, Gemini, schema validation, submit behavior, and Room ownership unchanged.
+  4. Run the full local quality matrix and produce a non-production debug APK.
+- concrete implemented fix: `NutritionScreen` now initializes editable AI rows from a new `scanResult` through `rememberSaveable(scanResult, saver = ...)`. Primitive savers preserve all row values, nullable confidence/notes, and indexed `AiItemFieldErrors`; the scan-result effect now handles only routing and meal-type suggestions.
+- files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/features/nutrition/NutritionAiResultStateRestorationInstrumentedTest.kt`
+- regression risk: Low. The change is limited to ephemeral pre-submit UI state. New scan results still reset the draft, while AI opt-in, credentials, camera navigation, Gemini transport, nutrition validation, use cases, and Room writes are unchanged.
+- verification evidence:
+  - Baseline PASS: `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug`.
+  - RED: the focused test restored `EditableText = 'Originele bowl'` while expecting `Bewerkte bowl`.
+  - GREEN: the focused test preserved `Bewerkte bowl`, `180`, `-4`, and `Vul een niet-negatieve waarde in.` after save/restore.
+  - PASS: after-change `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin`.
+  - PASS: full `:app:connectedDebugAndroidTest` with 50 tests, 0 failures, 0 errors, and 0 skipped on agent-owned `Pixel_8_API_36` / Android 16.
+  - PASS: `:app:generateDebugRoomMigrationChainVerificationMarker`, `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
+  - PASS: debug install and cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 5444`; the TrainIQ fatal/ANR scan returned 0 matches.
+  - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 51,116,437 bytes, SHA-256 `E70A39254B034F5CEC02A0C3EE5E6570B7D413856C4826ABFE94F2C9F4EFC3B1`.
+- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.features.nutrition.NutritionAiResultStateRestorationInstrumentedTest#editedAiResultAndValidationErrorSurviveStateRestoration" --no-daemon --stacktrace`.
+- remaining risk: The deterministic test proves Compose save/restore for meal-result edits. Recipe-target routing remains transient and should be a separate bounded lifecycle test; production release remains blocked by existing owner/manual/device gates.

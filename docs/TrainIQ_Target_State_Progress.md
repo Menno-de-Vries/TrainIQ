@@ -381,3 +381,15 @@ Updated date: 2026-08-06
 - Verification: baseline assemble/unit/lint PASS; focused connected test RED before implementation and PASS after implementation; after-change assemble/unit/lint/Android-test compile PASS; full connected suite PASS with 49 tests and no failures/errors/skips; Room migration marker PASS; profileable and macrobenchmark packaging PASS; signing-readiness PASS while correctly reporting production signing unconfigured; after one emulator disconnect/restart, debug install/cold launch PASS in 8785 ms with no TrainIQ fatal/ANR signal.
 - Artifact: non-production `app-debug.apk`, 51,116,437 bytes, SHA-256 `92630A82B52839FF5A61D7191C84B2324DA31BA1A2C87C7D4222E1D8DE492FB9`.
 - Remaining risk: editable AI result items and their validation feedback still require deterministic synthetic-result lifecycle coverage; no live camera or Gemini call should be used for that test. Production release remains blocked by the existing owner/manual/device gates.
+
+## 2026-08-06 Editable AI Meal Result Restoration Polish
+
+- Finding: QA-2026-08-06-029.
+- QA result: a deterministic synthetic-result component test proved that user-corrected AI meal rows and validation feedback were replaced by the original analysis result during saveable-state restoration.
+- Implementation plan: prove the defect without external boundaries; preserve only editable row primitives and indexed errors with compact savers; remove unconditional rehydration; run the complete local quality matrix and build a non-production APK.
+- Implementation: `NutritionScreen.kt` now restores all editable AI-result values plus nullable metadata and validation errors with `rememberSaveable`, keyed by `scanResult` so a genuinely new result initializes a fresh draft. Camera, Gemini, credentials, network, submit logic, and Room persistence are unchanged.
+- Regression coverage: `NutritionAiResultStateRestorationInstrumentedTest.editedAiResultAndValidationErrorSurviveStateRestoration` uses a synthetic local-fallback result, edits name/grams/fat, triggers negative-fat validation, emulates save/restore, and verifies the complete corrected state remains.
+- Verification: baseline assemble/unit/lint PASS; focused component test RED before implementation and GREEN after implementation; after-change assemble/unit/lint/Android-test compile PASS; full connected suite PASS with 50 tests and no failures/errors/skips; Room migration marker, profileable packaging, macrobenchmark test packaging, and signing-readiness PASS; debug install/cold launch PASS in 5444 ms with 0 TrainIQ fatal/ANR matches.
+- Artifact: non-production `app-debug.apk`, 51,116,437 bytes, SHA-256 `E70A39254B034F5CEC02A0C3EE5E6570B7D413856C4826ABFE94F2C9F4EFC3B1`.
+- Alignment: the rounded target-state estimate remains 95%; this closes the recorded AI-result restoration gap but does not close owner/legal/accessibility/performance/signing or safe-device release gates.
+- Remaining risk: recipe-target routing for restored AI results remains transient. Production release remains blocked by the existing owner/manual/device gates.

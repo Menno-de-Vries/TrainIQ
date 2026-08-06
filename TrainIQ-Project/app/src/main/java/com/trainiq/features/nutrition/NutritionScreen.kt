@@ -231,6 +231,74 @@ private val MealDraftSaver = listSaver<SnapshotStateList<MealEntryRequest>, Stri
     },
 )
 
+private val EditableAiItemsSaver = listSaver<SnapshotStateList<EditableAiItem>, String>(
+    save = { items ->
+        items.flatMap { item ->
+            listOf(
+                item.name,
+                item.grams,
+                item.calories,
+                item.protein,
+                item.carbs,
+                item.fat,
+                (item.confidence != null).toString(),
+                item.confidence.orEmpty(),
+                (item.notes != null).toString(),
+                item.notes.orEmpty(),
+            )
+        }
+    },
+    restore = { values ->
+        mutableStateListOf<EditableAiItem>().apply {
+            addAll(
+                values.chunked(10).mapNotNull { savedItem ->
+                    if (savedItem.size != 10) return@mapNotNull null
+                    EditableAiItem(
+                        name = savedItem[0],
+                        grams = savedItem[1],
+                        calories = savedItem[2],
+                        protein = savedItem[3],
+                        carbs = savedItem[4],
+                        fat = savedItem[5],
+                        confidence = savedItem[7].takeIf { savedItem[6].toBooleanStrictOrNull() == true },
+                        notes = savedItem[9].takeIf { savedItem[8].toBooleanStrictOrNull() == true },
+                    )
+                },
+            )
+        }
+    },
+)
+
+private val AiItemErrorsSaver = listSaver<Map<Int, AiItemFieldErrors>, String>(
+    save = { errorsByIndex ->
+        errorsByIndex.entries.sortedBy { it.key }.flatMap { (index, errors) ->
+            listOf(
+                index.toString(),
+                errors.name.orEmpty(),
+                errors.grams.orEmpty(),
+                errors.calories.orEmpty(),
+                errors.protein.orEmpty(),
+                errors.carbs.orEmpty(),
+                errors.fat.orEmpty(),
+            )
+        }
+    },
+    restore = { values ->
+        values.chunked(7).mapNotNull { savedErrors ->
+            val index = savedErrors.getOrNull(0)?.toIntOrNull()
+            if (index == null || savedErrors.size != 7) return@mapNotNull null
+            index to AiItemFieldErrors(
+                name = savedErrors[1].ifBlank { null },
+                grams = savedErrors[2].ifBlank { null },
+                calories = savedErrors[3].ifBlank { null },
+                protein = savedErrors[4].ifBlank { null },
+                carbs = savedErrors[5].ifBlank { null },
+                fat = savedErrors[6].ifBlank { null },
+            )
+        }.toMap()
+    },
+)
+
 sealed interface NutritionUiState {
     data object Loading : NutritionUiState
     data class Success(
@@ -606,8 +674,14 @@ fun NutritionScreen(
     var mealRecipeGramsErrors by rememberSaveable(stateSaver = QuickAddFieldErrorsSaver) { mutableStateOf(QuickAddFieldErrors()) }
 
     var aiContext by rememberSaveable { mutableStateOf("") }
-    val editableAiItems = remember { mutableStateListOf<EditableAiItem>() }
-    var aiItemErrors by remember { mutableStateOf<Map<Int, AiItemFieldErrors>>(emptyMap()) }
+    val editableAiItems = rememberSaveable(scanResult, saver = EditableAiItemsSaver) {
+        mutableStateListOf<EditableAiItem>().apply {
+            scanResult?.items?.forEach { add(EditableAiItem.from(it)) }
+        }
+    }
+    var aiItemErrors by rememberSaveable(scanResult, stateSaver = AiItemErrorsSaver) {
+        mutableStateOf<Map<Int, AiItemFieldErrors>>(emptyMap())
+    }
     var aiSaveProgress by remember { mutableStateOf(startAiBatchSaveProgress(0)) }
     val isAiSaving = !aiSaveProgress.isFinished || isAiBatchPending
 
@@ -717,8 +791,6 @@ fun NutritionScreen(
     }
 
     LaunchedEffect(scanResult) {
-        editableAiItems.clear()
-        scanResult?.items?.forEach { editableAiItems += EditableAiItem.from(it) }
         if (!aiScanForRecipe) {
             scanResult?.suggestedMealType?.let {
                 mealType = it
