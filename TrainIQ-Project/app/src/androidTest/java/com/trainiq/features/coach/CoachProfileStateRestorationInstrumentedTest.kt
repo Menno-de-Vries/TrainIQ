@@ -64,24 +64,24 @@ class CoachProfileStateRestorationInstrumentedTest {
 
     @OptIn(ExperimentalTestApi::class)
     @Test
-    fun restoredDraftIsDiscardedWhenSameProfileIdHasNewContent() = runComposeUiTest {
+    fun restoredDraftIsDiscardedWhenSameProfileIdHasHashCollidingContent() = runComposeUiTest {
         val restorationTester = StateRestorationTester(this)
-        var currentProfile = syntheticProfile()
+        var currentProfile = syntheticProfile(name = "Aa")
 
         restorationTester.setContent {
             SyntheticCoachScreen(profile = currentProfile)
         }
 
-        onNode(hasSetTextAction() and hasText("Bestaand profiel"))
+        onNode(hasSetTextAction() and hasText("Aa"))
             .performScrollTo()
             .performTextReplacement("Onopgeslagen coachnaam")
-        currentProfile = syntheticProfile(name = "Bijgewerkt profiel")
+        currentProfile = syntheticProfile(name = "BB")
 
         restorationTester.emulateSaveAndRestore()
 
-        onNode(hasSetTextAction() and hasText("Bijgewerkt profiel"))
+        onNode(hasSetTextAction() and hasText("BB"))
             .performScrollTo()
-            .assertTextContains("Bijgewerkt profiel")
+            .assertTextContains("BB")
         onNode(hasSetTextAction() and hasText("Onopgeslagen coachnaam"))
             .assertDoesNotExist()
     }

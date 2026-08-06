@@ -1361,10 +1361,10 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
 - expected target-state behavior: Unsaved Coach profile and goal edits survive state restoration even when the form was initially hydrated from an existing persisted profile; genuinely changed persisted profile content remains authoritative.
 - implementation plan:
   1. Run the focused synthetic restoration test unchanged against current production code and retain the failing evidence.
-  2. Persist a stable marker for the resolved profile source and rehydrate the saveable editor only when the current profile ID or source-field fingerprint differs.
+  2. Persist an exact saveable snapshot of the resolved profile source fields and rehydrate the editor only when that snapshot differs from the current source.
   3. Re-run the focused test and the full local build, unit, lint, connected, Room, profileable, packaging, signing-readiness, and runtime matrix.
   4. Produce an explicitly non-production debug APK while retaining every production release gate.
-- concrete implemented fix: `CoachScreen` keeps the editable values saveable and also saves whether their source was resolved, the source profile ID, and a fingerprint of every profile field that hydrates the editor. A guarded `LaunchedEffect` preserves a same-source draft but rehydrates all inputs and clears stale validation feedback when the resolved Room profile ID or content fingerprint differs.
+- concrete implemented fix: `CoachScreen` keeps the editable values saveable and separately saves whether their source was resolved plus the exact primitive/String value of every profile field that hydrates the editor. A guarded `LaunchedEffect` compares the complete source snapshot, preserves a same-source draft, and rehydrates all inputs while clearing stale validation feedback whenever any source value differs.
 - files changed:
   - `TrainIQ-Project/app/src/main/java/com/trainiq/features/coach/CoachScreen.kt`
   - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/features/coach/CoachProfileStateRestorationInstrumentedTest.kt`
@@ -1381,12 +1381,14 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
   - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 51,116,755 bytes, SHA-256 `34121DF393D5F3191AE578DF96799543A04ED6DB3C036FC9A4FAAD1169BD2F20`.
   - PR review RED: the expanded three-test restoration class passed the same-profile case but failed 2/3 because neither `Ander profiel` nor `Bijgewerkt profiel` replaced the restored stale draft.
   - PR review GREEN: the identical focused class passed 3/3 after adding resolved-source, profile-ID, and content-fingerprint validation.
-  - PASS: review follow-up `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, and `:app:compileDebugAndroidTestKotlin`.
-  - PASS: review follow-up full isolated `:app:connectedDebugAndroidTest` with 56 tests, 0 failures, 0 errors, and 0 skipped on agent-owned `TrainIQ_Agent_API36_20260806` / Android 16.
-  - PASS: review follow-up `:app:generateDebugRoomMigrationChainVerificationMarker`, including its second isolated 56-test connected dependency.
-  - PASS: review follow-up `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
-  - PASS: final debug install and cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 3627`; the TrainIQ fatal/ANR scan returned 0 matches.
-  - PASS: final review-hardened debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 51,116,755 bytes, SHA-256 `272E49158F32223C6A39E305E5C711DDDF7C16D69E1B5D7DAB7C67A78687C8A4`.
+  - Follow-up review RED: changing the same profile ID from hash-colliding name `Aa` to `BB` left the stale draft in place, so the expanded class passed 2/3 and failed exactly on the missing `BB` field.
+  - Final GREEN: the unchanged collision-aware class passed 3/3 after replacing the 32-bit fingerprint with exact source-field comparison.
+  - PASS: final `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, and `:app:compileDebugAndroidTestKotlin`.
+  - PASS: final full isolated `:app:connectedDebugAndroidTest` with 56 tests, 0 failures, 0 errors, and 0 skipped on agent-owned `TrainIQ_Agent_API36_20260806` / Android 16.
+  - PASS: final `:app:generateDebugRoomMigrationChainVerificationMarker`, including its second isolated 56-test connected dependency.
+  - PASS: final `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
+  - PASS: final debug install and cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 6603`; the TrainIQ fatal/ANR scan returned 0 matches.
+  - PASS: final review-hardened debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 51,116,755 bytes, SHA-256 `34BD888399638945ED37D5B86288A4FB4752502058611FB5E76168481BCA2A88`.
   - Test-environment note: the first attempted RED run lost its agent AVD and left the owned emulator launcher/isolated adb transport stale. After resolving those exact owned processes, a cold snapshotless boot produced the authoritative RED, GREEN, full-suite, packaging, install, launch, and crash evidence.
 - minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.features.coach.CoachProfileStateRestorationInstrumentedTest" --console=plain --no-configuration-cache`.
 - remaining risk: The synthetic tests prove local Compose save/restore source validation; a full OS-killed end-to-end process path remains bounded by Android saveable-state delivery. Production release remains blocked by existing owner/manual/safe-device gates.

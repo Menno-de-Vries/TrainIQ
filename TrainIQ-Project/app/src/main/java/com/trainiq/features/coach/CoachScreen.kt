@@ -436,13 +436,17 @@ fun CoachScreen(
 ) {
     val isProfileResolved = uiState is CoachUiState.Success
     val profile = (uiState as? CoachUiState.Success)?.currentProfile
-    val currentProfileId = profile?.id
-    val currentProfileFingerprint = profile?.coachDraftFingerprint()
+    val currentProfileSource = profile.coachDraftSource()
     var draftProfileSourceResolved by rememberSaveable { mutableStateOf(isProfileResolved) }
-    var draftProfileId by rememberSaveable { mutableStateOf(if (isProfileResolved) currentProfileId else null) }
-    var draftProfileFingerprint by rememberSaveable {
-        mutableStateOf(if (isProfileResolved) currentProfileFingerprint else null)
-    }
+    var draftProfileId by rememberSaveable { mutableStateOf(currentProfileSource.profileId) }
+    var draftProfileName by rememberSaveable { mutableStateOf(currentProfileSource.name) }
+    var draftProfileAge by rememberSaveable { mutableStateOf(currentProfileSource.age) }
+    var draftProfileSexName by rememberSaveable { mutableStateOf(currentProfileSource.sexName) }
+    var draftProfileHeight by rememberSaveable { mutableStateOf(currentProfileSource.height) }
+    var draftProfileWeight by rememberSaveable { mutableStateOf(currentProfileSource.weight) }
+    var draftProfileBodyFat by rememberSaveable { mutableStateOf(currentProfileSource.bodyFat) }
+    var draftProfileActivityLevel by rememberSaveable { mutableStateOf(currentProfileSource.activityLevel) }
+    var draftProfileGoal by rememberSaveable { mutableStateOf(currentProfileSource.goal) }
     var name by rememberSaveable { mutableStateOf(profile?.name.orEmpty()) }
     var age by rememberSaveable { mutableStateOf(profile?.age?.toString() ?: "30") }
     var sex by rememberSaveable { mutableStateOf(profile?.sex ?: BiologicalSex.MALE) }
@@ -455,13 +459,22 @@ fun CoachScreen(
     var goal by rememberSaveable { mutableStateOf(profile?.goal.orEmpty()) }
     var profileInputError by rememberSaveable { mutableStateOf<ProfileInputValidationError?>(null) }
     val haptics = LocalHapticFeedback.current
+    val draftProfileSource = CoachDraftSource(
+        profileId = draftProfileId,
+        name = draftProfileName,
+        age = draftProfileAge,
+        sexName = draftProfileSexName,
+        height = draftProfileHeight,
+        weight = draftProfileWeight,
+        bodyFat = draftProfileBodyFat,
+        activityLevel = draftProfileActivityLevel,
+        goal = draftProfileGoal,
+    )
 
-    LaunchedEffect(isProfileResolved, currentProfileId, currentProfileFingerprint) {
+    LaunchedEffect(isProfileResolved, currentProfileSource) {
         if (
             isProfileResolved &&
-            (!draftProfileSourceResolved ||
-                draftProfileId != currentProfileId ||
-                draftProfileFingerprint != currentProfileFingerprint)
+            (!draftProfileSourceResolved || draftProfileSource != currentProfileSource)
         ) {
             name = profile?.name.orEmpty()
             age = profile?.age?.toString() ?: "30"
@@ -473,8 +486,15 @@ fun CoachScreen(
             goal = profile?.goal.orEmpty()
             profileInputError = null
             draftProfileSourceResolved = true
-            draftProfileId = currentProfileId
-            draftProfileFingerprint = currentProfileFingerprint
+            draftProfileId = currentProfileSource.profileId
+            draftProfileName = currentProfileSource.name
+            draftProfileAge = currentProfileSource.age
+            draftProfileSexName = currentProfileSource.sexName
+            draftProfileHeight = currentProfileSource.height
+            draftProfileWeight = currentProfileSource.weight
+            draftProfileBodyFat = currentProfileSource.bodyFat
+            draftProfileActivityLevel = currentProfileSource.activityLevel
+            draftProfileGoal = currentProfileSource.goal
         }
     }
 
@@ -842,17 +862,29 @@ private fun String.toDutchActivityLevelLabel(): String = when (trim().lowercase(
     else -> this
 }
 
-private fun UserProfile.coachDraftFingerprint(): Int {
-    var result = name.hashCode()
-    result = 31 * result + age
-    result = 31 * result + sex.name.hashCode()
-    result = 31 * result + height.hashCode()
-    result = 31 * result + weight.hashCode()
-    result = 31 * result + bodyFat.hashCode()
-    result = 31 * result + activityLevel.hashCode()
-    result = 31 * result + goal.hashCode()
-    return result
-}
+private data class CoachDraftSource(
+    val profileId: Long?,
+    val name: String?,
+    val age: Int?,
+    val sexName: String?,
+    val height: Double?,
+    val weight: Double?,
+    val bodyFat: Double?,
+    val activityLevel: String?,
+    val goal: String?,
+)
+
+private fun UserProfile?.coachDraftSource(): CoachDraftSource = CoachDraftSource(
+    profileId = this?.id,
+    name = this?.name,
+    age = this?.age,
+    sexName = this?.sex?.name,
+    height = this?.height,
+    weight = this?.weight,
+    bodyFat = this?.bodyFat,
+    activityLevel = this?.activityLevel,
+    goal = this?.goal,
+)
 
 internal fun goalAdviceEnergyDifferenceLabel(difference: Int): String = when {
     difference < 0 -> "Tekort"
