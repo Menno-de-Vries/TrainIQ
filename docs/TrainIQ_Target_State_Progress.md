@@ -7,10 +7,12 @@ Updated date: 2026-08-06
 - Previous alignment: 95%
 - Current estimated alignment: 95%
 - Delta: 0 percentage points after rounding
-- Reason: The 2026-08-06 closed loops preserved the complete manual product, recipe, and meal editor drafts plus optional AI meal-scan context across Activity recreation with real-UI regression coverage. These changes remove concrete input-loss defects but do not change the rounded score because editable AI-result lifecycle coverage, manual accessibility evidence, performance owner gates, Health Connect edge-state evidence, and owner release decisions remain open.
+- Reason: The 2026-08-06 closed loops now preserve manual nutrition drafts, optional AI meal context, editable AI-result rows, validation feedback, and the recipe destination of restored synthetic AI results. These changes close the known local Nutrition lifecycle gaps without changing the rounded score because manual accessibility evidence, performance owner gates, Health Connect/scanner safe-device evidence, signing, and owner release decisions remain open.
 
 ## Completed Findings
 
+- QA-2026-08-06-030 (P2): The recipe destination of a restored synthetic AI result now survives Compose save/restore, so recipe scans continue to `Fotocontrole`; deterministic regression coverage invokes no Gemini, camera, credential, network, or persistence boundary.
+- QA-2026-08-06-029 (P2): User-edited AI meal-result rows and validation feedback now survive Compose save/restore while genuinely new scan results still initialize a fresh draft.
 - QA-2026-08-06-028 (P2): Optional AI meal-scan context now survives Activity recreation without invoking Gemini, camera, credentials, or network; a red/green `MainActivity` test covers the disabled-AI fallback state.
 - QA-2026-08-06-027 (P2): Manual meal type, name/notes, edit identity, quick-add quantities, item requests, and validation feedback now survive Activity recreation; a red/green `MainActivity` test covers a locally created product, edited grams, and invalid unsaved meal.
 - QA-2026-08-06-026 (P2): Recipe identity, editable fields, ingredient draft, quick-ingredient input, and validation feedback now survive Activity recreation through saveable Compose state; a red/green `MainActivity` instrumentation test covers both a saved draft ingredient and unfinished invalid input.
@@ -393,3 +395,16 @@ Updated date: 2026-08-06
 - Artifact: non-production `app-debug.apk`, 51,116,437 bytes, SHA-256 `E70A39254B034F5CEC02A0C3EE5E6570B7D413856C4826ABFE94F2C9F4EFC3B1`.
 - Alignment: the rounded target-state estimate remains 95%; this closes the recorded AI-result restoration gap but does not close owner/legal/accessibility/performance/signing or safe-device release gates.
 - Remaining risk: recipe-target routing for restored AI results remains transient. Production release remains blocked by the existing owner/manual/device gates.
+
+## 2026-08-06 AI Recipe Target Restoration Polish
+
+- Finding: QA-2026-08-06-030.
+- QA result: deterministic save/restore coverage proved that an AI result opened from the recipe flow was rerouted from `Recepten / Fotocontrole` to the ordinary meal `AI-resultaat` destination because `aiScanForRecipe` used non-saveable state.
+- Implementation plan: prove the routing loss with a synthetic local-fallback result and no external boundaries; make only the boolean destination flag saveable; run the focused and complete local quality matrix; produce a non-production APK.
+- Implementation: `NutritionScreen.kt` now keeps `aiScanForRecipe` in `rememberSaveable`, preserving the intended destination without changing scanner, Gemini, credential, submit, or Room behavior.
+- Regression coverage: `NutritionAiResultStateRestorationInstrumentedTest.recipeTargetSurvivesAiResultStateRestoration` selects the recipe photo flow, injects a synthetic result, emulates save/restore, and verifies `Fotocontrole` remains selected.
+- Verification: baseline assemble/unit/lint PASS; focused recipe-target test RED before implementation and GREEN after implementation; both synthetic restoration tests PASS; after-change assemble/unit/lint/Android-test compile PASS; full isolated connected suite PASS with 51 tests and no failures/errors/skips; Room migration marker PASS; profileable and macrobenchmark test packaging PASS; signing-readiness PASS while correctly reporting production signing unconfigured; final-branch debug install/cold launch PASS in 3024 ms with 0 TrainIQ fatal/ANR matches.
+- Test-environment note: one unisolated aggregate Gradle invocation discovered both the agent AVD and an unrelated running emulator; all 51 tests completed green on the agent device, while the unrelated emulator process disconnected. Canonical connected and Room-marker evidence was re-established through an isolated local adb server containing only the agent-owned Android 16 AVD.
+- Artifact: non-production `app-debug.apk`, 51,116,437 bytes, SHA-256 `6B0726F56CB744930A42A037A5CE3249B5A99A243D389EF7F7CC2A20720C1E23`.
+- Alignment: the rounded target-state estimate remains 95%; this closes the recorded synthetic recipe-route restoration gap but does not close owner/legal/accessibility/performance/signing or safe-device release gates.
+- Remaining risk: no known local Nutrition draft/restoration gap remains in this bounded batch. Production release remains blocked by the existing owner/manual/device gates.

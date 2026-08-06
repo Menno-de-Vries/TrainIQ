@@ -629,7 +629,7 @@ fun NutritionScreen(
     val addToMealSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedTab by rememberSaveable { mutableStateOf(0) }
     val nutritionListState = nutritionListStates[selectedTab.coerceIn(tabs.indices)]
-    var aiScanForRecipe by remember { mutableStateOf(false) }
+    var aiScanForRecipe by rememberSaveable { mutableStateOf(false) }
     var showAddToMealActions by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<PendingNutritionDelete?>(null) }
     var addToMealType by remember { mutableStateOf(MealType.BREAKFAST) }
