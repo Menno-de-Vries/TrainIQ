@@ -7,10 +7,11 @@ Updated date: 2026-08-06
 - Previous alignment: 95%
 - Current estimated alignment: 95%
 - Delta: 0 percentage points after rounding
-- Reason: The 2026-08-06 closed loops preserved the complete manual product and recipe editor drafts across Activity recreation with real-UI regression coverage. These changes remove concrete manual-logging data-loss defects but do not change the rounded score because meal/AI-result draft lifecycle coverage, manual accessibility evidence, performance owner gates, Health Connect edge-state evidence, and owner release decisions remain open.
+- Reason: The 2026-08-06 closed loops preserved the complete manual product, recipe, and meal editor drafts across Activity recreation with real-UI regression coverage. These changes remove concrete manual-logging data-loss defects but do not change the rounded score because AI-result draft lifecycle coverage, manual accessibility evidence, performance owner gates, Health Connect edge-state evidence, and owner release decisions remain open.
 
 ## Completed Findings
 
+- QA-2026-08-06-027 (P2): Manual meal type, name/notes, edit identity, quick-add quantities, item requests, and validation feedback now survive Activity recreation; a red/green `MainActivity` test covers a locally created product, edited grams, and invalid unsaved meal.
 - QA-2026-08-06-026 (P2): Recipe identity, editable fields, ingredient draft, quick-ingredient input, and validation feedback now survive Activity recreation through saveable Compose state; a red/green `MainActivity` instrumentation test covers both a saved draft ingredient and unfinished invalid input.
 - QA-2026-08-06-025 (P2): Manual product name, barcode, nutrition values, edit selection, and validation feedback now survive Activity recreation through saveable Compose state; a red/green `MainActivity` instrumentation test covers the complete product form.
 - QA-2026-08-05-023 (P2): Unsaved Coach profile/goal input and choices now survive Activity recreation through saveable Compose state, verified through `MainActivity` instrumentation.
@@ -356,4 +357,15 @@ Updated date: 2026-08-06
 - Regression coverage: `TrainIqFlowSmokeInstrumentedTest.recipeDraftSurvivesActivityRecreationBeforeSave` creates and adds an 80g ingredient, enters a second invalid quick ingredient, recreates `MainActivity`, and asserts the recipe fields, ingredient card, unfinished input, and validation feedback all remain.
 - Verification: baseline assemble/unit/lint PASS; focused connected test RED before implementation and PASS after implementation; after-change assemble/unit/lint/Android-test compile PASS; full connected suite PASS with 47 tests and no failures/errors/skips; Room migration marker PASS; profileable and macrobenchmark packaging PASS; signing-readiness task PASS while correctly reporting production signing unconfigured; debug install/cold launch PASS in 2905 ms with no TrainIQ fatal/ANR signal.
 - Artifact: non-production `app-debug.apk`, 51,116,437 bytes, SHA-256 `507376A24B544421BCC380B0AD78EEB072E3DF1D616EB91B9A87EEEF76FC88E3`.
-- Remaining risk: the connected test proves Activity recreation; OS-killed restoration remains bounded by Android saveable-state delivery. Meal and AI-result drafts remain separate lifecycle batches. Production release remains blocked by the existing owner/manual/device gates.
+- Remaining risk: the connected test proves Activity recreation; OS-killed restoration remains bounded by Android saveable-state delivery. AI-result drafts remain a separate lifecycle batch. Production release remains blocked by the existing owner/manual/device gates.
+
+## 2026-08-06 Meal Draft Recreation Polish
+
+- Finding: QA-2026-08-06-027.
+- QA result: static lifecycle review found meal type, name/notes, edit identity, quick-add quantities, item requests, and meal/quantity validation feedback in ordinary `remember`; a connected Android 16 test reproduced loss of the complete manual meal review after `ActivityScenario.recreate()`.
+- Implementation plan: prove the defect with a deterministic red real-UI test; preserve only primitive meal editor state and errors with compact savers; then run focused, baseline, connected, migration, packaging, signing-readiness, and runtime-smoke gates before producing the debug APK.
+- Implementation: `NutritionScreen.kt` now preserves all manual meal inputs and edit identity with `rememberSaveable`; primitive savers serialize `MealEntryRequest` values, `MealFieldErrors`, and quick-add errors. Modal action sheets and scanner/AI navigation remain transient.
+- Regression coverage: `TrainIqFlowSmokeInstrumentedTest.mealDraftSurvivesActivityRecreationBeforeSave` creates a local product, adds it to an evening meal, changes it to 175g, enters a note, triggers name validation, recreates `MainActivity`, and asserts the whole unsaved review remains.
+- Verification: baseline assemble/unit/lint PASS; corrected focused connected test RED before implementation and PASS after implementation; after-change assemble/unit/lint/Android-test compile PASS; deterministic test hardening PASS after broad-suite ordering evidence; full connected suite PASS with 48 tests and no failures/errors/skips; Room migration marker PASS; profileable and macrobenchmark packaging PASS; signing-readiness PASS while correctly reporting production signing unconfigured; debug install/cold launch PASS in 5581 ms with no TrainIQ fatal/ANR signal.
+- Artifact: non-production `app-debug.apk`, 51,116,437 bytes, SHA-256 `44C5CEC9B91534099F232AB33BC36B67551F34C97829162659D36A3991124FBD`.
+- Remaining risk: Activity recreation is proven, while OS-killed restoration remains bounded by Android saveable-state delivery. AI-result drafts remain separate. Production release remains blocked by the existing owner/manual/device gates.

@@ -180,6 +180,57 @@ private val RecipeDraftSaver = listSaver<SnapshotStateList<Pair<Long, Double>>, 
     },
 )
 
+private val MealFieldErrorsSaver = listSaver<MealFieldErrors, String>(
+    save = { errors -> listOf(errors.name.orEmpty(), errors.items.orEmpty()) },
+    restore = { values ->
+        MealFieldErrors(
+            name = values[0].ifBlank { null },
+            items = values[1].ifBlank { null },
+        )
+    },
+)
+
+private val QuickAddFieldErrorsSaver = listSaver<QuickAddFieldErrors, String>(
+    save = { errors -> listOf(errors.grams.orEmpty()) },
+    restore = { values -> QuickAddFieldErrors(grams = values[0].ifBlank { null }) },
+)
+
+private val MealDraftSaver = listSaver<SnapshotStateList<MealEntryRequest>, String>(
+    save = { draft ->
+        draft.flatMap { entry ->
+            listOf(
+                entry.itemType.name,
+                entry.referenceId.toString(),
+                entry.gramsUsed.toString(),
+                entry.notes.orEmpty(),
+            )
+        }
+    },
+    restore = { values ->
+        mutableStateListOf<MealEntryRequest>().apply {
+            addAll(
+                values.chunked(4).mapNotNull { savedEntry ->
+                    val itemType = savedEntry.getOrNull(0)?.let { name ->
+                        runCatching { MealEntryType.valueOf(name) }.getOrNull()
+                    }
+                    val referenceId = savedEntry.getOrNull(1)?.toLongOrNull()
+                    val gramsUsed = savedEntry.getOrNull(2)?.toDoubleOrNull()
+                    if (itemType != null && referenceId != null && gramsUsed != null) {
+                        MealEntryRequest(
+                            itemType = itemType,
+                            referenceId = referenceId,
+                            gramsUsed = gramsUsed,
+                            notes = savedEntry.getOrNull(3)?.ifBlank { null },
+                        )
+                    } else {
+                        null
+                    }
+                },
+            )
+        }
+    },
+)
+
 sealed interface NutritionUiState {
     data object Loading : NutritionUiState
     data class Success(
@@ -543,16 +594,16 @@ fun NutritionScreen(
     var recipeErrors by rememberSaveable(stateSaver = RecipeFieldErrorsSaver) { mutableStateOf(RecipeFieldErrors()) }
     var quickIngredientErrors by rememberSaveable(stateSaver = FoodFieldErrorsSaver) { mutableStateOf(FoodFieldErrors()) }
 
-    var mealType by remember { mutableStateOf(MealType.LUNCH) }
-    var mealName by remember { mutableStateOf(MealType.LUNCH.dutchLabel) }
-    var mealNotes by remember { mutableStateOf("") }
-    var mealFoodGrams by remember { mutableStateOf("100") }
-    var mealRecipeGrams by remember { mutableStateOf("150") }
-    var editingMealId by remember { mutableStateOf<Long?>(null) }
-    val mealDraft = remember { mutableStateListOf<MealEntryRequest>() }
-    var mealErrors by remember { mutableStateOf(MealFieldErrors()) }
-    var mealFoodGramsErrors by remember { mutableStateOf(QuickAddFieldErrors()) }
-    var mealRecipeGramsErrors by remember { mutableStateOf(QuickAddFieldErrors()) }
+    var mealType by rememberSaveable { mutableStateOf(MealType.LUNCH) }
+    var mealName by rememberSaveable { mutableStateOf(MealType.LUNCH.dutchLabel) }
+    var mealNotes by rememberSaveable { mutableStateOf("") }
+    var mealFoodGrams by rememberSaveable { mutableStateOf("100") }
+    var mealRecipeGrams by rememberSaveable { mutableStateOf("150") }
+    var editingMealId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val mealDraft = rememberSaveable(saver = MealDraftSaver) { mutableStateListOf<MealEntryRequest>() }
+    var mealErrors by rememberSaveable(stateSaver = MealFieldErrorsSaver) { mutableStateOf(MealFieldErrors()) }
+    var mealFoodGramsErrors by rememberSaveable(stateSaver = QuickAddFieldErrorsSaver) { mutableStateOf(QuickAddFieldErrors()) }
+    var mealRecipeGramsErrors by rememberSaveable(stateSaver = QuickAddFieldErrorsSaver) { mutableStateOf(QuickAddFieldErrors()) }
 
     var aiContext by remember { mutableStateOf("") }
     val editableAiItems = remember { mutableStateListOf<EditableAiItem>() }

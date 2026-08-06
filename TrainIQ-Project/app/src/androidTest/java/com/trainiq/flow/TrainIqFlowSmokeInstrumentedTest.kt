@@ -11,6 +11,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -190,6 +191,52 @@ class TrainIqFlowSmokeInstrumentedTest {
         }
     }
 
+    @Test
+    fun mealDraftSurvivesActivityRecreationBeforeSave() {
+        ActivityScenario.launch<MainActivity>(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ).use { scenario ->
+            waitForText("Voeding")
+            tap("Voeding")
+            waitForText("Producten")
+            tap("Producten")
+            waitForText("Productnaam")
+
+            val productFields = compose.onAllNodes(hasSetTextAction())
+            productFields[0].performTextReplacement("Rotatiemaaltijdproduct")
+            productFields[1].performTextReplacement("8712345678903")
+            productFields[2].performTextReplacement("250")
+            productFields[3].performTextReplacement("12")
+            productFields[4].performTextReplacement("30")
+            productFields[5].performTextReplacement("8")
+            tap("Product opslaan")
+            waitForText("Rotatiemaaltijdproduct opgeslagen.")
+            waitForText("Aan maaltijd toevoegen")
+
+            compose.onNodeWithContentDescription("Gram bij toevoegen aan maaltijd")
+                .performTextReplacement("125")
+            tapLast("Aan maaltijd toevoegen")
+            waitForText("Maaltijd controleren")
+
+            tap("Avond")
+            waitForSelectedText("Avond")
+            compose.onNodeWithContentDescription("Maaltijdnaam").performTextReplacement("")
+            compose.onNodeWithContentDescription("Notities").performTextReplacement("Bewaar dit maaltijdconcept")
+            compose.onNodeWithContentDescription("Gram").performTextReplacement("175")
+            tap("Maaltijd opslaan")
+            waitForText("Naam is verplicht.")
+
+            scenario.recreate()
+
+            waitForText("Maaltijd controleren")
+            waitForSelectedText("Avond")
+            compose.onNodeWithContentDescription("Notities").assertTextContains("Bewaar dit maaltijdconcept")
+            compose.onNodeWithContentDescription("Gram").assertTextContains("175")
+            assertVisible("Rotatiemaaltijdproduct")
+            assertVisible("Naam is verplicht.")
+        }
+    }
+
     private fun deleteAppLocalFile(relativePath: String) {
         val dataRoot = context.filesDir.parentFile ?: return
         val target = File(dataRoot, relativePath).canonicalFile
@@ -209,7 +256,7 @@ class TrainIqFlowSmokeInstrumentedTest {
         scrollUntilText(text)
         val matches = compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes()
         check(matches.isNotEmpty()) { "Text not found for tap: $text" }
-        compose.onAllNodesWithText(text, substring = true)[matches.lastIndex].performClick()
+        compose.onAllNodesWithText(text, substring = true)[matches.lastIndex].performScrollTo().performClick()
     }
 
     private fun assertVisible(text: String) {
