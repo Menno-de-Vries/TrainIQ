@@ -7,10 +7,11 @@ Updated date: 2026-08-06
 - Previous alignment: 95%
 - Current estimated alignment: 95%
 - Delta: 0 percentage points after rounding
-- Reason: The 2026-08-06 closed loops now preserve manual nutrition drafts, optional AI meal context, editable AI-result rows, validation feedback, and the recipe destination of restored synthetic AI results. These changes close the known local Nutrition lifecycle gaps without changing the rounded score because manual accessibility evidence, performance owner gates, Health Connect/scanner safe-device evidence, signing, and owner release decisions remain open.
+- Reason: The 2026-08-06 closed loops now preserve manual Nutrition state, synthetic AI-result routing, and the complete Settings profile draft plus validation feedback across restoration. These concrete lifecycle fixes do not change the rounded score because manual accessibility evidence, performance owner gates, Health Connect/scanner safe-device evidence, signing, and owner release decisions remain open.
 
 ## Completed Findings
 
+- QA-2026-08-06-031 (P2): Settings profile input and field-specific validation feedback now survive Activity recreation; keyed saveable state replaces a lifecycle effect that overwrote restored drafts.
 - QA-2026-08-06-030 (P2): The recipe destination of a restored synthetic AI result now survives Compose save/restore, so recipe scans continue to `Fotocontrole`; deterministic regression coverage invokes no Gemini, camera, credential, network, or persistence boundary.
 - QA-2026-08-06-029 (P2): User-edited AI meal-result rows and validation feedback now survive Compose save/restore while genuinely new scan results still initialize a fresh draft.
 - QA-2026-08-06-028 (P2): Optional AI meal-scan context now survives Activity recreation without invoking Gemini, camera, credentials, or network; a red/green `MainActivity` test covers the disabled-AI fallback state.
@@ -408,3 +409,15 @@ Updated date: 2026-08-06
 - Artifact: non-production `app-debug.apk`, 51,116,437 bytes, SHA-256 `6B0726F56CB744930A42A037A5CE3249B5A99A243D389EF7F7CC2A20720C1E23`.
 - Alignment: the rounded target-state estimate remains 95%; this closes the recorded synthetic recipe-route restoration gap but does not close owner/legal/accessibility/performance/signing or safe-device release gates.
 - Remaining risk: no known local Nutrition draft/restoration gap remains in this bounded batch. Production release remains blocked by the existing owner/manual/device gates.
+
+## 2026-08-06 Settings Profile Restoration Polish
+
+- Finding: QA-2026-08-06-031.
+- QA result: static inspection and a red `MainActivity` test proved that `LaunchedEffect(profile)` overwrote otherwise saveable Settings profile fields and cleared validation feedback on every Activity recreation.
+- Implementation plan: prove loss of a non-empty draft plus a field-specific error; key only the profile-derived editor state to the persisted profile; remove the overwriting effect; run the complete local matrix and produce a non-production APK.
+- Implementation: all Settings profile inputs and `ProfileInputValidationError` now use `rememberSaveable(profile)`. A genuinely changed Room-backed profile still reinitializes the editor, while configuration recreation retains the unsaved draft.
+- Regression coverage: `TrainIqFlowSmokeInstrumentedTest.settingsProfileValidationErrorSurvivesActivityRecreation` enters `Rotatie-instellingen`, sets age to `0`, triggers the age error, recreates `MainActivity`, and verifies both values and feedback remain.
+- Verification: prior exact-branch baseline evidence reused; focused connected test RED and GREEN; after-change assemble/unit/lint/Android-test compile PASS; full isolated suite and Room-marker dependency PASS with 52 tests and no failures/errors/skips; profileable/macrobenchmark packaging and signing-readiness PASS; cold debug launch PASS in 3472 ms with 0 TrainIQ fatal/ANR matches.
+- Artifact: non-production `app-debug.apk`, 51,116,437 bytes, SHA-256 `8A971D5891E1EB0636A5AC8F1732AFF3C44F48DCCE37CD5889346E34A608F586`.
+- Alignment: the rounded target-state estimate remains 95%; this closes one repository-proven Settings lifecycle gap without altering the owner/manual/device release gates.
+- Remaining risk: Activity recreation is proven; OS-killed restoration remains bounded by Android saveable-state delivery. Production release remains blocked.
