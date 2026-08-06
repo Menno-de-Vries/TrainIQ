@@ -1432,3 +1432,42 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
   - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 50,835,498 bytes, SHA-256 `7AB130F142D7C1F0DDE5C6B4E2121167499A4694275C86ABD861FDA4EF6A46E3`.
 - minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#aiRoutineDraftSurvivesActivityRecreationBeforeGenerate,com.trainiq.features.workout.WorkoutAiRoutineGenerationStateRestorationInstrumentedTest" --console=plain --no-configuration-cache`.
 - remaining risk: Activity and local Compose restoration are proven. OS process death cancels the process-owned request and a new ViewModel deliberately starts unblocked; draft recovery still depends on Android delivering saveable state. Real Gemini execution was intentionally not invoked. Physical-device performance and production release remain governed by the existing owner/manual/safe-device gates.
+
+### QA-2026-08-07-035
+
+- finding_id: QA-2026-08-07-035
+- priority: P2
+- area: Android lifecycle, Training UX, tests
+- status: done
+- owner suggestion: Android UI owner
+- current evidence with file references:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt` kept the first-exercise custom-dialog visibility in ordinary `remember`, so recreating the Activity closed the workflow.
+  - The shared `CustomExerciseDialog` also kept `Oefening`, `Spiergroep`, and `Materiaal` in ordinary `remember`, discarding all three entered values with the dialog composition.
+  - A real `MainActivity` test created an empty routine, opened `Eerste oefening toevoegen` -> `Voeg eigen oefening toe`, entered `Rotatie squat`, `Benen`, and `Halters`, then reproduced the missing dialog after `ActivityScenario.recreate()`.
+  - The blueprint requires unsaved training workflow state to survive hostile display and lifecycle changes until the user completes or explicitly dismisses the action.
+- external sources used: None. Repository source, target-state requirements, existing saveable-state patterns, and executable Android 16 evidence were sufficient.
+- expected target-state behavior: While adding the first custom exercise to an empty routine, the open dialog and its exercise, muscle-group, and equipment draft survive Activity recreation until the user adds the exercise or explicitly dismisses the dialog.
+- implementation plan:
+  1. Add a real-UI regression test that reaches the first-exercise custom dialog, enters all three concept fields, recreates `MainActivity`, and retains the failing evidence.
+  2. Make only the starter-dialog visibility and the three primitive draft strings saveable; leave Room, routine creation, workout execution, validation, navigation, AI, permissions, and network behavior unchanged.
+  3. Harden the test against existing local routines and arbitrary suite order, then run the focused flow plus the complete local quality matrix.
+  4. Install, cold-launch, inspect, and hash a new explicitly non-production debug APK while retaining all production release gates.
+- concrete implemented fix: `RoutineCard` now keeps `showStarterCustomExerciseDialog` with `rememberSaveable(routine.id)`, and `CustomExerciseDialog` keeps `exerciseName`, `muscleGroup`, and `equipment` with `rememberSaveable`. Confirm and dismiss callbacks still clear the dialog through normal composition removal.
+- files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
+- regression risk: Low. The production change is limited to ephemeral pre-add UI state. Routine persistence, exercise creation, active workouts, AI, Health Connect, camera, credentials, permissions, and remote boundaries are unchanged.
+- verification evidence:
+  - Baseline reuse PASS: exact clean branch head `9256f9833676ce21b3c58558ffc4534ea936598d` had already passed the prior cycle's build, unit, lint, connected, Room, release-like packaging, signing-readiness, visual, and runtime gates.
+  - Authoritative RED: after correcting an initially over-broad text selector, the focused unchanged-production test reached the populated dialog and timed out on `Voeg eigen oefening toe` after Activity recreation because the dialog had disappeared.
+  - GREEN: the identical focused lifecycle test passed 1/1 and retained `Rotatie squat`, `Benen`, and `Halters` after the four saveable-state changes.
+  - Test hardening PASS: the broad suite exposed that a newly created routine is not necessarily the active routine when prior app data exists. The test now uses a unique name, waits for successful creation, scrolls to that exact routine, and opens its details; the complete flow class passed 10/10 without clearing or weakening valid assertions.
+  - PASS: final `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, and `:app:compileDebugAndroidTestKotlin`.
+  - PASS: final full `:app:connectedDebugAndroidTest` with 59 tests, 0 failures, 0 errors, and 0 skipped on agent-owned `TrainIQ_Agent_API36_20260806` / Android 16.
+  - PASS: `:app:generateDebugRoomMigrationChainVerificationMarker`, including its second 59-test connected dependency.
+  - PASS: `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
+  - PASS: final APK install and cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 6414`, and a live TrainIQ PID; no `FATAL EXCEPTION`, TrainIQ process-crash, or TrainIQ ANR signal was present.
+  - PASS: screenshot and UI-tree inspection at 1080x2400 after portrait-landscape-portrait recreation showed one readable custom-exercise dialog retaining `QA035Squat`, `Benen`, and `Halters`, with reachable cancel/add actions and no clipped concept fields.
+  - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 50,835,836 bytes, SHA-256 `A8E793E731D38574F6A09C3ED9A6E6C6168321D2A2C0DE002470419FE151F277`.
+- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#customExerciseDraftSurvivesActivityRecreationBeforeAdd" --console=plain --no-configuration-cache`.
+- remaining risk: This test covers the empty-routine starter path. The day-editor and active-workout replacement entry points still own their parent custom-dialog visibility in transient state and require separate focused lifecycle batches. Full OS-killed restoration remains bounded by Android saveable-state delivery; physical-device performance and production release remain governed by existing owner/manual/safe-device gates.

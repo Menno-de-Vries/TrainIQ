@@ -1,16 +1,17 @@
 # TrainIQ Target-State Progress
 
-Updated date: 2026-08-06
+Updated date: 2026-08-07
 
 ## Alignment Score
 
 - Previous alignment: 95%
 - Current estimated alignment: 95%
 - Delta: 0 percentage points after rounding
-- Reason: The 2026-08-06 closed loops now preserve manual Nutrition state, synthetic AI-result routing, profile drafts, and AI routine-generator input across restoration; Coach also rejects a restored draft when the authoritative profile ID or editor-source content changed, while in-flight routine generation remains blocked across Activity recreation. These concrete lifecycle fixes do not change the rounded score because manual accessibility evidence, performance owner gates, Health Connect/scanner safe-device evidence, signing, and owner release decisions remain open.
+- Reason: The 2026-08-06 and 2026-08-07 closed loops now preserve manual Nutrition state, synthetic AI-result routing, profile drafts, AI routine-generator input, and the first custom-exercise draft across restoration; Coach also rejects a restored draft when the authoritative profile ID or editor-source content changed, while in-flight routine generation remains blocked across Activity recreation. These concrete lifecycle fixes do not change the rounded score because manual accessibility evidence, performance owner gates, Health Connect/scanner safe-device evidence, signing, and owner release decisions remain open.
 
 ## Completed Findings
 
+- QA-2026-08-07-035 (P2): The first-exercise custom dialog and its exercise, muscle-group, and equipment fields now survive Activity recreation; a real Android 16 flow test covers the complete empty-routine path.
 - QA-2026-08-06-034 (P2): AI routine-generator visibility and all pre-submit inputs survive Activity recreation; ViewModel-owned generation state keeps the dialog blocked while an existing request is in flight and rejects duplicate submissions.
 - QA-2026-08-06-033 (P2): Unsaved Coach edits survive same-profile save/restore, while an exact saveable source snapshot rejects stale drafts when any persisted editor-source field changed, including hash-colliding values.
 - QA-2026-08-06-031 (P2): Settings profile input and field-specific validation feedback now survive Activity recreation; keyed saveable state replaces a lifecycle effect that overwrote restored drafts.
@@ -461,3 +462,15 @@ Updated date: 2026-08-06
 - Artifact: non-production `app-debug.apk`, 50,835,498 bytes, SHA-256 `7AB130F142D7C1F0DDE5C6B4E2121167499A4694275C86ABD861FDA4EF6A46E3`.
 - Alignment: the rounded target-state estimate remains 95%; this closes one repository-proven Training lifecycle gap without altering owner/manual/device release gates.
 - Remaining risk: Activity and local Compose restoration are proven; a process kill correctly cancels the process-owned request and starts a new ViewModel with no stuck loading flag, while draft restoration remains bounded by Android saveable-state delivery. Physical-device macrobenchmarking was not applicable to this non-performance UI-state change and remains an existing owner/device gate. Production release remains blocked.
+
+## 2026-08-07 Custom Exercise Draft Restoration Polish
+
+- Finding: QA-2026-08-07-035.
+- QA result: repository inspection and a real Android 16 RED test proved that Activity recreation closed the first-exercise custom dialog and discarded `Oefening`, `Spiergroep`, and `Materiaal` because both the parent visibility and shared dialog fields used transient Compose state.
+- Implementation plan: prove the lifecycle loss in the complete empty-routine flow; make only the dialog visibility and three primitive inputs saveable; harden the fixture against existing routine state; run the complete local matrix; produce a non-production debug APK.
+- Implementation: `RoutineCard` now keeps the starter custom-dialog visibility with `rememberSaveable(routine.id)`, while `CustomExerciseDialog` saves the three concept fields. Room, routine/exercise persistence, active workouts, AI, permissions, Health Connect, camera, and remote behavior are unchanged.
+- Regression coverage: `TrainIqFlowSmokeInstrumentedTest.customExerciseDraftSurvivesActivityRecreationBeforeAdd` creates and explicitly opens a unique empty routine, enters `Rotatie squat`, `Benen`, and `Halters`, recreates `MainActivity`, and asserts the same dialog and values remain. The full flow class passed 10/10 after making routine selection independent of existing app data.
+- Verification: focused RED then GREEN; final build/unit/lint/Android-test compile PASS; full connected suite and Room-marker dependency each PASS with 59 tests and no failures/errors/skips; profileable and macrobenchmark test packaging PASS; signing-readiness PASS while correctly reporting production signing unconfigured; debug install/cold launch PASS in 6414 ms; screenshot/UI-tree inspection PASS after portrait-landscape-portrait recreation with no TrainIQ fatal/ANR signal.
+- Artifact: non-production `app-debug.apk`, 50,835,836 bytes, SHA-256 `A8E793E731D38574F6A09C3ED9A6E6C6168321D2A2C0DE002470419FE151F277`.
+- Alignment: the rounded target-state estimate remains 95%; this closes one repository-proven Training lifecycle gap without altering owner/manual/device release gates.
+- Remaining risk: the empty-routine starter path is covered; the day-editor and active-workout replacement parent-dialog states remain separate lifecycle batches. OS-killed restoration still depends on Android saveable-state delivery, and production release remains blocked.

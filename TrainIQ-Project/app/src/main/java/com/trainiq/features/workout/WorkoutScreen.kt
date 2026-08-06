@@ -2006,7 +2006,7 @@ private fun RoutineCard(
     var starterTargetWeight by rememberSaveable(routine.id) { mutableStateOf("") }
     var starterTargetRpe by rememberSaveable(routine.id) { mutableStateOf("") }
     var showStarterExercisePicker by remember(routine.id) { mutableStateOf(false) }
-    var showStarterCustomExerciseDialog by remember(routine.id) { mutableStateOf(false) }
+    var showStarterCustomExerciseDialog by rememberSaveable(routine.id) { mutableStateOf(false) }
     var showDeleteRoutineConfirm by remember(routine.id) { mutableStateOf(false) }
     var detailTab by rememberSaveable(routine.id) { mutableStateOf(initialRoutineDetailTab(routine)) }
     var editError by rememberSaveable(routine.id) { mutableStateOf<String?>(null) }
@@ -3851,9 +3851,9 @@ private fun CustomExerciseDialog(
     onConfirm: (String, String, String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var exerciseName by remember { mutableStateOf("") }
-    var muscleGroup by remember { mutableStateOf("") }
-    var equipment by remember { mutableStateOf("") }
+    var exerciseName by rememberSaveable { mutableStateOf("") }
+    var muscleGroup by rememberSaveable { mutableStateOf("") }
+    var equipment by rememberSaveable { mutableStateOf("") }
     val scrollState = rememberScrollState()
 
     AlertDialog(

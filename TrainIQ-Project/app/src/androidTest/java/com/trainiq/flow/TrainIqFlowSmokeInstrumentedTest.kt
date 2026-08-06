@@ -154,6 +154,49 @@ class TrainIqFlowSmokeInstrumentedTest {
     }
 
     @Test
+    fun customExerciseDraftSurvivesActivityRecreationBeforeAdd() {
+        val routineName = "Rotatie eigen oefening ${System.nanoTime()}"
+        ActivityScenario.launch<MainActivity>(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ).use { scenario ->
+            waitForText("Training")
+            tap("Training")
+            waitForText("Lege routine maken")
+            tap("Lege routine maken")
+            waitForText("Routinenaam")
+            compose.onNode(hasText("Routinenaam") and hasSetTextAction())
+                .performTextReplacement(routineName)
+            tap("Maken")
+
+            waitForText("Routine aangemaakt.")
+            assertVisible(routineName)
+            tapLast("Details")
+            waitForText("Eerste oefening toevoegen")
+            tap("Eerste oefening toevoegen")
+            waitForText("Voeg eigen oefening toe")
+            tap("Voeg eigen oefening toe")
+            waitForText("Spiergroep")
+
+            compose.onNode(hasText("Oefening") and hasSetTextAction())
+                .performTextReplacement("Rotatie squat")
+            compose.onNode(hasText("Spiergroep") and hasSetTextAction())
+                .performTextReplacement("Benen")
+            compose.onNode(hasText("Materiaal") and hasSetTextAction())
+                .performTextReplacement("Halters")
+
+            scenario.recreate()
+
+            waitForText("Voeg eigen oefening toe")
+            compose.onNode(hasText("Oefening") and hasSetTextAction())
+                .assertTextContains("Rotatie squat")
+            compose.onNode(hasText("Spiergroep") and hasSetTextAction())
+                .assertTextContains("Benen")
+            compose.onNode(hasText("Materiaal") and hasSetTextAction())
+                .assertTextContains("Halters")
+        }
+    }
+
+    @Test
     fun aiRoutineDraftSurvivesActivityRecreationBeforeGenerate() {
         ActivityScenario.launch<MainActivity>(
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
