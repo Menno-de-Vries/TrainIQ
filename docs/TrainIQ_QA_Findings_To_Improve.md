@@ -1229,3 +1229,40 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
   - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 51,116,437 bytes, SHA-256 `E70A39254B034F5CEC02A0C3EE5E6570B7D413856C4826ABFE94F2C9F4EFC3B1`.
 - minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.features.nutrition.NutritionAiResultStateRestorationInstrumentedTest#editedAiResultAndValidationErrorSurviveStateRestoration" --no-daemon --stacktrace`.
 - remaining risk: The deterministic test proves Compose save/restore for meal-result edits. Recipe-target routing remains transient and should be a separate bounded lifecycle test; production release remains blocked by existing owner/manual/device gates.
+
+### QA-2026-08-06-030
+
+- finding_id: QA-2026-08-06-030
+- priority: P2
+- area: Android lifecycle, Nutrition UX, tests
+- status: done
+- owner suggestion: Android UI owner
+- current evidence with file references:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt` kept the recipe-versus-meal AI destination flag `aiScanForRecipe` in ordinary `remember` state.
+  - Recipe photo actions set the flag before scanning, and `LaunchedEffect(scanResult)` uses it to route successful results to either `Recepten / Fotocontrole` or the ordinary meal `AI-resultaat` destination.
+  - A deterministic `StateRestorationTester` component test reproduced the defect without camera, Gemini, credentials, network, or persistence: a synthetic local-fallback result initially opened in `Fotocontrole`, but save/restore reset the flag and rerouted it to the meal result flow.
+- external sources used: None. Repository target-state requirements, pinned local Compose test APIs, and synthetic local test evidence were sufficient.
+- expected target-state behavior: An AI result initiated for a recipe ingredient remains in `Recepten / Fotocontrole` across Compose save/restore until the user completes or leaves that flow.
+- implementation plan:
+  1. Prove the destination loss with a synthetic result and no external service or persistence boundary.
+  2. Make only the boolean destination flag saveable; leave result data, camera/Gemini integration, credentials, submit behavior, and Room ownership unchanged.
+  3. Re-run both AI-result restoration tests and the full local build, unit, lint, connected, Room, profileable, packaging, signing-readiness, and runtime matrix.
+  4. Produce an explicitly non-production debug APK for user testing while retaining all release gates.
+- concrete implemented fix: `NutritionScreen` now stores `aiScanForRecipe` with `rememberSaveable`, so the scan-result routing effect retains the recipe destination after restoration.
+- files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/features/nutrition/NutritionAiResultStateRestorationInstrumentedTest.kt`
+- regression risk: Low. The production change is one ephemeral boolean state holder. The scanner, AI request, schema, credentials, nutrition validation, submission, and Room paths are unchanged.
+- verification evidence:
+  - Baseline PASS: `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug`.
+  - RED: after save/restore the focused test could not find `Fotocontrole`, proving the recipe destination had been lost.
+  - GREEN: both tests in `NutritionAiResultStateRestorationInstrumentedTest` passed, preserving the recipe destination and the previously covered editable row/error state.
+  - PASS: after-change `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin`.
+  - PASS: full isolated `:app:connectedDebugAndroidTest` with 51 tests, 0 failures, 0 errors, and 0 skipped on agent-owned `TrainIQ_Agent_API36_20260806` / Android 16.
+  - PASS: `:app:generateDebugRoomMigrationChainVerificationMarker`, including the isolated connected dependency.
+  - PASS: `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
+  - PASS: final-branch debug install and cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 3024`; the TrainIQ fatal/ANR scan returned 0 matches.
+  - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 51,116,437 bytes, SHA-256 `6B0726F56CB744930A42A037A5CE3249B5A99A243D389EF7F7CC2A20720C1E23`.
+  - Isolation note: an unisolated aggregate Gradle attempt discovered an unrelated emulator as well as the agent AVD. The agent device completed 51 tests green, while the unrelated emulator disconnected; authoritative connected and Room-marker evidence was rerun through an isolated local adb server exposing only the agent AVD.
+- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.features.nutrition.NutritionAiResultStateRestorationInstrumentedTest" --no-daemon --stacktrace`.
+- remaining risk: No known local synthetic AI-result routing/restoration gap remains in this bounded Nutrition batch. Production release remains blocked by existing owner/manual/safe-device gates.
