@@ -211,7 +211,7 @@ class TrainIqFlowSmokeInstrumentedTest {
             productFields[5].performTextReplacement("8")
             tap("Product opslaan")
             waitForText("Rotatiemaaltijdproduct opgeslagen.")
-            waitForText("Aan maaltijd toevoegen")
+            assertVisible("Aan maaltijd toevoegen")
 
             compose.onNodeWithContentDescription("Gram bij toevoegen aan maaltijd")
                 .performTextReplacement("125")
@@ -324,10 +324,13 @@ class TrainIqFlowSmokeInstrumentedTest {
                 compose.onNodeWithText(text).performScrollTo()
             }
             if (compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty()) return
-            runCatching {
-                compose.onNode(hasScrollAction()).performScrollToNode(hasText(text))
+            val scrollNodeCount = compose.onAllNodes(hasScrollAction()).fetchSemanticsNodes().size
+            repeat(scrollNodeCount) { index ->
+                runCatching {
+                    compose.onAllNodes(hasScrollAction())[index].performScrollToNode(hasText(text))
+                }
+                if (compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty()) return
             }
-            if (compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty()) return
         }
     }
 }
