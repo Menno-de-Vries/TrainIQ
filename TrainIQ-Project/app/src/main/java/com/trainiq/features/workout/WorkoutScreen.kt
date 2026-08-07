@@ -130,6 +130,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.error
@@ -2122,7 +2123,13 @@ private fun RoutineCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SecondaryActionButton(onClick = onOpenDetails, modifier = Modifier.weight(1f)) {
+                    SecondaryActionButton(
+                        onClick = onOpenDetails,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag(routineDetailsTestTag(routine.name))
+                            .semantics { contentDescription = "Routinedetails van ${routine.name} openen" },
+                    ) {
                         Icon(Icons.Rounded.Edit, contentDescription = null)
                         Text("Details")
                     }
@@ -6244,6 +6251,8 @@ private fun routineFocusLabel(routine: WorkoutRoutine): String =
     routine.days.flatMap { it.exercises }.focusLabel()
 
 internal fun activeRoutineStartLabel(dayName: String): String = "Training starten"
+
+internal fun routineDetailsTestTag(routineName: String): String = "routine-details:$routineName"
 
 internal fun activeRoutineSetupLabel(): String = "Routine inrichten"
 

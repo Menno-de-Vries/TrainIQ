@@ -8,11 +8,13 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -22,6 +24,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.trainiq.MainActivity
+import com.trainiq.features.workout.routineDetailsTestTag
 import java.io.File
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -170,7 +173,10 @@ class TrainIqFlowSmokeInstrumentedTest {
 
             waitForText("Routine aangemaakt.")
             assertVisible(routineName)
-            tapLast("Details")
+            val detailsTag = routineDetailsTestTag(routineName)
+            scrollUntilTag(detailsTag)
+            compose.onNodeWithTag(detailsTag, useUnmergedTree = true)
+                .performClick()
             waitForText("Eerste oefening toevoegen")
             tap("Eerste oefening toevoegen")
             waitForText("Voeg eigen oefening toe")
@@ -454,6 +460,19 @@ class TrainIqFlowSmokeInstrumentedTest {
 
     private fun scrollUntilText(text: String) {
         scrollUntilAnyText(text)
+    }
+
+    private fun scrollUntilTag(tag: String) {
+        val matcher = hasTestTag(tag)
+        if (compose.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()) return
+        val scrollNodeCount = compose.onAllNodes(hasScrollAction()).fetchSemanticsNodes().size
+        repeat(scrollNodeCount) { index ->
+            runCatching {
+                compose.onAllNodes(hasScrollAction())[index].performScrollToNode(matcher)
+            }
+            if (compose.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()) return
+        }
+        error("Test tag not found after scrolling: $tag")
     }
 
     private fun scrollUntilAnyText(vararg texts: String) {
