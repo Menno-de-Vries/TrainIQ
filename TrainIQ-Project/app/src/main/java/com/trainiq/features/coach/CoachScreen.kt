@@ -434,28 +434,67 @@ fun CoachScreen(
     onSaveProfile: (String, String, String, String, String, BiologicalSex, String, String) -> Unit,
     onDismissMessage: () -> Unit,
 ) {
-    var name by rememberSaveable { mutableStateOf("") }
-    var age by rememberSaveable { mutableStateOf("30") }
-    var sex by rememberSaveable { mutableStateOf(BiologicalSex.MALE) }
-    var height by rememberSaveable { mutableStateOf("") }
-    var weight by rememberSaveable { mutableStateOf("") }
-    var bodyFat by rememberSaveable { mutableStateOf("") }
-    var activityLevel by rememberSaveable { mutableStateOf("Gemiddeld actief") }
-    var goal by rememberSaveable { mutableStateOf("") }
+    val isProfileResolved = uiState is CoachUiState.Success
+    val profile = (uiState as? CoachUiState.Success)?.currentProfile
+    val currentProfileSource = profile.coachDraftSource()
+    var draftProfileSourceResolved by rememberSaveable { mutableStateOf(isProfileResolved) }
+    var draftProfileId by rememberSaveable { mutableStateOf(currentProfileSource.profileId) }
+    var draftProfileName by rememberSaveable { mutableStateOf(currentProfileSource.name) }
+    var draftProfileAge by rememberSaveable { mutableStateOf(currentProfileSource.age) }
+    var draftProfileSexName by rememberSaveable { mutableStateOf(currentProfileSource.sexName) }
+    var draftProfileHeight by rememberSaveable { mutableStateOf(currentProfileSource.height) }
+    var draftProfileWeight by rememberSaveable { mutableStateOf(currentProfileSource.weight) }
+    var draftProfileBodyFat by rememberSaveable { mutableStateOf(currentProfileSource.bodyFat) }
+    var draftProfileActivityLevel by rememberSaveable { mutableStateOf(currentProfileSource.activityLevel) }
+    var draftProfileGoal by rememberSaveable { mutableStateOf(currentProfileSource.goal) }
+    var name by rememberSaveable { mutableStateOf(profile?.name.orEmpty()) }
+    var age by rememberSaveable { mutableStateOf(profile?.age?.toString() ?: "30") }
+    var sex by rememberSaveable { mutableStateOf(profile?.sex ?: BiologicalSex.MALE) }
+    var height by rememberSaveable { mutableStateOf(profile?.height?.toString().orEmpty()) }
+    var weight by rememberSaveable { mutableStateOf(profile?.weight?.toString().orEmpty()) }
+    var bodyFat by rememberSaveable { mutableStateOf(profile?.bodyFat?.toString().orEmpty()) }
+    var activityLevel by rememberSaveable {
+        mutableStateOf(profile?.activityLevel?.toDutchActivityLevelLabel() ?: "Gemiddeld actief")
+    }
+    var goal by rememberSaveable { mutableStateOf(profile?.goal.orEmpty()) }
     var profileInputError by rememberSaveable { mutableStateOf<ProfileInputValidationError?>(null) }
     val haptics = LocalHapticFeedback.current
+    val draftProfileSource = CoachDraftSource(
+        profileId = draftProfileId,
+        name = draftProfileName,
+        age = draftProfileAge,
+        sexName = draftProfileSexName,
+        height = draftProfileHeight,
+        weight = draftProfileWeight,
+        bodyFat = draftProfileBodyFat,
+        activityLevel = draftProfileActivityLevel,
+        goal = draftProfileGoal,
+    )
 
-    val profile = (uiState as? CoachUiState.Success)?.currentProfile
-    LaunchedEffect(profile) {
-        profile?.let {
-            name = it.name
-            age = it.age.toString()
-            sex = it.sex
-            height = it.height.toString()
-            weight = it.weight.toString()
-            bodyFat = it.bodyFat.toString()
-            activityLevel = it.activityLevel.toDutchActivityLevelLabel()
-            goal = it.goal
+    LaunchedEffect(isProfileResolved, currentProfileSource) {
+        if (
+            isProfileResolved &&
+            (!draftProfileSourceResolved || draftProfileSource != currentProfileSource)
+        ) {
+            name = profile?.name.orEmpty()
+            age = profile?.age?.toString() ?: "30"
+            sex = profile?.sex ?: BiologicalSex.MALE
+            height = profile?.height?.toString().orEmpty()
+            weight = profile?.weight?.toString().orEmpty()
+            bodyFat = profile?.bodyFat?.toString().orEmpty()
+            activityLevel = profile?.activityLevel?.toDutchActivityLevelLabel() ?: "Gemiddeld actief"
+            goal = profile?.goal.orEmpty()
+            profileInputError = null
+            draftProfileSourceResolved = true
+            draftProfileId = currentProfileSource.profileId
+            draftProfileName = currentProfileSource.name
+            draftProfileAge = currentProfileSource.age
+            draftProfileSexName = currentProfileSource.sexName
+            draftProfileHeight = currentProfileSource.height
+            draftProfileWeight = currentProfileSource.weight
+            draftProfileBodyFat = currentProfileSource.bodyFat
+            draftProfileActivityLevel = currentProfileSource.activityLevel
+            draftProfileGoal = currentProfileSource.goal
         }
     }
 
@@ -822,6 +861,30 @@ private fun String.toDutchActivityLevelLabel(): String = when (trim().lowercase(
     "athlete" -> "Atleet"
     else -> this
 }
+
+private data class CoachDraftSource(
+    val profileId: Long?,
+    val name: String?,
+    val age: Int?,
+    val sexName: String?,
+    val height: Double?,
+    val weight: Double?,
+    val bodyFat: Double?,
+    val activityLevel: String?,
+    val goal: String?,
+)
+
+private fun UserProfile?.coachDraftSource(): CoachDraftSource = CoachDraftSource(
+    profileId = this?.id,
+    name = this?.name,
+    age = this?.age,
+    sexName = this?.sex?.name,
+    height = this?.height,
+    weight = this?.weight,
+    bodyFat = this?.bodyFat,
+    activityLevel = this?.activityLevel,
+    goal = this?.goal,
+)
 
 internal fun goalAdviceEnergyDifferenceLabel(difference: Int): String = when {
     difference < 0 -> "Tekort"

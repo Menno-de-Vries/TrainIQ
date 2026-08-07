@@ -2,16 +2,19 @@ package com.trainiq.flow
 
 import android.content.Context
 import android.content.Intent
+import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -21,6 +24,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.trainiq.MainActivity
+import com.trainiq.features.workout.routineDetailsTestTag
 import java.io.File
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -149,6 +153,96 @@ class TrainIqFlowSmokeInstrumentedTest {
             waitForText("Routinenaam")
             compose.onNode(hasText("Routinenaam") and hasSetTextAction())
                 .assertTextContains("Rotatieroutine")
+        }
+    }
+
+    @Test
+    fun customExerciseDraftSurvivesActivityRecreationBeforeAdd() {
+        val routineName = "Rotatie eigen oefening ${System.nanoTime()}"
+        ActivityScenario.launch<MainActivity>(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ).use { scenario ->
+            waitForText("Training")
+            tap("Training")
+            waitForText("Lege routine maken")
+            tap("Lege routine maken")
+            waitForText("Routinenaam")
+            compose.onNode(hasText("Routinenaam") and hasSetTextAction())
+                .performTextReplacement(routineName)
+            tap("Maken")
+
+            waitForText("Routine aangemaakt.")
+            assertVisible(routineName)
+            val detailsTag = routineDetailsTestTag(routineName)
+            scrollUntilTag(detailsTag)
+            compose.onNodeWithTag(detailsTag, useUnmergedTree = true)
+                .performClick()
+            waitForText("Eerste oefening toevoegen")
+            tap("Eerste oefening toevoegen")
+            waitForText("Voeg eigen oefening toe")
+            tap("Voeg eigen oefening toe")
+            waitForText("Spiergroep")
+
+            compose.onNode(hasText("Oefening") and hasSetTextAction())
+                .performTextReplacement("Rotatie squat")
+            compose.onNode(hasText("Spiergroep") and hasSetTextAction())
+                .performTextReplacement("Benen")
+            compose.onNode(hasText("Materiaal") and hasSetTextAction())
+                .performTextReplacement("Halters")
+
+            scenario.recreate()
+
+            waitForText("Voeg eigen oefening toe")
+            compose.onNode(hasText("Oefening") and hasSetTextAction())
+                .assertTextContains("Rotatie squat")
+            compose.onNode(hasText("Spiergroep") and hasSetTextAction())
+                .assertTextContains("Benen")
+            compose.onNode(hasText("Materiaal") and hasSetTextAction())
+                .assertTextContains("Halters")
+        }
+    }
+
+    @Test
+    fun aiRoutineDraftSurvivesActivityRecreationBeforeGenerate() {
+        ActivityScenario.launch<MainActivity>(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ).use { scenario ->
+            waitForText("Training")
+            tap("Training")
+            waitForText("Met AI genereren")
+            tap("Met AI genereren")
+            waitForText("AI-routine genereren")
+
+            compose.onNode(hasText("Trainingsfocus / split") and hasSetTextAction())
+                .performTextReplacement("Rotatie upper/lower")
+            compose.onNode(hasText("Dagen per week") and hasSetTextAction())
+                .performTextReplacement("4")
+            compose.onNode(hasText("Beschikbaar materiaal") and hasSetTextAction())
+                .performScrollTo()
+                .performTextReplacement("Dumbbells en bank")
+            compose.onNodeWithText("Gevorderd")
+                .performScrollTo()
+                .performClick()
+            compose.onNodeWithContentDescription("Deload-richtlijn opnemen")
+                .performScrollTo()
+                .performClick()
+
+            scenario.recreate()
+
+            waitForText("AI-routine genereren")
+            compose.onNode(hasText("Trainingsfocus / split") and hasSetTextAction())
+                .assertTextContains("Rotatie upper/lower")
+            compose.onNode(hasText("Dagen per week") and hasSetTextAction())
+                .assertTextContains("4")
+            compose.onNode(hasText("Beschikbaar materiaal") and hasSetTextAction())
+                .performScrollTo()
+                .assertTextContains("Dumbbells en bank")
+            compose.onNodeWithText("Gevorderd")
+                .performScrollTo()
+                .assertIsSelected()
+            compose.onNodeWithContentDescription("Deload-richtlijn opnemen")
+                .performScrollTo()
+                .assertIsOff()
         }
     }
 
@@ -366,6 +460,19 @@ class TrainIqFlowSmokeInstrumentedTest {
 
     private fun scrollUntilText(text: String) {
         scrollUntilAnyText(text)
+    }
+
+    private fun scrollUntilTag(tag: String) {
+        val matcher = hasTestTag(tag)
+        if (compose.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()) return
+        val scrollNodeCount = compose.onAllNodes(hasScrollAction()).fetchSemanticsNodes().size
+        repeat(scrollNodeCount) { index ->
+            runCatching {
+                compose.onAllNodes(hasScrollAction())[index].performScrollToNode(matcher)
+            }
+            if (compose.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()) return
+        }
+        error("Test tag not found after scrolling: $tag")
     }
 
     private fun scrollUntilAnyText(vararg texts: String) {
