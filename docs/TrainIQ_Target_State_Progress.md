@@ -1,16 +1,17 @@
 # TrainIQ Target-State Progress
 
-Updated date: 2026-08-07
+Updated date: 2026-08-25
 
 ## Alignment Score
 
 - Previous alignment: 95%
 - Current estimated alignment: 95%
 - Delta: 0 percentage points after rounding
-- Reason: The 2026-08-06 and 2026-08-07 closed loops now preserve manual Nutrition state, synthetic AI-result routing, profile drafts, AI routine-generator input, and the first custom-exercise draft across restoration; Coach also rejects a restored draft when the authoritative profile ID or editor-source content changed, while in-flight routine generation remains blocked across Activity recreation. These concrete lifecycle fixes do not change the rounded score because manual accessibility evidence, performance owner gates, Health Connect/scanner safe-device evidence, signing, and owner release decisions remain open.
+- Reason: The lifecycle loops now also preserve unsaved exercise-plan and routine-set editor state across Activity recreation. This concrete Training UX fix does not change the rounded score because manual accessibility evidence, performance owner gates, Health Connect/scanner safe-device evidence, signing, and owner release decisions remain open.
 
 ## Completed Findings
 
+- QA-2026-08-25-025 (P2): Exercise-plan and routine-set editors now retain their active entity plus all unsaved primitive values and selected set type across Activity recreation; two real Android 16 tests cover the complete routine-edit paths.
 - QA-2026-08-07-035 (P2): The first-exercise custom dialog and its exercise, muscle-group, and equipment fields now survive Activity recreation; a real Android 16 flow test covers the complete empty-routine path.
 - QA-2026-08-06-034 (P2): AI routine-generator visibility and all pre-submit inputs survive Activity recreation; ViewModel-owned generation state keeps the dialog blocked while an existing request is in flight and rejects duplicate submissions.
 - QA-2026-08-06-033 (P2): Unsaved Coach edits survive same-profile save/restore, while an exact saveable source snapshot rejects stale drafts when any persisted editor-source field changed, including hash-colliding values.
@@ -474,3 +475,13 @@ Updated date: 2026-08-07
 - Artifact: non-production `app-debug.apk`, 50,836,035 bytes, SHA-256 `CF64F194B7446E217A6BDD649E6B37E525627B90C93E20F55064F2A9E8BB8F53`.
 - Alignment: the rounded target-state estimate remains 95%; this closes one repository-proven Training lifecycle gap without altering owner/manual/device release gates.
 - Remaining risk: the empty-routine starter path is covered; the day-editor and active-workout replacement parent-dialog states remain separate lifecycle batches. OS-killed restoration still depends on Android saveable-state delivery, and production release remains blocked.
+
+## 2026-08-25 Routine Editor Draft Restoration Polish
+
+- Finding: QA-2026-08-25-025.
+- QA result: two real Android 16 RED tests proved that Activity recreation closed configured exercise-plan and routine-set editors and discarded their unsaved values because both the parent editor references and dialog fields used transient Compose state.
+- Implementation: both parent composables now retain only saveable entity IDs and resolve current models from their ordered collections; the editor fields and `SetType` selections use `rememberSaveable`. Save, dismiss, validation, persistence, navigation, and styling remain unchanged.
+- Regression coverage: `exercisePlanEditorDraftSurvivesActivityRecreationBeforeSave` and `routineSetEditorDraftSurvivesActivityRecreationBeforeSave` create a local routine/exercise, edit every representative field and a non-default set type, recreate `MainActivity`, and assert the editor plus exact draft survives.
+- Verification: both tests reproduced the editor-loss defect before their respective fixes and passed after. The combined focused run passed 2/2 on `TrainIQ_Agent_API36_20260806` / Android 16. `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, and `:app:compileDebugAndroidTestKotlin` passed.
+- Alignment: the rounded target-state estimate remains 95%; no owner/manual/device release gate changed.
+- Remaining risk: Activity recreation is covered; OS-killed restoration depends on normal Android saveable-state delivery. Active-workout replacement dialogs remain separate scope, and production release remains blocked.

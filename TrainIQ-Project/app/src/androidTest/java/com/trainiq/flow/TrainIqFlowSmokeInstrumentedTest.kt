@@ -6,10 +6,12 @@ import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -17,12 +19,14 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.compose.ui.semantics.SemanticsActions
 import com.trainiq.MainActivity
 import com.trainiq.features.workout.routineDetailsTestTag
 import java.io.File
@@ -199,6 +203,74 @@ class TrainIqFlowSmokeInstrumentedTest {
                 .assertTextContains("Benen")
             compose.onNode(hasText("Materiaal") and hasSetTextAction())
                 .assertTextContains("Halters")
+        }
+    }
+
+    @Test
+    fun exercisePlanEditorDraftSurvivesActivityRecreationBeforeSave() {
+        val routineName = "Rotatie oefenplan ${System.nanoTime()}"
+        val exerciseName = "Rotatie press"
+        ActivityScenario.launch<MainActivity>(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ).use { scenario ->
+            createRoutineWithCustomExercise(routineName, exerciseName)
+
+            scrollUntilContentDescription("Oefening acties")
+            compose.onNode(hasContentDescription("Oefening acties") and hasClickAction())
+                .performSemanticsAction(SemanticsActions.OnClick)
+            waitForText("Bewerken")
+            compose.onNodeWithText("Bewerken").performClick()
+            waitForText("Rest s")
+
+            compose.onNode(hasText("Sets") and hasSetTextAction()).performTextReplacement("5")
+            compose.onNode(hasText("Reps") and hasSetTextAction()).performTextReplacement("6-8")
+            compose.onNode(hasText("Rest s") and hasSetTextAction()).performTextReplacement("150")
+            compose.onNode(hasText("Kg") and hasSetTextAction()).performTextReplacement("72.5")
+            compose.onNode(hasText("RPE") and hasSetTextAction()).performTextReplacement("8.5")
+            tap("Drop set")
+            waitForSelectedText("Drop set")
+
+            scenario.recreate()
+
+            waitForText("Rest s")
+            compose.onNode(hasText("Sets") and hasSetTextAction()).assertTextContains("5")
+            compose.onNode(hasText("Reps") and hasSetTextAction()).assertTextContains("6-8")
+            compose.onNode(hasText("Rest s") and hasSetTextAction()).assertTextContains("150")
+            compose.onNode(hasText("Kg") and hasSetTextAction()).assertTextContains("72.5")
+            compose.onNode(hasText("RPE") and hasSetTextAction()).assertTextContains("8.5")
+            waitForSelectedText("Drop set")
+        }
+    }
+
+    @Test
+    fun routineSetEditorDraftSurvivesActivityRecreationBeforeSave() {
+        val routineName = "Rotatie seteditor ${System.nanoTime()}"
+        val exerciseName = "Rotatie row"
+        ActivityScenario.launch<MainActivity>(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ).use { scenario ->
+            createRoutineWithCustomExercise(routineName, exerciseName)
+
+            scrollUntilText("#1")
+            compose.onNode(hasText("#1") and hasClickAction())
+                .performSemanticsAction(SemanticsActions.OnClick)
+            waitForText("Set #1 bewerken")
+
+            compose.onNode(hasText("Reps") and hasSetTextAction()).performTextReplacement("7")
+            compose.onNode(hasText("Gewicht") and hasSetTextAction()).performTextReplacement("67.5")
+            compose.onNode(hasText("Rust") and hasSetTextAction()).performScrollTo().performTextReplacement("135")
+            compose.onNode(hasText("RPE") and hasSetTextAction()).performScrollTo().performTextReplacement("9")
+            compose.onNodeWithText("Failure").performScrollTo().performClick()
+            waitForSelectedText("Failure")
+
+            scenario.recreate()
+
+            waitForText("Set #1 bewerken")
+            compose.onNode(hasText("Reps") and hasSetTextAction()).assertTextContains("7")
+            compose.onNode(hasText("Gewicht") and hasSetTextAction()).assertTextContains("67.5")
+            compose.onNode(hasText("Rust") and hasSetTextAction()).performScrollTo().assertTextContains("135")
+            compose.onNode(hasText("RPE") and hasSetTextAction()).performScrollTo().assertTextContains("9")
+            waitForSelectedText("Failure")
         }
     }
 
@@ -403,6 +475,38 @@ class TrainIqFlowSmokeInstrumentedTest {
         }
     }
 
+    private fun createRoutineWithCustomExercise(routineName: String, exerciseName: String) {
+        waitForText("Training")
+        tap("Training")
+        waitForText("Lege routine maken")
+        tap("Lege routine maken")
+        waitForText("Routinenaam")
+        compose.onNode(hasText("Routinenaam") and hasSetTextAction())
+            .performTextReplacement(routineName)
+        tap("Maken")
+
+        waitForText("Routine aangemaakt.")
+        val detailsTag = routineDetailsTestTag(routineName)
+        scrollUntilTag(detailsTag)
+        compose.onNodeWithTag(detailsTag, useUnmergedTree = true).performClick()
+        waitForText("Eerste oefening toevoegen")
+        tap("Eerste oefening toevoegen")
+        waitForText("Voeg eigen oefening toe")
+        tap("Voeg eigen oefening toe")
+        waitForText("Spiergroep")
+
+        compose.onNode(hasText("Oefening") and hasSetTextAction()).performTextReplacement(exerciseName)
+        compose.onNode(hasText("Spiergroep") and hasSetTextAction()).performTextReplacement("Schouders")
+        compose.onNode(hasText("Materiaal") and hasSetTextAction()).performTextReplacement("Dumbbells")
+        val addButtons = compose.onAllNodesWithText("Toevoegen", substring = false).fetchSemanticsNodes()
+        check(addButtons.isNotEmpty()) { "Toevoegen action not found" }
+        compose.onAllNodesWithText("Toevoegen", substring = false)[addButtons.lastIndex].performClick()
+        compose.waitUntil(timeoutMillis = 10_000L) {
+            compose.onAllNodes(hasText("Spiergroep") and hasSetTextAction()).fetchSemanticsNodes().isEmpty()
+        }
+        waitForText(exerciseName)
+    }
+
     private fun deleteAppLocalFile(relativePath: String) {
         val dataRoot = context.filesDir.parentFile ?: return
         val target = File(dataRoot, relativePath).canonicalFile
@@ -473,6 +577,19 @@ class TrainIqFlowSmokeInstrumentedTest {
             if (compose.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()) return
         }
         error("Test tag not found after scrolling: $tag")
+    }
+
+    private fun scrollUntilContentDescription(description: String) {
+        val matcher = hasContentDescription(description)
+        if (compose.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()) return
+        val scrollNodeCount = compose.onAllNodes(hasScrollAction()).fetchSemanticsNodes().size
+        repeat(scrollNodeCount) { index ->
+            runCatching {
+                compose.onAllNodes(hasScrollAction())[index].performScrollToNode(matcher)
+            }
+            if (compose.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()) return
+        }
+        error("Content description not found after scrolling: $description")
     }
 
     private fun scrollUntilAnyText(vararg texts: String) {

@@ -1471,3 +1471,31 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
   - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 50,836,035 bytes, SHA-256 `CF64F194B7446E217A6BDD649E6B37E525627B90C93E20F55064F2A9E8BB8F53`.
 - minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#customExerciseDraftSurvivesActivityRecreationBeforeAdd" --console=plain --no-configuration-cache`.
 - remaining risk: This test covers the empty-routine starter path. The day-editor and active-workout replacement entry points still own their parent custom-dialog visibility in transient state and require separate focused lifecycle batches. Full OS-killed restoration remains bounded by Android saveable-state delivery; physical-device performance and production release remain governed by existing owner/manual/safe-device gates.
+
+### QA-2026-08-25-025
+
+- finding_id: QA-2026-08-25-025
+- priority: P2
+- area: Android lifecycle, Training UX, tests
+- status: done
+- owner suggestion: Android UI owner
+- current evidence with file references:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt` kept the active exercise-plan editor, active routine-set editor, and both editors' unsaved fields in ordinary `remember` state.
+  - Two real `MainActivity` tests created a routine and exercise, edited representative values and set types, then reproduced both editors closing after `ActivityScenario.recreate()`.
+  - Existing creation-flow restoration tests did not cover edits to an already configured exercise plan or routine set.
+- external sources used: None. Repository code, existing lifecycle patterns, target-state requirements, and executable Android 16 evidence were sufficient.
+- expected target-state behavior: An open exercise-plan or routine-set editor and all unsaved primitive field values remain available after Activity recreation until the user saves or dismisses the editor.
+- concrete implemented fix: `WorkoutDayEditor` and `RoutineExerciseCard` retain the active editor by saveable entity ID and resolve the latest model from the current ordered collection. `ExercisePlanEditDialog` and `EditSetBottomSheet` retain their editable strings and `SetType` with `rememberSaveable`; save and dismiss behavior is unchanged.
+- files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
+- regression risk: Low. The change is limited to ephemeral editor state; validation, Room writes, domain models, navigation routes, public interfaces, styling, AI, Health Connect, camera, and remote behavior are unchanged.
+- verification evidence:
+  - RED: `exercisePlanEditorDraftSurvivesActivityRecreationBeforeSave` reached the edited plan dialog and timed out after recreation because `Rest s` was no longer present.
+  - GREEN: the identical test retained `5`, `6-8`, `150`, `72.5`, `8.5`, and `Drop set` after recreation.
+  - RED: `routineSetEditorDraftSurvivesActivityRecreationBeforeSave` reached the edited set surface and timed out after recreation because `Set #1 bewerken` was no longer present.
+  - GREEN: the identical test retained `7`, `67.5`, `135`, `9`, and `Failure` after recreation.
+  - PASS: combined focused Android 16 run completed 2 tests with 0 failures, errors, or skips.
+  - PASS: `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, and `:app:compileDebugAndroidTestKotlin`.
+- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#exercisePlanEditorDraftSurvivesActivityRecreationBeforeSave,com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#routineSetEditorDraftSurvivesActivityRecreationBeforeSave" --console=plain --no-configuration-cache`.
+- remaining risk: Activity recreation is proven on Android 16. Full OS-killed restoration remains bounded by Android saveable-state delivery; active-workout replacement dialogs and production release gates remain separate scope.

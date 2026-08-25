@@ -2377,8 +2377,9 @@ private fun WorkoutDayEditor(
     var sessionMenuExpanded by remember(day.id) { mutableStateOf(false) }
     var pendingRemoveExercise by remember(day.id) { mutableStateOf<WorkoutExercisePlan?>(null) }
     var replacingPlan by remember(day.id) { mutableStateOf<WorkoutExercisePlan?>(null) }
-    var editingPlan by remember(day.id) { mutableStateOf<WorkoutExercisePlan?>(null) }
+    var editingPlanId by rememberSaveable(day.id) { mutableStateOf<Long?>(null) }
     var orderedPlans by remember(day.id, day.exercises) { mutableStateOf(day.exercises) }
+    val editingPlan = editingPlanId?.let { id -> orderedPlans.firstOrNull { it.id == id } }
 
     if (showExercisePicker) {
         ExercisePickerSheet(
@@ -2482,10 +2483,10 @@ private fun WorkoutDayEditor(
         ExercisePlanEditDialog(
             plan = plan,
             onConfirm = { sets, reps, rest, weight, rpe, setType ->
-                editingPlan = null
+                editingPlanId = null
                 onUpdateWorkoutExercisePlan(plan.id, sets, reps, rest, weight, rpe, setType)
             },
-            onDismiss = { editingPlan = null },
+            onDismiss = { editingPlanId = null },
         )
     }
 
@@ -2575,7 +2576,7 @@ private fun WorkoutDayEditor(
                                 onOpenHistory = { onOpenExerciseHistory(plan.exercise.id) },
                                 exerciseDragHandle = Modifier.draggableHandle(),
                                 canSuperset = orderedPlans.size > 1,
-                                onEditExercise = { editingPlan = plan },
+                                onEditExercise = { editingPlanId = plan.id },
                                 onReplaceExercise = { replacingPlan = plan },
                                 onRemoveExercise = { pendingRemoveExercise = plan },
                                 onToggleSuperset = { toggleSupersetGroup(orderedPlans, plan, onSetSupersetGroup) },
@@ -2615,11 +2616,12 @@ private fun RoutineExerciseCard(
 ) {
     var collapsed by remember(plan.id) { mutableStateOf(false) }
     var pendingDeleteSet by remember(plan.id) { mutableStateOf<RoutineSet?>(null) }
-    var editingSet by remember(plan.id) { mutableStateOf<RoutineSet?>(null) }
+    var editingSetId by rememberSaveable(plan.id) { mutableStateOf<Long?>(null) }
     var menuExpanded by remember(plan.id) { mutableStateOf(false) }
     var orderedSets by remember(plan.id, plan.sets) {
         mutableStateOf(plan.sets.sortedWith(compareBy<RoutineSet> { it.orderIndex }.thenBy { it.id }))
     }
+    val editingSet = editingSetId?.let { id -> orderedSets.firstOrNull { it.id == id } }
 
     pendingDeleteSet?.let { set ->
         AlertDialog(
@@ -2642,10 +2644,10 @@ private fun RoutineExerciseCard(
             set = set,
             setNumber = orderedSets.indexOfFirst { it.id == set.id }.takeIf { it >= 0 }?.plus(1) ?: 1,
             onSave = { updated ->
-                editingSet = null
+                editingSetId = null
                 onUpdateSet(updated)
             },
-            onDismiss = { editingSet = null },
+            onDismiss = { editingSetId = null },
         )
     }
 
@@ -2783,7 +2785,7 @@ private fun RoutineExerciseCard(
                                 index = index + 1,
                                 set = set,
                                 dragHandle = Modifier.draggableHandle(),
-                                onEdit = { editingSet = set },
+                                onEdit = { editingSetId = set.id },
                                 onDelete = { pendingDeleteSet = set },
                             )
                         }
@@ -3111,11 +3113,11 @@ private fun EditSetBottomSheet(
     onSave: (RoutineSet) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var selectedType by remember(set.id) { mutableStateOf(set.setType) }
-    var reps by remember(set.id) { mutableStateOf(set.targetReps.takeIf { it > 0 }?.toString().orEmpty()) }
-    var weight by remember(set.id) { mutableStateOf(set.targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
-    var rest by remember(set.id) { mutableStateOf(set.restSeconds.takeIf { it > 0 }?.toString().orEmpty()) }
-    var rpe by remember(set.id) { mutableStateOf(set.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
+    var selectedType by rememberSaveable(set.id) { mutableStateOf(set.setType) }
+    var reps by rememberSaveable(set.id) { mutableStateOf(set.targetReps.takeIf { it > 0 }?.toString().orEmpty()) }
+    var weight by rememberSaveable(set.id) { mutableStateOf(set.targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
+    var rest by rememberSaveable(set.id) { mutableStateOf(set.restSeconds.takeIf { it > 0 }?.toString().orEmpty()) }
+    var rpe by rememberSaveable(set.id) { mutableStateOf(set.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
     val scrollState = rememberScrollState()
     val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
     val density = LocalDensity.current
@@ -3923,12 +3925,12 @@ private fun ExercisePlanEditDialog(
     onConfirm: (String, String, String, String, String, SetType) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var targetSets by remember(plan.id) { mutableStateOf(plan.targetSets.toString()) }
-    var repRange by remember(plan.id) { mutableStateOf(plan.repRange) }
-    var restSeconds by remember(plan.id) { mutableStateOf(plan.restSeconds.toString()) }
-    var targetWeightKg by remember(plan.id) { mutableStateOf(plan.targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
-    var targetRpe by remember(plan.id) { mutableStateOf(plan.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
-    var setType by remember(plan.id) { mutableStateOf(plan.setType) }
+    var targetSets by rememberSaveable(plan.id) { mutableStateOf(plan.targetSets.toString()) }
+    var repRange by rememberSaveable(plan.id) { mutableStateOf(plan.repRange) }
+    var restSeconds by rememberSaveable(plan.id) { mutableStateOf(plan.restSeconds.toString()) }
+    var targetWeightKg by rememberSaveable(plan.id) { mutableStateOf(plan.targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
+    var targetRpe by rememberSaveable(plan.id) { mutableStateOf(plan.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
+    var setType by rememberSaveable(plan.id) { mutableStateOf(plan.setType) }
     val scrollState = rememberScrollState()
 
     AlertDialog(
