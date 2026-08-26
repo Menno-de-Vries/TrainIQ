@@ -30,10 +30,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -482,30 +480,18 @@ fun SettingsScreen(
     onOpenProgress: () -> Unit = {},
 ) {
     var apiKey by rememberSaveable { mutableStateOf("") }
-    var name by rememberSaveable { mutableStateOf(profile?.name.orEmpty()) }
-    var age by rememberSaveable { mutableStateOf(profile?.age?.toString() ?: "30") }
-    var sex by rememberSaveable { mutableStateOf(profile?.sex ?: BiologicalSex.MALE) }
-    var height by rememberSaveable { mutableStateOf(profile?.height?.toString().orEmpty()) }
-    var weight by rememberSaveable { mutableStateOf(profile?.weight?.toString().orEmpty()) }
-    var bodyFat by rememberSaveable { mutableStateOf(profile?.bodyFat?.toString().orEmpty()) }
-    var activityLevel by rememberSaveable {
+    var name by rememberSaveable(profile) { mutableStateOf(profile?.name.orEmpty()) }
+    var age by rememberSaveable(profile) { mutableStateOf(profile?.age?.toString() ?: "30") }
+    var sex by rememberSaveable(profile) { mutableStateOf(profile?.sex ?: BiologicalSex.MALE) }
+    var height by rememberSaveable(profile) { mutableStateOf(profile?.height?.toString().orEmpty()) }
+    var weight by rememberSaveable(profile) { mutableStateOf(profile?.weight?.toString().orEmpty()) }
+    var bodyFat by rememberSaveable(profile) { mutableStateOf(profile?.bodyFat?.toString().orEmpty()) }
+    var activityLevel by rememberSaveable(profile) {
         mutableStateOf(profile?.activityLevel?.takeIf { it in ProfileActivityLevels } ?: DefaultProfileActivityLevel)
     }
-    var goal by rememberSaveable { mutableStateOf(profile?.goal.orEmpty()) }
-    var profileInputError by remember { mutableStateOf<ProfileInputValidationError?>(null) }
+    var goal by rememberSaveable(profile) { mutableStateOf(profile?.goal.orEmpty()) }
+    var profileInputError by rememberSaveable(profile) { mutableStateOf<ProfileInputValidationError?>(null) }
     var pendingDestructiveAction by rememberSaveable { mutableStateOf<PendingDestructiveSettingsAction?>(null) }
-
-    LaunchedEffect(profile) {
-        name = profile?.name.orEmpty()
-        age = profile?.age?.toString() ?: "30"
-        sex = profile?.sex ?: BiologicalSex.MALE
-        height = profile?.height?.toString().orEmpty()
-        weight = profile?.weight?.toString().orEmpty()
-        bodyFat = profile?.bodyFat?.toString().orEmpty()
-        activityLevel = profile?.activityLevel?.takeIf { it in ProfileActivityLevels } ?: DefaultProfileActivityLevel
-        goal = profile?.goal.orEmpty()
-        profileInputError = null
-    }
 
     LazyColumn(
         modifier = Modifier

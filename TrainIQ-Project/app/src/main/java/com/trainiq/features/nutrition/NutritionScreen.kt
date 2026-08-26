@@ -47,6 +47,8 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -120,6 +122,182 @@ private sealed interface PendingNutritionDelete {
     data class Food(val id: Long) : PendingNutritionDelete
     data class Recipe(val id: Long) : PendingNutritionDelete
 }
+
+private val FoodFieldErrorsSaver = listSaver<FoodFieldErrors, String>(
+    save = { errors ->
+        listOf(
+            errors.name.orEmpty(),
+            errors.calories.orEmpty(),
+            errors.protein.orEmpty(),
+            errors.carbs.orEmpty(),
+            errors.fat.orEmpty(),
+        )
+    },
+    restore = { values ->
+        FoodFieldErrors(
+            name = values[0].ifBlank { null },
+            calories = values[1].ifBlank { null },
+            protein = values[2].ifBlank { null },
+            carbs = values[3].ifBlank { null },
+            fat = values[4].ifBlank { null },
+        )
+    },
+)
+
+private val RecipeFieldErrorsSaver = listSaver<RecipeFieldErrors, String>(
+    save = { errors ->
+        listOf(
+            errors.name.orEmpty(),
+            errors.cookedGrams.orEmpty(),
+            errors.ingredientGrams.orEmpty(),
+            errors.ingredients.orEmpty(),
+        )
+    },
+    restore = { values ->
+        RecipeFieldErrors(
+            name = values[0].ifBlank { null },
+            cookedGrams = values[1].ifBlank { null },
+            ingredientGrams = values[2].ifBlank { null },
+            ingredients = values[3].ifBlank { null },
+        )
+    },
+)
+
+private val RecipeDraftSaver = listSaver<SnapshotStateList<Pair<Long, Double>>, String>(
+    save = { draft ->
+        draft.flatMap { (foodId, grams) -> listOf(foodId.toString(), grams.toString()) }
+    },
+    restore = { values ->
+        mutableStateListOf<Pair<Long, Double>>().apply {
+            addAll(
+                values.chunked(2).mapNotNull { savedIngredient ->
+                    val foodId = savedIngredient.getOrNull(0)?.toLongOrNull()
+                    val grams = savedIngredient.getOrNull(1)?.toDoubleOrNull()
+                    if (foodId != null && grams != null) foodId to grams else null
+                },
+            )
+        }
+    },
+)
+
+private val MealFieldErrorsSaver = listSaver<MealFieldErrors, String>(
+    save = { errors -> listOf(errors.name.orEmpty(), errors.items.orEmpty()) },
+    restore = { values ->
+        MealFieldErrors(
+            name = values[0].ifBlank { null },
+            items = values[1].ifBlank { null },
+        )
+    },
+)
+
+private val QuickAddFieldErrorsSaver = listSaver<QuickAddFieldErrors, String>(
+    save = { errors -> listOf(errors.grams.orEmpty()) },
+    restore = { values -> QuickAddFieldErrors(grams = values[0].ifBlank { null }) },
+)
+
+private val MealDraftSaver = listSaver<SnapshotStateList<MealEntryRequest>, String>(
+    save = { draft ->
+        draft.flatMap { entry ->
+            listOf(
+                entry.itemType.name,
+                entry.referenceId.toString(),
+                entry.gramsUsed.toString(),
+                entry.notes.orEmpty(),
+            )
+        }
+    },
+    restore = { values ->
+        mutableStateListOf<MealEntryRequest>().apply {
+            addAll(
+                values.chunked(4).mapNotNull { savedEntry ->
+                    val itemType = savedEntry.getOrNull(0)?.let { name ->
+                        runCatching { MealEntryType.valueOf(name) }.getOrNull()
+                    }
+                    val referenceId = savedEntry.getOrNull(1)?.toLongOrNull()
+                    val gramsUsed = savedEntry.getOrNull(2)?.toDoubleOrNull()
+                    if (itemType != null && referenceId != null && gramsUsed != null) {
+                        MealEntryRequest(
+                            itemType = itemType,
+                            referenceId = referenceId,
+                            gramsUsed = gramsUsed,
+                            notes = savedEntry.getOrNull(3)?.ifBlank { null },
+                        )
+                    } else {
+                        null
+                    }
+                },
+            )
+        }
+    },
+)
+
+private val EditableAiItemsSaver = listSaver<SnapshotStateList<EditableAiItem>, String>(
+    save = { items ->
+        items.flatMap { item ->
+            listOf(
+                item.name,
+                item.grams,
+                item.calories,
+                item.protein,
+                item.carbs,
+                item.fat,
+                (item.confidence != null).toString(),
+                item.confidence.orEmpty(),
+                (item.notes != null).toString(),
+                item.notes.orEmpty(),
+            )
+        }
+    },
+    restore = { values ->
+        mutableStateListOf<EditableAiItem>().apply {
+            addAll(
+                values.chunked(10).mapNotNull { savedItem ->
+                    if (savedItem.size != 10) return@mapNotNull null
+                    EditableAiItem(
+                        name = savedItem[0],
+                        grams = savedItem[1],
+                        calories = savedItem[2],
+                        protein = savedItem[3],
+                        carbs = savedItem[4],
+                        fat = savedItem[5],
+                        confidence = savedItem[7].takeIf { savedItem[6].toBooleanStrictOrNull() == true },
+                        notes = savedItem[9].takeIf { savedItem[8].toBooleanStrictOrNull() == true },
+                    )
+                },
+            )
+        }
+    },
+)
+
+private val AiItemErrorsSaver = listSaver<Map<Int, AiItemFieldErrors>, String>(
+    save = { errorsByIndex ->
+        errorsByIndex.entries.sortedBy { it.key }.flatMap { (index, errors) ->
+            listOf(
+                index.toString(),
+                errors.name.orEmpty(),
+                errors.grams.orEmpty(),
+                errors.calories.orEmpty(),
+                errors.protein.orEmpty(),
+                errors.carbs.orEmpty(),
+                errors.fat.orEmpty(),
+            )
+        }
+    },
+    restore = { values ->
+        values.chunked(7).mapNotNull { savedErrors ->
+            val index = savedErrors.getOrNull(0)?.toIntOrNull()
+            if (index == null || savedErrors.size != 7) return@mapNotNull null
+            index to AiItemFieldErrors(
+                name = savedErrors[1].ifBlank { null },
+                grams = savedErrors[2].ifBlank { null },
+                calories = savedErrors[3].ifBlank { null },
+                protein = savedErrors[4].ifBlank { null },
+                carbs = savedErrors[5].ifBlank { null },
+                fat = savedErrors[6].ifBlank { null },
+            )
+        }.toMap()
+    },
+)
 
 sealed interface NutritionUiState {
     data object Loading : NutritionUiState
@@ -451,53 +629,59 @@ fun NutritionScreen(
     val addToMealSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedTab by rememberSaveable { mutableStateOf(0) }
     val nutritionListState = nutritionListStates[selectedTab.coerceIn(tabs.indices)]
-    var aiScanForRecipe by remember { mutableStateOf(false) }
+    var aiScanForRecipe by rememberSaveable { mutableStateOf(false) }
     var showAddToMealActions by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<PendingNutritionDelete?>(null) }
     var addToMealType by remember { mutableStateOf(MealType.BREAKFAST) }
-    var selectedFoodId by remember { mutableStateOf<Long?>(null) }
-    var selectedRecipeId by remember { mutableStateOf<Long?>(null) }
+    var selectedFoodId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var selectedRecipeId by rememberSaveable { mutableStateOf<Long?>(null) }
     val selectedFood = overview?.foods?.firstOrNull { it.id == selectedFoodId }
     val selectedRecipe = overview?.recipes?.firstOrNull { it.id == selectedRecipeId }
 
-    var foodName by remember { mutableStateOf("") }
-    var barcode by remember { mutableStateOf("") }
-    var calories by remember { mutableStateOf("") }
-    var protein by remember { mutableStateOf("") }
-    var carbs by remember { mutableStateOf("") }
-    var fat by remember { mutableStateOf("") }
-    var foodErrors by remember { mutableStateOf(FoodFieldErrors()) }
+    var foodName by rememberSaveable { mutableStateOf("") }
+    var barcode by rememberSaveable { mutableStateOf("") }
+    var calories by rememberSaveable { mutableStateOf("") }
+    var protein by rememberSaveable { mutableStateOf("") }
+    var carbs by rememberSaveable { mutableStateOf("") }
+    var fat by rememberSaveable { mutableStateOf("") }
+    var foodErrors by rememberSaveable(stateSaver = FoodFieldErrorsSaver) { mutableStateOf(FoodFieldErrors()) }
 
-    var recipeName by remember { mutableStateOf("") }
-    var recipeNotes by remember { mutableStateOf("") }
-    var recipeCookedGrams by remember { mutableStateOf("") }
-    var ingredientGrams by remember { mutableStateOf("100") }
-    var recipeAiContext by remember { mutableStateOf("") }
-    var quickIngredientName by remember { mutableStateOf("") }
-    var quickIngredientBarcode by remember { mutableStateOf("") }
-    var quickIngredientKcal by remember { mutableStateOf("") }
-    var quickIngredientProtein by remember { mutableStateOf("") }
-    var quickIngredientCarbs by remember { mutableStateOf("") }
-    var quickIngredientFat by remember { mutableStateOf("") }
+    var recipeName by rememberSaveable { mutableStateOf("") }
+    var recipeNotes by rememberSaveable { mutableStateOf("") }
+    var recipeCookedGrams by rememberSaveable { mutableStateOf("") }
+    var ingredientGrams by rememberSaveable { mutableStateOf("100") }
+    var recipeAiContext by rememberSaveable { mutableStateOf("") }
+    var quickIngredientName by rememberSaveable { mutableStateOf("") }
+    var quickIngredientBarcode by rememberSaveable { mutableStateOf("") }
+    var quickIngredientKcal by rememberSaveable { mutableStateOf("") }
+    var quickIngredientProtein by rememberSaveable { mutableStateOf("") }
+    var quickIngredientCarbs by rememberSaveable { mutableStateOf("") }
+    var quickIngredientFat by rememberSaveable { mutableStateOf("") }
     var showRecipeActions by remember { mutableStateOf(false) }
-    val recipeDraft = remember { mutableStateListOf<Pair<Long, Double>>() }
-    var recipeErrors by remember { mutableStateOf(RecipeFieldErrors()) }
-    var quickIngredientErrors by remember { mutableStateOf(FoodFieldErrors()) }
+    val recipeDraft = rememberSaveable(saver = RecipeDraftSaver) { mutableStateListOf<Pair<Long, Double>>() }
+    var recipeErrors by rememberSaveable(stateSaver = RecipeFieldErrorsSaver) { mutableStateOf(RecipeFieldErrors()) }
+    var quickIngredientErrors by rememberSaveable(stateSaver = FoodFieldErrorsSaver) { mutableStateOf(FoodFieldErrors()) }
 
-    var mealType by remember { mutableStateOf(MealType.LUNCH) }
-    var mealName by remember { mutableStateOf(MealType.LUNCH.dutchLabel) }
-    var mealNotes by remember { mutableStateOf("") }
-    var mealFoodGrams by remember { mutableStateOf("100") }
-    var mealRecipeGrams by remember { mutableStateOf("150") }
-    var editingMealId by remember { mutableStateOf<Long?>(null) }
-    val mealDraft = remember { mutableStateListOf<MealEntryRequest>() }
-    var mealErrors by remember { mutableStateOf(MealFieldErrors()) }
-    var mealFoodGramsErrors by remember { mutableStateOf(QuickAddFieldErrors()) }
-    var mealRecipeGramsErrors by remember { mutableStateOf(QuickAddFieldErrors()) }
+    var mealType by rememberSaveable { mutableStateOf(MealType.LUNCH) }
+    var mealName by rememberSaveable { mutableStateOf(MealType.LUNCH.dutchLabel) }
+    var mealNotes by rememberSaveable { mutableStateOf("") }
+    var mealFoodGrams by rememberSaveable { mutableStateOf("100") }
+    var mealRecipeGrams by rememberSaveable { mutableStateOf("150") }
+    var editingMealId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val mealDraft = rememberSaveable(saver = MealDraftSaver) { mutableStateListOf<MealEntryRequest>() }
+    var mealErrors by rememberSaveable(stateSaver = MealFieldErrorsSaver) { mutableStateOf(MealFieldErrors()) }
+    var mealFoodGramsErrors by rememberSaveable(stateSaver = QuickAddFieldErrorsSaver) { mutableStateOf(QuickAddFieldErrors()) }
+    var mealRecipeGramsErrors by rememberSaveable(stateSaver = QuickAddFieldErrorsSaver) { mutableStateOf(QuickAddFieldErrors()) }
 
-    var aiContext by remember { mutableStateOf("") }
-    val editableAiItems = remember { mutableStateListOf<EditableAiItem>() }
-    var aiItemErrors by remember { mutableStateOf<Map<Int, AiItemFieldErrors>>(emptyMap()) }
+    var aiContext by rememberSaveable { mutableStateOf("") }
+    val editableAiItems = rememberSaveable(scanResult, saver = EditableAiItemsSaver) {
+        mutableStateListOf<EditableAiItem>().apply {
+            scanResult?.items?.forEach { add(EditableAiItem.from(it)) }
+        }
+    }
+    var aiItemErrors by rememberSaveable(scanResult, stateSaver = AiItemErrorsSaver) {
+        mutableStateOf<Map<Int, AiItemFieldErrors>>(emptyMap())
+    }
     var aiSaveProgress by remember { mutableStateOf(startAiBatchSaveProgress(0)) }
     val isAiSaving = !aiSaveProgress.isFinished || isAiBatchPending
 
@@ -607,8 +791,6 @@ fun NutritionScreen(
     }
 
     LaunchedEffect(scanResult) {
-        editableAiItems.clear()
-        scanResult?.items?.forEach { editableAiItems += EditableAiItem.from(it) }
         if (!aiScanForRecipe) {
             scanResult?.suggestedMealType?.let {
                 mealType = it

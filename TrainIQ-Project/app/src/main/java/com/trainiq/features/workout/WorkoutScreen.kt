@@ -108,7 +108,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -131,6 +130,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.error
@@ -306,6 +306,7 @@ data class WorkoutUiContent(
     val message: String?,
     val pendingGeneratedRoutine: GeneratedRoutine?,
     val isSavingGeneratedRoutine: Boolean,
+    val isGeneratingAiRoutine: Boolean,
 )
 
 internal fun workoutScreenUiState(content: WorkoutUiContent): ScreenUiState<WorkoutUiContent> =
@@ -321,6 +322,7 @@ private fun ScreenUiState<WorkoutUiContent>.workoutContentOrDefault(): WorkoutUi
             message = null,
             pendingGeneratedRoutine = null,
             isSavingGeneratedRoutine = false,
+            isGeneratingAiRoutine = false,
         )
         is ScreenUiState.Success -> content
     }
@@ -461,6 +463,8 @@ class WorkoutViewModel @Inject constructor(
     private val pendingGeneratedRoutine: StateFlow<GeneratedRoutine?> = _pendingGeneratedRoutine.asStateFlow()
     private val _isSavingGeneratedRoutine = MutableStateFlow(false)
     private val isSavingGeneratedRoutine: StateFlow<Boolean> = _isSavingGeneratedRoutine.asStateFlow()
+    private val _isGeneratingAiRoutine = MutableStateFlow(false)
+    private val isGeneratingAiRoutine: StateFlow<Boolean> = _isGeneratingAiRoutine.asStateFlow()
 
     private val _events = MutableSharedFlow<WorkoutUiEvent>(extraBufferCapacity = 1)
     val events: SharedFlow<WorkoutUiEvent> = _events.asSharedFlow()
@@ -534,12 +538,17 @@ class WorkoutViewModel @Inject constructor(
                 message = currentMessage,
                 pendingGeneratedRoutine = generatedRoutine,
                 isSavingGeneratedRoutine = false,
+                isGeneratingAiRoutine = false,
             )
         },
         isSavingGeneratedRoutine,
-    ) { content, savingGeneratedRoutine ->
+        isGeneratingAiRoutine,
+    ) { content, savingGeneratedRoutine, generatingAiRoutine ->
         workoutScreenUiState(
-            content.copy(isSavingGeneratedRoutine = savingGeneratedRoutine),
+            content.copy(
+                isSavingGeneratedRoutine = savingGeneratedRoutine,
+                isGeneratingAiRoutine = generatingAiRoutine,
+            ),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScreenUiState.Loading)
 
@@ -831,6 +840,8 @@ class WorkoutViewModel @Inject constructor(
         sessionDurationMinutes: Int,
         includeDeload: Boolean,
     ) {
+        if (_isGeneratingAiRoutine.value) return
+        _isGeneratingAiRoutine.value = true
         lastGenerationRequest = RoutineGenerationRequest(
             daysPerWeek = daysPerWeek,
             equipment = equipment,
@@ -855,6 +866,8 @@ class WorkoutViewModel @Inject constructor(
                 _message.value = "Routine gegenereerd."
             }.onFailure {
                 _message.value = it.toAiUserMessage("Routine genereren is mislukt.")
+            }.also {
+                _isGeneratingAiRoutine.value = false
             }
         }
     }
@@ -1309,6 +1322,7 @@ fun WorkoutRoute(
         message = content.message,
         pendingGeneratedRoutine = content.pendingGeneratedRoutine,
         isSavingGeneratedRoutine = content.isSavingGeneratedRoutine,
+        isGeneratingAiRoutine = content.isGeneratingAiRoutine,
         onDismissMessage = viewModel::clearMessage,
         onStartWorkout = onStartWorkout,
         onOpenExerciseHistory = onOpenExerciseHistory,
@@ -1345,6 +1359,7 @@ fun WorkoutScreen(
     message: String?,
     pendingGeneratedRoutine: GeneratedRoutine?,
     isSavingGeneratedRoutine: Boolean,
+    isGeneratingAiRoutine: Boolean,
     onDismissMessage: () -> Unit,
     onStartWorkout: (Long) -> Unit,
     onOpenExerciseHistory: (Long) -> Unit,
@@ -1374,7 +1389,6 @@ fun WorkoutScreen(
 ) {
     var showAiDialog by rememberSaveable { mutableStateOf(false) }
     var showCreateDialog by rememberSaveable { mutableStateOf(false) }
-    var isGenerating by remember { mutableStateOf(false) }
     var selectedRoutineId by rememberSaveable { mutableStateOf<Long?>(null) }
     val trainingListState = rememberLazyListState()
     LaunchedEffect(selectedRoutineId) {
@@ -1388,7 +1402,6 @@ fun WorkoutScreen(
     }
     LaunchedEffect(message) {
         if (message == "Routine gegenereerd." || message?.contains("mislukt", ignoreCase = true) == true) {
-            isGenerating = false
             showAiDialog = false
         }
     }
@@ -1409,7 +1422,6 @@ fun WorkoutScreen(
             isSaving = isSavingGeneratedRoutine,
             onSave = onSaveGeneratedRoutine,
             onRetry = {
-                isGenerating = true
                 showAiDialog = true
                 onRetryGeneratedRoutine()
             },
@@ -1427,10 +1439,9 @@ fun WorkoutScreen(
     }
     if (showAiDialog) {
         RoutineGeneratorDialog(
-            isLoading = isGenerating,
-            onDismiss = { if (!isGenerating) showAiDialog = false },
+            isLoading = isGeneratingAiRoutine,
+            onDismiss = { if (!isGeneratingAiRoutine) showAiDialog = false },
             onGenerate = { days, equipment, focus, level, duration, includeDeload ->
-                isGenerating = true
                 onGenerateAiRoutine(days, equipment, focus, level, duration, includeDeload)
             },
         )
@@ -1832,7 +1843,7 @@ private fun RoutineGeneratorDialog(
     var daysPerWeek by rememberSaveable { mutableStateOf("3") }
     var equipment by rememberSaveable { mutableStateOf("") }
     var experienceLevel by rememberSaveable { mutableStateOf("intermediate") }
-    var sessionDuration by rememberSaveable { mutableFloatStateOf(60f) }
+    var sessionDuration by rememberSaveable { mutableStateOf(60f) }
     var includeDeload by rememberSaveable { mutableStateOf(true) }
     val focusSuggestions = remember { listOf("Push/pull/legs", "Upper/lower", "Volledig lichaam", "Onderlichaam", "Kracht") }
 
@@ -1996,7 +2007,7 @@ private fun RoutineCard(
     var starterTargetWeight by rememberSaveable(routine.id) { mutableStateOf("") }
     var starterTargetRpe by rememberSaveable(routine.id) { mutableStateOf("") }
     var showStarterExercisePicker by remember(routine.id) { mutableStateOf(false) }
-    var showStarterCustomExerciseDialog by remember(routine.id) { mutableStateOf(false) }
+    var showStarterCustomExerciseDialog by rememberSaveable(routine.id) { mutableStateOf(false) }
     var showDeleteRoutineConfirm by remember(routine.id) { mutableStateOf(false) }
     var detailTab by rememberSaveable(routine.id) { mutableStateOf(initialRoutineDetailTab(routine)) }
     var editError by rememberSaveable(routine.id) { mutableStateOf<String?>(null) }
@@ -2112,7 +2123,13 @@ private fun RoutineCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SecondaryActionButton(onClick = onOpenDetails, modifier = Modifier.weight(1f)) {
+                    SecondaryActionButton(
+                        onClick = onOpenDetails,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag(routineDetailsTestTag(routine.name))
+                            .semantics { contentDescription = "Routinedetails van ${routine.name} openen" },
+                    ) {
                         Icon(Icons.Rounded.Edit, contentDescription = null)
                         Text("Details")
                     }
@@ -2360,8 +2377,9 @@ private fun WorkoutDayEditor(
     var sessionMenuExpanded by remember(day.id) { mutableStateOf(false) }
     var pendingRemoveExercise by remember(day.id) { mutableStateOf<WorkoutExercisePlan?>(null) }
     var replacingPlan by remember(day.id) { mutableStateOf<WorkoutExercisePlan?>(null) }
-    var editingPlan by remember(day.id) { mutableStateOf<WorkoutExercisePlan?>(null) }
+    var editingPlanId by rememberSaveable(day.id) { mutableStateOf<Long?>(null) }
     var orderedPlans by remember(day.id, day.exercises) { mutableStateOf(day.exercises) }
+    val editingPlan = editingPlanId?.let { id -> orderedPlans.firstOrNull { it.id == id } }
 
     if (showExercisePicker) {
         ExercisePickerSheet(
@@ -2465,10 +2483,10 @@ private fun WorkoutDayEditor(
         ExercisePlanEditDialog(
             plan = plan,
             onConfirm = { sets, reps, rest, weight, rpe, setType ->
-                editingPlan = null
+                editingPlanId = null
                 onUpdateWorkoutExercisePlan(plan.id, sets, reps, rest, weight, rpe, setType)
             },
-            onDismiss = { editingPlan = null },
+            onDismiss = { editingPlanId = null },
         )
     }
 
@@ -2558,7 +2576,7 @@ private fun WorkoutDayEditor(
                                 onOpenHistory = { onOpenExerciseHistory(plan.exercise.id) },
                                 exerciseDragHandle = Modifier.draggableHandle(),
                                 canSuperset = orderedPlans.size > 1,
-                                onEditExercise = { editingPlan = plan },
+                                onEditExercise = { editingPlanId = plan.id },
                                 onReplaceExercise = { replacingPlan = plan },
                                 onRemoveExercise = { pendingRemoveExercise = plan },
                                 onToggleSuperset = { toggleSupersetGroup(orderedPlans, plan, onSetSupersetGroup) },
@@ -2598,11 +2616,12 @@ private fun RoutineExerciseCard(
 ) {
     var collapsed by remember(plan.id) { mutableStateOf(false) }
     var pendingDeleteSet by remember(plan.id) { mutableStateOf<RoutineSet?>(null) }
-    var editingSet by remember(plan.id) { mutableStateOf<RoutineSet?>(null) }
+    var editingSetId by rememberSaveable(plan.id) { mutableStateOf<Long?>(null) }
     var menuExpanded by remember(plan.id) { mutableStateOf(false) }
     var orderedSets by remember(plan.id, plan.sets) {
         mutableStateOf(plan.sets.sortedWith(compareBy<RoutineSet> { it.orderIndex }.thenBy { it.id }))
     }
+    val editingSet = editingSetId?.let { id -> orderedSets.firstOrNull { it.id == id } }
 
     pendingDeleteSet?.let { set ->
         AlertDialog(
@@ -2625,10 +2644,10 @@ private fun RoutineExerciseCard(
             set = set,
             setNumber = orderedSets.indexOfFirst { it.id == set.id }.takeIf { it >= 0 }?.plus(1) ?: 1,
             onSave = { updated ->
-                editingSet = null
+                editingSetId = null
                 onUpdateSet(updated)
             },
-            onDismiss = { editingSet = null },
+            onDismiss = { editingSetId = null },
         )
     }
 
@@ -2766,7 +2785,7 @@ private fun RoutineExerciseCard(
                                 index = index + 1,
                                 set = set,
                                 dragHandle = Modifier.draggableHandle(),
-                                onEdit = { editingSet = set },
+                                onEdit = { editingSetId = set.id },
                                 onDelete = { pendingDeleteSet = set },
                             )
                         }
@@ -3094,11 +3113,11 @@ private fun EditSetBottomSheet(
     onSave: (RoutineSet) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var selectedType by remember(set.id) { mutableStateOf(set.setType) }
-    var reps by remember(set.id) { mutableStateOf(set.targetReps.takeIf { it > 0 }?.toString().orEmpty()) }
-    var weight by remember(set.id) { mutableStateOf(set.targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
-    var rest by remember(set.id) { mutableStateOf(set.restSeconds.takeIf { it > 0 }?.toString().orEmpty()) }
-    var rpe by remember(set.id) { mutableStateOf(set.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
+    var selectedType by rememberSaveable(set.id) { mutableStateOf(set.setType) }
+    var reps by rememberSaveable(set.id) { mutableStateOf(set.targetReps.takeIf { it > 0 }?.toString().orEmpty()) }
+    var weight by rememberSaveable(set.id) { mutableStateOf(set.targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
+    var rest by rememberSaveable(set.id) { mutableStateOf(set.restSeconds.takeIf { it > 0 }?.toString().orEmpty()) }
+    var rpe by rememberSaveable(set.id) { mutableStateOf(set.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
     val scrollState = rememberScrollState()
     val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
     val density = LocalDensity.current
@@ -3841,9 +3860,9 @@ private fun CustomExerciseDialog(
     onConfirm: (String, String, String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var exerciseName by remember { mutableStateOf("") }
-    var muscleGroup by remember { mutableStateOf("") }
-    var equipment by remember { mutableStateOf("") }
+    var exerciseName by rememberSaveable { mutableStateOf("") }
+    var muscleGroup by rememberSaveable { mutableStateOf("") }
+    var equipment by rememberSaveable { mutableStateOf("") }
     val scrollState = rememberScrollState()
 
     AlertDialog(
@@ -3906,12 +3925,12 @@ private fun ExercisePlanEditDialog(
     onConfirm: (String, String, String, String, String, SetType) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var targetSets by remember(plan.id) { mutableStateOf(plan.targetSets.toString()) }
-    var repRange by remember(plan.id) { mutableStateOf(plan.repRange) }
-    var restSeconds by remember(plan.id) { mutableStateOf(plan.restSeconds.toString()) }
-    var targetWeightKg by remember(plan.id) { mutableStateOf(plan.targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
-    var targetRpe by remember(plan.id) { mutableStateOf(plan.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
-    var setType by remember(plan.id) { mutableStateOf(plan.setType) }
+    var targetSets by rememberSaveable(plan.id) { mutableStateOf(plan.targetSets.toString()) }
+    var repRange by rememberSaveable(plan.id) { mutableStateOf(plan.repRange) }
+    var restSeconds by rememberSaveable(plan.id) { mutableStateOf(plan.restSeconds.toString()) }
+    var targetWeightKg by rememberSaveable(plan.id) { mutableStateOf(plan.targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
+    var targetRpe by rememberSaveable(plan.id) { mutableStateOf(plan.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
+    var setType by rememberSaveable(plan.id) { mutableStateOf(plan.setType) }
     val scrollState = rememberScrollState()
 
     AlertDialog(
@@ -6234,6 +6253,8 @@ private fun routineFocusLabel(routine: WorkoutRoutine): String =
     routine.days.flatMap { it.exercises }.focusLabel()
 
 internal fun activeRoutineStartLabel(dayName: String): String = "Training starten"
+
+internal fun routineDetailsTestTag(routineName: String): String = "routine-details:$routineName"
 
 internal fun activeRoutineSetupLabel(): String = "Routine inrichten"
 
