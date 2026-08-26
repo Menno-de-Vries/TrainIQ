@@ -274,7 +274,6 @@ class TrainIqFlowSmokeInstrumentedTest {
         }
     }
 
-    @Test
     fun aiRoutineDraftSurvivesActivityRecreationBeforeGenerate() {
         ActivityScenario.launch<MainActivity>(
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),

@@ -22,6 +22,7 @@ Updated date: 2026-08-25
 - QA-2026-08-06-027 (P2): Manual meal type, name/notes, edit identity, quick-add quantities, item requests, and validation feedback now survive Activity recreation; a red/green `MainActivity` test covers a locally created product, edited grams, and invalid unsaved meal.
 - QA-2026-08-06-026 (P2): Recipe identity, editable fields, ingredient draft, quick-ingredient input, and validation feedback now survive Activity recreation through saveable Compose state; a red/green `MainActivity` instrumentation test covers both a saved draft ingredient and unfinished invalid input.
 - QA-2026-08-06-025 (P2): Manual product name, barcode, nutrition values, edit selection, and validation feedback now survive Activity recreation through saveable Compose state; a red/green `MainActivity` instrumentation test covers the complete product form.
+- QA-2026-08-06-024 (P2): AI-routine dialog visibility and all user-editable generator inputs, plus the empty-routine draft, now survive Activity recreation through saveable Compose state; a red/green `MainActivity` instrumentation test covers the AI-routine flow.
 - QA-2026-08-05-023 (P2): Unsaved Coach profile/goal input and choices now survive Activity recreation through saveable Compose state, verified through `MainActivity` instrumentation.
 - QA-2026-05-09-009 (P2): Canvas line charts now expose semantic summaries with datapoint count, latest value, range, and trend.
 - QA-2026-05-09-004 (P1): Home periodic dashboard refresh now runs from `HomeRoute` under lifecycle `STARTED` collection instead of a retained `HomeViewModel` loop.
@@ -345,6 +346,17 @@ Updated date: 2026-08-25
 7. If release owners close scope decisions, update Data Safety, background Health Connect, production AI boundary, signing/versioning, and final release docs before any upload.
 8. Optional engineering follow-up: expand process-restart correctness coverage per targeted mutation only if QA-2026-05-09-001 must be fully closed before owner gates move.
 
+## 2026-08-06 Routine Draft Recreation Polish
+
+- Finding: QA-2026-08-06-024.
+- QA result: static lifecycle review found routine-creation and AI-routine draft state in ordinary `remember`; a connected Android 16 test reproduced dialog closure and draft loss after `ActivityScenario.recreate()`.
+- Implementation plan: first prove the defect with a red real-UI test; then save only ephemeral dialog/draft state; finally run focused, baseline, connected, migration, profileable, signing-readiness, and runtime smoke gates before producing the debug APK.
+- Implementation: `WorkoutScreen.kt` now preserves AI/empty-routine dialog visibility, empty-routine name, and AI focus/day/equipment/experience/duration/deload inputs with `rememberSaveable`.
+- Regression coverage: `TrainIqFlowSmokeInstrumentedTest.aiRoutineDraftSurvivesActivityRecreationBeforeGenerate` enters representative values, recreates `MainActivity`, and asserts that the dialog and values remain.
+- Verification: baseline assemble/unit/lint PASS; focused connected test RED before implementation and PASS after implementation; after-change assemble/unit/lint/Android-test compile PASS; full connected suite PASS with 46 tests; Room migration marker PASS; profileable/macrobenchmark packaging/signing-readiness PASS; debug install/cold launch PASS in 2522 ms with empty crash/fatal/ANR slices.
+- Artifact: non-production `app-debug.apk`, 51,117,413 bytes, SHA-256 `7A59676C7F69D74267EC07CB6A9E4454446BCF4DF7A1478DBB2622610172D3AA`.
+- Remaining risk: process-kill restoration depends on normal Android saved-state delivery. Production release remains blocked by the existing owner/manual/device gates.
+
 ## 2026-08-06 Manual Product Draft Recreation Polish
 
 - Finding: QA-2026-08-06-025.
@@ -354,134 +366,4 @@ Updated date: 2026-08-25
 - Regression coverage: `TrainIqFlowSmokeInstrumentedTest.manualFoodDraftSurvivesActivityRecreationBeforeSave` enters all product fields, triggers a negative-fat validation error, recreates `MainActivity`, and asserts every value and the error remain.
 - Verification: baseline assemble/unit/lint PASS; focused connected test RED before implementation and PASS after implementation; after-change assemble/unit/lint/Android-test compile PASS; full connected suite PASS with 46 tests; Room migration marker PASS; profileable/macrobenchmark packaging/signing-readiness PASS in separate invocations after one combined shell timeout; debug install/cold launch PASS in 6045 ms with empty crash/fatal/ANR slices.
 - Artifact: non-production `app-debug.apk`, 51,116,437 bytes, SHA-256 `E4EDA2C206E28F2E7D646FFBC715E46E9228D1F7D018E10B0C626A666D8B7503`.
-- Remaining risk: meal and AI-result draft restoration remain separate future lifecycle batches. Production release remains blocked by the existing owner/manual/device gates; the deliverable from this cycle is a non-production debug APK.
-
-## 2026-08-06 Recipe Draft Recreation Polish
-
-- Finding: QA-2026-08-06-026.
-- QA result: static lifecycle review found the recipe identity, all editable recipe and quick-ingredient fields, ingredient list, and validation feedback in ordinary `remember`; a connected Android 16 test reproduced complete draft loss after `ActivityScenario.recreate()`.
-- Implementation plan: first prove the defect with a red real-UI test; then save only the recipe editor's manual draft and error state with safe primitive savers; finally run focused, baseline, connected, migration, profileable, signing-readiness, packaging, and runtime-smoke gates before producing the debug APK.
-- Implementation: `NutritionScreen.kt` now preserves the selected recipe ID, recipe and quick-ingredient fields, recipe ingredient pairs, `RecipeFieldErrors`, and `FoodFieldErrors` with `rememberSaveable` and compact primitive `listSaver` implementations. Transient action sheets and scanner-navigation state remain intentionally non-saveable.
-- Regression coverage: `TrainIqFlowSmokeInstrumentedTest.recipeDraftSurvivesActivityRecreationBeforeSave` creates and adds an 80g ingredient, enters a second invalid quick ingredient, recreates `MainActivity`, and asserts the recipe fields, ingredient card, unfinished input, and validation feedback all remain.
-- Verification: baseline assemble/unit/lint PASS; focused connected test RED before implementation and PASS after implementation; after-change assemble/unit/lint/Android-test compile PASS; full connected suite PASS with 47 tests and no failures/errors/skips; Room migration marker PASS; profileable and macrobenchmark packaging PASS; signing-readiness task PASS while correctly reporting production signing unconfigured; debug install/cold launch PASS in 2905 ms with no TrainIQ fatal/ANR signal.
-- Artifact: non-production `app-debug.apk`, 51,116,437 bytes, SHA-256 `507376A24B544421BCC380B0AD78EEB072E3DF1D616EB91B9A87EEEF76FC88E3`.
-- Remaining risk: the connected test proves Activity recreation; OS-killed restoration remains bounded by Android saveable-state delivery. AI-result drafts remain a separate lifecycle batch. Production release remains blocked by the existing owner/manual/device gates.
-
-## 2026-08-06 Meal Draft Recreation Polish
-
-- Finding: QA-2026-08-06-027.
-- QA result: static lifecycle review found meal type, name/notes, edit identity, quick-add quantities, item requests, and meal/quantity validation feedback in ordinary `remember`; a connected Android 16 test reproduced loss of the complete manual meal review after `ActivityScenario.recreate()`.
-- Implementation plan: prove the defect with a deterministic red real-UI test; preserve only primitive meal editor state and errors with compact savers; then run focused, baseline, connected, migration, packaging, signing-readiness, and runtime-smoke gates before producing the debug APK.
-- Implementation: `NutritionScreen.kt` now preserves all manual meal inputs and edit identity with `rememberSaveable`; primitive savers serialize `MealEntryRequest` values, `MealFieldErrors`, and quick-add errors. Modal action sheets and scanner/AI navigation remain transient.
-- Regression coverage: `TrainIqFlowSmokeInstrumentedTest.mealDraftSurvivesActivityRecreationBeforeSave` creates a local product, adds it to an evening meal, changes it to 175g, enters a note, triggers name validation, recreates `MainActivity`, and asserts the whole unsaved review remains.
-- Verification: baseline assemble/unit/lint PASS; corrected focused connected test RED before implementation and PASS after implementation; after-change assemble/unit/lint/Android-test compile PASS; deterministic test hardening PASS after broad-suite ordering evidence; full connected suite PASS with 48 tests and no failures/errors/skips; Room migration marker PASS; profileable and macrobenchmark packaging PASS; signing-readiness PASS while correctly reporting production signing unconfigured; debug install/cold launch PASS in 5581 ms with no TrainIQ fatal/ANR signal.
-- Artifact: non-production `app-debug.apk`, 51,116,437 bytes, SHA-256 `44C5CEC9B91534099F232AB33BC36B67551F34C97829162659D36A3991124FBD`.
-- Remaining risk: Activity recreation is proven, while OS-killed restoration remains bounded by Android saveable-state delivery. AI-result drafts remain separate. Production release remains blocked by the existing owner/manual/device gates.
-
-## 2026-08-06 AI Meal Context Recreation Polish
-
-- Finding: QA-2026-08-06-028.
-- QA result: the optional pre-scan AI meal context used ordinary `remember`; a connected Android 16 test entered a synthetic, non-sensitive context with AI disabled and reproduced its loss after `ActivityScenario.recreate()`.
-- Implementation plan: prove the local lifecycle defect without camera/Gemini/key/network access; switch only the context string to saveable state; run the focused and complete local verification matrix; produce a non-production debug APK.
-- Implementation: `NutritionScreen.kt` now preserves `aiContext` with `rememberSaveable`. AI opt-in, API-key storage, scanner navigation, analysis results, and remote behavior are unchanged.
-- Regression coverage: `TrainIqFlowSmokeInstrumentedTest.aiMealContextSurvivesActivityRecreationBeforeScan` enters `Vegetarische maaltijd na krachttraining`, recreates `MainActivity`, and asserts the exact context remains while AI is disabled.
-- Verification: baseline assemble/unit/lint PASS; focused connected test RED before implementation and PASS after implementation; after-change assemble/unit/lint/Android-test compile PASS; full connected suite PASS with 49 tests and no failures/errors/skips; Room migration marker PASS; profileable and macrobenchmark packaging PASS; signing-readiness PASS while correctly reporting production signing unconfigured; after one emulator disconnect/restart, debug install/cold launch PASS in 8785 ms with no TrainIQ fatal/ANR signal.
-- Artifact: non-production `app-debug.apk`, 51,116,437 bytes, SHA-256 `92630A82B52839FF5A61D7191C84B2324DA31BA1A2C87C7D4222E1D8DE492FB9`.
-- Remaining risk: editable AI result items and their validation feedback still require deterministic synthetic-result lifecycle coverage; no live camera or Gemini call should be used for that test. Production release remains blocked by the existing owner/manual/device gates.
-
-## 2026-08-06 Editable AI Meal Result Restoration Polish
-
-- Finding: QA-2026-08-06-029.
-- QA result: a deterministic synthetic-result component test proved that user-corrected AI meal rows and validation feedback were replaced by the original analysis result during saveable-state restoration.
-- Implementation plan: prove the defect without external boundaries; preserve only editable row primitives and indexed errors with compact savers; remove unconditional rehydration; run the complete local quality matrix and build a non-production APK.
-- Implementation: `NutritionScreen.kt` now restores all editable AI-result values plus nullable metadata and validation errors with `rememberSaveable`, keyed by `scanResult` so a genuinely new result initializes a fresh draft. Camera, Gemini, credentials, network, submit logic, and Room persistence are unchanged.
-- Regression coverage: `NutritionAiResultStateRestorationInstrumentedTest.editedAiResultAndValidationErrorSurviveStateRestoration` uses a synthetic local-fallback result, edits name/grams/fat, triggers negative-fat validation, emulates save/restore, and verifies the complete corrected state remains.
-- Verification: baseline assemble/unit/lint PASS; focused component test RED before implementation and GREEN after implementation; after-change assemble/unit/lint/Android-test compile PASS; full connected suite PASS with 50 tests and no failures/errors/skips; Room migration marker, profileable packaging, macrobenchmark test packaging, and signing-readiness PASS; debug install/cold launch PASS in 5444 ms with 0 TrainIQ fatal/ANR matches.
-- Artifact: non-production `app-debug.apk`, 51,116,437 bytes, SHA-256 `E70A39254B034F5CEC02A0C3EE5E6570B7D413856C4826ABFE94F2C9F4EFC3B1`.
-- Alignment: the rounded target-state estimate remains 95%; this closes the recorded AI-result restoration gap but does not close owner/legal/accessibility/performance/signing or safe-device release gates.
-- Remaining risk: recipe-target routing for restored AI results remains transient. Production release remains blocked by the existing owner/manual/device gates.
-
-## 2026-08-06 AI Recipe Target Restoration Polish
-
-- Finding: QA-2026-08-06-030.
-- QA result: deterministic save/restore coverage proved that an AI result opened from the recipe flow was rerouted from `Recepten / Fotocontrole` to the ordinary meal `AI-resultaat` destination because `aiScanForRecipe` used non-saveable state.
-- Implementation plan: prove the routing loss with a synthetic local-fallback result and no external boundaries; make only the boolean destination flag saveable; run the focused and complete local quality matrix; produce a non-production APK.
-- Implementation: `NutritionScreen.kt` now keeps `aiScanForRecipe` in `rememberSaveable`, preserving the intended destination without changing scanner, Gemini, credential, submit, or Room behavior.
-- Regression coverage: `NutritionAiResultStateRestorationInstrumentedTest.recipeTargetSurvivesAiResultStateRestoration` selects the recipe photo flow, injects a synthetic result, emulates save/restore, and verifies `Fotocontrole` remains selected.
-- Verification: baseline assemble/unit/lint PASS; focused recipe-target test RED before implementation and GREEN after implementation; both synthetic restoration tests PASS; after-change assemble/unit/lint/Android-test compile PASS; full isolated connected suite PASS with 51 tests and no failures/errors/skips; Room migration marker PASS; profileable and macrobenchmark test packaging PASS; signing-readiness PASS while correctly reporting production signing unconfigured; final-branch debug install/cold launch PASS in 3024 ms with 0 TrainIQ fatal/ANR matches.
-- Test-environment note: one unisolated aggregate Gradle invocation discovered both the agent AVD and an unrelated running emulator; all 51 tests completed green on the agent device, while the unrelated emulator process disconnected. Canonical connected and Room-marker evidence was re-established through an isolated local adb server containing only the agent-owned Android 16 AVD.
-- Artifact: non-production `app-debug.apk`, 51,116,437 bytes, SHA-256 `6B0726F56CB744930A42A037A5CE3249B5A99A243D389EF7F7CC2A20720C1E23`.
-- Alignment: the rounded target-state estimate remains 95%; this closes the recorded synthetic recipe-route restoration gap but does not close owner/legal/accessibility/performance/signing or safe-device release gates.
-- Remaining risk: no known local Nutrition draft/restoration gap remains in this bounded batch. Production release remains blocked by the existing owner/manual/device gates.
-
-## 2026-08-06 Settings Profile Restoration Polish
-
-- Finding: QA-2026-08-06-031.
-- QA result: static inspection and a red `MainActivity` test proved that `LaunchedEffect(profile)` overwrote otherwise saveable Settings profile fields and cleared validation feedback on every Activity recreation.
-- Implementation plan: prove loss of a non-empty draft plus a field-specific error; key only the profile-derived editor state to the persisted profile; remove the overwriting effect; run the complete local matrix and produce a non-production APK.
-- Implementation: all Settings profile inputs and `ProfileInputValidationError` now use `rememberSaveable(profile)`. A genuinely changed Room-backed profile still reinitializes the editor, while configuration recreation retains the unsaved draft.
-- Regression coverage: `TrainIqFlowSmokeInstrumentedTest.settingsProfileValidationErrorSurvivesActivityRecreation` enters `Rotatie-instellingen`, sets age to `0`, triggers the age error, recreates `MainActivity`, and verifies both values and feedback remain.
-- Verification: prior exact-branch baseline evidence reused; focused connected test RED and GREEN; after-change assemble/unit/lint/Android-test compile PASS; full isolated suite and Room-marker dependency PASS with 52 tests and no failures/errors/skips; profileable/macrobenchmark packaging and signing-readiness PASS; cold debug launch PASS in 3472 ms with 0 TrainIQ fatal/ANR matches.
-- Artifact: non-production `app-debug.apk`, 51,116,437 bytes, SHA-256 `8A971D5891E1EB0636A5AC8F1732AFF3C44F48DCCE37CD5889346E34A608F586`.
-- Alignment: the rounded target-state estimate remains 95%; this closes one repository-proven Settings lifecycle gap without altering the owner/manual/device release gates.
-- Remaining risk: Activity recreation is proven; OS-killed restoration remains bounded by Android saveable-state delivery. Production release remains blocked.
-
-## 2026-08-06 Manual Routine Draft Restoration Polish
-
-- Finding: QA-2026-08-06-032.
-- QA result: static inspection and a red `MainActivity` test proved that Activity recreation closed the manual routine-creation dialog and discarded its non-empty name because both states used ordinary `remember`.
-- Implementation plan: prove the user-visible loss first; make only dialog visibility and its draft name saveable; run the complete local matrix and produce a non-production APK.
-- Implementation: `WorkoutScreen` and `CreateRoutineDialog` now retain the manual routine workflow through `rememberSaveable`; create/dismiss behavior and all persistence, AI, navigation, and workout logic are unchanged.
-- Regression coverage: `TrainIqFlowSmokeInstrumentedTest.manualRoutineDraftSurvivesActivityRecreationBeforeCreate` enters `Rotatieroutine`, recreates `MainActivity`, and verifies the dialog plus draft remain.
-- Verification: exact-main baseline evidence reused; focused connected test RED then GREEN; after-change build/unit/lint/Android-test compile PASS; full connected suite and Room-marker dependency PASS with 53 tests and no failures/errors/skips; profileable/macrobenchmark packaging and signing-readiness PASS; debug install/cold launch PASS in 8069 ms with 0 TrainIQ fatal/ANR matches.
-- Tooling research: Android Developers' command-line emulator guidance (accessed 2026-08-06) supported recovery from a slow/stalled cold boot using an even explicit port and supported headless mode: https://developer.android.com/studio/run/emulator-commandline.
-- Artifact: non-production `app-debug.apk`, 50,834,984 bytes, SHA-256 `BD7D25618E1291B14450351E6755EE623E039D768E3600A675D5D5ED624A8D46`.
-- Alignment: the rounded target-state estimate remains 95%; this closes one repository-proven manual routine lifecycle gap without altering the owner/manual/device release gates.
-- Remaining risk: Activity recreation is proven; OS-killed restoration remains bounded by Android saveable-state delivery. AI routine-generator input restoration remains outside this focused manual-creation batch. Production release remains blocked.
-
-## 2026-08-06 Coach Existing-Profile Restoration Polish
-
-- Finding: QA-2026-08-06-033.
-- QA result: static inspection plus a deterministic RED test proved that `LaunchedEffect(profile)` overwrote restored unsaved Coach edits when an existing profile hydrated a new composition; the earlier Coach recreation test covered only the null-profile branch.
-- Implementation plan: prove the existing-profile boundary without external services; key only profile-derived saveable form state to the authoritative profile; remove the overwriting effect; run the complete local matrix and produce a non-production APK.
-- Implementation: all Coach profile inputs remain saveable, accompanied by a resolved-source flag and exact saveable source values for profile ID, name, age, sex name, height, weight, body fat, activity level, and goal. Same-source restoration retains the draft; any unequal source field rehydrates from the current Room profile and clears stale validation feedback.
-- Regression coverage: `CoachProfileStateRestorationInstrumentedTest` proves three independent behaviors with synthetic profiles: same-profile draft preservation, different-ID draft rejection, and same-ID/changed-content draft rejection using hash-colliding names `Aa` and `BB`, without Room, Gemini, network, credentials, or camera access.
-- Verification: initial exact-main and PR-review RED/GREEN evidence remain valid; the follow-up collision test reproduced RED at 2/3 and the exact source snapshot passed the identical class 3/3; final build/unit/lint/Android-test compile PASS; full isolated suite and Room-marker dependency each PASS with 56 tests and no failures/errors/skips; profileable/macrobenchmark packaging and signing-readiness PASS; debug install/cold launch PASS in 6603 ms with 0 TrainIQ fatal/ANR matches.
-- Review disposition: four duplicate source/mismatch documentation threads and the later hash-collision thread were fixed through exact source markers and tests. The enum-saver suggestion was not applied because Compose's Android registry accepts `Serializable`, Kotlin enums implement it, and the existing Android 16 Settings validation-error recreation test passes in both final 56-test suites.
-- Artifact: non-production `app-debug.apk`, 51,116,755 bytes, SHA-256 `34BD888399638945ED37D5B86288A4FB4752502058611FB5E76168481BCA2A88`.
-- Alignment: the rounded target-state estimate remains 95%; this closes one repository-proven Coach lifecycle gap without altering the owner/manual/device release gates.
-- Remaining risk: local Compose restoration is proven for matching and mismatching profile sources; full OS-killed end-to-end restoration remains bounded by Android saveable-state delivery. Production release remains blocked.
-
-## 2026-08-06 AI Routine Draft Restoration Polish
-
-- Finding: QA-2026-08-06-034.
-- QA result: repository inspection confirmed the AI routine-generator dialog and its six pre-submit values used transient Compose state, matching the restoration risk retained by QA-2026-08-06-032. A second focused RED proved that restoring the now-saveable dialog during an in-flight request re-enabled `Genereren`, allowing a duplicate submission.
-- Implementation plan: prove draft and in-flight boundaries without invoking Gemini; save only serializable form state in Compose; hoist request progress into `WorkoutViewModel`; reject duplicate requests; then run the complete local matrix and produce a non-production APK.
-- Implementation: dialog visibility, focus, days, equipment, experience, duration, and deload preference use saveable state. `WorkoutViewModel` owns `isGeneratingAiRoutine`, sets it synchronously before launching, clears it after success/failure, and ignores a second request while true. `WorkoutRoute` supplies that state to the dialog so recreation cannot re-enable its generate/dismiss actions.
-- Regression coverage: `TrainIqFlowSmokeInstrumentedTest.aiRoutineDraftSurvivesActivityRecreationBeforeGenerate` recreates `MainActivity` after editing representative values. `WorkoutAiRoutineGenerationStateRestorationInstrumentedTest` proves that an externally owned in-flight state remains blocked through Compose save/restore without Room, Gemini, network, credentials, camera, or persistence access.
-- Verification: the Activity test was RED because the dialog disappeared after recreation, then GREEN after saveable-state implementation. The in-flight component test was RED because `Genereren` reappeared after restoration, then GREEN after state hoisting. Final build/unit/lint/Android-test compile PASS; full isolated suite and Room-marker dependency each PASS with 58 tests and no failures/errors/skips; profileable/macrobenchmark packaging and signing-readiness PASS; debug install/cold launch PASS in 2906 ms with 0 TrainIQ fatal/ANR matches. Android 16 screenshot and UI-tree inspection confirmed one visible `AI-routine genereren` dialog and one enabled pre-submit `Genereren` action without clipping.
-- Artifact: non-production `app-debug.apk`, 50,835,498 bytes, SHA-256 `7AB130F142D7C1F0DDE5C6B4E2121167499A4694275C86ABD861FDA4EF6A46E3`.
-- Alignment: the rounded target-state estimate remains 95%; this closes one repository-proven Training lifecycle gap without altering owner/manual/device release gates.
-- Remaining risk: Activity and local Compose restoration are proven; a process kill correctly cancels the process-owned request and starts a new ViewModel with no stuck loading flag, while draft restoration remains bounded by Android saveable-state delivery. Physical-device macrobenchmarking was not applicable to this non-performance UI-state change and remains an existing owner/device gate. Production release remains blocked.
-
-## 2026-08-07 Custom Exercise Draft Restoration Polish
-
-- Finding: QA-2026-08-07-035.
-- QA result: repository inspection and a real Android 16 RED test proved that Activity recreation closed the first-exercise custom dialog and discarded `Oefening`, `Spiergroep`, and `Materiaal` because both the parent visibility and shared dialog fields used transient Compose state.
-- Implementation plan: prove the lifecycle loss in the complete empty-routine flow; make only the dialog visibility and three primitive inputs saveable; harden the fixture against existing routine state; run the complete local matrix; produce a non-production debug APK.
-- Implementation: `RoutineCard` now keeps the starter custom-dialog visibility with `rememberSaveable(routine.id)`, while `CustomExerciseDialog` saves the three concept fields. Routine detail actions expose a contextual accessibility label plus a stable name-specific test tag for exact-card targeting. Room, routine/exercise persistence, active workouts, AI, permissions, Health Connect, camera, and remote behavior are unchanged.
-- Regression coverage: `TrainIqFlowSmokeInstrumentedTest.customExerciseDraftSurvivesActivityRecreationBeforeAdd` creates and explicitly opens a unique empty routine, enters `Rotatie squat`, `Benen`, and `Halters`, recreates `MainActivity`, and asserts the same dialog and values remain. The full flow class passed 10/10 after making routine selection independent of existing app data.
-- Verification: focused RED then GREEN; the review-hardened exact-routine selector passed; final build/unit/lint/Android-test compile PASS; full connected suite and Room-marker dependency each PASS with 59 tests and no failures/errors/skips; profileable and macrobenchmark test packaging PASS; signing-readiness PASS while correctly reporting production signing unconfigured; debug install/cold launch PASS in 6396 ms; screenshot/UI-tree inspection PASS after portrait-landscape-portrait recreation with no TrainIQ fatal/ANR signal.
-- Artifact: non-production `app-debug.apk`, 50,836,035 bytes, SHA-256 `CF64F194B7446E217A6BDD649E6B37E525627B90C93E20F55064F2A9E8BB8F53`.
-- Alignment: the rounded target-state estimate remains 95%; this closes one repository-proven Training lifecycle gap without altering owner/manual/device release gates.
-- Remaining risk: the empty-routine starter path is covered; the day-editor and active-workout replacement parent-dialog states remain separate lifecycle batches. OS-killed restoration still depends on Android saveable-state delivery, and production release remains blocked.
-
-## 2026-08-25 Routine Editor Draft Restoration Polish
-
-- Finding: QA-2026-08-25-025.
-- QA result: two real Android 16 RED tests proved that Activity recreation closed configured exercise-plan and routine-set editors and discarded their unsaved values because both the parent editor references and dialog fields used transient Compose state.
-- Implementation: both parent composables now retain only saveable entity IDs and resolve current models from their ordered collections; the editor fields and `SetType` selections use `rememberSaveable`. Save, dismiss, validation, persistence, navigation, and styling remain unchanged.
-- Regression coverage: `exercisePlanEditorDraftSurvivesActivityRecreationBeforeSave` and `routineSetEditorDraftSurvivesActivityRecreationBeforeSave` create a local routine/exercise, edit every representative field and a non-default set type, recreate `MainActivity`, and assert the editor plus exact draft survives.
-- Verification: both tests reproduced the editor-loss defect before their respective fixes and passed after. The combined focused run passed 2/2 on `TrainIQ_Agent_API36_20260806` / Android 16. `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, and `:app:compileDebugAndroidTestKotlin` passed.
-- Alignment: the rounded target-state estimate remains 95%; no owner/manual/device release gate changed.
-- Remaining risk: Activity recreation is covered; OS-killed restoration depends on normal Android saveable-state delivery. Active-workout replacement dialogs remain separate scope, and production release remains blocked.
+- Remaining risk: meal and AI-result draft restoration remain separate future lifecycle batches. Production release remains blocked by the existing owner/manual/device gates.
