@@ -110,7 +110,7 @@ class WorkoutInputValidationTest {
 
     @Test
     fun activeRoutineCardUsesStableActionRowForScrollPerformance() {
-        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText().replace("\r\n", "\n")
         val activeRoutineCard = workoutScreen.substringAfter("private fun ActiveRoutineCard(").substringBefore("@Composable\nprivate fun ActiveRoutineActionRow")
         val activeRoutineActionRow = workoutScreen.substringAfter("private fun ActiveRoutineActionRow(").substringBefore("@Composable\nprivate fun SectionHeader")
 
@@ -823,13 +823,13 @@ class WorkoutInputValidationTest {
 
     @Test
     fun `workout action controls sit below exercise headers and active messages use snackbar`() {
-        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText().replace("\r\n", "\n")
         val routineExerciseCard = workoutScreen
             .substringAfter("private fun RoutineExerciseCard(")
             .substringBefore("private fun ExerciseSummaryMetaRow(")
         val activeExerciseCard = workoutScreen
             .substringAfter("private fun ActiveExerciseCard(")
-            .substringBefore("private fun ActiveSetInputRow(")
+            .substringBefore("private fun ActiveSetInputMetrics(")
         val activeWorkoutPlanCard = workoutScreen
             .substringAfter("private fun ActiveWorkoutPlanCard(")
             .substringBefore("private fun activeWorkoutExerciseUiState(")

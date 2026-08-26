@@ -16,7 +16,6 @@ class WorkoutUiStateReducerTest {
             message = "Set opgeslagen.",
             pendingGeneratedRoutine = null,
             isSavingGeneratedRoutine = false,
-            isGeneratingAiRoutine = false,
         )
 
         val state = workoutScreenUiState(content)
