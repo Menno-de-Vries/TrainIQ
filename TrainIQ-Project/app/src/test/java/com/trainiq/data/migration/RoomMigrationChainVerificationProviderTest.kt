@@ -1,5 +1,6 @@
 package com.trainiq.data.migration
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -15,9 +16,9 @@ class RoomMigrationChainVerificationProviderTest {
 
         assertEquals(RoomMigrationChainVerification.NOT_RUN, report.status)
         assertEquals(RoomMigrationChainVerificationReason.NO_TRUSTED_MARKER, report.reason)
-        assertEquals(12, report.currentRoomVersion)
+        assertEquals(RoomMigrationChainVerificationProvider.CurrentRoomVersion, report.currentRoomVersion)
         assertEquals(2, report.requiredStartVersion)
-        assertEquals(12, report.requiredEndVersion)
+        assertEquals(RoomMigrationChainVerificationProvider.CurrentRoomVersion, report.requiredEndVersion)
         assertNull(report.coveredStartVersion)
         assertNull(report.coveredEndVersion)
         assertFalse(report.freshEnough)
@@ -95,6 +96,17 @@ class RoomMigrationChainVerificationProviderTest {
         assertEquals(RoomMigrationChainVerification.MISSING, null.toMigrationChainVerification())
     }
 
+    @Test
+    fun gradleMarkerGeneratorMatchesProviderVersionContract() {
+        val buildScript = File("build.gradle.kts").readText()
+        val expectedEndVersion = RoomMigrationChainVerificationProvider.CurrentRoomVersion
+
+        assertTrue(buildScript.contains("trainiq-room-migration-chain-v2-to-v$expectedEndVersion"))
+        assertTrue(buildScript.contains("val currentRoomVersion = $expectedEndVersion"))
+        assertTrue(buildScript.contains("val requiredEndVersion = $expectedEndVersion"))
+        assertTrue(buildScript.contains("val coveredEndVersion = $expectedEndVersion"))
+    }
+
     private fun providerWith(marker: RoomMigrationChainVerificationMarker) =
         RoomMigrationChainVerificationProvider(markerSource = StaticMarkerSource(marker))
 
@@ -102,11 +114,11 @@ class RoomMigrationChainVerificationProviderTest {
         marker: String = RoomMigrationChainVerificationProvider.expectedMarker(),
         buildVariant: String = "debug",
         testTask: String = "connectedDebugAndroidTest",
-        currentRoomVersion: Int = 12,
+        currentRoomVersion: Int = RoomMigrationChainVerificationProvider.CurrentRoomVersion,
         requiredStartVersion: Int = 2,
-        requiredEndVersion: Int = 12,
+        requiredEndVersion: Int = RoomMigrationChainVerificationProvider.CurrentRoomVersion,
         coveredStartVersion: Int = 2,
-        coveredEndVersion: Int = 12,
+        coveredEndVersion: Int = RoomMigrationChainVerificationProvider.CurrentRoomVersion,
         verifiedAtMillis: Long = Now - 1_000L,
         migrationCount: Int = 10,
         includePayloadHash: Boolean = true,

@@ -12,7 +12,7 @@ class WorkoutUiStateReducerTest {
         val content = WorkoutUiContent(
             overview = null,
             workoutFeedbackPreferences = WorkoutFeedbackPreferences(restTimerSoundEnabled = true),
-            activeWorkout = ActiveWorkoutUiState(restTimerSeconds = 30),
+            activeWorkout = ActiveWorkoutUiState(completedSets = 3),
             message = "Set opgeslagen.",
             pendingGeneratedRoutine = null,
             isSavingGeneratedRoutine = false,

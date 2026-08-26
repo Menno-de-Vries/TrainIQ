@@ -1,5 +1,6 @@
 package com.trainiq.core.theme
 
+import android.annotation.SuppressLint
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
@@ -23,16 +24,20 @@ import androidx.compose.ui.unit.dp
 import androidx.annotation.RequiresApi
 
 private val LightColors = lightColorScheme(
-    primary = Color(0xFF45DCAF),
+    primary = Color(0xFFFFB25C),
     onPrimary = Color(0xFF031A18),
-    secondary = Color(0xFF5B9DFF),
+    secondary = Color(0xFF6FABFF),
     onSecondary = Color(0xFF071527),
-    tertiary = Color(0xFFFFBE55),
+    tertiary = Color(0xFFFF7662),
     onTertiary = Color(0xFF261600),
     background = Color(0xFFF4F7F9),
     onBackground = Color(0xFF111820),
     surface = Color(0xFFFFFFFF),
     onSurface = Color(0xFF111820),
+    surfaceContainerLow = Color(0xFFF8FBFF),
+    surfaceContainer = Color(0xFFEFF6F4),
+    surfaceContainerHigh = Color(0xFFE8F0F8),
+    surfaceContainerHighest = Color(0xFFE0EAF2),
     surfaceVariant = Color(0xFFE9EEF4),
     onSurfaceVariant = Color(0xFF566270),
     primaryContainer = Color(0xFFD7FAEC),
@@ -48,17 +53,21 @@ private val LightColors = lightColorScheme(
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFF64E1B5),
+    primary = Color(0xFFFFB25C),
     onPrimary = Color(0xFF061712),
-    secondary = Color(0xFF5FA2FF),
+    secondary = Color(0xFF6FABFF),
     onSecondary = Color(0xFF071322),
-    tertiary = Color(0xFFFFBE55),
+    tertiary = Color(0xFFFF7662),
     onTertiary = Color(0xFF201300),
-    background = Color(0xFF080D12),
+    background = Color(0xFF0A0D18),
     onBackground = Color(0xFFF2F6FA),
-    surface = Color(0xFF0B1016),
+    surface = Color(0xFF121623),
     onSurface = Color(0xFFF2F6FA),
-    surfaceVariant = Color(0xFF151C25),
+    surfaceContainerLow = Color(0xFF171C28),
+    surfaceContainer = Color(0xFF1B2330),
+    surfaceContainerHigh = Color(0xFF202B3B),
+    surfaceContainerHighest = Color(0xFF263246),
+    surfaceVariant = Color(0xFF202334),
     onSurfaceVariant = Color(0xFFA8B2C0),
     primaryContainer = Color(0xFF203F3B),
     onPrimaryContainer = Color(0xFF8BF4CE),
@@ -149,18 +158,53 @@ data class TrainIqRadii(
 
 @Immutable
 data class TrainIqColors(
-    val appBackground: Color = Color(0xFF080D12),
-    val backgroundGlow: Color = Color(0xFF031E25),
-    val card: Color = Color(0xFF151C25),
-    val cardElevated: Color = Color(0xFF1B2430),
-    val cardBorder: Color = Color(0xFF3A4656),
+    val appBackground: Color = Color(0xFF0A0D18),
+    val backgroundGlow: Color = Color(0xFF3A211B),
+    val card: Color = Color(0xFF202334),
+    val cardElevated: Color = Color(0xFF292D40),
+    val cardBorder: Color = Color(0xFF3C4055),
     val mutedText: Color = Color(0xFFA8B2C0),
-    val track: Color = Color(0xFF313A46),
-    val mint: Color = Color(0xFF64E1B5),
-    val blue: Color = Color(0xFF5FA2FF),
-    val amber: Color = Color(0xFFFFBE55),
+    val track: Color = Color(0xFF373B4F),
+    val mint: Color = Color(0xFF5BE8B2),
+    val blue: Color = Color(0xFF6FABFF),
+    val amber: Color = Color(0xFFFFB25C),
+    val peach: Color = Color(0xFFFF7662),
     val purple: Color = Color(0xFFB978FF),
     val cyan: Color = Color(0xFF69D6FF),
+)
+
+internal fun warmMoodboardDarkTrainIqColors(): TrainIqColors = TrainIqColors()
+
+internal fun calmCoachDarkTrainIqColors(): TrainIqColors = TrainIqColors(
+    appBackground = Color(0xFF0B1116),
+    backgroundGlow = Color(0xFF102A24),
+    card = Color(0xFF111A20),
+    cardElevated = Color(0xFF17232B),
+    cardBorder = Color(0xFF253842),
+    mutedText = Color(0xFFA8B8B5),
+    track = Color(0xFF263A43),
+    mint = Color(0xFF5EDCC2),
+    blue = Color(0xFF7EB7FF),
+    amber = Color(0xFFE5A742),
+    peach = Color(0xFFE87561),
+    purple = Color(0xFFBCA2FF),
+    cyan = Color(0xFF73D7E9),
+)
+
+internal fun calmCoachLightTrainIqColors(): TrainIqColors = TrainIqColors(
+    appBackground = Color(0xFFF6FAF8),
+    backgroundGlow = Color(0xFFE2F8EF),
+    card = Color.White,
+    cardElevated = Color(0xFFF9FCFA),
+    cardBorder = Color(0xFFD7E4E0),
+    mutedText = Color(0xFF566A66),
+    track = Color(0xFFDDEAE6),
+    mint = Color(0xFF0F766E),
+    blue = Color(0xFF2D76C8),
+    amber = Color(0xFFC98218),
+    peach = Color(0xFFC95E4C),
+    purple = Color(0xFF7C65C8),
+    cyan = Color(0xFF168CA5),
 )
 
 private val LocalSpacing = staticCompositionLocalOf { Spacing() }
@@ -180,6 +224,7 @@ val MaterialTheme.trainIqColors: TrainIqColors
     get() = LocalTrainIqColors.current
 
 @Composable
+@SuppressLint("NewApi")
 fun TrainIqTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     dynamicColor: Boolean = true,
@@ -191,7 +236,7 @@ fun TrainIqTheme(
         ThemeMode.DARK -> true
     }
     val context = LocalContext.current
-    val useDynamicColor = dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val useDynamicColor = shouldUseDynamicColor(dynamicColor, Build.VERSION.SDK_INT)
     val colorScheme = when {
         useDynamicColor && darkTheme ->
             dynamicTrainIqColorScheme(darkTheme = true, context = context)
@@ -201,22 +246,9 @@ fun TrainIqTheme(
         else -> LightColors
     }
     val designColors = if (darkTheme) {
-        TrainIqColors()
+        calmCoachDarkTrainIqColors()
     } else {
-        TrainIqColors(
-            appBackground = Color(0xFFF4F7F9),
-            backgroundGlow = Color(0xFFD9F4F3),
-            card = Color.White,
-            cardElevated = Color(0xFFF8FAFC),
-            cardBorder = Color(0xFFD7DFE8),
-            mutedText = Color(0xFF566270),
-            track = Color(0xFFD8E0EA),
-            mint = Color(0xFF12A982),
-            blue = Color(0xFF2B7BEA),
-            amber = Color(0xFFD98918),
-            purple = Color(0xFF8F51E8),
-            cyan = Color(0xFF168CBF),
-        )
+        calmCoachLightTrainIqColors()
     }
     CompositionLocalProvider(
         LocalSpacing provides Spacing(),

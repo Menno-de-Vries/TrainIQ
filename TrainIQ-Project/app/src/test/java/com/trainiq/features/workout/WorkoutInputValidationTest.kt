@@ -18,6 +18,34 @@ import org.junit.Test
 
 class WorkoutInputValidationTest {
     @Test
+    fun `active workout clock derives elapsed and remaining time from persisted timestamps`() {
+        val clock = activeWorkoutClockUiState(
+            startedAt = 1_000L,
+            restTimerEndsAt = 91_000L,
+            restTimerTotalSeconds = 120,
+            now = 31_000L,
+        )
+
+        assertEquals(30L, clock.elapsedSeconds)
+        assertEquals(60, clock.restTimerSeconds)
+        assertEquals(120, clock.restTimerTotalSeconds)
+    }
+
+    @Test
+    fun `active workout clock clears rest total when timer has ended`() {
+        val clock = activeWorkoutClockUiState(
+            startedAt = 1_000L,
+            restTimerEndsAt = 30_000L,
+            restTimerTotalSeconds = 120,
+            now = 31_000L,
+        )
+
+        assertEquals(30L, clock.elapsedSeconds)
+        assertEquals(0, clock.restTimerSeconds)
+        assertEquals(0, clock.restTimerTotalSeconds)
+    }
+
+    @Test
     fun `workout processing uses shimmer loading instead of spinner`() {
         assertEquals(true, workoutProcessingUsesShimmerLoading())
     }
@@ -30,6 +58,125 @@ class WorkoutInputValidationTest {
     @Test
     fun `active set header keeps enough height for set label and type`() {
         assertTrue(activeSetHeaderMinHeightForLabels() >= 52.dp)
+    }
+
+    @Test
+    fun workoutOverviewSeparatesRoutinesLibraryAndHistoryTabs() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+
+        assertTrue(workoutScreen.contains("WorkoutOverviewTab.Routines"))
+        assertTrue(workoutScreen.contains("WorkoutOverviewTab.Library"))
+        assertTrue(workoutScreen.contains("WorkoutOverviewTab.History"))
+        assertTrue(workoutScreen.contains("filterNot { it.id == overview.activeRoutine?.id }"))
+        assertTrue(workoutScreen.contains("RoutineOverlapProposalCard"))
+    }
+
+    @Test
+    fun workoutLibrarySupportsScoredRecentAndUntrainedFilters() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val filterBody = workoutScreen.substringAfter("private enum class ExerciseLibraryFilter").substringBefore("private fun dayEstimatedMinutes")
+
+        assertTrue(filterBody.contains("Scored(\"scored\", \"Met score\")"))
+        assertTrue(filterBody.contains("Recent(\"recent\", \"Recent\")"))
+        assertTrue(filterBody.contains("Untrained(\"untrained\", \"Nog niet getraind\")"))
+        assertTrue(filterBody.contains("item.score > 0.0 && item.completedSessions > 0"))
+        assertTrue(filterBody.contains("item.completedSessions == 0"))
+    }
+
+    @Test
+    fun workoutHistoryCardShowsStoredDebriefFeedback() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val historyCard = workoutScreen.substringAfter("private fun HistoryCard(").substringBefore("@OptIn(ExperimentalMaterial3Api::class)")
+
+        assertTrue(historyCard.contains("session.workoutName"))
+        assertTrue(historyCard.contains("session.strongestSetLabel"))
+        assertTrue(historyCard.contains("session.debriefSummary"))
+        assertTrue(historyCard.contains("session.debriefRecommendation"))
+        assertTrue(historyCard.contains("session.debriefNextSessionFocus"))
+    }
+
+    @Test
+    fun activeRoutineCardOffersEditActionWhenRoutineCanStart() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val activeRoutineCard = workoutScreen.substringAfter("private fun ActiveRoutineCard(").substringBefore("@Composable\nprivate fun SectionHeader")
+        val activeRoutineActionRow = workoutScreen.substringAfter("private fun ActiveRoutineActionRow(").substringBefore("@Composable\nprivate fun SectionHeader")
+        val startableBranch = activeRoutineCard.substringAfter("} else {").substringBefore("}\n            }\n        }")
+
+        assertTrue(startableBranch.contains("ActiveRoutineActionRow("))
+        assertTrue(activeRoutineActionRow.contains("onStartWorkout(startableDay.id)"))
+        assertTrue(activeRoutineActionRow.contains("onOpenDetails(activeRoutineId)"))
+        assertTrue(activeRoutineActionRow.contains("Routine aanpassen") || activeRoutineActionRow.contains("Routine bewerken"))
+    }
+
+    @Test
+    fun activeRoutineCardUsesStableActionRowForScrollPerformance() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val activeRoutineCard = workoutScreen.substringAfter("private fun ActiveRoutineCard(").substringBefore("@Composable\nprivate fun ActiveRoutineActionRow")
+        val activeRoutineActionRow = workoutScreen.substringAfter("private fun ActiveRoutineActionRow(").substringBefore("@Composable\nprivate fun SectionHeader")
+
+        assertTrue(activeRoutineCard.contains("ActiveRoutineActionRow("))
+        assertFalse(activeRoutineCard.contains("WrappingActionRow("))
+        assertTrue(activeRoutineActionRow.contains("Row("))
+        assertTrue(activeRoutineActionRow.contains("Modifier.weight(1f).fillMaxWidth().heightIn(min = 48.dp)"))
+        assertTrue(activeRoutineActionRow.contains("val startLabel = activeRoutineStartLabel(startableDay.name)"))
+        assertTrue(activeRoutineActionRow.contains("onStartWorkout(startableDay.id)"))
+        assertTrue(activeRoutineActionRow.contains("onOpenDetails(activeRoutineId)"))
+    }
+
+    @Test
+    fun activeWorkoutStartConflictUsesExplicitDialogActions() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val conflictDialog = workoutScreen.substringAfter("private fun ActiveWorkoutStartConflictDialog(")
+            .substringBefore("@OptIn(ExperimentalMaterial3Api::class)\n@Composable\nfun ActiveWorkoutScreen")
+
+        assertTrue(workoutScreen.contains("data class ActiveWorkoutStartConflict("))
+        assertTrue(workoutScreen.contains("pendingStartConflict"))
+        assertTrue(conflictDialog.contains("Oude training open"))
+        assertTrue(conflictDialog.contains("Oude training hervatten"))
+        assertTrue(conflictDialog.contains("Nieuwe training starten"))
+        assertTrue(conflictDialog.contains("Annuleren"))
+    }
+
+    @Test
+    fun routineActionsUseWrappingSharedButtons() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val routineCardOverview = workoutScreen
+            .substringAfter("if (!detailMode) {")
+            .substringBefore("return\n    }")
+        val routineOverviewActionStrip = workoutScreen
+            .substringAfter("private fun RoutineOverviewActionStrip(")
+            .substringBefore("@Composable\nprivate fun RoutineDetailTabSwitcher")
+        val routineDetailBody = workoutScreen
+            .substringAfter("AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.primary)")
+            .substringBefore("HorizontalDivider()")
+
+        assertTrue(routineCardOverview.contains("RoutineOverviewActionStrip("))
+        assertTrue(routineOverviewActionStrip.contains("PrimaryActionButton(onClick = { onStartWorkout(startableDay.id)"))
+        assertTrue(routineOverviewActionStrip.contains("SecondaryActionButton(onClick = onOpenDetails"))
+        assertTrue(routineOverviewActionStrip.contains("weight(1f).fillMaxWidth()"))
+        assertTrue(routineOverviewActionStrip.contains("heightIn(min = 48.dp)"))
+        assertFalse(routineCardOverview.contains("WrappingActionRow(labels = listOf(\"Details\", \"Actief maken\", \"Start\"))"))
+        assertTrue(routineDetailBody.contains("WrappingActionRow("))
+        assertTrue(routineDetailBody.contains("PrimaryActionButton(onClick = { onStartWorkout(startableDay.id)"))
+        assertTrue(routineDetailBody.contains("SecondaryActionButton(onClick = { onSetActiveRoutine(routine.id)"))
+        assertTrue(routineDetailBody.contains("actionModifier ->"))
+        assertTrue(routineDetailBody.contains("modifier = actionModifier"))
+    }
+
+    @Test
+    fun workoutHistoryCardUsesReadableMetricTilesAndSeparateAdviceSections() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val historyCard = workoutScreen.substringAfter("private fun HistoryCard(").substringBefore("@OptIn(ExperimentalMaterial3Api::class)")
+
+        assertTrue(historyCard.contains("HistoryMetricTile("))
+        assertTrue(historyCard.contains("Duur"))
+        assertTrue(historyCard.contains("Oefeningen"))
+        assertTrue(historyCard.contains("Sets"))
+        assertTrue(historyCard.contains("Volume"))
+        assertTrue(historyCard.contains("Topset"))
+        assertTrue(historyCard.contains("Herstel"))
+        assertTrue(historyCard.contains("HistoryDebriefBlock("))
+        assertFalse(historyCard.contains("AppChip(label = \"\${session.duration / 60} min\""))
     }
 
     @Test
@@ -60,6 +207,110 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun `AI routine dialog keeps Dutch labels for generator controls`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val dialogBody = workoutScreen.substringAfter("private fun RoutineGeneratorDialog(")
+            .substringBefore("private fun RoutineDetailHeader(")
+
+        assertTrue(dialogBody.contains("Text(\"Dagen per week\")"))
+        assertTrue(dialogBody.contains("Text(\"Beschikbaar materiaal\")"))
+        assertTrue(dialogBody.contains("Text(\"Ervaringsniveau\""))
+        assertTrue(dialogBody.contains("Text(\"Sessieduur:"))
+        assertTrue(dialogBody.contains("Text(\"Deload-richtlijn opnemen\""))
+        assertTrue(dialogBody.contains("Text(\"Voegt hersteladvies toe voor lichtere weken.\""))
+        assertFalse(dialogBody.contains("Days per week"))
+        assertFalse(dialogBody.contains("Available equipment"))
+        assertFalse(dialogBody.contains("Experience level"))
+        assertFalse(dialogBody.contains("Session duration"))
+        assertFalse(dialogBody.contains("Include deload guidance"))
+    }
+
+    @Test
+    fun `AI routine dialog wraps compact chip and choice controls`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val dialogBody = workoutScreen.substringAfter("private fun RoutineGeneratorDialog(")
+            .substringBefore("private fun ExperienceLevelSelector(")
+        val levelBody = workoutScreen.substringAfter("private fun ExperienceLevelSelector(")
+            .substringBefore("private fun SessionDurationSlider(")
+
+        assertTrue(dialogBody.contains("FlowRow("))
+        assertFalse(dialogBody.contains("maxLines = 1"))
+        assertTrue(levelBody.contains("FlowRow("))
+        assertTrue(levelBody.contains("FilterChip("))
+        assertFalse(levelBody.contains("SingleChoiceSegmentedButtonRow"))
+        assertFalse(levelBody.contains("SegmentedButton("))
+    }
+
+    @Test
+    fun `AI routine preview save and cancel keep pending state explicit`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val savePendingBody = workoutScreen.substringAfter("fun savePendingGeneratedRoutine()")
+            .substringBefore("fun dismissPendingGeneratedRoutine()")
+        val dismissPendingBody = workoutScreen.substringAfter("fun dismissPendingGeneratedRoutine()")
+            .substringBefore("fun retryGeneratedRoutine()")
+        val previewDialogCall = workoutScreen.substringAfter("GeneratedRoutinePreviewDialog(")
+            .substringBefore("if (showCreateDialog)")
+        val generatorDialogCall = workoutScreen.substringAfter("RoutineGeneratorDialog(")
+            .substringBefore("TrainingWithoutOverscroll")
+        val dialogBody = workoutScreen.substringAfter("private fun RoutineGeneratorDialog(")
+            .substringBefore("private fun ExperienceLevelSelector(")
+
+        assertTrue(savePendingBody.contains("if (_isSavingGeneratedRoutine.value) return"))
+        assertTrue(savePendingBody.contains("val routine = _pendingGeneratedRoutine.value ?: return"))
+        assertTrue(savePendingBody.contains("_isSavingGeneratedRoutine.value = true"))
+        assertTrue(savePendingBody.contains("saveGeneratedRoutineUseCase(routine)"))
+        assertTrue(savePendingBody.contains("_pendingGeneratedRoutine.value = null"))
+        assertTrue(savePendingBody.contains("_message.value = \"Routine opgeslagen.\""))
+        assertTrue(savePendingBody.contains("_isSavingGeneratedRoutine.value = false"))
+        assertTrue(dismissPendingBody.contains("_pendingGeneratedRoutine.value = null"))
+        assertTrue(previewDialogCall.contains("onSave = onSaveGeneratedRoutine"))
+        assertTrue(previewDialogCall.contains("onDismiss = onDismissGeneratedRoutine"))
+        assertTrue(generatorDialogCall.contains("onDismiss = { if (!isGenerating) showAiDialog = false }"))
+        assertTrue(dialogBody.contains("dismissButton = { TextButton(onClick = onDismiss, enabled = !isLoading) { Text(\"Annuleren\") } }"))
+    }
+
+    @Test
+    fun `active workout logged set actions wire edit delete type change and undo`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val updateTypeBody = workoutScreen.substringAfter("fun updateLoggedSetType(")
+            .substringBefore("fun editLoggedSet(")
+        val editSetBody = workoutScreen.substringAfter("fun editLoggedSet(")
+            .substringBefore("fun deleteLoggedSet(")
+        val deleteSetBody = workoutScreen.substringAfter("fun deleteLoggedSet(")
+            .substringBefore("fun relogSet(")
+        val undoBody = workoutScreen.substringAfter("fun undoWorkoutLogEvent(")
+            .substringBefore("fun logSameAgain(")
+        val eventCollector = workoutScreen.substringAfter("is WorkoutUiEvent.SetLogged ->")
+            .substringBefore("is WorkoutUiEvent.WorkoutCompleted")
+        val activeRouteCall = workoutScreen.substringAfter("ActiveWorkoutScreen(")
+            .substringBefore("onFinishWorkout =")
+        val setRowsBody = workoutScreen.substringAfter("repeat(visibleSetRows) { index ->")
+            .substringBefore("if (collapsed) return@Column")
+
+        assertTrue(updateTypeBody.contains("updateActiveWorkoutSetTypeUseCase(setId, setType)"))
+        assertTrue(editSetBody.contains("_pendingCorrectionSetIds.value"))
+        assertTrue(editSetBody.contains("set.toDraft()"))
+        assertTrue(editSetBody.contains("Set staat klaar voor correctie"))
+        assertTrue(deleteSetBody.contains("_pendingCorrectionSetIds.value = _pendingCorrectionSetIds.value.filterValues { it != setId }"))
+        assertTrue(deleteSetBody.contains("deleteActiveWorkoutSetUseCase(setId)"))
+        assertTrue(deleteSetBody.contains("_message.value = \"Set verwijderd.\""))
+        assertTrue(undoBody.contains("undoWorkoutLogEventUseCase(eventId)"))
+        assertTrue(undoBody.contains("_message.value = \"Laatste set hersteld.\""))
+        assertTrue(eventCollector.contains("actionLabel = event.undoEventId?.let { \"Ongedaan maken\" }"))
+        assertTrue(eventCollector.contains("event.undoEventId?.let(viewModel::undoWorkoutLogEvent)"))
+        assertTrue(activeRouteCall.contains("onSetTypeChange = viewModel::updateLoggedSetType"))
+        assertTrue(activeRouteCall.contains("onEditSet = viewModel::editLoggedSet"))
+        assertTrue(activeRouteCall.contains("onDeleteSet = { setId -> viewModel.deleteLoggedSet(setId) }"))
+        assertTrue(activeRouteCall.contains("onRelogSet = viewModel::relogSet"))
+        assertTrue(editSetBody.contains("updateActiveWorkoutDraftUseCase(exerciseId, draft.toDomainDraft())"))
+        assertTrue(workoutScreen.contains("restSeconds = validInput.restSeconds"))
+        assertTrue(setRowsBody.contains("onSetTypeChange(set.id, type)"))
+        assertTrue(setRowsBody.contains("onEdit = { loggedSetForRow?.let { onEditSet(it.id) } }"))
+        assertTrue(setRowsBody.contains("onDelete = { loggedSetForRow?.let { onDeleteSet(it.id) } }"))
+        assertTrue(setRowsBody.contains("onRelog = { loggedSetForRow?.let { onRelogSet(it.id) } }"))
+    }
+
+    @Test
     fun `AI routine deload switch keeps accessibility label at large font scale`() {
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
         val deloadBody = workoutScreen.substringAfter("private fun IncludeDeloadRow(")
@@ -67,6 +318,8 @@ class WorkoutInputValidationTest {
 
         assertTrue(deloadBody.contains("Text(\"Deload-richtlijn opnemen\""))
         assertTrue(deloadBody.contains("contentDescription = \"Deload-richtlijn opnemen\""))
+        assertTrue(deloadBody.contains("Column("))
+        assertTrue(deloadBody.contains("modifier = Modifier.fillMaxWidth()"))
     }
 
     @Test
@@ -90,13 +343,17 @@ class WorkoutInputValidationTest {
     }
 
     @Test
-    fun `active workout set type selector condenses on compact short screens`() {
+    fun `active workout set type selector is integrated into set row pill`() {
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
         val activeExerciseBody = workoutScreen.substringAfter("private fun ActiveExerciseCard(")
             .substringBefore("private fun ActiveExerciseRestControl(")
+        val setRowBody = workoutScreen.substringAfter("private fun SetRow(")
+            .substringBefore("private fun RoutineSetMetricValue(")
 
-        assertTrue(activeExerciseBody.contains("val compactShortScreen = LocalConfiguration.current.screenHeightDp <= 640"))
-        assertTrue(activeExerciseBody.contains("compact = compactShortScreen"))
+        assertFalse(activeExerciseBody.contains("compactShortScreen"))
+        assertTrue(setRowBody.contains("SetTypePill("))
+        assertTrue(setRowBody.contains("SetType.entries.forEach"))
+        assertTrue(setRowBody.contains("enabled = loggedSet != null || isInputExpanded"))
     }
 
     @Test
@@ -149,7 +406,6 @@ class WorkoutInputValidationTest {
     @Test
     fun `active workout sticky status exposes merged accessibility summary`() {
         val state = ActiveWorkoutUiState(
-            elapsedSeconds = 125L,
             completedSets = 3,
             targetSets = 5,
             totalVolume = 1200.0,
@@ -157,12 +413,39 @@ class WorkoutInputValidationTest {
 
         assertEquals(
             "Actieve training: tijd 2:05, sets 3 van 5, volume 1200 kg, rust 1:15.",
-            activeWorkoutStickyStatusContentDescription(state, restTimerSeconds = 75),
+            activeWorkoutStickyStatusContentDescription(state, elapsedSeconds = 125L, restTimerSeconds = 75),
         )
         assertEquals(
             "Actieve training: tijd 2:05, sets 3 van 5, volume 1200 kg, rust klaar.",
-            activeWorkoutStickyStatusContentDescription(state, restTimerSeconds = 0),
+            activeWorkoutStickyStatusContentDescription(state, elapsedSeconds = 125L, restTimerSeconds = 0),
         )
+    }
+
+    @Test
+    fun `active workout summary keeps rest status and session name visible`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val summaryBody = workoutScreen.substringAfter("private fun ActiveWorkoutSessionSummary(")
+            .substringBefore("private fun ActiveWorkoutBottomBar(")
+
+        assertTrue(summaryBody.contains("displayWorkoutDayName"))
+        assertTrue(summaryBody.contains("activeWorkoutBottomBarStatusText(clock.restTimerSeconds)"))
+        assertTrue(summaryBody.contains("StatusMetric(\"Rust\""))
+        assertTrue(summaryBody.contains("AppLinearProgress(progress = progress"))
+    }
+
+    @Test
+    fun `active set action row stacks on compact widths to avoid clipped Dutch labels`() {
+        assertEquals(ActiveSetActionLayout.Stacked, activeSetActionLayoutForWidth(319.dp))
+        assertEquals(ActiveSetActionLayout.Wrapped, activeSetActionLayoutForWidth(320.dp))
+
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val activeExerciseBody = workoutScreen.substringAfter("if (showLogger) Column")
+            .substringBefore("private fun ActiveExerciseRestControl(")
+
+        assertTrue(activeExerciseBody.contains("BoxWithConstraints(modifier = Modifier.fillMaxWidth())"))
+        assertTrue(activeExerciseBody.contains("activeSetActionLayoutForWidth(maxWidth)"))
+        assertTrue(activeExerciseBody.contains("maxLines = 2"))
+        assertTrue(activeExerciseBody.contains("TextAlign.Center"))
     }
 
     @Test
@@ -258,14 +541,16 @@ class WorkoutInputValidationTest {
     }
 
     @Test
-    fun `routine detail resets training list scroll when opened`() {
+    fun `routine detail only resets training list scroll when opened from overview`() {
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
         val routeBody = workoutScreen
             .substringAfter("var selectedRoutineId by rememberSaveable")
             .substringBefore("@HiltViewModel\nclass WorkoutCompletionViewModel")
 
         assertTrue(routeBody.contains("val trainingListState = rememberLazyListState()"))
-        assertTrue(routeBody.contains("trainingListState.scrollToItem(0)"))
+        assertTrue(routeBody.contains("var previousSelectedRoutineId by rememberSaveable"))
+        assertTrue(routeBody.contains("selectedRoutineId != null && previousSelectedRoutineId == null"))
+        assertTrue(routeBody.contains("previousSelectedRoutineId = selectedRoutineId"))
         assertTrue(routeBody.contains("state = trainingListState"))
     }
 
@@ -273,14 +558,11 @@ class WorkoutInputValidationTest {
     fun `active routine is prioritized before routine creation when present`() {
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
         val overviewBody = workoutScreen
-            .substringAfter("if (selectedRoutine != null) {")
-            .substringAfter("return@LazyColumn")
-            .substringBefore("item { SectionHeader(\"Routines\") }")
+            .substringAfter("WorkoutOverviewTab.Routines.key -> {")
+            .substringBefore("WorkoutOverviewTab.Library.key -> {")
 
-        assertTrue(overviewBody.contains("if (overview.activeRoutine != null)"))
         assertTrue(overviewBody.indexOf("ActiveRoutineCard(") < overviewBody.indexOf("RoutineCreationCard("))
-        assertTrue(overviewBody.contains("else"))
-        assertTrue(overviewBody.lastIndexOf("RoutineCreationCard(") < overviewBody.lastIndexOf("ActiveRoutineCard("))
+        assertTrue(overviewBody.contains("filterNot { it.id == overview.activeRoutine?.id }"))
     }
 
     @Test
@@ -289,9 +571,12 @@ class WorkoutInputValidationTest {
         val routineCardOverview = workoutScreen
             .substringAfter("if (!detailMode) {")
             .substringBefore("return\n    }")
+        val routineOverviewActionStrip = workoutScreen
+            .substringAfter("private fun RoutineOverviewActionStrip(")
+            .substringBefore("@Composable\nprivate fun RoutineDetailTabSwitcher")
 
         assertTrue(routineCardOverview.contains("onOpenDetails"))
-        assertTrue(routineCardOverview.contains("Text(\"Details\")"))
+        assertTrue(routineOverviewActionStrip.contains("Text(\"Details\""))
     }
 
     @Test
@@ -537,6 +822,72 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun `workout action controls sit below exercise headers and active messages use snackbar`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val routineExerciseCard = workoutScreen
+            .substringAfter("private fun RoutineExerciseCard(")
+            .substringBefore("private fun ExerciseSummaryMetaRow(")
+        val activeExerciseCard = workoutScreen
+            .substringAfter("private fun ActiveExerciseCard(")
+            .substringBefore("private fun ActiveSetInputRow(")
+        val activeWorkoutPlanCard = workoutScreen
+            .substringAfter("private fun ActiveWorkoutPlanCard(")
+            .substringBefore("private fun activeWorkoutExerciseUiState(")
+        val activeWorkoutScreen = workoutScreen
+            .substringAfter("fun ActiveWorkoutScreen(")
+            .substringBefore("if (showFinishConfirm)")
+        val setRow = workoutScreen
+            .substringAfter("private fun SetRow(")
+            .substringBefore("private fun RoutineSetMetricValue(")
+
+        assertTrue(workoutScreen.contains("private data class ActiveWorkoutExerciseUiState("))
+        assertTrue(activeWorkoutPlanCard.contains("exerciseState: ActiveWorkoutExerciseUiState"))
+        assertFalse(activeWorkoutPlanCard.contains("uiState: ActiveWorkoutUiState"))
+        assertTrue(activeWorkoutScreen.contains("contentType = \"active-workout-header\""))
+        assertTrue(activeWorkoutScreen.contains("contentType = \"active-workout-rest-timer\""))
+        assertTrue(activeWorkoutScreen.contains("contentType = { group -> if (group.size > 1) \"active-workout-superset\" else \"active-workout-exercise\" }"))
+        assertFalse(routineExerciseCard.contains("ActiveExerciseActionChip("))
+        assertTrue(routineExerciseCard.contains("text = { Text(\"Set toevoegen\") }"))
+        assertTrue(routineExerciseCard.contains("onAddSet()"))
+        assertTrue(activeExerciseCard.contains("modifier = Modifier\n                        .fillMaxWidth()"))
+        assertTrue(activeExerciseCard.contains("maxLines = 3"))
+        assertTrue(activeExerciseCard.contains("horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)"))
+        assertTrue(activeExerciseCard.contains("ActiveExerciseRestControl"))
+        assertTrue(workoutScreen.contains("val activeWorkoutListState = rememberLazyListState()"))
+        assertTrue(workoutScreen.contains("state = activeWorkoutListState"))
+        assertTrue(activeExerciseCard.contains("DropdownMenuItem("))
+        assertTrue(activeExerciseCard.contains("text = { Text(\"Set toevoegen\") }"))
+        assertTrue(activeExerciseCard.contains("onActivate ="))
+        assertTrue(activeExerciseCard.contains("activeInputIndex = index"))
+        assertFalse(activeExerciseCard.contains("Card(\n                        modifier = Modifier.fillMaxWidth(),\n                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)"))
+        assertTrue(setRow.contains("isInputExpanded: Boolean"))
+        assertTrue(setRow.contains("ActiveSetInputMetrics("))
+        assertFalse(setRow.contains("SetLoggerFields("))
+        assertTrue(setRow.contains("enabled = loggedSet != null || isInputExpanded"))
+        assertTrue(workoutScreen.contains("private fun ActiveSetInputMetricValue("))
+        assertTrue(workoutScreen.contains("BasicTextField("))
+        assertTrue(workoutScreen.contains("private fun SetTypePill("))
+        assertTrue(workoutScreen.contains("snackbarHost = { SnackbarHost(snackbarHostState) }"))
+        assertFalse(activeExerciseCard.contains("label = \"Set +\""))
+        assertFalse(activeExerciseCard.contains("label = activeExerciseReplaceLabel()"))
+        assertFalse(activeExerciseCard.contains("active-workout-message"))
+    }
+
+    @Test
+    fun `active workout draft persistence does not replay full session on every keystroke`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val updateDraftBody = workoutScreen.substringAfter("fun updateSetDraft(")
+            .substringBefore("fun updateLoggedSetType(")
+        val editSetBody = workoutScreen.substringAfter("fun editLoggedSet(")
+            .substringBefore("fun deleteLoggedSet(")
+
+        assertTrue(updateDraftBody.contains("updateActiveWorkoutDraftUseCase(exerciseId, draft.toDomainDraft())"))
+        assertFalse(updateDraftBody.contains("applyActiveSession"))
+        assertTrue(editSetBody.contains("updateActiveWorkoutDraftUseCase(exerciseId, draft.toDomainDraft())"))
+        assertFalse(editSetBody.contains("applyActiveSession"))
+    }
+
+    @Test
     fun `active exercise rest override is per exercise and clamped`() {
         assertEquals(90, activeExerciseRestSeconds(baseRestSeconds = 90, overrideRestSeconds = null))
         assertEquals(120, activeExerciseRestSeconds(baseRestSeconds = 90, overrideRestSeconds = 120))
@@ -593,6 +944,14 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun `active set metric input replaces default zero when typing around it`() {
+        assertEquals("8", normalizeActiveSetMetricInput(previousValue = "0", filteredInput = "08"))
+        assertEquals("8", normalizeActiveSetMetricInput(previousValue = "0", filteredInput = "80"))
+        assertEquals("12", normalizeActiveSetMetricInput(previousValue = "0", filteredInput = "120"))
+        assertEquals("0.5", normalizeActiveSetMetricInput(previousValue = "0", filteredInput = "0.5"))
+    }
+
+    @Test
     fun `set input accepts comma decimal and blank rpe`() {
         val result = validateSetInput(SetInputDraft(weight = "80,5", reps = "8", rpe = ""))
 
@@ -600,6 +959,7 @@ class WorkoutInputValidationTest {
         result as SetLogValidationResult.Valid
         assertEquals(80.5, result.weight, 0.0)
         assertEquals(8, result.reps)
+        assertEquals(0, result.restSeconds)
         assertEquals(0.0, result.rpe, 0.0)
     }
 
@@ -611,7 +971,17 @@ class WorkoutInputValidationTest {
         result as SetLogValidationResult.Valid
         assertEquals(0.0, result.weight, 0.0)
         assertEquals(12, result.reps)
+        assertEquals(0, result.restSeconds)
         assertEquals(7.0, result.rpe, 0.0)
+    }
+
+    @Test
+    fun `set input accepts rest seconds within active workout bounds`() {
+        val result = validateSetInput(SetInputDraft(weight = "80", reps = "8", restSeconds = "120", rpe = "7"))
+
+        assertTrue(result is SetLogValidationResult.Valid)
+        result as SetLogValidationResult.Valid
+        assertEquals(120, result.restSeconds)
     }
 
     @Test
@@ -633,9 +1003,18 @@ class WorkoutInputValidationTest {
             targetWeightKg = 0.0,
         )
 
-        assertEquals(SetInputDraft(weight = "0", reps = "12"), activeSetUiDraft(savedDraft = null, plan = plan, loggedSetCount = 0))
-        assertEquals(SetInputDraft(weight = "0", reps = "12"), activeSetUiDraft(savedDraft = SetInputDraft(weight = "", reps = "12"), plan = plan, loggedSetCount = 0))
-        assertEquals(SetInputDraft(weight = "20", reps = "8"), activeSetUiDraft(savedDraft = SetInputDraft(weight = "20", reps = "8"), plan = plan, loggedSetCount = 0))
+        assertEquals(SetInputDraft(weight = "0", reps = "12", restSeconds = "90"), activeSetUiDraft(savedDraft = null, plan = plan, loggedSetCount = 0))
+        assertEquals(SetInputDraft(weight = "0", reps = "12", restSeconds = "90"), activeSetUiDraft(savedDraft = SetInputDraft(weight = "", reps = "12"), plan = plan, loggedSetCount = 0))
+        assertEquals(SetInputDraft(weight = "20", reps = "8", restSeconds = "150"), activeSetUiDraft(savedDraft = SetInputDraft(weight = "20", reps = "8", restSeconds = "150"), plan = plan, loggedSetCount = 0))
+    }
+
+    @Test
+    fun `set input rejects rest outside active workout bounds`() {
+        val result = validateSetInput(SetInputDraft(weight = "80", reps = "8", restSeconds = "1200", rpe = "7"))
+
+        assertTrue(result is SetLogValidationResult.Invalid)
+        result as SetLogValidationResult.Invalid
+        assertEquals("Rust moet tussen 0 en 900s liggen.", result.fieldErrors.restSeconds)
     }
 
     @Test
@@ -864,9 +1243,9 @@ private fun sampleLoggedSet(id: Long): LoggedSet =
     )
 
 private fun testSourceFile(relativePackagePath: String): File {
-    val userDir = File(System.getProperty("user.dir"))
+    val userDir = File(System.getProperty("user.dir") ?: ".")
     return listOf(
         File(userDir, "src/main/java/com/trainiq/$relativePackagePath"),
         File(userDir, "app/src/main/java/com/trainiq/$relativePackagePath"),
-    ).first(File::isFile)
+    ).first { it.isFile }
 }

@@ -4,6 +4,8 @@ import com.trainiq.domain.model.CoachOverview
 import com.trainiq.domain.model.ActiveWorkoutSession
 import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.BiologicalSex
+import com.trainiq.domain.model.BodyMeasurementPhotoResult
+import com.trainiq.domain.model.BarcodeProductLookupResult
 import com.trainiq.domain.model.Exercise
 import com.trainiq.domain.model.ExerciseHistory
 import com.trainiq.domain.model.FoodItem
@@ -20,6 +22,7 @@ import com.trainiq.domain.model.NutritionOverview
 import com.trainiq.domain.model.ProgressOverview
 import com.trainiq.domain.model.ProgressionSuggestion
 import com.trainiq.domain.model.RoutineSet
+import com.trainiq.domain.model.SavedGoalAdvice
 import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.Recipe
 import com.trainiq.domain.model.UserProfile
@@ -46,6 +49,7 @@ interface WorkoutRepository {
     suspend fun getWorkoutDay(dayId: Long): WorkoutDay?
     suspend fun getProgressionSuggestions(dayId: Long): List<ProgressionSuggestion>
     suspend fun getNextWorkoutDay(): WorkoutDay?
+    suspend fun getCurrentActiveWorkoutSession(): ActiveWorkoutSession?
     suspend fun getOrStartActiveWorkoutSession(dayId: Long, initialDrafts: Map<Long, ActiveWorkoutSetDraft>): ActiveWorkoutSession
     suspend fun updateActiveWorkoutDraft(exerciseId: Long, draft: ActiveWorkoutSetDraft): ActiveWorkoutSession?
     suspend fun logActiveWorkoutSet(dayId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int): ActiveWorkoutSession
@@ -56,8 +60,10 @@ interface WorkoutRepository {
     suspend fun setActiveWorkoutCollapsed(exerciseId: Long, collapsed: Boolean): ActiveWorkoutSession?
     suspend fun updateActiveWorkoutRestTimer(endsAt: Long?, totalSeconds: Int): ActiveWorkoutSession?
     suspend fun finishActiveWorkout(dayId: Long): WorkoutCompletionResult
+    suspend fun refreshWorkoutDebrief(sessionId: Long): WorkoutDebriefRefreshOutcome
     suspend fun getWorkoutCompletionSummary(sessionId: Long): WorkoutCompletionSummary?
     suspend fun discardActiveWorkout(dayId: Long)
+    suspend fun discardActiveWorkoutSession(sessionId: Long)
     suspend fun setActiveRoutine(routineId: Long)
     suspend fun finishWorkout(dayId: Long, durationSeconds: Long, loggedSets: List<LoggedSet>): WorkoutDebrief
     suspend fun createRoutine(name: String, description: String)
@@ -125,6 +131,7 @@ interface WorkoutRepository {
 interface NutritionRepository {
     fun observeNutritionOverview(): Flow<NutritionOverview>
     suspend fun analyzeMealPhoto(path: String, context: String, capturedAtMillis: Long): MealAnalysisResult
+    suspend fun lookupBarcodeProduct(barcode: String): BarcodeProductLookupResult?
     fun clearLastScanResult()
     suspend fun saveFoodItem(
         id: Long?,
@@ -134,6 +141,7 @@ interface NutritionRepository {
         proteinPer100g: Double,
         carbsPer100g: Double,
         fatPer100g: Double,
+        defaultServingGrams: Double,
         sourceType: FoodSourceType,
     ): FoodItem
     suspend fun saveRecipe(
@@ -159,16 +167,39 @@ data class MealEntryRequest(
     val itemType: MealEntryType,
     val referenceId: Long,
     val gramsUsed: Double,
+    val servingCount: Int = 1,
     val notes: String? = null,
+    val snapshot: MealEntrySnapshot? = null,
 )
 
 enum class MealEntryType {
     FOOD,
     RECIPE,
+    SNAPSHOT,
 }
+
+enum class WorkoutDebriefRefreshOutcome {
+    UPDATED,
+    ALREADY_ENRICHED,
+    SESSION_MISSING,
+    INVALID_RESULT,
+}
+
+interface WorkoutDebriefScheduler {
+    fun enqueue(sessionId: Long)
+}
+
+data class MealEntrySnapshot(
+    val name: String,
+    val calories: Double,
+    val protein: Double,
+    val carbs: Double,
+    val fat: Double,
+)
 
 interface ProgressRepository {
     fun observeProgressOverview(): Flow<ProgressOverview>
+    suspend fun analyzeBodyMeasurementPhoto(path: String, context: String): BodyMeasurementPhotoResult
     suspend fun addMeasurement(weight: Double, bodyFat: Double, muscleMass: Double)
     suspend fun deleteMeasurement(measurementId: Long)
 }
@@ -183,8 +214,10 @@ interface CoachRepository {
         sex: BiologicalSex,
         activityLevel: String,
         goal: String,
+        manualCalorieTarget: Int? = null,
     ): GoalAdvice
     suspend fun generateWeeklyReport(): WeeklyReportResult
     fun observeUserProfile(): Flow<UserProfile?>
-    suspend fun saveProfile(profile: UserProfile)
+    fun observeSavedGoalAdvice(): Flow<SavedGoalAdvice?>
+    suspend fun saveProfile(profile: UserProfile, savedGoalAdvice: SavedGoalAdvice? = null)
 }

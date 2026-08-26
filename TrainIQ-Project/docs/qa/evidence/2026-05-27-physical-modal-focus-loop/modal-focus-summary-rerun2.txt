@@ -1,0 +1,7 @@
+explicitStartTrainIqVisible=True
+settingsPrivacyHasLocalDataButton=False
+localDataDialogVisible=True
+dialogHasCancel=False
+dialogHasConfirm=False
+afterCancelSettingsStillVisible=True
+crashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES

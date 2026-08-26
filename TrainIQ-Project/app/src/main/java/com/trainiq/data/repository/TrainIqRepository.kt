@@ -1,5 +1,6 @@
 package com.trainiq.data.repository
 
+import com.trainiq.ai.services.BodyMeasurementPhotoService
 import com.trainiq.ai.services.GoalAdvisorService
 import com.trainiq.ai.services.MealAnalysisService
 import com.trainiq.ai.services.RoutineGeneratorService
@@ -11,6 +12,7 @@ import com.trainiq.core.database.BodyMeasurementEntity
 import com.trainiq.core.database.ExerciseEntity
 import com.trainiq.core.database.PerformedExerciseEntity
 import com.trainiq.core.database.RoutineSetEntity
+import com.trainiq.data.mapper.toEntity
 import com.trainiq.core.database.UserProfileEntity
 import com.trainiq.core.database.WorkoutDayEntity
 import com.trainiq.core.database.WorkoutExerciseEntity
@@ -33,10 +35,13 @@ import com.trainiq.data.local.TrainIqStorageState
 import com.trainiq.data.local.WorkoutLogEventStorage
 import com.trainiq.data.mapper.parseSetType
 import com.trainiq.data.mapper.toDomain
+import com.trainiq.data.remote.BarcodeProductLookupService
 import com.trainiq.domain.model.BodyMeasurement
+import com.trainiq.domain.model.BodyMeasurementPhotoResult
 import com.trainiq.domain.model.ActiveWorkoutSession
 import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.ActiveWorkoutSetEntry
+import com.trainiq.domain.model.BarcodeProductLookupResult
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.ChartPoint
 import com.trainiq.domain.model.CoachOverview
@@ -44,6 +49,7 @@ import com.trainiq.domain.model.Exercise
 import com.trainiq.domain.model.ExerciseHistory
 import com.trainiq.domain.model.ExerciseHistorySession
 import com.trainiq.domain.model.ExerciseHistorySet
+import com.trainiq.domain.model.ExerciseLibraryItem
 import com.trainiq.domain.model.ExerciseRank
 import com.trainiq.domain.model.ExerciseRankProgress
 import com.trainiq.domain.model.ExerciseStats
@@ -67,6 +73,7 @@ import com.trainiq.domain.model.NutritionOverview
 import com.trainiq.domain.model.ProgressOverview
 import com.trainiq.domain.model.ProgressionSuggestion
 import com.trainiq.domain.model.Recipe
+import com.trainiq.domain.model.SavedGoalAdvice
 import com.trainiq.domain.model.RecipeIngredient
 import com.trainiq.domain.model.RoutineSet
 import com.trainiq.domain.model.SetType
@@ -75,6 +82,7 @@ import com.trainiq.domain.model.WeeklyReportResult
 import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutDebrief
 import com.trainiq.domain.model.WorkoutDebriefSource
+import com.trainiq.domain.model.WorkoutSessionSummary
 import com.trainiq.domain.model.WorkoutCompletionExercise
 import com.trainiq.domain.model.WorkoutCompletionResult
 import com.trainiq.domain.model.WorkoutCompletionSet
@@ -96,6 +104,7 @@ import com.trainiq.domain.repository.MealEntryType
 import com.trainiq.domain.repository.NutritionRepository
 import com.trainiq.domain.repository.ProgressRepository
 import com.trainiq.domain.repository.WorkoutRepository
+import com.trainiq.domain.repository.WorkoutDebriefRefreshOutcome
 import javax.inject.Inject
 import javax.inject.Singleton
 import java.util.Locale
@@ -108,6 +117,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
@@ -122,6 +132,8 @@ class TrainIqDataCoordinator @Inject constructor(
     private val healthConnectDataSource: HealthConnectDataSource,
     private val analyticsEngine: AnalyticsEngine,
     private val mealAnalysisService: MealAnalysisService,
+    private val barcodeProductLookupService: BarcodeProductLookupService,
+    private val bodyMeasurementPhotoService: BodyMeasurementPhotoService,
     private val workoutDebriefService: WorkoutDebriefService,
     private val goalAdvisorService: GoalAdvisorService,
     private val weeklyReportService: WeeklyReportService,
@@ -156,7 +168,9 @@ class TrainIqDataCoordinator @Inject constructor(
     init {
         scope.launch {
             delay(3_000L)
-            exerciseLibrarySeeder.ensureSeeded()
+            runCatching {
+                exerciseLibrarySeeder.ensureSeeded()
+            }
         }
     }
 
@@ -191,9 +205,9 @@ class TrainIqDataCoordinator @Inject constructor(
             steps = steps.takeIf { it > 0 },
             nextWorkout = nextWorkout,
             streak = computeStreak(snapshot.sessions, snapshot.meals),
-            aiInsight = buildDashboardInsight(snapshot, nextWorkout),
+            coachInsight = buildDashboardInsight(snapshot, nextWorkout),
         )
-    }
+    }.flowOn(Dispatchers.Default)
 
     suspend fun getHealthConnectStatus(): HealthConnectStatus {
         val status = healthConnectDataSource.getStatus()
@@ -206,7 +220,14 @@ class TrainIqDataCoordinator @Inject constructor(
     }
 
     suspend fun refreshDashboardData() {
-        _cachedSteps.value = healthConnectDataSource.getTodayStepsLive()
+        val status = healthConnectDataSource.getStatus()
+        when (status.state) {
+            com.trainiq.domain.model.HealthConnectState.CONNECTED,
+            com.trainiq.domain.model.HealthConnectState.NO_DATA -> {
+                _cachedSteps.value = status.metrics?.stepsToday ?: 0
+            }
+            else -> error(status.message)
+        }
     }
 
     fun observeWorkoutOverview(): Flow<WorkoutOverview> = snapshotState.map(::buildWorkoutOverview)
@@ -230,6 +251,11 @@ class TrainIqDataCoordinator @Inject constructor(
 
     suspend fun getNextWorkoutDay(): WorkoutDay? =
         buildWorkoutOverview(snapshotState.value).activeRoutine?.days?.minByOrNull { it.orderIndex }
+
+    suspend fun getCurrentActiveWorkoutSession(): ActiveWorkoutSession? =
+        withContext(Dispatchers.IO) {
+            runtimeStore.state.value.activeWorkoutSession?.toDomain()
+        }
 
     suspend fun getOrStartActiveWorkoutSession(
         dayId: Long,
@@ -461,6 +487,14 @@ class TrainIqDataCoordinator @Inject constructor(
         }
     }
 
+    suspend fun discardActiveWorkoutSession(sessionId: Long) {
+        withContext(Dispatchers.IO) {
+            val active = runtimeStore.state.value.activeWorkoutSession?.takeIf { it.sessionId == sessionId }
+                ?: return@withContext
+            runtimeStore.discardActiveWorkoutSession(active.sessionId)
+        }
+    }
+
     suspend fun setActiveRoutine(routineId: Long) {
         runtimeStore.setActiveRoutine(routineId)
     }
@@ -574,19 +608,90 @@ class TrainIqDataCoordinator @Inject constructor(
             sets = newSets,
             activeSessionId = activeSessionId,
         )
-        scope.launch {
-            val refreshedDebrief = workoutDebriefService.generateWorkoutDebrief(
-                totalVolume = currentVolume,
-                progression = progression,
-                comparisonSummary = comparison?.summary ?: "Nog geen eerdere vergelijkbare training gevonden.",
-                distribution = distribution,
-                avgRpe = avgRpe,
-                topExercises = topExercises,
-                weeklyFrequency = weeklyFrequency,
-            )
-            runtimeStore.updateWorkoutSessionDebrief(sessionId = sessionId, debrief = refreshedDebrief)
-        }
         return WorkoutCompletionResult(sessionId = sessionId, debrief = localDebrief)
+    }
+
+    suspend fun refreshWorkoutDebrief(sessionId: Long): WorkoutDebriefRefreshOutcome = withContext(Dispatchers.IO) {
+        val refreshSnapshot = runtimeStore.getWorkoutDebriefRefreshSnapshot(sessionId)
+        val session = refreshSnapshot.session ?: return@withContext WorkoutDebriefRefreshOutcome.SESSION_MISSING
+        if (session.debriefSource != WorkoutDebriefSource.LOCAL_FALLBACK.name) {
+            return@withContext WorkoutDebriefRefreshOutcome.ALREADY_ENRICHED
+        }
+        val dayId = session.workoutDayId ?: return@withContext WorkoutDebriefRefreshOutcome.INVALID_RESULT
+        val sessionSets = refreshSnapshot.sets.filter { it.sessionId == sessionId }
+        if (sessionSets.isEmpty()) return@withContext WorkoutDebriefRefreshOutcome.INVALID_RESULT
+        val progressionSets = sessionSets.filter { parseSetType(it.setType).isProgressionType() }.ifEmpty { sessionSets }
+        val currentVolume = progressionSets.sumOf { it.weight * it.reps }
+        val comparison = buildWorkoutProgressComparison(
+            dayId = dayId,
+            routineId = session.routineId,
+            startedAt = session.startedAt,
+            activeSessionId = sessionId,
+            currentSets = progressionSets.map { set ->
+                LoggedSet(
+                    exerciseId = set.exerciseId,
+                    weight = set.weight,
+                    reps = set.reps,
+                    rpe = set.rpe,
+                    repsInReserve = set.repsInReserve,
+                    setType = parseSetType(set.setType),
+                    restSeconds = set.restSeconds,
+                    orderIndex = set.orderIndex,
+                    completed = set.completed,
+                    loggedAt = set.loggedAt,
+                    performedExerciseId = set.performedExerciseId,
+                )
+            },
+            sessions = refreshSnapshot.sessions,
+            sets = refreshSnapshot.sets,
+            days = refreshSnapshot.days,
+            exercises = refreshSnapshot.exercises,
+        )
+        val directSnapshot = RepositorySnapshot(
+            days = refreshSnapshot.days,
+            exercises = refreshSnapshot.exercises,
+            workoutExercises = refreshSnapshot.workoutExercises,
+        )
+        val workoutDay = buildWorkoutDay(directSnapshot, dayId)
+        val distribution = workoutDay?.exercises
+            ?.groupBy { it.exercise.muscleGroup }
+            ?.map { "${it.key} ${it.value.size}" }
+            ?.joinToString()
+            .orEmpty()
+        val exerciseNameById = refreshSnapshot.exercises.associate { it.id to it.name }
+        val topExercises = progressionSets
+            .sortedByDescending { it.weight * it.reps }
+            .take(3)
+            .joinToString { set ->
+                workoutDebriefTopSetText(
+                    exerciseName = exerciseNameById[set.exerciseId] ?: "Oefening ${set.exerciseId}",
+                    weightLabel = formatWeight(set.weight),
+                    reps = set.reps,
+                )
+            }
+            .ifBlank { workoutDebriefEmptyTopSetsText() }
+        val sevenDaysAgo = System.currentTimeMillis() - (7 * 86_400_000L)
+        val refreshed = workoutDebriefService.generateWorkoutDebriefOrThrow(
+            totalVolume = currentVolume,
+            progression = comparison?.progressionPercent,
+            comparisonSummary = comparison?.summary ?: "Nog geen eerdere vergelijkbare training gevonden.",
+            distribution = distribution,
+            avgRpe = progressionSets.map { it.rpe }.average().takeIf { !it.isNaN() }?.toFloat() ?: 0f,
+            topExercises = topExercises,
+            weeklyFrequency = refreshSnapshot.sessions
+                .filter { it.completed && it.date >= sevenDaysAgo }
+                .map { normalizeToDay(it.date) }
+                .distinct()
+                .count(),
+        )
+        if (refreshed.source == WorkoutDebriefSource.LOCAL_FALLBACK || refreshed.summary.isBlank()) {
+            return@withContext WorkoutDebriefRefreshOutcome.INVALID_RESULT
+        }
+        if (runtimeStore.updateWorkoutSessionDebrief(sessionId = sessionId, debrief = refreshed) > 0) {
+            WorkoutDebriefRefreshOutcome.UPDATED
+        } else {
+            WorkoutDebriefRefreshOutcome.ALREADY_ENRICHED
+        }
     }
 
     suspend fun createRoutine(name: String, description: String) {
@@ -889,6 +994,10 @@ class TrainIqDataCoordinator @Inject constructor(
             experienceLevel = experienceLevel,
             sessionDurationMinutes = sessionDurationMinutes,
             includeDeload = includeDeload,
+            existingExercises = snapshotState.value.exercises
+                .sortedBy { it.name }
+                .take(80)
+                .map { "${it.id}: ${it.name} | ${it.muscleGroup} | ${it.equipment}" },
         )
 
         check(generated.days.isNotEmpty()) {
@@ -938,10 +1047,7 @@ class TrainIqDataCoordinator @Inject constructor(
                 orderIndex = orderIndex,
             )
             generatedDay.exercises.forEach { generatedExercise ->
-                val existing = allExercises.firstOrNull {
-                    it.name.equals(generatedExercise.exerciseName, ignoreCase = true) &&
-                        it.equipment.equals(generatedExercise.equipment, ignoreCase = true)
-                }
+                val existing = allExercises.findBestGeneratedExerciseMatch(generatedExercise)
                 val exerciseId = existing?.id ?: run {
                     val newId = nextExerciseId++
                     val newExercise = ExerciseEntity(
@@ -1005,6 +1111,22 @@ class TrainIqDataCoordinator @Inject constructor(
         }
     }
 
+    suspend fun lookupBarcodeProduct(barcode: String): BarcodeProductLookupResult? {
+        val cleanBarcode = barcode.filter(Char::isDigit)
+        if (cleanBarcode.isBlank()) return null
+        snapshotState.value.foods.firstOrNull { it.barcode == cleanBarcode }?.let { food ->
+            return BarcodeProductLookupResult(
+                barcode = cleanBarcode,
+                name = food.name,
+                caloriesPer100g = food.caloriesPer100g,
+                proteinPer100g = food.proteinPer100g,
+                carbsPer100g = food.carbsPer100g,
+                fatPer100g = food.fatPer100g,
+            )
+        }
+        return barcodeProductLookupService.lookup(cleanBarcode)
+    }
+
     fun clearLastScanResult() {
         scannedMealResult.value = null
     }
@@ -1017,29 +1139,24 @@ class TrainIqDataCoordinator @Inject constructor(
         proteinPer100g: Double,
         carbsPer100g: Double,
         fatPer100g: Double,
+        defaultServingGrams: Double,
         sourceType: FoodSourceType,
     ): FoodItem {
         val now = System.currentTimeMillis()
-        val state = runtimeStore.state.value
-        val existing = state.foods.firstOrNull { it.id == id }
-        val duplicateBarcode = barcode?.trim()?.takeIf { it.isNotBlank() }?.let { code ->
-            state.foods.firstOrNull { it.barcode == code && it.id != id }
-        }
-        val foodId = existing?.id ?: duplicateBarcode?.id ?: ((state.foods.maxOfOrNull { it.id } ?: 0L) + 1L)
         val storage = FoodItemStorage(
-            id = foodId,
+            id = id ?: 0L,
             name = name.trim(),
             barcode = barcode?.trim()?.takeIf { it.isNotBlank() },
             caloriesPer100g = caloriesPer100g,
             proteinPer100g = proteinPer100g,
             carbsPer100g = carbsPer100g,
             fatPer100g = fatPer100g,
+            defaultServingGrams = defaultServingGrams.normalizedDefaultServingGrams(),
             sourceType = sourceType,
-            createdAt = existing?.createdAt ?: duplicateBarcode?.createdAt ?: now,
+            createdAt = now,
             updatedAt = now,
         )
-        runtimeStore.saveFood(storage)
-        return mapFood(storage)
+        return mapFood(runtimeStore.saveFood(storage))
     }
 
     suspend fun saveRecipe(
@@ -1125,6 +1242,9 @@ class TrainIqDataCoordinator @Inject constructor(
 
     fun observeProgressOverview(): Flow<ProgressOverview> = snapshotState.map(::buildProgressOverview)
 
+    suspend fun analyzeBodyMeasurementPhoto(path: String, context: String): BodyMeasurementPhotoResult =
+        bodyMeasurementPhotoService.analyzeScaleImage(path = path, userContext = context)
+
     suspend fun addMeasurement(weight: Double, bodyFat: Double, muscleMass: Double) {
         val measurementId = (runtimeStore.state.value.measurements.maxOfOrNull { it.id } ?: 0L) + 1L
         runtimeStore.addMeasurement(
@@ -1162,6 +1282,7 @@ class TrainIqDataCoordinator @Inject constructor(
         sex: BiologicalSex,
         activityLevel: String,
         goal: String,
+        manualCalorieTarget: Int?,
     ): GoalAdvice = goalAdvisorService.generateGoalAdvice(
         height = height,
         weight = weight,
@@ -1170,6 +1291,7 @@ class TrainIqDataCoordinator @Inject constructor(
         sex = sex,
         activityLevel = activityLevel,
         goal = goal,
+        manualCalorieTarget = manualCalorieTarget,
     )
 
     suspend fun generateWeeklyReport(): WeeklyReportResult {
@@ -1194,7 +1316,9 @@ class TrainIqDataCoordinator @Inject constructor(
 
     fun observeUserProfile(): Flow<UserProfile?> = snapshotState.map { it.profile }
 
-    suspend fun saveProfile(profile: UserProfile) {
+    fun observeSavedGoalAdvice(): Flow<SavedGoalAdvice?> = runtimeStore.observeSavedGoalAdvice()
+
+    suspend fun saveProfile(profile: UserProfile, savedGoalAdvice: SavedGoalAdvice? = null) {
         runtimeStore.saveProfile(
             UserProfileEntity(
                 id = profile.id,
@@ -1212,6 +1336,7 @@ class TrainIqDataCoordinator @Inject constructor(
                 fatTarget = profile.fatTarget,
                 trainingFocus = profile.trainingFocus,
             ),
+            savedGoalAdvice?.toEntity(),
         )
     }
 
@@ -1236,7 +1361,11 @@ class TrainIqDataCoordinator @Inject constructor(
             insights += "Er is nog geen trainingshistorie. Rond een workout af om volume en herstel te volgen."
         } else {
             insights += "Je beste geschatte 1RM staat op ${formatSummaryWeight(progress.estimatedOneRepMax)} kg."
-            insights += "De huidige fatigue index is ${"%.2f".format(progress.fatigueIndex)}."
+            progress.weeklyLoadRatio?.let { ratio ->
+                insights += "Je laatste trainingsweek zat op ${"%.2f".format(ratio)}x het gemiddelde van de voorgaande trainingsweken."
+            } ?: run {
+                insights += "Log minstens twee trainingsweken om je weekbelasting te vergelijken."
+            }
         }
         return insights
     }
@@ -1273,12 +1402,63 @@ class TrainIqDataCoordinator @Inject constructor(
         val history = snapshot.sessions
             .filter { it.completed && it.status == "COMPLETED" }
             .sortedByDescending { it.date }
-            .map { it.toDomain(sessionVolumes[it.id] ?: 0.0) }
+            .map { session -> buildWorkoutSessionSummary(snapshot, session, sessionVolumes[session.id] ?: 0.0) }
+        val exerciseLibrary = snapshot.exercises
+            .map { buildExerciseLibraryItem(snapshot, it) }
+            .sortedWith(compareByDescending<ExerciseLibraryItem> { it.completedSessions > 0 }.thenBy { it.exercise.name })
         return WorkoutOverview(
             activeRoutine = routines.firstOrNull { it.active },
             routines = routines,
             exercises = snapshot.exercises.map { it.toDomain() }.sortedBy { it.name },
+            exerciseLibrary = exerciseLibrary,
             history = history,
+        )
+    }
+
+    private fun buildWorkoutSessionSummary(
+        snapshot: RepositorySnapshot,
+        session: WorkoutSessionEntity,
+        totalVolume: Double,
+    ): WorkoutSessionSummary {
+        val sessionSets = snapshot.sets.filter { it.sessionId == session.id && it.completed }
+        val exerciseCount = sessionSets.map { it.exerciseId }.distinct().size
+        val strongestSet = sessionSets.maxWithOrNull(compareBy<WorkoutSetEntity> { it.weight }.thenBy { it.reps })
+        val day = session.workoutDayId?.let { dayId -> snapshot.days.firstOrNull { it.id == dayId } }
+        val routine = session.routineId?.let { routineId -> snapshot.routines.firstOrNull { it.id == routineId } }
+            ?: day?.let { workoutDay -> snapshot.routines.firstOrNull { it.id == workoutDay.routineId } }
+        val workoutName = listOfNotNull(routine?.name, day?.name)
+            .filter { it.isNotBlank() }
+            .joinToString(" - ")
+            .ifBlank { "Krachttraining" }
+        return WorkoutSessionSummary(
+            id = session.id,
+            date = session.endedAt.takeIf { it > 0L } ?: session.date,
+            duration = session.duration,
+            caloriesBurned = session.caloriesBurned,
+            totalVolume = totalVolume,
+            workoutName = workoutName,
+            exerciseCount = exerciseCount,
+            setsLogged = sessionSets.size,
+            strongestSetLabel = strongestSet?.let { "${formatSummaryWeight(it.weight)} kg x ${it.reps}" }.orEmpty(),
+            debriefSummary = session.debriefSummary,
+            debriefRecommendation = session.debriefRecommendation,
+            debriefNextSessionFocus = session.debriefNextSessionFocus,
+            debriefRecoveryScore = session.debriefRecoveryScore.coerceIn(0, 100),
+            debriefIntensitySignal = session.debriefIntensitySignal,
+            debriefSource = runCatching { WorkoutDebriefSource.valueOf(session.debriefSource) }.getOrDefault(WorkoutDebriefSource.LOCAL_FALLBACK),
+        )
+    }
+
+    private fun buildExerciseLibraryItem(snapshot: RepositorySnapshot, exercise: ExerciseEntity): ExerciseLibraryItem {
+        val history = buildExerciseHistory(snapshot, exercise.id)
+        return ExerciseLibraryItem(
+            exercise = exercise.toDomain(),
+            completedSessions = history.stats.completedSessions,
+            score = history.rank.score,
+            rankLabel = history.rank.rank.label,
+            lastPerformedAt = history.stats.lastPerformedAt,
+            bestEstimatedOneRepMax = history.stats.bestEstimatedOneRepMax,
+            totalVolume = history.stats.totalVolume,
         )
     }
 
@@ -1519,10 +1699,14 @@ class TrainIqDataCoordinator @Inject constructor(
         proteinPer100g = storage.proteinPer100g,
         carbsPer100g = storage.carbsPer100g,
         fatPer100g = storage.fatPer100g,
+        defaultServingGrams = storage.defaultServingGrams.normalizedDefaultServingGrams(),
         sourceType = storage.sourceType,
         createdAt = storage.createdAt,
         updatedAt = storage.updatedAt,
     )
+
+    private fun Double.normalizedDefaultServingGrams(): Double =
+        takeIf { it.isFinite() && it > 0.0 } ?: 100.0
 
     private fun buildRecipes(
         foods: List<FoodItemStorage>,
@@ -1571,6 +1755,7 @@ class TrainIqDataCoordinator @Inject constructor(
                     referenceId = item.referenceId,
                     name = item.name,
                     gramsUsed = item.gramsUsed,
+                    servingCount = item.servingCount.coerceAtLeast(1),
                     nutritionSnapshot = NutritionFacts(item.calories, item.protein, item.carbs, item.fat).rounded(),
                     notes = item.notes,
                 )
@@ -1772,6 +1957,7 @@ internal fun buildWorkoutCompletionSummary(
         debrief = debrief,
         sourceLabel = when (debrief.source) {
             WorkoutDebriefSource.GEMINI_2_5_FLASH -> "Samenvatting gemaakt met Gemini 2.5 Flash"
+            WorkoutDebriefSource.OPENAI -> "Samenvatting gemaakt met OpenAI"
             WorkoutDebriefSource.LOCAL_FALLBACK -> "Samenvatting gemaakt op basis van je trainingsdata"
         },
         recommendationLabel = when (debrief.intensitySignal.uppercase(Locale.US)) {
@@ -2153,6 +2339,48 @@ internal fun TrainIqStorageState.withExerciseAddedToDay(
     )
 }
 
+internal fun List<ExerciseEntity>.findBestGeneratedExerciseMatch(generatedExercise: GeneratedExercise): ExerciseEntity? {
+    generatedExercise.existingExerciseId
+        ?.let { id -> firstOrNull { it.id == id } }
+        ?.let { return it }
+
+    val targetName = generatedExercise.exerciseName.normalizedExerciseKey()
+    val targetEquipment = generatedExercise.equipment.normalizedExerciseKey()
+    val targetMuscle = generatedExercise.muscleGroup.normalizedExerciseKey()
+
+    firstOrNull { exercise ->
+        exercise.name.normalizedExerciseKey() == targetName
+    }?.let { return it }
+
+    return mapNotNull { exercise ->
+        val nameScore = exercise.name.normalizedExerciseKey().exerciseSimilarityScore(targetName)
+        val equipmentScore = if (exercise.equipment.normalizedExerciseKey() == targetEquipment) 1 else 0
+        val muscleScore = if (exercise.muscleGroup.normalizedExerciseKey() == targetMuscle) 1 else 0
+        val score = nameScore + equipmentScore + muscleScore
+        if (nameScore >= 2 && score >= 3) exercise to score else null
+    }.maxByOrNull { it.second }?.first
+}
+
+private fun String.normalizedExerciseKey(): String =
+    lowercase(Locale.US)
+        .replace("dumbbells", "dumbbell")
+        .replace("dumbells", "dumbbell")
+        .replace("barbell", "halterstang")
+        .replace("bodyweight", "lichaamsgewicht")
+        .replace("cable", "kabel")
+        .replace("machine", "machine")
+        .replace(Regex("[^a-z0-9]+"), " ")
+        .trim()
+
+private fun String.exerciseSimilarityScore(other: String): Int {
+    if (isBlank() || other.isBlank()) return 0
+    if (this == other) return 4
+    if (contains(other) || other.contains(this)) return 3
+    val tokens = split(" ").filter { it.length > 2 }.toSet()
+    val otherTokens = other.split(" ").filter { it.length > 2 }.toSet()
+    return tokens.intersect(otherTokens).size
+}
+
 internal fun TrainIqStorageState.withRoutineSetAdded(workoutExerciseId: Long): TrainIqStorageState {
     val workoutExercise = workoutExercises.firstOrNull { it.id == workoutExerciseId } ?: return this
     val existingSets = routineSets
@@ -2367,7 +2595,15 @@ internal fun buildMealItemSnapshots(
         when (request.itemType) {
             MealEntryType.FOOD -> {
                 val food = foodsById[request.referenceId] ?: error("Deze maaltijd bevat een verwijderd product of recept.")
-                val nutrition = food.nutritionForGrams(request.gramsUsed)
+                val servingCount = request.servingCount.coerceAtLeast(1)
+                val nutrition = food.nutritionForGrams(request.gramsUsed).let { base ->
+                    NutritionFacts(
+                        calories = base.calories * servingCount,
+                        protein = base.protein * servingCount,
+                        carbs = base.carbs * servingCount,
+                        fat = base.fat * servingCount,
+                    ).rounded()
+                }
                 LoggedMealItemStorage(
                     id = nextItemId++,
                     mealId = mealId,
@@ -2375,6 +2611,7 @@ internal fun buildMealItemSnapshots(
                     referenceId = food.id,
                     name = food.name,
                     gramsUsed = request.gramsUsed,
+                    servingCount = servingCount,
                     calories = nutrition.calories,
                     protein = nutrition.protein,
                     carbs = nutrition.carbs,
@@ -2387,12 +2624,13 @@ internal fun buildMealItemSnapshots(
                 val recipe = recipesById[request.referenceId] ?: error("Deze maaltijd bevat een verwijderd product of recept.")
                 val baseGrams = recipe.totalCookedGrams ?: recipe.ingredients.sumOf { it.gramsUsed }
                 if (baseGrams <= 0.0 || !baseGrams.isFinite()) error("Deze maaltijd bevat een verwijderd product of recept.")
+                val servingCount = request.servingCount.coerceAtLeast(1)
                 val ratio = request.gramsUsed / baseGrams
                 val nutrition = NutritionFacts(
-                    calories = recipe.totalNutrition.calories * ratio,
-                    protein = recipe.totalNutrition.protein * ratio,
-                    carbs = recipe.totalNutrition.carbs * ratio,
-                    fat = recipe.totalNutrition.fat * ratio,
+                    calories = recipe.totalNutrition.calories * ratio * servingCount,
+                    protein = recipe.totalNutrition.protein * ratio * servingCount,
+                    carbs = recipe.totalNutrition.carbs * ratio * servingCount,
+                    fat = recipe.totalNutrition.fat * ratio * servingCount,
                 ).rounded()
                 LoggedMealItemStorage(
                     id = nextItemId++,
@@ -2401,6 +2639,32 @@ internal fun buildMealItemSnapshots(
                     referenceId = recipe.id,
                     name = recipe.name,
                     gramsUsed = request.gramsUsed,
+                    servingCount = servingCount,
+                    calories = nutrition.calories,
+                    protein = nutrition.protein,
+                    carbs = nutrition.carbs,
+                    fat = nutrition.fat,
+                    notes = request.notes,
+                )
+            }
+
+            MealEntryType.SNAPSHOT -> {
+                val snapshot = request.snapshot ?: error("Deze maaltijd bevat een onvolledig tijdelijk product.")
+                val servingCount = request.servingCount.coerceAtLeast(1)
+                val nutrition = NutritionFacts(
+                    calories = snapshot.calories * servingCount,
+                    protein = snapshot.protein * servingCount,
+                    carbs = snapshot.carbs * servingCount,
+                    fat = snapshot.fat * servingCount,
+                ).rounded()
+                LoggedMealItemStorage(
+                    id = nextItemId++,
+                    mealId = mealId,
+                    itemType = LoggedMealItemType.SNAPSHOT,
+                    referenceId = 0L,
+                    name = snapshot.name.trim().ifBlank { "Tijdelijk product" },
+                    gramsUsed = request.gramsUsed,
+                    servingCount = servingCount,
                     calories = nutrition.calories,
                     protein = nutrition.protein,
                     carbs = nutrition.carbs,
@@ -2460,14 +2724,15 @@ internal fun buildProgressOverviewFromHistory(
         ChartPoint(session.date.toReadableDate(), bestOneRepMax)
     }
     val estimatedOneRepMax = strengthTrend.maxOfOrNull { it.value } ?: 0.0
-    val weeklyVolume = weeklyVolumeTrend.lastOrNull()?.value ?: 0.0
-    val baseline = weeklyVolumeTrend
+    val positiveWeeklyVolumes = weeklyVolumeTrend
+        .map { it.value }
+        .filter { it > 0.0 }
+    val weeklyVolume = positiveWeeklyVolumes.lastOrNull() ?: 0.0
+    val baseline = positiveWeeklyVolumes
         .dropLast(1)
         .takeLast(3)
-        .map { it.value }
-        .average()
-        .takeIf { !it.isNaN() && it > 0.0 }
-        ?: weeklyVolume
+        .takeIf { it.isNotEmpty() }
+        ?.average()
 
     return ProgressOverview(
         measurements = measurements,
@@ -2477,7 +2742,9 @@ internal fun buildProgressOverviewFromHistory(
         strengthTrend = strengthTrend,
         volumeTrend = weeklyVolumeTrend,
         estimatedOneRepMax = estimatedOneRepMax,
-        fatigueIndex = if (weeklyVolume == 0.0 || baseline == 0.0) 0.0 else analyticsEngine.fatigueIndex(weeklyVolume, baseline),
+        weeklyLoadRatio = baseline
+            ?.takeIf { weeklyVolume > 0.0 }
+            ?.let { analyticsEngine.weeklyLoadRatio(weeklyVolume, it) },
     )
 }
 
@@ -2500,6 +2767,7 @@ private fun com.trainiq.ai.services.GeneratedRoutine.toDomainGeneratedRoutine() 
     estimatedDurationMinutes = estimatedDurationMinutes,
     source = when (source) {
         com.trainiq.ai.services.GeneratedRoutineSource.GEMINI_2_5_FLASH -> com.trainiq.domain.model.GeneratedRoutineSource.GEMINI_2_5_FLASH
+        com.trainiq.ai.services.GeneratedRoutineSource.OPENAI -> com.trainiq.domain.model.GeneratedRoutineSource.OPENAI
         com.trainiq.ai.services.GeneratedRoutineSource.LOCAL_FALLBACK -> com.trainiq.domain.model.GeneratedRoutineSource.LOCAL_FALLBACK
     },
     days = days.map { day ->
@@ -2515,6 +2783,7 @@ private fun com.trainiq.ai.services.GeneratedRoutine.toDomainGeneratedRoutine() 
                     repRange = exercise.repRange,
                     restSeconds = exercise.restSeconds,
                     coachingCue = exercise.coachingCue,
+                    existingExerciseId = exercise.existingExerciseId,
                 )
             },
         )

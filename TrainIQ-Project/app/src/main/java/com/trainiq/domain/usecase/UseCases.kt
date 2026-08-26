@@ -1,5 +1,16 @@
 package com.trainiq.domain.usecase
 
+import com.google.gson.Gson
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
+import com.trainiq.core.database.TrainIqDatabase
+import com.trainiq.data.local.TrainIqStorageState
+import com.trainiq.data.migration.JsonRoomImportCoordinator
+import com.trainiq.data.migration.JsonRoomImportOutcome
+import com.trainiq.data.migration.JsonRoomImportPlanner
+import com.trainiq.data.migration.RoomJsonImportSink
+import com.trainiq.data.migration.TrainIqJsonExportFormat
+import com.trainiq.data.migration.importedRowCount
 import com.trainiq.domain.model.LoggedSet
 import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.ActiveWorkoutSession
@@ -12,6 +23,7 @@ import com.trainiq.domain.model.MealType
 import com.trainiq.domain.model.ProgressionSuggestion
 import com.trainiq.domain.model.RoutineSet
 import com.trainiq.domain.model.SetType
+import com.trainiq.domain.model.SavedGoalAdvice
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WeeklyReportResult
 import com.trainiq.domain.model.WorkoutDay
@@ -25,9 +37,12 @@ import com.trainiq.domain.repository.NutritionRepository
 import com.trainiq.domain.repository.ProgressRepository
 import com.trainiq.domain.repository.WorkoutRepository
 import com.trainiq.core.datastore.UserPreferencesRepository
+import com.trainiq.core.datastore.OnboardingPreferences
 import com.trainiq.core.diagnostics.PerformanceSessionStore
 import com.trainiq.ai.services.AiUsageGate
+import com.trainiq.data.local.TrainIqLocalStore
 import com.trainiq.data.repository.RoomTrainIqRuntimeStore
+import java.time.Instant
 import javax.inject.Inject
 
 class ObserveHomeDashboardUseCase @Inject constructor(private val repository: HomeRepository) {
@@ -57,6 +72,32 @@ class GetHealthConnectStatusUseCase @Inject constructor(private val repository: 
 
 class RefreshDashboardDataUseCase @Inject constructor(private val repository: HomeRepository) {
     suspend operator fun invoke() = repository.refreshDashboardData()
+}
+
+class ObserveOnboardingPreferencesUseCase @Inject constructor(private val preferencesRepository: UserPreferencesRepository) {
+    operator fun invoke() = preferencesRepository.onboardingPreferences
+}
+
+class SaveOnboardingPreferencesUseCase @Inject constructor(private val preferencesRepository: UserPreferencesRepository) {
+    suspend operator fun invoke(preferences: OnboardingPreferences) =
+        preferencesRepository.saveOnboardingPreferences(preferences)
+}
+
+class CompleteOnboardingUseCase @Inject constructor(private val preferencesRepository: UserPreferencesRepository) {
+    suspend operator fun invoke(preferences: OnboardingPreferences) =
+        preferencesRepository.completeOnboarding(preferences)
+}
+
+class ReopenOnboardingUseCase @Inject constructor(private val preferencesRepository: UserPreferencesRepository) {
+    suspend operator fun invoke() = preferencesRepository.reopenOnboarding()
+}
+
+class MarkGuidedTourCompletedUseCase @Inject constructor(private val preferencesRepository: UserPreferencesRepository) {
+    suspend operator fun invoke() = preferencesRepository.markGuidedTourCompleted()
+}
+
+class MarkGuidedTourSkippedUseCase @Inject constructor(private val preferencesRepository: UserPreferencesRepository) {
+    suspend operator fun invoke() = preferencesRepository.markGuidedTourSkipped()
 }
 
 class ObserveWorkoutOverviewUseCase @Inject constructor(private val repository: WorkoutRepository) {
@@ -90,6 +131,10 @@ class FinishWorkoutUseCase @Inject constructor(private val repository: WorkoutRe
 class GetOrStartActiveWorkoutSessionUseCase @Inject constructor(private val repository: WorkoutRepository) {
     suspend operator fun invoke(dayId: Long, initialDrafts: Map<Long, ActiveWorkoutSetDraft>) =
         repository.getOrStartActiveWorkoutSession(dayId, initialDrafts)
+}
+
+class GetCurrentActiveWorkoutSessionUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke() = repository.getCurrentActiveWorkoutSession()
 }
 
 data class StartedWorkoutSession(
@@ -180,8 +225,17 @@ class UpdateActiveWorkoutRestTimerUseCase @Inject constructor(private val reposi
         repository.updateActiveWorkoutRestTimer(endsAt, totalSeconds)
 }
 
-class FinishActiveWorkoutUseCase @Inject constructor(private val repository: WorkoutRepository) {
-    suspend operator fun invoke(dayId: Long) = repository.finishActiveWorkout(dayId)
+class FinishActiveWorkoutUseCase @Inject constructor(
+    private val repository: WorkoutRepository,
+    private val workoutDebriefScheduler: com.trainiq.domain.repository.WorkoutDebriefScheduler,
+) {
+    suspend operator fun invoke(dayId: Long) = repository.finishActiveWorkout(dayId).also { result ->
+        if (result.sessionId > 0L) runCatching { workoutDebriefScheduler.enqueue(result.sessionId) }
+    }
+}
+
+class RefreshWorkoutDebriefUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(sessionId: Long) = repository.refreshWorkoutDebrief(sessionId)
 }
 
 class GetWorkoutCompletionSummaryUseCase @Inject constructor(private val repository: WorkoutRepository) {
@@ -190,6 +244,10 @@ class GetWorkoutCompletionSummaryUseCase @Inject constructor(private val reposit
 
 class DiscardActiveWorkoutUseCase @Inject constructor(private val repository: WorkoutRepository) {
     suspend operator fun invoke(dayId: Long) = repository.discardActiveWorkout(dayId)
+}
+
+class DiscardActiveWorkoutSessionUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(sessionId: Long) = repository.discardActiveWorkoutSession(sessionId)
 }
 
 class CreateRoutineUseCase @Inject constructor(private val repository: WorkoutRepository) {
@@ -352,6 +410,10 @@ class AnalyzeMealUseCase @Inject constructor(private val repository: NutritionRe
         repository.analyzeMealPhoto(path, context, capturedAtMillis)
 }
 
+class LookupBarcodeProductUseCase @Inject constructor(private val repository: NutritionRepository) {
+    suspend operator fun invoke(barcode: String) = repository.lookupBarcodeProduct(barcode)
+}
+
 class SaveFoodItemUseCase @Inject constructor(private val repository: NutritionRepository) {
     suspend operator fun invoke(
         id: Long?,
@@ -361,8 +423,9 @@ class SaveFoodItemUseCase @Inject constructor(private val repository: NutritionR
         proteinPer100g: Double,
         carbsPer100g: Double,
         fatPer100g: Double,
+        defaultServingGrams: Double,
         sourceType: FoodSourceType,
-    ) = repository.saveFoodItem(id, name, barcode, caloriesPer100g, proteinPer100g, carbsPer100g, fatPer100g, sourceType)
+    ) = repository.saveFoodItem(id, name, barcode, caloriesPer100g, proteinPer100g, carbsPer100g, fatPer100g, defaultServingGrams, sourceType)
 }
 
 class SaveRecipeUseCase @Inject constructor(private val repository: NutritionRepository) {
@@ -405,6 +468,11 @@ class ObserveProgressUseCase @Inject constructor(private val repository: Progres
     operator fun invoke() = repository.observeProgressOverview()
 }
 
+class AnalyzeBodyMeasurementPhotoUseCase @Inject constructor(private val repository: ProgressRepository) {
+    suspend operator fun invoke(path: String, context: String) =
+        repository.analyzeBodyMeasurementPhoto(path, context)
+}
+
 class AddMeasurementUseCase @Inject constructor(private val repository: ProgressRepository) {
     suspend operator fun invoke(weight: Double, bodyFat: Double, muscleMass: Double) =
         repository.addMeasurement(weight, bodyFat, muscleMass)
@@ -427,7 +495,8 @@ class GenerateGoalAdviceUseCase @Inject constructor(private val repository: Coac
         sex: BiologicalSex,
         activityLevel: String,
         goal: String,
-    ) = repository.generateGoalAdvice(height, weight, bodyFat, age, sex, activityLevel, goal)
+        manualCalorieTarget: Int? = null,
+    ) = repository.generateGoalAdvice(height, weight, bodyFat, age, sex, activityLevel, goal, manualCalorieTarget)
 }
 
 class GenerateWeeklyReportUseCase @Inject constructor(private val repository: CoachRepository) {
@@ -438,8 +507,12 @@ class ObserveUserProfileUseCase @Inject constructor(private val repository: Coac
     operator fun invoke() = repository.observeUserProfile()
 }
 
+class ObserveSavedGoalAdviceUseCase @Inject constructor(private val repository: CoachRepository) {
+    operator fun invoke() = repository.observeSavedGoalAdvice()
+}
+
 class SaveUserProfileUseCase @Inject constructor(private val repository: CoachRepository) {
-    suspend operator fun invoke(profile: UserProfile) = repository.saveProfile(profile)
+    suspend operator fun invoke(profile: UserProfile, savedGoalAdvice: SavedGoalAdvice? = null) = repository.saveProfile(profile, savedGoalAdvice)
 }
 
 class ResetProfileUseCase @Inject constructor(
@@ -450,17 +523,138 @@ class ResetProfileUseCase @Inject constructor(
 
 class ClearAppDataUseCase @Inject constructor(
     private val runtimeStore: RoomTrainIqRuntimeStore,
+    private val legacyStore: TrainIqLocalStore,
     private val preferencesRepository: UserPreferencesRepository,
     private val performanceSessionStore: PerformanceSessionStore,
     private val aiUsageGate: AiUsageGate,
 ) {
     suspend operator fun invoke() {
         runtimeStore.clearAll()
-        aiUsageGate.clearEncryptedApiKey()
+        legacyStore.clearAll()
+        aiUsageGate.clearAllAiKeys()
         preferencesRepository.clearLocalPrivateData()
         performanceSessionStore.clearAll()
     }
 }
+
+class ExportAppDataUseCase internal constructor(
+    private val readExportSnapshot: suspend () -> TrainIqStorageState,
+) {
+    @Inject
+    constructor(runtimeStore: RoomTrainIqRuntimeStore) : this(
+        readExportSnapshot = { runtimeStore.readExportSnapshot() },
+    )
+
+    private val gson = Gson()
+
+    suspend operator fun invoke(): String = gson.toJson(
+        TrainIqJsonExport(
+            exportedAt = Instant.now().toString(),
+            data = readExportSnapshot(),
+        ),
+    )
+}
+
+private data class TrainIqJsonExport(
+    val format: String = TrainIqJsonExportFormat,
+    val version: Int = 1,
+    val exportedAt: String,
+    val data: Any,
+)
+
+class PreviewAppDataImportUseCase @Inject constructor() {
+    private val planner = JsonRoomImportPlanner()
+
+    operator fun invoke(json: String): AppDataImportPreview {
+        require(json.length <= MaxTrainIqImportJsonChars) {
+            "Importbestand is te groot. Exporteer opnieuw of kies een kleiner TrainIQ JSON-bestand."
+        }
+        val metadata = readTrainIqImportMetadata(json)
+        val plan = planner.plan(json)
+        val rowCount = plan.importedRowCount()
+        require(rowCount > 0) { "Importbestand bevat geen TrainIQ-data om te herstellen." }
+        require(rowCount <= MaxTrainIqImportRows) {
+            "Importbestand bevat te veel rijen om veilig te importeren."
+        }
+        return AppDataImportPreview(
+            format = metadata.format,
+            version = metadata.version,
+            exportedAt = metadata.exportedAt,
+            rowCount = rowCount,
+            routineCount = plan.routines.size,
+            workoutCount = plan.sessions.size,
+            mealCount = plan.meals.size,
+            foodCount = plan.foodItems.size,
+            measurementCount = plan.measurements.size,
+        )
+    }
+}
+
+class ImportAppDataUseCase @Inject constructor(
+    private val database: TrainIqDatabase,
+) {
+    private val planner = JsonRoomImportPlanner()
+
+    suspend operator fun invoke(json: String): AppDataImportResult {
+        val preview = PreviewAppDataImportUseCase().invoke(json)
+        val outcome = JsonRoomImportCoordinator(
+            planner = planner,
+            sink = RoomJsonImportSink(database),
+        ).tryImport(
+            sourceJson = json,
+            fallbackState = TrainIqStorageState(),
+        )
+        return when (outcome) {
+            is JsonRoomImportOutcome.Imported -> AppDataImportResult(
+                preview = preview,
+                importedRowCount = outcome.plan.importedRowCount(),
+            )
+            is JsonRoomImportOutcome.Failed -> error(outcome.cause.message ?: "Importeren mislukt.")
+        }
+    }
+}
+
+data class AppDataImportPreview(
+    val format: String,
+    val version: Int?,
+    val exportedAt: String?,
+    val rowCount: Int,
+    val routineCount: Int,
+    val workoutCount: Int,
+    val mealCount: Int,
+    val foodCount: Int,
+    val measurementCount: Int,
+)
+
+data class AppDataImportResult(
+    val preview: AppDataImportPreview,
+    val importedRowCount: Int,
+)
+
+private fun readTrainIqImportMetadata(json: String): AppDataImportMetadata {
+    val root = JsonParser.parseString(json)
+    val rootObject = root as? JsonObject ?: error("Importbestand moet een JSON-object zijn.")
+    val format = rootObject.get("format")?.asString
+    return if (format == null) {
+        AppDataImportMetadata(format = "legacy-trainiq-state", version = null, exportedAt = null)
+    } else {
+        require(format == TrainIqJsonExportFormat) { "Onbekend TrainIQ exportformaat: $format." }
+        AppDataImportMetadata(
+            format = format,
+            version = rootObject.get("version")?.asInt,
+            exportedAt = rootObject.get("exportedAt")?.asString,
+        )
+    }
+}
+
+private data class AppDataImportMetadata(
+    val format: String,
+    val version: Int?,
+    val exportedAt: String?,
+)
+
+internal const val MaxTrainIqImportJsonChars: Int = 5 * 1024 * 1024
+internal const val MaxTrainIqImportRows: Int = 20_000
 
 private fun ProgressionSuggestion.toInitialDraft(): ActiveWorkoutSetDraft? {
     val weight = lastLoggedWeightKg?.takeIf { it > 0.0 }?.let(::formatDraftWeight)

@@ -1,6 +1,7 @@
 package com.trainiq.features.nutrition
 
 import com.trainiq.domain.repository.MealEntryRequest
+import com.trainiq.domain.repository.MealEntryType
 
 private const val MAX_CALORIES_PER_100G = 5000.0
 private const val MAX_MACRO_PER_100G = 1000.0
@@ -14,8 +15,9 @@ internal data class FoodFieldErrors(
     val protein: String? = null,
     val carbs: String? = null,
     val fat: String? = null,
+    val defaultServingGrams: String? = null,
 ) {
-    val hasErrors: Boolean get() = listOf(name, calories, protein, carbs, fat).any { it != null }
+    val hasErrors: Boolean get() = listOf(name, calories, protein, carbs, fat, defaultServingGrams).any { it != null }
 }
 
 internal data class RecipeFieldErrors(
@@ -99,12 +101,14 @@ internal fun validateFoodInput(
     protein: String,
     carbs: String,
     fat: String,
+    defaultServingGrams: String = "100",
 ): FoodFieldErrors = FoodFieldErrors(
     name = requiredNameError(name),
     calories = nutritionNumberError(calories, max = MAX_CALORIES_PER_100G, allowZero = true),
     protein = nutritionNumberError(protein, max = MAX_MACRO_PER_100G, allowZero = true),
     carbs = nutritionNumberError(carbs, max = MAX_MACRO_PER_100G, allowZero = true),
     fat = nutritionNumberError(fat, max = MAX_MACRO_PER_100G, allowZero = true),
+    defaultServingGrams = requiredPositiveGramError(defaultServingGrams),
 )
 
 internal fun validateRecipeInput(
@@ -129,6 +133,9 @@ internal fun validateMealInput(name: String, items: List<MealEntryRequest>): Mea
     items = when {
         items.isEmpty() -> "Voeg minimaal een product of recept toe."
         items.any { it.gramsUsed <= 0.0 || !it.gramsUsed.isFinite() } -> "Vul voor elk item een positief aantal gram in."
+        items.any { it.servingCount < 1 } -> "Vul voor elk item minimaal 1 portie in."
+        items.any { it.itemType == MealEntryType.SNAPSHOT && it.snapshot == null } -> "Controleer tijdelijke producten voordat je opslaat."
+        items.any { it.itemType == MealEntryType.SNAPSHOT && it.snapshot?.name.orEmpty().isBlank() } -> "Controleer tijdelijke producten voordat je opslaat."
         else -> null
     },
 )

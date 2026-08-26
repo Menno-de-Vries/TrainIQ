@@ -1,0 +1,2 @@
+Text nodes inspected: 85
+Suspect text bounds: 1

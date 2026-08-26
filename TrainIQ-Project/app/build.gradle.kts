@@ -9,6 +9,7 @@ import org.gradle.api.tasks.TaskAction
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    id("kotlin-parcelize")
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt.android)
@@ -26,8 +27,8 @@ android {
         applicationId = "com.trainiq"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.0.1-A"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
         buildConfigField(
@@ -35,6 +36,8 @@ android {
             "GEMINI_BASE_URL",
             "\"https://generativelanguage.googleapis.com/\""
         )
+        buildConfigField("String", "OPENAI_BASE_URL", "\"https://api.openai.com/\"")
+        buildConfigField("String", "OPENAI_MODEL", "\"gpt-5.4-mini\"")
         buildConfigField("Boolean", "TELEMETRY_ENABLED", "false")
         buildConfigField("String", "TELEMETRY_ENDPOINT_URL", "\"\"")
         buildConfigField("Double", "TELEMETRY_SAMPLE_RATE", "0.0")
@@ -43,6 +46,31 @@ android {
         buildConfigField("Long", "TELEMETRY_FLUSH_INTERVAL_MILLIS", "60000L")
         buildConfigField("Boolean", "TELEMETRY_PERFETTO_ENABLED", "false")
         buildConfigField("Boolean", "TELEMETRY_CRASH_CONTEXT_ENABLED", "true")
+        buildConfigField(
+            "Boolean",
+            "SAMSUNG_HEALTH_DATA_SDK_AAR_PRESENT",
+            File(projectDir, "libs")
+                .walkTopDown()
+                .any { file ->
+                    file.isFile &&
+                        file.extension.equals("aar", ignoreCase = true) &&
+                        file.name.contains("samsung-health-data-api", ignoreCase = true)
+                }
+                .toString(),
+        )
+        buildConfigField(
+            "Boolean",
+            "SAMSUNG_HEALTH_NON_API_AAR_PRESENT",
+            File(projectDir, "libs")
+                .walkTopDown()
+                .any { file ->
+                    file.isFile &&
+                        file.extension.equals("aar", ignoreCase = true) &&
+                        file.name.contains("samsung-health", ignoreCase = true) &&
+                        !file.name.contains("samsung-health-data-api", ignoreCase = true)
+                }
+                .toString(),
+        )
     }
 
     signingConfigs {
@@ -124,8 +152,7 @@ abstract class CheckReleaseSigningReadinessTask : DefaultTask() {
         val inputs = signingInputs.get()
         val present = inputs.filterValues(String::isNotBlank).keys
         if (present.isEmpty()) {
-            logger.lifecycle("TrainIQ release signing is not configured; release artifacts will be unsigned.")
-            return
+            error("TrainIQ release signing is required for release artifacts.")
         }
         val missing = inputs.filterValues(String::isBlank).keys
         check(missing.isEmpty()) {
@@ -147,7 +174,7 @@ abstract class CheckReleaseSigningReadinessTask : DefaultTask() {
 
 tasks.register<CheckReleaseSigningReadinessTask>("checkReleaseSigningReadiness") {
     group = "verification"
-    description = "Verifies TrainIQ release signing configuration is complete when signing is requested."
+    description = "Verifies TrainIQ release signing configuration is complete before release artifacts are packaged."
     projectDirectoryPath.set(layout.projectDirectory.asFile.absolutePath)
     signingInputs.putAll(
         mapOf(
@@ -157,6 +184,61 @@ tasks.register<CheckReleaseSigningReadinessTask>("checkReleaseSigningReadiness")
             "TRAINIQ_KEY_PASSWORD/trainiq.keyPassword" to trainIqSigningValue("TRAINIQ_KEY_PASSWORD", "trainiq.keyPassword").orNull.orEmpty(),
         ),
     )
+}
+
+tasks.matching { it.name in setOf("assembleRelease", "bundleRelease", "packageRelease") }.configureEach {
+    dependsOn("checkReleaseSigningReadiness")
+}
+
+fun samsungHealthDataSdkApiAarFiles(): List<File> {
+    val libsDir = File(projectDir, "libs")
+    if (!libsDir.isDirectory) return emptyList()
+    return libsDir.walkTopDown()
+        .filter { file ->
+            file.isFile &&
+                file.extension.equals("aar", ignoreCase = true) &&
+                file.name.contains("samsung-health-data-api", ignoreCase = true)
+        }
+        .toList()
+}
+
+tasks.register("checkSamsungHealthDataSdkReadiness") {
+    group = "verification"
+    description = "Verifies the Samsung Health Data SDK API AAR is present before physical Samsung Health step parity builds."
+
+    doLast {
+        val libsDir = File(projectDir, "libs")
+        val apiAars = samsungHealthDataSdkApiAarFiles()
+        check(apiAars.isNotEmpty()) {
+            "Samsung Health Data SDK API AAR missing. Add samsung-health-data-api*.aar to ${libsDir.absolutePath} before physical Samsung Health All steps parity builds."
+        }
+        logger.lifecycle("Samsung Health Data SDK API AAR ready: ${apiAars.joinToString { it.name }}")
+    }
+}
+
+tasks.register("assembleSamsungHealthParityDebug") {
+    group = "verification"
+    description = "Assembles a debug build that is eligible for physical Samsung Health All steps parity testing."
+    dependsOn("checkSamsungHealthDataSdkReadiness", "assembleDebug")
+}
+
+tasks.register("installSamsungHealthParityDebug") {
+    group = "verification"
+    description = "Installs a debug build only when the Samsung Health Data SDK API AAR is present for All steps parity testing."
+    dependsOn("checkSamsungHealthDataSdkReadiness", "installDebug")
+}
+
+if (providers.gradleProperty("trainiq.requireSamsungHealthDataSdk").map(String::toBoolean).orElse(false).get()) {
+    tasks.matching { task ->
+        task.name in setOf(
+            "assembleDebug",
+            "installDebug",
+            "assembleProfileable",
+            "installProfileable",
+        )
+    }.configureEach {
+        dependsOn("checkSamsungHealthDataSdkReadiness")
+    }
 }
 
 fun registerRoomMigrationChainVerificationMarkerTask(
@@ -178,17 +260,17 @@ fun registerRoomMigrationChainVerificationMarkerTask(
     )
 
     doLast {
-        val marker = "trainiq-room-migration-chain-v2-to-v12"
+        val marker = "trainiq-room-migration-chain-v2-to-v16"
         val testTask = "connectedDebugAndroidTest"
-        val currentRoomVersion = 12
+        val currentRoomVersion = 16
         val requiredStartVersion = 2
-        val requiredEndVersion = 12
+        val requiredEndVersion = 16
         val coveredStartVersion = 2
-        val coveredEndVersion = 12
+        val coveredEndVersion = 16
         val verifiedAtMillis = verifiedAtMillisProperty
             .map(String::toLong)
             .getOrElse(System.currentTimeMillis())
-        val migrationCount = 10
+        val migrationCount = 12
         val payloadForHash = listOf(
             marker,
             buildVariant,
@@ -265,6 +347,7 @@ ksp {
 
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
+    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
@@ -293,6 +376,7 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.gson)
+    implementation(libs.gson)
     implementation(libs.reorderable)
     implementation(libs.okhttp.logging)
     implementation(libs.kotlinx.coroutines.android)

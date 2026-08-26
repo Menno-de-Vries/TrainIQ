@@ -1,0 +1,6 @@
+D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-coach-loop\logcat-after-coach-advice.txt:74:05-27 01:12:12.764 18388 18388 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-coach-loop\logcat-after-coach-advice.txt:75:05-27 01:12:12.770 18388 18388 I AndroidRuntime: Using default boot image
+D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-coach-loop\logcat-after-coach-advice.txt:76:05-27 01:12:12.770 18388 18388 I AndroidRuntime: Leaving lock profiling enabled
+D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-coach-loop\logcat-after-coach-advice.txt:89:05-27 01:12:12.954 18388 18388 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-coach-loop\logcat-after-coach-advice.txt:292:05-27 01:12:12.975 18388 18388 E FeatureFlagsImplExport: android.os.flagging.AconfigStorageReadException: ERROR_PACKAGE_NOT_FOUND: package android.xr cannot be found on the device
+D:\GitHub\TrainIQ\TrainIQ-Project\docs\qa\evidence\2026-05-27-coach-loop\logcat-after-coach-advice.txt:482:05-27 01:12:14.164 18388 18388 D AndroidRuntime: Shutting down VM

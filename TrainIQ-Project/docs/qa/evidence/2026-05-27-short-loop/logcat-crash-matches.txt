@@ -1,0 +1,40 @@
+
+> docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:8:05-27 00:55:06.551 16451 16451 D AndroidRuntime: Shutting do
+wn VM
+  docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:9:05-27 00:55:06.551 16451 16461 W IPCThreadState: call to tal
+kWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+  docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:10:05-27 00:55:06.551  1507  2196 I AiAiEcho: Settings changed
+ for uri: content://settings/secure/accessibility_enabled
+  docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:11:05-27 00:55:06.551 16451 16466 W IPCThreadState: call to ta
+lkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+> docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:64:05-27 00:55:10.421 16477 16477 D AndroidRuntime: >>>>>> STA
+RT com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+> docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:65:05-27 00:55:10.428 16477 16477 I AndroidRuntime: Using defa
+ult boot image
+> docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:66:05-27 00:55:10.428 16477 16477 I AndroidRuntime: Leaving lo
+ck profiling enabled
+  docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:67:05-27 00:55:10.431 16477 16477 I app_process: Using Collect
+orTypeCMC GC.
+  docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:68:05-27 00:55:10.539 16477 16477 D nativeloader: InitDefaultP
+ublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so
+:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:li
+bmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync
+.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+  docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:69:05-27 00:55:10.542   701   869 D InetDiagMessage: Destroyed
+ 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+> docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:85:05-27 00:55:10.589 16477 16477 D AndroidRuntime: Calling ma
+in entry com.android.commands.uiautomator.Launcher
+  docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:86:05-27 00:55:10.593 16477 16477 I AconfigPackage: android.me
+dia.swcodec.flags is mapped to com.android.media.swcodec
+  docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:87:05-27 00:55:10.594 16477 16477 I AconfigPackage: com.google
+.android.settings.simplemode.flags is mapped to system_ext
+  docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:88:05-27 00:55:10.594 16477 16477 I AconfigPackage: com.google
+.android.systemui is mapped to system_ext
+> docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:425:05-27 00:55:11.724 16477 16477 D AndroidRuntime: Shutting
+down VM
+  docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:426:05-27 00:55:11.724  1507  1734 I AiAiEcho: #remoteViewsTwi
+ddler: feature disabled.
+  docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:427:05-27 00:55:11.724 16477 16486 W IPCThreadState: call to t
+alkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+  docs\qa\evidence\2026-05-27-short-loop\logcat-tail.txt:428:05-27 00:55:11.725 16477 16487 W IPCThreadState: call to t
+alkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1

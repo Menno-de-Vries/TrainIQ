@@ -61,11 +61,13 @@ class TrainIqLocalStore @Inject constructor(
         val loaded = loadState()
         _state.value = loaded.state
         launch {
-            updateRoomPreflightStatus(
-                sourceJson = loaded.sourceJson,
-                loadedState = loaded.state,
-                loadFailure = loaded.loadFailure,
-            )
+            runCatching {
+                updateRoomPreflightStatus(
+                    sourceJson = loaded.sourceJson,
+                    loadedState = loaded.state,
+                    loadFailure = loaded.loadFailure,
+                )
+            }
         }
     }
 

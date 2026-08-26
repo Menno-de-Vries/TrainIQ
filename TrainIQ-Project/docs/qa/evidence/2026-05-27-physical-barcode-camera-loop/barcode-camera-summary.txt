@@ -1,0 +1,16 @@
+device=SM-S931B
+
+android=16
+
+initialCameraGranted=False
+deniedFallbackVisible=True
+deniedFallbackLabels=Cameratoegang nodig; Geef cameratoegang om de scanner te gebruiken.; Toegang geven; Terug
+pmGrantAccepted=True
+sameRouteAfterGrantStillShowedPermissionGate=True
+afterForceStopRestartGrantedBarcodeScannerVisible=True
+realBarcodeScanned=False
+savedStateHandleReturnVerified=False
+cameraPermissionRestoredToInitialFalse=True
+deniedCrashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES
+
+grantedCrashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES

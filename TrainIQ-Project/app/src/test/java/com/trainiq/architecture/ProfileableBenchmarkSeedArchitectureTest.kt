@@ -24,9 +24,51 @@ class ProfileableBenchmarkSeedArchitectureTest {
         assertTrue(activitySource.contains("clearMirrorTables()"))
         assertTrue(activitySource.contains("startOrResumeActiveWorkoutSession("))
         assertTrue(manifestSource.contains("com.trainiq.benchmark.BenchmarkSeedActivity"))
-        assertTrue(manifestSource.contains("android:exported=\"true\""))
+        assertTrue("Benchmark seed activity must only be exported from the profileable-only manifest for macrobenchmark shell startup", manifestSource.contains("android:exported=\"true\""))
+        assertTrue(manifestSource.contains("android:excludeFromRecents=\"true\""))
+        assertTrue(manifestSource.contains("android:noHistory=\"true\""))
         assertTrue(macrobenchmarkSource.contains("BenchmarkSeedActivity"))
         assertTrue(macrobenchmarkSource.contains("activeWorkoutLoggingFrames"))
         assertFalse("Benchmark seed activity must not ship from main manifest", mainManifest.contains("BenchmarkSeedActivity"))
+    }
+
+    @Test
+    fun topLevelFrameBenchmarkSeedsCompletedOnboardingBeforeNavigation() {
+        val macrobenchmarkSource = File("../macrobenchmark/src/main/java/com/trainiq/macrobenchmark/TrainIqStartupBenchmark.java").readText()
+        val benchmarkBody = macrobenchmarkSource
+            .substringAfter("public void topLevelNavigationAndSettingsScrollFrames()")
+            .substringBefore("public void activeWorkoutLoggingFrames()")
+        val baselineProfileBody = macrobenchmarkSource
+            .substringAfter("public void generateBaselineProfileForCriticalJourneys()")
+            .substringBefore("public void coldStartupWithRequiredBaselineProfile()")
+
+        assertTrue(benchmarkBody.contains("seedActiveWorkout(scope);"))
+        assertTrue(benchmarkBody.indexOf("seedActiveWorkout(scope);") < benchmarkBody.indexOf("startTrainIqMainActivity(scope);"))
+        assertTrue(baselineProfileBody.contains("seedActiveWorkout(scope);"))
+    }
+
+    @Test
+    fun topLevelBenchmarkTargetsNavigationSlotsInsteadOfAmbiguousScreenText() {
+        val source = File("../macrobenchmark/src/main/java/com/trainiq/macrobenchmark/TrainIqStartupBenchmark.java").readText()
+        val navigationBody = source
+            .substringAfter("private Unit navigateAndScrollSettings(MacrobenchmarkScope scope)")
+            .substringBefore("private Unit logActiveWorkoutSet")
+
+        assertTrue(navigationBody.contains("tapVisibleTextCenter(device, \"Meer\");"))
+        assertFalse(navigationBody.contains("tapBottomDestination(device, 1);"))
+        assertFalse(navigationBody.contains("tapBottomDestination(device, 2);"))
+        assertFalse(navigationBody.contains("tapBottomDestination(device, 3);"))
+        assertFalse(navigationBody.contains("tapBottomDestination(device, 4);"))
+    }
+
+    @Test
+    fun settingsBenchmarkCrossesEverySectionBoundaryInBothDirections() {
+        val source = File("../macrobenchmark/src/main/java/com/trainiq/macrobenchmark/TrainIqStartupBenchmark.java").readText()
+        val navigationBody = source
+            .substringAfter("private Unit navigateAndScrollSettings(MacrobenchmarkScope scope)")
+            .substringBefore("private Unit logActiveWorkoutSet")
+
+        assertTrue(navigationBody.contains("swipeAcrossSettings(device, true, 6);"))
+        assertTrue(navigationBody.contains("swipeAcrossSettings(device, false, 6);"))
     }
 }

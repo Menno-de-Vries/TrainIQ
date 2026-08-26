@@ -5,21 +5,21 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
@@ -29,7 +29,9 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,11 +54,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
 import com.trainiq.core.health.HealthConnectRefreshOnResume
+import com.trainiq.core.health.healthConnectStepSourceLabel
 import com.trainiq.core.health.rememberHealthConnectPermissionRequester
 import com.trainiq.core.theme.spacing
 import com.trainiq.core.ui.PermissionManagerCard
 import com.trainiq.core.ui.ScreenHeader
-import com.trainiq.core.ui.ShimmerCardPlaceholder
 import com.trainiq.core.ui.AppCard
 import com.trainiq.core.ui.AppChip
 import com.trainiq.core.ui.PrimaryActionButton
@@ -65,17 +67,18 @@ import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.core.util.EnergyBalanceCard
 import com.trainiq.core.util.MacroBreakdownCard
-import com.trainiq.core.util.MetricCard
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
+import com.trainiq.domain.model.HealthConnectStepDataFreshness
 import com.trainiq.domain.model.HomeDashboard
 import com.trainiq.domain.usecase.BuildHomeDashboardUseCase
 import com.trainiq.domain.usecase.GetHealthConnectStatusUseCase
 import com.trainiq.domain.usecase.ObserveHomeDashboardUseCase
 import com.trainiq.domain.usecase.RefreshDashboardDataUseCase
-import com.trainiq.navigation.TrainIqWindowWidthClass
-import com.trainiq.navigation.adaptiveDashboardGridColumns
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -83,6 +86,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -91,6 +95,8 @@ sealed interface HomeUiState {
     data class Success(
         val dashboard: HomeDashboard,
         val healthConnectStatus: HealthConnectStatus,
+        val isRefreshingHealth: Boolean = false,
+        val refreshMessage: String? = null,
     ) : HomeUiState
     data class Error(val message: String) : HomeUiState
 }
@@ -103,6 +109,7 @@ class HomeViewModel @Inject constructor(
     private val refreshDashboardDataUseCase: RefreshDashboardDataUseCase,
 ) : ViewModel() {
     private val healthConnectRefreshGate = HomeRefreshGate()
+    private val healthRefreshUiState = MutableStateFlow(HomeHealthRefreshUiState())
 
     private val dashboard = observeHomeDashboardUseCase()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -114,33 +121,45 @@ class HomeViewModel @Inject constructor(
         ),
     )
 
-    val uiState: StateFlow<HomeUiState> = combine(dashboard, healthConnectStatus) { home, health ->
+    val uiState: StateFlow<HomeUiState> = combine(dashboard, healthConnectStatus, healthRefreshUiState) { home, health, refresh ->
         when {
             home == null -> HomeUiState.Loading
             else -> HomeUiState.Success(
                 buildHomeDashboardUseCase.mergeHealthStatus(home, health),
                 health,
+                isRefreshingHealth = refresh.isRefreshing,
+                refreshMessage = refresh.message,
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState.Loading)
 
     init {
         viewModelScope.launch {
-            delay(2_000L)
             refreshHealthConnectStatus()
         }
     }
 
     fun refreshDashboardAndHealthStatus() {
-        viewModelScope.launch {
-            refreshDashboardDataSafely { refreshDashboardDataUseCase() }
-            refreshHealthConnectStatus()
+        if (!healthConnectRefreshGate.tryStart()) return
+        healthRefreshUiState.value = HomeHealthRefreshUiState(isRefreshing = true)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val dashboardRefreshSucceeded = refreshDashboardDataSafely { refreshDashboardDataUseCase() }
+                val statusResult = runCatching { getHealthConnectStatusUseCase() }
+                statusResult.getOrNull()?.let { healthConnectStatus.value = it }
+                healthRefreshUiState.value = HomeHealthRefreshUiState(
+                    isRefreshing = false,
+                    message = homeHealthRefreshMessage(dashboardRefreshSucceeded && statusResult.isSuccess),
+                )
+            } finally {
+                healthConnectRefreshGate.finish()
+            }
         }
     }
 
     fun refreshHealthConnectStatus() {
         if (!healthConnectRefreshGate.tryStart()) return
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 healthConnectStatus.value = runCatching { getHealthConnectStatusUseCase() }.getOrElse {
                     HealthConnectStatus(
@@ -154,6 +173,11 @@ class HomeViewModel @Inject constructor(
         }
     }
 }
+
+internal data class HomeHealthRefreshUiState(
+    val isRefreshing: Boolean = false,
+    val message: String? = null,
+)
 
 internal class HomeRefreshGate {
     private var inFlight = false
@@ -170,6 +194,13 @@ internal class HomeRefreshGate {
         inFlight = false
     }
 }
+
+internal fun homeHealthRefreshMessage(success: Boolean): String =
+    if (success) {
+        "Health Connect bijgewerkt."
+    } else {
+        "Health Connect kon niet worden ververst. Laatste bekende data blijft zichtbaar."
+    }
 
 internal suspend fun refreshDashboardDataSafely(refreshDashboardData: suspend () -> Unit): Boolean {
     return try {
@@ -190,7 +221,6 @@ fun HomeRoute(
     onOpenCoach: () -> Unit,
     onOpenTrain: () -> Unit,
     onOpenSettings: () -> Unit,
-    windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -218,8 +248,7 @@ fun HomeRoute(
         onOpenTrain = onOpenTrain,
         onOpenSettings = onOpenSettings,
         onRequestHealthPermission = requestHealthPermission,
-        onRefreshHealth = viewModel::refreshHealthConnectStatus,
-        windowWidthClass = windowWidthClass,
+        onRefreshHealth = viewModel::refreshDashboardAndHealthStatus,
     )
 }
 
@@ -232,34 +261,28 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onRequestHealthPermission: () -> Unit,
     onRefreshHealth: () -> Unit,
-    windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
 ) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
-    val gridColumns = adaptiveDashboardGridColumns(windowWidthClass)
-
     when (uiState) {
             HomeUiState.Loading -> {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(gridColumns),
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .clearFocusOnScrollOrDrag()
+                        .verticalScroll(rememberScrollState())
                         .navigationBarsPadding()
-                        .imePadding(),
-                    contentPadding = PaddingValues(
-                        start = MaterialTheme.spacing.medium,
-                        top = MaterialTheme.spacing.medium,
-                        end = MaterialTheme.spacing.medium,
-                        bottom = 132.dp,
-                    ),
+                        .imePadding()
+                        .padding(
+                            start = MaterialTheme.spacing.medium,
+                            top = MaterialTheme.spacing.medium,
+                            end = MaterialTheme.spacing.medium,
+                            bottom = 132.dp,
+                        ),
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
-                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                 ) {
-                    item(span = { GridItemSpan(gridColumns) }) {
-                        ScreenHeader(title = "TrainIQ", subtitle = "Vandaag in een slimme cockpit", actionIcon = Icons.Default.Settings, actionContentDescription = "Instellingen openen", onActionClick = onOpenSettings)
-                    }
-                    items(4) { ShimmerCardPlaceholder(lineCount = 4, modifier = Modifier.height(170.dp)) }
+                    ScreenHeader(title = "TrainIQ", subtitle = "Vandaag in een slimme cockpit", actionIcon = Icons.Default.Settings, actionContentDescription = "Instellingen openen", onActionClick = onOpenSettings)
+                    repeat(4) { HomeStartupPlaceholder(modifier = Modifier.height(170.dp)) }
                 }
             }
 
@@ -281,83 +304,64 @@ fun HomeScreen(
             is HomeUiState.Success -> {
                 val dashboard = uiState.dashboard
                 val healthConnectStatus = uiState.healthConnectStatus
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(gridColumns),
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .clearFocusOnScrollOrDrag()
+                        .verticalScroll(rememberScrollState())
                         .navigationBarsPadding()
-                        .imePadding(),
-                    contentPadding = PaddingValues(
-                        start = MaterialTheme.spacing.medium,
-                        top = MaterialTheme.spacing.medium,
-                        end = MaterialTheme.spacing.medium,
-                        bottom = 132.dp,
-                    ),
+                        .imePadding()
+                        .padding(
+                            start = MaterialTheme.spacing.medium,
+                            top = MaterialTheme.spacing.medium,
+                            end = MaterialTheme.spacing.medium,
+                            bottom = 132.dp,
+                        ),
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
-                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                 ) {
-                    item(span = { GridItemSpan(gridColumns) }) {
-                        ScreenHeader(title = "TrainIQ", subtitle = "Vandaag in een slimme cockpit", actionIcon = Icons.Default.Settings, actionContentDescription = "Instellingen openen", onActionClick = onOpenSettings)
-                    }
+                    ScreenHeader(title = "TrainIQ", subtitle = "Vandaag in een slimme cockpit", actionIcon = Icons.Default.Settings, actionContentDescription = "Instellingen openen", onActionClick = onOpenSettings)
                     if (dashboard.profile == null) {
-                        item(span = { GridItemSpan(gridColumns) }) {
-                            DiscoveryCard(onOpenCoach = onOpenCoach)
-                        }
-                        item(span = { GridItemSpan(gridColumns) }) {
-                            SetupChecklistCard(
-                                hasRoutine = dashboard.nextWorkout != null,
-                                hasLoggedFood = dashboard.calorieProgress > 0,
-                                healthConnectStatus = healthConnectStatus,
-                                onOpenCoach = onOpenCoach,
-                                onOpenTrain = onOpenTrain,
-                                onRequestHealthPermission = onRequestHealthPermission,
-                            )
-                        }
+                        DiscoveryCard(onOpenCoach = onOpenCoach)
+                        SetupChecklistCard(
+                            hasRoutine = dashboard.nextWorkout != null,
+                            hasLoggedFood = dashboard.calorieProgress > 0,
+                            healthConnectStatus = healthConnectStatus,
+                            onOpenCoach = onOpenCoach,
+                            onOpenTrain = onOpenTrain,
+                            onRequestHealthPermission = onRequestHealthPermission,
+                        )
                     } else {
-                        item(span = { GridItemSpan(gridColumns) }) {
-                            EnergyBalanceCard(
-                                energyBalance = dashboard.energyBalance,
-                                calorieTarget = dashboard.calorieTarget,
-                                modifier = Modifier,
-                            )
-                        }
-                        item(span = { GridItemSpan(gridColumns) }) {
-                            MacroBreakdownCard(
+                        EnergyBalanceCard(
+                            energyBalance = dashboard.energyBalance,
+                            calorieTarget = dashboard.calorieTarget,
+                            modifier = Modifier,
+                        )
+                        MacroBreakdownCard(
                             protein = dashboard.proteinProgress,
                             proteinTarget = dashboard.proteinTarget,
                             carbs = dashboard.carbsProgress,
                             carbsTarget = dashboard.carbsTarget,
                             fat = dashboard.fatProgress,
                             fatTarget = dashboard.fatTarget,
-                                modifier = Modifier,
-                            )
-                        }
-                        item {
-                            MetricCard(
-                                title = "Reeks",
-                                value = "${dashboard.streak} dagen",
-                                subtitle = if (dashboard.streak > 0) "Je ritme staat stevig" else "Log een training of maaltijd om momentum op te bouwen",
-                                modifier = Modifier.height(170.dp),
-                            )
-                        }
-                        item {
-                            MetricCard(
-                                title = "Stappen",
-                                value = when (healthConnectStatus.state) {
-                                    HealthConnectState.CONNECTED -> "${healthConnectStatus.stepsToday ?: 0}"
-                                    HealthConnectState.NO_DATA -> "Geen data"
-                                    else -> "Offline"
+                            modifier = Modifier,
+                        )
+                        HomeMomentumCard(
+                            streak = dashboard.streak,
+                            healthStatus = healthConnectStatus,
+                            todaysWorkoutCalories = dashboard.todaysWorkoutCalories,
+                        )
+                        if (showCompactHomeHealthCard(healthConnectStatus)) {
+                            HomeHealthStatusRow(
+                                status = healthConnectStatus,
+                                isRefreshingHealth = uiState.isRefreshingHealth,
+                                refreshMessage = uiState.refreshMessage,
+                                onRefresh = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onRefreshHealth()
                                 },
-                                subtitle = buildHomeRecoverySubtitle(
-                                    stepsToday = healthConnectStatus.stepsToday,
-                                    averageHeartRateBpm = healthConnectStatus.averageHeartRateBpm,
-                                    todaysWorkoutCalories = dashboard.todaysWorkoutCalories,
-                                ),
-                                modifier = Modifier.height(170.dp),
                             )
                         }
-                        item(span = { GridItemSpan(gridColumns) }) {
+                        if (!showCompactHomeHealthCard(healthConnectStatus)) {
                             PermissionManagerCard(
                                 status = healthConnectStatus,
                                 onRequestPermission = {
@@ -383,7 +387,7 @@ fun HomeScreen(
                                 },
                             )
                         }
-                        item(span = { GridItemSpan(gridColumns) }) {
+                        if (dashboard.nextWorkout != null) {
                             NextWorkoutCard(
                                 dashboard = dashboard,
                                 onOpenTrain = onOpenTrain,
@@ -392,10 +396,9 @@ fun HomeScreen(
                                     onStartWorkout(it)
                                 },
                             )
-                        }
-                        item(span = { GridItemSpan(gridColumns) }) {
+                        } else {
                             CoachInsightCard(
-                                insight = dashboard.aiInsight,
+                                insight = dashboard.coachInsight,
                                 onOpenCoach = onOpenCoach,
                             )
                         }
@@ -419,6 +422,211 @@ internal fun buildHomeRecoverySubtitle(
         append(" - ")
     }
     append("Training $todaysWorkoutCalories kcal")
+}
+
+@Composable
+private fun HomeMomentumCard(
+    streak: Int,
+    healthStatus: HealthConnectStatus,
+    todaysWorkoutCalories: Int,
+) {
+    AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
+        Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium)) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Momentum", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                Text(
+                    homeMomentumEncouragement(streak, healthStatus),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.trainIqColors.mutedText,
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Max),
+                horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+            ) {
+                HomeMomentumMetricRow(
+                    modifier = Modifier.weight(1f),
+                    title = "Reeks",
+                    value = homeStreakValue(streak),
+                    subtitle = homeStreakSubtitle(streak),
+                    accent = MaterialTheme.trainIqColors.amber,
+                )
+                HomeMomentumMetricRow(
+                    modifier = Modifier.weight(1f),
+                    title = "Stappen",
+                    value = homeStepsValue(healthStatus),
+                    subtitle = buildHomeRecoverySubtitle(
+                        stepsToday = healthStatus.stepsToday,
+                        averageHeartRateBpm = healthStatus.averageHeartRateBpm,
+                        todaysWorkoutCalories = todaysWorkoutCalories,
+                    ),
+                    accent = MaterialTheme.trainIqColors.mint,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeMomentumMetricRow(
+    modifier: Modifier = Modifier,
+    title: String,
+    value: String,
+    subtitle: String,
+    accent: Color,
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxHeight()
+            .defaultMinSize(minHeight = 96.dp),
+        shape = MaterialTheme.shapes.large,
+        color = accent.copy(alpha = 0.10f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = BorderStroke(1.dp, MaterialTheme.trainIqColors.cardBorder.copy(alpha = 0.72f)),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = MaterialTheme.spacing.medium, vertical = MaterialTheme.spacing.small),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                title,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.trainIqColors.mutedText,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                value,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.ExtraBold,
+            )
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
+}
+
+internal fun homeStreakValue(streak: Int): String = "$streak dagen"
+
+internal fun homeStreakSubtitle(streak: Int): String =
+    if (streak > 0) "Ritme staat aan" else "Start vandaag"
+
+internal fun homeStepsValue(status: HealthConnectStatus): String = when (status.state) {
+    HealthConnectState.CONNECTED,
+    HealthConnectState.NO_DATA -> when (status.stepDataFreshness) {
+        HealthConnectStepDataFreshness.FRESH,
+        HealthConnectStepDataFreshness.STALE_CACHE -> status.stepsToday?.toString() ?: "Geen data"
+        else -> "Geen data"
+    }
+    else -> "Offline"
+}
+
+internal fun homeMomentumEncouragement(streak: Int, status: HealthConnectStatus): String {
+    val stepsToday = status.stepsToday
+    return when {
+        streak <= 0 && status.state == HealthConnectState.NO_DATA ->
+            "Start klein: log vandaag een maaltijd of pak je eerste wandeling. Dan wordt je coach direct scherper."
+        streak <= 0 && stepsToday == null ->
+            "Begin lokaal met een maaltijd of training. Je hoeft niet te wachten op Health Connect-data."
+        stepsToday != null && stepsToday > 0 ->
+            "Je beweging staat erin. Houd je voeding en training erbij, dan blijft het beeld compleet."
+        streak > 0 ->
+            "Je ritme staat aan. Blijf kleine logs toevoegen zodat je coach scherp blijft."
+        else ->
+            "Kleine logs houden je coach scherp."
+    }
+}
+
+@Composable
+private fun HomeHealthStatusRow(
+    status: HealthConnectStatus,
+    isRefreshingHealth: Boolean,
+    refreshMessage: String?,
+    onRefresh: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.trainIqColors.cardElevated,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = BorderStroke(1.dp, MaterialTheme.trainIqColors.cardBorder.copy(alpha = 0.72f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(MaterialTheme.spacing.medium),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
+        ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Health Connect", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+                    Text(
+                        homeHealthCompactSummary(status),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.trainIqColors.mutedText,
+                    )
+                }
+                TextButton(onClick = onRefresh, enabled = !isRefreshingHealth) {
+                    Text(if (isRefreshingHealth) "Verversen..." else "Verversen")
+                }
+            }
+            homeHealthSyncSummary(status)?.let { syncSummary ->
+                Text(
+                    syncSummary,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.trainIqColors.mutedText,
+                )
+            }
+            refreshMessage?.let {
+                Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
+}
+
+internal fun homeHealthCompactSummary(status: HealthConnectStatus): String = when (status.state) {
+    HealthConnectState.PERMISSION_REQUIRED -> "Stappentoegang ontbreekt."
+    HealthConnectState.PROVIDER_MISSING -> "Health Connect moet worden bijgewerkt."
+    HealthConnectState.UNSUPPORTED -> "Health Connect wordt niet ondersteund."
+    HealthConnectState.ERROR -> "Stappen konden niet worden bijgewerkt."
+    HealthConnectState.CONNECTED,
+    HealthConnectState.NO_DATA -> when (status.stepDataFreshness) {
+        HealthConnectStepDataFreshness.FRESH -> status.stepsToday
+            ?.let { "$it stappen · ${healthConnectStepSourceLabel(status)}" }
+            ?: "Nog geen recente stappen."
+        HealthConnectStepDataFreshness.STALE_CACHE -> status.stepsToday
+            ?.let { "Laatst bekend: $it stappen · ${healthConnectStepSourceLabel(status)}" }
+            ?: "Nog geen recente stappen."
+        HealthConnectStepDataFreshness.PERMISSION_MISSING -> "Stappentoegang ontbreekt."
+        HealthConnectStepDataFreshness.UNAVAILABLE -> "Health Connect is niet beschikbaar."
+        HealthConnectStepDataFreshness.ERROR -> "Stappen konden niet worden bijgewerkt."
+        HealthConnectStepDataFreshness.UNKNOWN -> "Stappenstatus wordt opgehaald."
+    }
+}
+
+internal fun homeHealthSyncSummary(status: HealthConnectStatus): String? {
+    val updatedAt = status.stepDataUpdatedAt ?: status.lastSyncedAt ?: return null
+    return when (status.stepDataFreshness) {
+        HealthConnectStepDataFreshness.FRESH -> "Bijgewerkt om ${formatHomeLastSync(updatedAt)}"
+        HealthConnectStepDataFreshness.STALE_CACHE -> "Laatste update om ${formatHomeLastSync(updatedAt)}"
+        else -> null
+    }
+}
+
+internal fun showCompactHomeHealthCard(status: HealthConnectStatus): Boolean =
+    (status.state == HealthConnectState.CONNECTED || status.state == HealthConnectState.NO_DATA) &&
+        status.stepDataFreshness != HealthConnectStepDataFreshness.PERMISSION_MISSING
+
+internal fun formatHomeLastSync(lastSyncedAt: Long?): String {
+    lastSyncedAt ?: return "nog niet"
+    val formatter = DateTimeFormatter.ofPattern("HH:mm")
+    return Instant.ofEpochMilli(lastSyncedAt)
+        .atZone(ZoneId.systemDefault())
+        .format(formatter)
 }
 
 @Composable
@@ -472,10 +680,8 @@ private fun SetupChecklistCard(
                 "Health Connect optioneel koppelen",
                 done = healthConnectStatus.state == HealthConnectState.CONNECTED || healthConnectStatus.state == HealthConnectState.NO_DATA,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-                PrimaryActionButton(onClick = onOpenCoach, modifier = Modifier.weight(1f)) { Text("Profiel invullen") }
-                SecondaryActionButton(onClick = onOpenTrain, modifier = Modifier.weight(1f)) { Text("Routine maken") }
-            }
+            PrimaryActionButton(onClick = onOpenCoach, modifier = Modifier.fillMaxWidth()) { Text("Profiel invullen") }
+            SecondaryActionButton(onClick = onOpenTrain, modifier = Modifier.fillMaxWidth()) { Text("Routine maken") }
             if (healthConnectStatus.state == HealthConnectState.PERMISSION_REQUIRED) {
                 SecondaryActionButton(onClick = onRequestHealthPermission, modifier = Modifier.fillMaxWidth()) {
                     Text("Health Connect koppelen")
@@ -500,12 +706,13 @@ private fun NextWorkoutCard(
     onOpenTrain: () -> Unit,
     onStartWorkout: (Long) -> Unit,
 ) {
-    AppCard(modifier = Modifier.fillMaxWidth()) {
+    AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
         Column(
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
-            Text("Volgende training", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+            Text("Volgende training", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.amber, fontWeight = FontWeight.SemiBold)
             if (dashboard.nextWorkout == null) {
+                Text("Geen sessie klaar", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
                 Text("Er staat nog geen actieve trainingsdag klaar. Ga naar Training om je eerste sessie in te stellen.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
                 SecondaryActionButton(onClick = onOpenTrain) { Text("Training openen") }
             } else {
@@ -513,7 +720,7 @@ private fun NextWorkoutCard(
                     dashboard.nextWorkout.exercises.joinToString { it.exercise.name }
                         .ifBlank { "Voeg oefeningen toe aan deze dag." }
                 }
-                Text(dashboard.nextWorkout.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
+                Text(dashboard.nextWorkout.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
                 Text(
                     exerciseSummary,
                     style = MaterialTheme.typography.bodyMedium,
@@ -526,7 +733,29 @@ private fun NextWorkoutCard(
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
-                PrimaryActionButton(onClick = { onStartWorkout(dashboard.nextWorkout.id) }) { Text("Training starten") }
+                PrimaryActionButton(onClick = { onStartWorkout(dashboard.nextWorkout.id) }, modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) { Text("Training starten") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeStartupPlaceholder(modifier: Modifier = Modifier) {
+    AppCard(modifier = modifier) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            repeat(4) { index ->
+                val widthFraction = when (index) {
+                    0 -> 0.5f
+                    3 -> 0.85f
+                    else -> 1f
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(widthFraction)
+                        .height(if (index == 0) 24.dp else 16.dp)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)),
+                )
             }
         }
     }
@@ -553,7 +782,7 @@ private fun CoachInsightCard(
     insight: String,
     onOpenCoach: () -> Unit,
 ) {
-    AppCard(accent = MaterialTheme.colorScheme.primary) {
+    AppCard(accent = MaterialTheme.trainIqColors.amber) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -561,7 +790,7 @@ private fun CoachInsightCard(
                     Brush.linearGradient(
                         colors = listOf(
                             MaterialTheme.colorScheme.surface,
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+                            MaterialTheme.trainIqColors.amber.copy(alpha = 0.08f),
                             MaterialTheme.colorScheme.secondary.copy(alpha = 0.03f),
                         ),
                     ),
@@ -569,9 +798,10 @@ private fun CoachInsightCard(
                 .padding(MaterialTheme.spacing.medium),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
-            Text("AI-inzicht", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+            Text("Coach-inzicht", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.amber, fontWeight = FontWeight.SemiBold)
+            Text("Lokale analyse", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
             Text(insight, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.trainIqColors.mutedText)
-            SecondaryActionButton(onClick = onOpenCoach) { Text("Coach openen") }
+            SecondaryActionButton(onClick = onOpenCoach, modifier = Modifier.fillMaxWidth()) { Text("Coach openen") }
         }
     }
 }

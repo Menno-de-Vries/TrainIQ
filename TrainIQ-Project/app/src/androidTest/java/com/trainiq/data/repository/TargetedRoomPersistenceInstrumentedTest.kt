@@ -1,8 +1,10 @@
 package com.trainiq.data.repository
 
+import android.content.ContextWrapper
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.google.gson.JsonParser
 import com.trainiq.core.database.ActiveWorkoutCollapsedExerciseEntity
 import com.trainiq.core.database.ActiveWorkoutDraftEntity
 import com.trainiq.core.database.ActiveWorkoutSessionEntity
@@ -25,6 +27,17 @@ import com.trainiq.core.database.WorkoutLogEventSetEntity
 import com.trainiq.core.database.WorkoutRoutineEntity
 import com.trainiq.core.database.WorkoutSessionEntity
 import com.trainiq.core.database.WorkoutSetEntity
+import com.trainiq.data.local.FoodItemStorage
+import com.trainiq.data.local.TrainIqLocalStore
+import com.trainiq.data.migration.JsonRoomImportPlanner
+import com.trainiq.data.migration.RoomImportDryRun
+import com.trainiq.data.migration.RoomJsonImportSink
+import com.trainiq.data.migration.RoomMigrationChainVerificationMarker
+import com.trainiq.data.migration.RoomMigrationChainVerificationMarkerSource
+import com.trainiq.data.migration.RoomMigrationChainVerificationProvider
+import com.trainiq.data.migration.RoomRuntimeReadinessGate
+import com.trainiq.domain.model.FoodSourceType
+import com.trainiq.domain.usecase.ExportAppDataUseCase
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -50,6 +63,60 @@ class TargetedRoomPersistenceInstrumentedTest {
     fun tearDown() {
         database.close()
         context.deleteDatabase(dbName)
+    }
+
+    @Test
+    fun targetedSequentialAiFoodSavesAllocateDistinctIdsWithoutFlowWait() = runTest {
+        val runtimeStore = runtimeStore()
+
+        val firstSaved = runtimeStore.saveFood(
+            FoodItemStorage(
+                name = "AI havermout",
+                caloriesPer100g = 370.0,
+                sourceType = FoodSourceType.AI,
+                createdAt = 1_000L,
+                updatedAt = 1_000L,
+            ),
+        )
+        val secondSaved = runtimeStore.saveFood(
+            FoodItemStorage(
+                name = "AI banaan",
+                caloriesPer100g = 89.0,
+                sourceType = FoodSourceType.AI,
+                createdAt = 2_000L,
+                updatedAt = 2_000L,
+            ),
+        )
+
+        val savedFoods = database.dao().observeFoodItems().first()
+        assertTrue(firstSaved.id > 0L)
+        assertTrue(secondSaved.id > 0L)
+        assertTrue(firstSaved.id != secondSaved.id)
+        assertEquals(2, savedFoods.size)
+        assertEquals(setOf(firstSaved.id, secondSaved.id), savedFoods.map { it.id }.toSet())
+    }
+
+    @Test
+    fun targetedImmediateExportReadsNewRoomRecordWithoutFlowWait() = runTest {
+        val runtimeStore = runtimeStore()
+        val persisted = runtimeStore.saveFood(
+            FoodItemStorage(
+                name = "Direct Room exportproduct",
+                caloriesPer100g = 123.0,
+                sourceType = FoodSourceType.AI,
+                createdAt = 3_000L,
+                updatedAt = 3_000L,
+            ),
+        )
+
+        val json = JsonParser.parseString(ExportAppDataUseCase(runtimeStore).invoke()).asJsonObject
+        val exportedFood = json.getAsJsonObject("data")
+            .getAsJsonArray("foods")
+            .map { it.asJsonObject }
+            .single { it.get("id").asLong == persisted.id }
+
+        assertEquals("Direct Room exportproduct", exportedFood.get("name").asString)
+        assertEquals(123.0, exportedFood.get("caloriesPer100g").asDouble, 0.0)
     }
 
     @Test
@@ -143,7 +210,7 @@ class TargetedRoomPersistenceInstrumentedTest {
             ),
         )
 
-        dao.updateWorkoutSessionDebrief(
+        val updatedRows = dao.updateWorkoutSessionDebrief(
             sessionId = 51L,
             summary = "AI samenvatting",
             progressionFeedback = "Meer volume dan vorige sessie.",
@@ -157,7 +224,7 @@ class TargetedRoomPersistenceInstrumentedTest {
             recoveryAdvice = "Slaap bewaken",
             source = "GEMINI",
         )
-        dao.updateWorkoutSessionDebrief(
+        val ignoredRows = dao.updateWorkoutSessionDebrief(
             sessionId = 52L,
             summary = "Mag niet landen",
             progressionFeedback = "Draft",
@@ -178,6 +245,8 @@ class TargetedRoomPersistenceInstrumentedTest {
         val completed = reopened.observeWorkoutSessions().first().single { it.id == 51L }
         val draft = reopened.observeWorkoutSessions().first().single { it.id == 52L }
 
+        assertEquals(1, updatedRows)
+        assertEquals(0, ignoredRows)
         assertEquals("AI samenvatting", completed.debriefSummary)
         assertEquals("Meer volume dan vorige sessie.", completed.debriefProgressionFeedback)
         assertEquals("Behoud belasting.", completed.debriefRecommendation)
@@ -558,6 +627,141 @@ class TargetedRoomPersistenceInstrumentedTest {
         assertEquals(listOf(122L), reopened.observeMeals().first().map { it.id })
         assertEquals(listOf(123L), reopened.observeMealItems().first().map { it.id })
         assertTrue(reopened.observeMealItems().first().none { it.mealId == 120L })
+    }
+
+    @Test
+    fun targetedMealItemSnapshotsDoNotChangeAfterProductAndRecipeEdits() = runTest {
+        val dao = database.dao()
+
+        dao.insertFoodItems(
+            listOf(
+                FoodItemEntity(
+                    id = 90L,
+                    name = "Kip rollade",
+                    caloriesPer100g = 140.0,
+                    proteinPer100g = 22.0,
+                    carbsPer100g = 1.0,
+                    fatPer100g = 5.0,
+                    sourceType = "MANUAL",
+                    createdAt = 1L,
+                    updatedAt = 1L,
+                ),
+                FoodItemEntity(
+                    id = 91L,
+                    name = "Kaas",
+                    caloriesPer100g = 350.0,
+                    proteinPer100g = 25.0,
+                    carbsPer100g = 2.0,
+                    fatPer100g = 29.0,
+                    sourceType = "MANUAL",
+                    createdAt = 1L,
+                    updatedAt = 1L,
+                ),
+            ),
+        )
+        dao.saveRecipe(
+            recipe = RecipeEntity(id = 80L, name = "Wrap kip kaas", createdAt = 1L, updatedAt = 1L),
+            ingredients = listOf(
+                RecipeIngredientEntity(id = 100L, recipeId = 80L, foodItemId = 90L, gramsUsed = 80.0, orderIndex = 0),
+                RecipeIngredientEntity(id = 101L, recipeId = 80L, foodItemId = 91L, gramsUsed = 30.0, orderIndex = 1),
+            ),
+        )
+        dao.saveMeal(
+            meal = MealEntity(
+                id = 120L,
+                date = 1_000L,
+                mealType = "LUNCH",
+                name = "Lunch snapshot",
+                calories = 217,
+                protein = 25,
+                carbs = 2,
+                fat = 13,
+            ),
+            items = listOf(
+                MealItemEntity(
+                    id = 121L,
+                    mealId = 120L,
+                    itemType = "FOOD",
+                    referenceId = 90L,
+                    name = "Kip rollade",
+                    gramsUsed = 80.0,
+                    calories = 112.0,
+                    protein = 17.6,
+                    carbs = 0.8,
+                    fat = 4.0,
+                    orderIndex = 0,
+                ),
+                MealItemEntity(
+                    id = 122L,
+                    mealId = 120L,
+                    itemType = "FOOD",
+                    referenceId = 91L,
+                    name = "Kaas",
+                    gramsUsed = 30.0,
+                    calories = 105.0,
+                    protein = 7.5,
+                    carbs = 0.6,
+                    fat = 8.7,
+                    orderIndex = 1,
+                ),
+                MealItemEntity(
+                    id = 123L,
+                    mealId = 120L,
+                    itemType = "RECIPE",
+                    referenceId = 80L,
+                    name = "Wrap kip kaas",
+                    gramsUsed = 110.0,
+                    calories = 217.0,
+                    protein = 25.1,
+                    carbs = 1.4,
+                    fat = 12.7,
+                    orderIndex = 2,
+                ),
+            ),
+        )
+
+        dao.insertFoodItems(
+            listOf(
+                FoodItemEntity(
+                    id = 90L,
+                    name = "Kip rollade aangepast",
+                    caloriesPer100g = 999.0,
+                    proteinPer100g = 1.0,
+                    carbsPer100g = 99.0,
+                    fatPer100g = 99.0,
+                    sourceType = "MANUAL",
+                    createdAt = 1L,
+                    updatedAt = 2L,
+                ),
+                FoodItemEntity(
+                    id = 91L,
+                    name = "Kaas aangepast",
+                    caloriesPer100g = 111.0,
+                    proteinPer100g = 2.0,
+                    carbsPer100g = 3.0,
+                    fatPer100g = 4.0,
+                    sourceType = "MANUAL",
+                    createdAt = 1L,
+                    updatedAt = 2L,
+                ),
+            ),
+        )
+        dao.saveRecipe(
+            recipe = RecipeEntity(id = 80L, name = "Wrap aangepast", createdAt = 1L, updatedAt = 2L),
+            ingredients = listOf(RecipeIngredientEntity(id = 102L, recipeId = 80L, foodItemId = 91L, gramsUsed = 200.0)),
+        )
+
+        database.close()
+        database = openDatabase()
+        val reopened = database.dao()
+        val snapshots = reopened.observeMealItems().first().sortedBy { it.orderIndex }
+
+        assertEquals(listOf("Kip rollade", "Kaas", "Wrap kip kaas"), snapshots.map { it.name })
+        assertEquals(listOf(112.0, 105.0, 217.0), snapshots.map { it.calories })
+        assertEquals(listOf(17.6, 7.5, 25.1), snapshots.map { it.protein })
+        assertEquals(listOf(90L, 91L, 80L), snapshots.map { it.referenceId })
+        assertEquals("Kip rollade aangepast", reopened.observeFoodItems().first().single { it.id == 90L }.name)
+        assertEquals("Wrap aangepast", reopened.observeRecipes().first().single { it.id == 80L }.name)
     }
 
     @Test
@@ -1257,4 +1461,24 @@ class TargetedRoomPersistenceInstrumentedTest {
 
     private fun openDatabase(): TrainIqDatabase =
         Room.databaseBuilder(context, TrainIqDatabase::class.java, dbName).build()
+
+    private fun runtimeStore(): RoomTrainIqRuntimeStore {
+        val isolatedFilesContext = object : ContextWrapper(context) {
+            override fun getFilesDir() = context.cacheDir.resolve("targeted-room-runtime-store").also { it.mkdirs() }
+        }
+        isolatedFilesContext.filesDir.resolve("trainiq-state.json").delete()
+        val planner = JsonRoomImportPlanner()
+        val sink = RoomJsonImportSink(database)
+        val legacyStore = TrainIqLocalStore(
+            context = isolatedFilesContext,
+            roomImportDryRun = RoomImportDryRun(planner, sink),
+            roomRuntimeReadinessGate = RoomRuntimeReadinessGate(database.dao()),
+            roomMigrationChainVerificationProvider = RoomMigrationChainVerificationProvider(
+                markerSource = object : RoomMigrationChainVerificationMarkerSource {
+                    override fun latestMarker(): RoomMigrationChainVerificationMarker? = null
+                },
+            ),
+        )
+        return RoomTrainIqRuntimeStore(database, legacyStore)
+    }
 }

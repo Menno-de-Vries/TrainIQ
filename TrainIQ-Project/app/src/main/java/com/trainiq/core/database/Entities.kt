@@ -47,6 +47,30 @@ data class UserProfileEntity(
     val trainingFocus: String,
 )
 
+@Entity(tableName = "saved_goal_advice")
+data class SavedGoalAdviceEntity(
+    @PrimaryKey val id: Long = 1L,
+    @ColumnInfo(name = "profile_fingerprint") val profileFingerprint: String,
+    @ColumnInfo(name = "saved_at") val savedAt: Long,
+    val bmr: Int,
+    @ColumnInfo(name = "maintenance_calories") val maintenanceCalories: Int,
+    @ColumnInfo(name = "activity_multiplier") val activityMultiplier: Double,
+    @ColumnInfo(name = "calorie_target") val calorieTarget: Int,
+    @ColumnInfo(name = "protein_target") val proteinTarget: Int,
+    @ColumnInfo(name = "carbs_target") val carbsTarget: Int,
+    @ColumnInfo(name = "fat_target") val fatTarget: Int,
+    @ColumnInfo(name = "training_focus") val trainingFocus: String,
+    val summary: String,
+    @ColumnInfo(name = "calorie_advice") val calorieAdvice: String,
+    @ColumnInfo(name = "macro_advice") val macroAdvice: String,
+    @ColumnInfo(name = "activity_explanation") val activityExplanation: String,
+    @ColumnInfo(name = "attention_points_json") val attentionPointsJson: String,
+    val advice: String,
+    @ColumnInfo(name = "data_quality") val dataQuality: String,
+    val source: String,
+    @ColumnInfo(name = "raw_response") val rawResponse: String?,
+)
+
 @Entity(tableName = "workout_routines")
 data class WorkoutRoutineEntity(
     @PrimaryKey val id: Long,
@@ -284,6 +308,7 @@ data class FoodItemEntity(
     @ColumnInfo(name = "protein_per_100g") val proteinPer100g: Double,
     @ColumnInfo(name = "carbs_per_100g") val carbsPer100g: Double,
     @ColumnInfo(name = "fat_per_100g") val fatPer100g: Double,
+    @ColumnInfo(name = "default_serving_grams", defaultValue = "100.0") val defaultServingGrams: Double = 100.0,
     @ColumnInfo(name = "source_type") val sourceType: String,
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
@@ -350,6 +375,7 @@ data class MealItemEntity(
     @ColumnInfo(name = "reference_id") val referenceId: Long,
     val name: String,
     @ColumnInfo(name = "grams_used") val gramsUsed: Double,
+    @ColumnInfo(name = "serving_count", defaultValue = "1") val servingCount: Int = 1,
     val calories: Double,
     val protein: Double,
     val carbs: Double,
@@ -398,12 +424,6 @@ data class ActiveWorkoutSessionEntity(
             childColumns = ["session_id"],
             onDelete = ForeignKey.CASCADE,
         ),
-        ForeignKey(
-            entity = ExerciseEntity::class,
-            parentColumns = ["id"],
-            childColumns = ["exercise_id"],
-            onDelete = ForeignKey.RESTRICT,
-        ),
     ],
     primaryKeys = ["session_id", "exercise_id"],
     indices = [
@@ -428,12 +448,6 @@ data class ActiveWorkoutDraftEntity(
             parentColumns = ["sessionId"],
             childColumns = ["session_id"],
             onDelete = ForeignKey.CASCADE,
-        ),
-        ForeignKey(
-            entity = ExerciseEntity::class,
-            parentColumns = ["id"],
-            childColumns = ["exercise_id"],
-            onDelete = ForeignKey.RESTRICT,
         ),
     ],
     primaryKeys = ["session_id", "exercise_id"],

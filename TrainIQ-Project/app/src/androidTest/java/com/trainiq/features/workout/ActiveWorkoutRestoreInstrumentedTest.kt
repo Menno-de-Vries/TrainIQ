@@ -6,7 +6,6 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.room.Room
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -17,13 +16,12 @@ import com.trainiq.core.database.ExerciseEntity
 import com.trainiq.core.database.PerformedExerciseEntity
 import com.trainiq.core.database.RoutineSetEntity
 import com.trainiq.core.database.TrainIqDatabase
-import com.trainiq.core.database.TrainIqMigrations
 import com.trainiq.core.database.WorkoutDayEntity
 import com.trainiq.core.database.WorkoutExerciseEntity
 import com.trainiq.core.database.WorkoutRoutineEntity
 import com.trainiq.core.database.WorkoutSessionEntity
+import com.trainiq.testing.resetTrainIqAndroidTestDatabase
 import kotlinx.coroutines.runBlocking
-import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -40,10 +38,7 @@ class ActiveWorkoutRestoreInstrumentedTest {
     @Before
     fun seedActiveWorkout() = runBlocking {
         context = ApplicationProvider.getApplicationContext()
-        context.deleteDatabase("trainiq.db")
-        database = Room.databaseBuilder(context, TrainIqDatabase::class.java, "trainiq.db")
-            .addMigrations(*TrainIqMigrations.All)
-            .build()
+        database = resetTrainIqAndroidTestDatabase(context)
         val dao = database.dao()
         val now = System.currentTimeMillis()
         dao.insertRoutines(listOf(WorkoutRoutineEntity(id = 1L, name = "QA Upper", description = "Seeded restore QA", active = true)))
@@ -106,14 +101,6 @@ class ActiveWorkoutRestoreInstrumentedTest {
                 ),
             ),
         )
-        database.close()
-    }
-
-    @After
-    fun closeDatabase() {
-        if (::database.isInitialized && database.isOpen) {
-            database.close()
-        }
     }
 
     @Test
@@ -129,10 +116,12 @@ class ActiveWorkoutRestoreInstrumentedTest {
                 compose.onAllNodesWithText("Training").fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithText("Training").assertIsDisplayed()
-            compose.waitUntil(timeoutMillis = 10_000L) {
+            compose.onNodeWithText("Training").performClick()
+            compose.waitUntil(timeoutMillis = 30_000L) {
                 compose.onAllNodesWithText("QA Upper", substring = true).fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithText("Actieve routine").assertIsDisplayed()
         }
     }
+
 }

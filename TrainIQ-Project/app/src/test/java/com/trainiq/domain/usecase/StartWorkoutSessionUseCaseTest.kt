@@ -99,6 +99,16 @@ class StartWorkoutSessionUseCaseTest {
         assertEquals(listOf(3L), result.progressionSuggestions.map { it.exerciseId })
         assertEquals(ActiveWorkoutSetDraft(weight = "80", reps = "8", rpe = "7.5"), repository.startedDrafts.getValue(4L))
     }
+
+    @Test
+    fun discardActiveWorkoutSessionUseCaseTargetsSessionIdInsteadOfRequestedDay() = runTest {
+        val repository = FakeWorkoutRepository(day = null)
+        val useCase = DiscardActiveWorkoutSessionUseCase(repository)
+
+        useCase(42L)
+
+        assertEquals(42L, repository.discardedSessionId)
+    }
 }
 
 private class FakeWorkoutRepository(
@@ -106,10 +116,14 @@ private class FakeWorkoutRepository(
     private val suggestions: List<ProgressionSuggestion> = emptyList(),
     private val session: ActiveWorkoutSession? = null,
 ) : WorkoutRepository {
+    override suspend fun refreshWorkoutDebrief(sessionId: Long) =
+        com.trainiq.domain.repository.WorkoutDebriefRefreshOutcome.SESSION_MISSING
     var startedDrafts: Map<Long, ActiveWorkoutSetDraft> = emptyMap()
+    var discardedSessionId: Long? = null
 
     override suspend fun getWorkoutDay(dayId: Long): WorkoutDay? = day
     override suspend fun getProgressionSuggestions(dayId: Long): List<ProgressionSuggestion> = suggestions
+    override suspend fun getCurrentActiveWorkoutSession(): ActiveWorkoutSession? = session
     override suspend fun getOrStartActiveWorkoutSession(
         dayId: Long,
         initialDrafts: Map<Long, ActiveWorkoutSetDraft>,
@@ -133,6 +147,9 @@ private class FakeWorkoutRepository(
     override suspend fun finishActiveWorkout(dayId: Long): WorkoutCompletionResult = error("unused")
     override suspend fun getWorkoutCompletionSummary(sessionId: Long): WorkoutCompletionSummary? = null
     override suspend fun discardActiveWorkout(dayId: Long) = Unit
+    override suspend fun discardActiveWorkoutSession(sessionId: Long) {
+        discardedSessionId = sessionId
+    }
     override suspend fun setActiveRoutine(routineId: Long) = Unit
     override suspend fun finishWorkout(dayId: Long, durationSeconds: Long, loggedSets: List<LoggedSet>) = error("unused")
     override suspend fun createRoutine(name: String, description: String) = Unit

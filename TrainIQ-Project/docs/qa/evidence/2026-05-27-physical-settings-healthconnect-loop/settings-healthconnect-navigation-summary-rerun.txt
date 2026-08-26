@@ -1,0 +1,6 @@
+meerTopHasSettings=True
+meerTopHasHealthConnectStatus=True
+meerTopHasVoortgangOpen=True
+afterVoortgangOpenHasVoortgang=True
+afterBackHasMeerOrSettings=True
+crashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES

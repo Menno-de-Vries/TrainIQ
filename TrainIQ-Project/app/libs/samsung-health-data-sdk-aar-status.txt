@@ -1,0 +1,8 @@
+﻿Samsung Health Data SDK API AAR installed: True
+Installed at: 2026-06-22T10:51:54.9880135+02:00
+Source: C:\Users\menno\AppData\Local\Temp\trainiq-samsung-health-data-sdk-584c830a-3221-409f-8723-339da7bbb396\1.1.0\libs\samsung-health-data-api-1.1.0.aar
+Destination: D:\GitHub\TrainIQ\TrainIQ-Project\app\libs\samsung-health-data-api-1.1.0.aar
+SHA256: f5d3d83cf00b97d0bb1b1db4da076e861eb1c3e6e704d89a34e68909d2f38654
+Next check: .\gradlew.bat :app:checkSamsungHealthDataSdkReadiness --console=plain --no-configuration-cache
+Parity build: .\gradlew.bat :app:assembleSamsungHealthParityDebug --console=plain --no-configuration-cache
+Parity install: .\gradlew.bat :app:installSamsungHealthParityDebug --console=plain --no-configuration-cache

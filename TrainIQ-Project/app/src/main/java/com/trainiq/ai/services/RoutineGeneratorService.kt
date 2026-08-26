@@ -2,9 +2,7 @@ package com.trainiq.ai.services
 
 import android.util.Log
 import com.google.gson.JsonParser
-import com.trainiq.ai.prompts.GeminiPrompts
-import com.trainiq.data.model.GeminiRequest
-import com.trainiq.data.remote.GeminiApi
+import com.trainiq.ai.prompts.AiPrompts
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -22,6 +20,7 @@ data class GeneratedRoutine(
 
 enum class GeneratedRoutineSource {
     GEMINI_2_5_FLASH,
+    OPENAI,
     LOCAL_FALLBACK,
 }
 
@@ -39,13 +38,15 @@ data class GeneratedExercise(
     val repRange: String,
     val restSeconds: Int,
     val coachingCue: String = "",
+    val existingExerciseId: Long? = null,
 )
 
 @Singleton
 class RoutineGeneratorService @Inject constructor(
-    private val api: GeminiApi,
+    private val aiJsonGenerator: AiJsonGenerator,
     private val aiUsageGate: AiUsageGate,
 ) {
+    // Provider routing replaces the old direct Gemini-only boundary while preserving bounded AI retry semantics.
     suspend fun generateRoutine(
         goal: String,
         targetFocus: String,
@@ -69,6 +70,7 @@ class RoutineGeneratorService @Inject constructor(
         experienceLevel: String,
         sessionDurationMinutes: Int,
         includeDeload: Boolean,
+        existingExercises: List<String> = emptyList(),
     ): GeneratedRoutine {
         val promptGoal = goal.toDutchGoalSummary()
         val promptFocus = targetFocus.toDutchRoutineFocus().ifBlank { "kracht" }
@@ -87,47 +89,27 @@ class RoutineGeneratorService @Inject constructor(
                 Log.d(RoutineGeneratorLogTag, "Routine AI fallback: AI staat uit of configuratie ontbreekt.")
                 return fallback
             }
-            val apiKey = aiUsageGate.currentApiKeyOrNull() ?: run {
-                Log.d(RoutineGeneratorLogTag, "Routine AI fallback: Gemini API-key ontbreekt.")
-                return fallback
-            }
-            val response = callGeminiWithBoundedRetry(feature = AiFeature.ROUTINE_GENERATION) {
-                api.generateContent(
-                    model = GEMINI_FLASH_MODEL,
-                    apiKey = apiKey,
-                    request = GeminiRequest(
-                        contents = listOf(
-                            GeminiRequest.Content(
-                                parts = listOf(
-                                    GeminiRequest.Part(
-                                        text = GeminiPrompts.routineGenerator(
-                                            goal = promptGoal,
-                                            targetFocus = promptFocus,
-                                            daysPerWeek = daysPerWeek,
-                                            equipment = promptEquipment,
-                                            experienceLevel = experienceLevel,
-                                            sessionDurationMinutes = sessionDurationMinutes,
-                                            includeDeload = includeDeload,
-                                        ),
-                                    ),
-                                ),
-                            ),
-                        ),
-                        generationConfig = GeminiRequest.GenerationConfig(
-                            responseMimeType = "application/json",
-                            responseJsonSchema = GeminiJsonSchemas.routineGenerator,
-                            thinkingConfig = GeminiRequest.ThinkingConfig(
-                                includeThoughts = false,
-                                thinkingBudget = 1000,
-                            ),
-                        ),
+            val routed = aiJsonGenerator.generateJson(
+                AiRouteRequest(
+                    feature = AiFeature.ROUTINE_GENERATION,
+                    schemaName = "routine_generator",
+                    responseJsonSchema = AiJsonSchemas.routineGenerator,
+                    thinkingBudget = 1000,
+                    prompt = AiPrompts.routineGenerator(
+                        goal = promptGoal,
+                        targetFocus = promptFocus,
+                        daysPerWeek = daysPerWeek,
+                        equipment = promptEquipment,
+                        experienceLevel = experienceLevel,
+                        sessionDurationMinutes = sessionDurationMinutes,
+                        includeDeload = includeDeload,
+                        existingExercises = existingExercises,
                     ),
-                )
-            }
-            val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
-            parseGeneratedRoutine(text, fallback).also { routine ->
+                ),
+            )
+            parseGeneratedRoutine(routed.rawJson, fallback, routed.providerUsed).also { routine ->
                 if (routine.source == GeneratedRoutineSource.LOCAL_FALLBACK) {
-                    Log.d(RoutineGeneratorLogTag, "Routine AI fallback: Gemini-antwoord was leeg, ongeldig of niet Nederlands genoeg.")
+                    Log.d(RoutineGeneratorLogTag, "Routine AI fallback: providerantwoord was leeg, ongeldig of niet Nederlands genoeg.")
                 }
             }
         } catch (throwable: Throwable) {
@@ -135,34 +117,47 @@ class RoutineGeneratorService @Inject constructor(
             val mapped = throwable.asAiRateLimitExceptionIfNeeded()
             if (mapped is AiRateLimitException || mapped is AiFeatureThrottledException) throw mapped
             val detail = if (throwable is HttpException) "HTTP ${throwable.code()}" else throwable::class.simpleName.orEmpty()
-            Log.d(RoutineGeneratorLogTag, "Routine AI fallback: Gemini-aanroep mislukt ($detail).")
+            Log.d(RoutineGeneratorLogTag, "Routine AI fallback: AI-aanroep mislukt ($detail).")
             fallback
         }
     }
 }
 
 private const val RoutineGeneratorLogTag = "RoutineGenerator"
+private const val MaxGeneratedRoutineRawResponseChars = 64_000
+private const val MaxGeneratedRoutineDays = 7
+private const val MaxGeneratedExercisesPerDay = 12
+private const val MaxGeneratedRoutineNameChars = 120
+private const val MaxGeneratedRoutineTextChars = 600
+private const val MaxGeneratedRoutineMetaChars = 40
 
-internal fun parseGeneratedRoutine(text: String, fallback: GeneratedRoutine): GeneratedRoutine = runCatching {
+internal fun parseGeneratedRoutine(text: String, fallback: GeneratedRoutine): GeneratedRoutine =
+    parseGeneratedRoutine(text, fallback, AiProvider.GEMINI)
+
+internal fun parseGeneratedRoutine(text: String, fallback: GeneratedRoutine, provider: AiProvider): GeneratedRoutine = runCatching {
+    if (text.length > MaxGeneratedRoutineRawResponseChars) return fallback
     val root = JsonParser.parseString(text).asJsonObject
-    val routineName = root.get("routineName")?.asString?.takeIf { it.isNotBlank() } ?: return fallback
-    val routineDescription = root.get("routineDescription")?.asString.orEmpty()
-    val periodizationNote = root.get("periodizationNote")?.asString.orEmpty()
-    val estimatedDurationMinutes = root.get("estimatedDurationMinutes")?.asInt ?: fallback.estimatedDurationMinutes
-    val days = root.getAsJsonArray("days")?.map { dayElement ->
+    val routineName = root.get("routineName").boundedString(MaxGeneratedRoutineNameChars) ?: return fallback
+    val routineDescription = root.get("routineDescription").boundedString(MaxGeneratedRoutineTextChars).orEmpty()
+    val periodizationNote = root.get("periodizationNote").boundedString(MaxGeneratedRoutineTextChars).orEmpty()
+    val estimatedDurationMinutes = (root.get("estimatedDurationMinutes")?.asInt ?: fallback.estimatedDurationMinutes)
+        .coerceIn(30, 120)
+    val days = root.getAsJsonArray("days")?.take(MaxGeneratedRoutineDays)?.map { dayElement ->
         val dayObj = dayElement.asJsonObject
-        val dayName = dayObj.get("dayName")?.asString ?: "Dag"
-        val dayDurationMinutes = dayObj.get("estimatedDurationMinutes")?.asInt ?: estimatedDurationMinutes
-        val exercises = dayObj.getAsJsonArray("exercises")?.map { exElement ->
+        val dayName = dayObj.get("dayName").boundedString(MaxGeneratedRoutineNameChars) ?: "Dag"
+        val dayDurationMinutes = (dayObj.get("estimatedDurationMinutes")?.asInt ?: estimatedDurationMinutes)
+            .coerceIn(30, 120)
+        val exercises = dayObj.getAsJsonArray("exercises")?.take(MaxGeneratedExercisesPerDay)?.map { exElement ->
             val exObj = exElement.asJsonObject
             GeneratedExercise(
-                exerciseName = exObj.get("exerciseName")?.asString ?: "Oefening",
-                muscleGroup = exObj.get("muscleGroup")?.asString ?: "Algemeen",
-                equipment = exObj.get("equipment")?.asString ?: "Lichaamsgewicht",
-                targetSets = exObj.get("targetSets")?.asInt ?: 3,
-                repRange = exObj.get("repRange")?.asString ?: "8-12",
-                restSeconds = exObj.get("restSeconds")?.asInt ?: 90,
-                coachingCue = exObj.get("coachingCue")?.asString.orEmpty(),
+                exerciseName = exObj.get("exerciseName").boundedString(MaxGeneratedRoutineNameChars) ?: "Oefening",
+                muscleGroup = exObj.get("muscleGroup").boundedString(MaxGeneratedRoutineNameChars) ?: "Algemeen",
+                equipment = exObj.get("equipment").boundedString(MaxGeneratedRoutineNameChars) ?: "Lichaamsgewicht",
+                targetSets = (exObj.get("targetSets")?.asInt ?: 3).coerceIn(1, 10),
+                repRange = exObj.get("repRange").boundedString(MaxGeneratedRoutineMetaChars) ?: "8-12",
+                restSeconds = (exObj.get("restSeconds")?.asInt ?: 90).coerceIn(30, 300),
+                coachingCue = exObj.get("coachingCue").boundedString(MaxGeneratedRoutineTextChars).orEmpty(),
+                existingExerciseId = exObj.get("existingExerciseId")?.takeIf { !it.isJsonNull }?.asLong,
             )
         }.orEmpty()
         GeneratedDay(
@@ -184,10 +179,19 @@ internal fun parseGeneratedRoutine(text: String, fallback: GeneratedRoutine): Ge
         routineDescription = routineDescription,
         periodizationNote = periodizationNote,
         estimatedDurationMinutes = estimatedDurationMinutes,
-        source = GeneratedRoutineSource.GEMINI_2_5_FLASH,
+        source = when (provider) {
+            AiProvider.GEMINI -> GeneratedRoutineSource.GEMINI_2_5_FLASH
+            AiProvider.OPENAI -> GeneratedRoutineSource.OPENAI
+        },
         days = days,
     )
 }.getOrElse { fallback }
+
+private fun com.google.gson.JsonElement?.boundedString(maxChars: Int): String? =
+    this
+        ?.takeIf { !it.isJsonNull }
+        ?.let { element -> runCatching { element.asString.trim().take(maxChars) }.getOrNull() }
+        ?.takeIf { it.isNotBlank() }
 
 internal fun fallbackGeneratedRoutine(
     goal: String,

@@ -1,0 +1,3 @@
+﻿{"candidate_id":"CAND-001","title":"Legacy Gemini plaintext key retained on explicit encrypted save/clear paths","disposition":"fixed","affected":["app/src/main/java/com/trainiq/ai/services/AiUsageGate.kt"]}
+{"candidate_id":"CAND-002","title":"Health Connect READ_WEIGHT overcollection","disposition":"fixed","affected":["app/src/main/AndroidManifest.xml","app/src/main/java/com/trainiq/core/health/HealthConnectUiHelpers.kt","app/src/main/java/com/trainiq/data/datasource/HealthConnectDataSource.kt"]}
+{"candidate_id":"CAND-003","title":"Reminder notifications expose behavior-sensitive body text","disposition":"fixed","affected":["app/src/main/java/com/trainiq/core/reminders/TrainIqReminderNotifications.kt"]}

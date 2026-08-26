@@ -8,14 +8,14 @@ import org.junit.Test
 class RoutineGeneratorServiceTest {
 
     @Test
-    fun routineGeneratorService_usesSharedGeminiRetryBoundary() {
+    fun routineGeneratorService_usesProviderRouterBoundary() {
         val source = java.io.File(
             "src/main/java/com/trainiq/ai/services/RoutineGeneratorService.kt",
         ).readText()
 
-        assertTrue(source.contains("callGeminiWithBoundedRetry"))
-        assertTrue(source.contains("responseJsonSchema = GeminiJsonSchemas.routineGenerator"))
-        assertTrue(source.contains("AiFeatureThrottledException"))
+        assertTrue(source.contains("aiJsonGenerator.generateJson"))
+        assertTrue(source.contains("responseJsonSchema = AiJsonSchemas.routineGenerator"))
+        assertTrue(source.contains("AiRouteRequest"))
     }
 
     @Test
@@ -148,6 +148,96 @@ class RoutineGeneratorServiceTest {
         assertEquals("Squat", routine.days.first().exercises.first().exerciseName)
         assertEquals("Algemeen", routine.days.first().exercises.first().muscleGroup)
         assertEquals("", routine.days.first().exercises.first().coachingCue)
+    }
+
+    @Test
+    fun parseGeneratedRoutine_withExistingExerciseId_keepsLibraryReference() {
+        val fallback = fallbackGeneratedRoutine(
+            goal = "Spiermassa",
+            targetFocus = "Full body",
+            daysPerWeek = 3,
+            equipment = "Barbell",
+            experienceLevel = "intermediate",
+            sessionDurationMinutes = 60,
+            includeDeload = false,
+        )
+        val json = """
+            {
+              "routineName": "Volledig lichaam kracht",
+              "days": [
+                {
+                  "dayName": "Dag 1",
+                  "exercises": [
+                    {
+                      "exerciseName": "Bench Press",
+                      "muscleGroup": "Borst",
+                      "equipment": "Halterstang",
+                      "targetSets": 3,
+                      "repRange": "6-10",
+                      "restSeconds": 120,
+                      "existingExerciseId": 7
+                    }
+                  ]
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val routine = parseGeneratedRoutine(json, fallback)
+
+        assertEquals(7L, routine.days.first().exercises.first().existingExerciseId)
+    }
+
+    @Test
+    fun parseGeneratedRoutine_capsDaysAndExercisesBeforePreview() {
+        val fallback = fallbackGeneratedRoutine(
+            goal = "Spiermassa",
+            targetFocus = "Full body",
+            daysPerWeek = 3,
+            equipment = "Barbell",
+            experienceLevel = "intermediate",
+            sessionDurationMinutes = 60,
+            includeDeload = false,
+        )
+        val exercises = (1..15).joinToString(",") { index ->
+            """
+                {
+                  "exerciseName": "Oefening $index",
+                  "muscleGroup": "Borst",
+                  "equipment": "Halterstang",
+                  "targetSets": 4,
+                  "repRange": "6-10",
+                  "restSeconds": 120,
+                  "coachingCue": "Houd de uitvoering gecontroleerd."
+                }
+            """.trimIndent()
+        }
+        val days = (1..10).joinToString(",") { index ->
+            """
+                {
+                  "dayName": "Trainingsdag $index",
+                  "estimatedDurationMinutes": 60,
+                  "exercises": [$exercises]
+                }
+            """.trimIndent()
+        }
+        val json = """
+            {
+              "routineName": "Krachtblok met beheerste progressie",
+              "routineDescription": "Nederlandse routine voor spiermassa met rustige opbouw.",
+              "periodizationNote": "Verhoog alleen als herstel en techniek stabiel blijven.",
+              "estimatedDurationMinutes": 60,
+              "days": [$days]
+            }
+        """.trimIndent()
+
+        val routine = parseGeneratedRoutine(json, fallback)
+
+        assertEquals(GeneratedRoutineSource.GEMINI_2_5_FLASH, routine.source)
+        assertEquals(7, routine.days.size)
+        assertEquals(12, routine.days.first().exercises.size)
+        assertEquals("Trainingsdag 7", routine.days.last().dayName)
+        assertEquals("Oefening 12", routine.days.first().exercises.last().exerciseName)
     }
 
     @Test

@@ -1,0 +1,5 @@
+QA_STATUS_CONSISTENCY_CHECK
+ledgerNotRunRows=26
+snapshotNotRunRows=26
+jsonNotRunRows=26
+RESULT=PASS

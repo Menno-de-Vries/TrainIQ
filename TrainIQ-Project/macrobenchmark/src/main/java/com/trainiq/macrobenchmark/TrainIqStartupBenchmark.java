@@ -10,8 +10,6 @@ import androidx.benchmark.macro.junit4.BaselineProfileRule;
 import androidx.benchmark.macro.junit4.MacrobenchmarkRule;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.uiautomator.By;
-import androidx.test.uiautomator.Direction;
-import androidx.test.uiautomator.UiObject2;
 import androidx.test.uiautomator.UiDevice;
 import androidx.test.uiautomator.Until;
 import java.io.IOException;
@@ -40,8 +38,9 @@ public class TrainIqStartupBenchmark {
                 true,
                 rule -> true,
                 scope -> {
+                    seedActiveWorkout(scope);
                     scope.pressHome();
-                    scope.startActivityAndWait();
+                    startTrainIqMainActivity(scope);
                     waitForAppReady(scope.getDevice());
                     navigateAndScrollSettings(scope);
                     return Unit.INSTANCE;
@@ -75,8 +74,9 @@ public class TrainIqStartupBenchmark {
                 StartupMode.WARM,
                 5,
                 scope -> {
+                    seedActiveWorkout(scope);
                     scope.pressHome();
-                    scope.startActivityAndWait();
+                    startTrainIqMainActivity(scope);
                     waitForAppReady(scope.getDevice());
                     return Unit.INSTANCE;
                 },
@@ -95,10 +95,9 @@ public class TrainIqStartupBenchmark {
                 scope -> {
                     seedActiveWorkout(scope);
                     scope.pressHome();
-                    scope.startActivityAndWait();
-                    waitForAppReady(scope.getDevice());
-                    tapAnyText(scope.getDevice(), "Training", "Train");
-                    tapAnyText(scope.getDevice(), "Training starten");
+                    startTrainIqMainActivity(scope);
+                    tapBottomTrain(scope.getDevice());
+                    tapSeededActiveRoutineStart(scope.getDevice());
                     requireAnyText(scope.getDevice(), "Actieve training");
                     return Unit.INSTANCE;
                 },
@@ -106,18 +105,34 @@ public class TrainIqStartupBenchmark {
         );
     }
 
+    @Test
+    public void activeWorkoutScrollFrames() {
+        benchmarkRule.measureRepeated(
+                PACKAGE_NAME,
+                Collections.singletonList(new FrameTimingMetric()),
+                new CompilationMode.Partial(BaselineProfileMode.Require),
+                StartupMode.WARM,
+                5,
+                scope -> {
+                    seedActiveWorkout(scope);
+                    scope.pressHome();
+                    startTrainIqMainActivity(scope);
+                    tapBottomTrain(scope.getDevice());
+                    tapSeededActiveRoutineStart(scope.getDevice());
+                    requireAnyText(scope.getDevice(), "Actieve training");
+                    return Unit.INSTANCE;
+                },
+                this::scrollActiveWorkoutUpAndDown
+        );
+    }
+
     private Unit navigateAndScrollSettings(MacrobenchmarkScope scope) {
         UiDevice device = scope.getDevice();
-        tapAnyText(device, "Training", "Train");
-        tapAnyText(device, "Voeding");
-        tapAnyText(device, "Coach");
-        tapAnyText(device, "Meer", "Instellingen");
-        tapAnyText(device, "Instellingen");
+        tapVisibleTextCenter(device, "Meer");
+        requireAnyText(device, "Instellingen", "Health Connect, AI en voorkeuren");
         device.waitForIdle();
-        if (device.findObject(By.scrollable(true)) != null) {
-            device.findObject(By.scrollable(true)).scroll(Direction.DOWN, 0.7f);
-        }
-        device.waitForIdle();
+        swipeAcrossSettings(device, true, 6);
+        swipeAcrossSettings(device, false, 6);
         return Unit.INSTANCE;
     }
 
@@ -132,15 +147,47 @@ public class TrainIqStartupBenchmark {
         return Unit.INSTANCE;
     }
 
+    private Unit scrollActiveWorkoutUpAndDown(MacrobenchmarkScope scope) {
+        UiDevice device = scope.getDevice();
+        int width = device.getDisplayWidth();
+        int height = device.getDisplayHeight();
+        for (int i = 0; i < 4; i++) {
+            device.swipe(width / 2, (int) (height * 0.78f), width / 2, (int) (height * 0.20f), 36);
+            device.waitForIdle();
+        }
+        for (int i = 0; i < 4; i++) {
+            device.swipe(width / 2, (int) (height * 0.22f), width / 2, (int) (height * 0.80f), 36);
+            device.waitForIdle();
+        }
+        return Unit.INSTANCE;
+    }
+
     private static void seedActiveWorkout(MacrobenchmarkScope scope) {
         try {
-            scope.getDevice().executeShellCommand(
+            String output = scope.getDevice().executeShellCommand(
                     "am start -W -n " + PACKAGE_NAME + "/com.trainiq.benchmark.BenchmarkSeedActivity"
             );
+            if (output.contains("Error") || output.contains("Exception")) {
+                throw new AssertionError("Failed to seed active workout benchmark state: " + output);
+            }
         } catch (IOException exception) {
             throw new AssertionError("Failed to seed active workout benchmark state", exception);
         }
         scope.getDevice().waitForIdle();
+    }
+
+    private static void startTrainIqMainActivity(MacrobenchmarkScope scope) {
+        try {
+            String output = scope.getDevice().executeShellCommand(
+                    "am start -W -n " + PACKAGE_NAME + "/.MainActivity"
+            );
+            if (output.contains("Error") || output.contains("Exception")) {
+                throw new AssertionError("Failed to start TrainIQ main activity: " + output);
+            }
+        } catch (IOException exception) {
+            throw new AssertionError("Failed to start TrainIQ main activity", exception);
+        }
+        waitForAppReady(scope.getDevice());
     }
 
     private static void waitForAppReady(UiDevice device) {
@@ -150,15 +197,26 @@ public class TrainIqStartupBenchmark {
         device.waitForIdle();
     }
 
-    private static void tapAnyText(UiDevice device, String... labels) {
-        for (String label : labels) {
-            if (device.wait(Until.hasObject(By.text(label)), 1_000L)) {
-                clickNearestClickable(device.findObject(By.text(label)));
-                device.waitForIdle();
-                return;
-            }
-        }
-        throw new AssertionError("Required benchmark target not found: " + String.join(" or ", labels));
+    private static void tapBottomTrain(UiDevice device) {
+        tapBottomDestination(device, 1);
+    }
+
+    private static void tapBottomDestination(UiDevice device, int index) {
+        int destinationCount = 5;
+        device.click(
+                (int) (device.getDisplayWidth() * ((index + 0.5f) / destinationCount)),
+                (int) (device.getDisplayHeight() * 0.94f)
+        );
+        device.waitForIdle();
+    }
+
+    private static void tapSeededActiveRoutineStart(UiDevice device) {
+        device.wait(Until.hasObject(By.text("Benchmark routine")), TIMEOUT_MILLIS);
+        device.click(
+                (int) (device.getDisplayWidth() * 0.28f),
+                (int) (device.getDisplayHeight() * 0.39f)
+        );
+        device.waitForIdle();
     }
 
     private static void requireAnyText(UiDevice device, String... labels) {
@@ -170,19 +228,24 @@ public class TrainIqStartupBenchmark {
         throw new AssertionError("Required benchmark screen not found: " + String.join(" or ", labels));
     }
 
-    private static void clickNearestClickable(UiObject2 object) {
-        UiObject2 current = object;
-        while (current != null && !current.isClickable()) {
-            current = current.getParent();
+    private static void tapVisibleTextCenter(UiDevice device, String label) {
+        if (!device.wait(Until.hasObject(By.text(label)), TIMEOUT_MILLIS)) {
+            throw new AssertionError("Required benchmark target not found: " + label);
         }
-        (current != null ? current : object).click();
+        android.graphics.Point center = device.findObject(By.text(label)).getVisibleCenter();
+        device.click(center.x, center.y);
+        device.waitForIdle();
     }
 
-    private static void scrollVertical(UiDevice device, Direction direction) {
-        if (device.findObject(By.scrollable(true)) != null) {
-            device.findObject(By.scrollable(true)).scroll(direction, 0.8f);
-            device.waitForIdle();
+    private static void swipeAcrossSettings(UiDevice device, boolean downward, int count) {
+        int width = device.getDisplayWidth();
+        int height = device.getDisplayHeight();
+        for (int index = 0; index < count; index++) {
+            int startY = downward ? (int) (height * 0.78f) : (int) (height * 0.22f);
+            int endY = downward ? (int) (height * 0.22f) : (int) (height * 0.78f);
+            device.swipe(width / 2, startY, width / 2, endY, 30);
         }
+        device.waitForIdle();
     }
 
     private static void swipeToActiveWorkoutLogControls(UiDevice device) {

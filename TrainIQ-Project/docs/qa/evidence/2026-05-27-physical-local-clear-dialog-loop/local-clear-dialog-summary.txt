@@ -1,0 +1,8 @@
+dialogOpened=True
+titleVisible=True
+cancelVisible=True
+confirmVisible=True
+destructiveConfirmExecuted=False
+afterCancelDialogGone=True
+afterCancelStorageVisible=True
+crashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES

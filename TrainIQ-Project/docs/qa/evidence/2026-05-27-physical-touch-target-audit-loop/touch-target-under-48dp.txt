@@ -1,0 +1,9 @@
+
+file                                                                               widthPx heightPx minPx label bounds
+----                                                                               ------- -------- ----- ----- ------
+docs\qa\evidence\2026-05-27-physical-dynamic-color-loop\Coach.xml                      179       80   144       [96,1858][275,1938]
+docs\qa\evidence\2026-05-27-physical-dynamic-color-loop\Coach.xml                      215       80   144       [299,1858][514,1938]
+docs\qa\evidence\2026-05-27-physical-dynamic-color-loop\Start.xml                      888       35   144       [96,1903][984,1938]
+docs\qa\evidence\2026-05-27-physical-dynamic-color-loop\Voeding.xml                    144      128   144       [810,1810][954,1938]
+docs\qa\evidence\2026-05-27-physical-progress-measurement-loop\progress-top.xml        888       54   144       [96,1884][984,1938]
+docs\qa\evidence\2026-05-27-physical-settings-theme-loop\theme-options-visible.xml     156       99   144       [828,1839][984,1938]

@@ -4,10 +4,11 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import com.google.gson.Gson
 import com.google.gson.JsonParser
-import com.trainiq.ai.prompts.GeminiPrompts
-import com.trainiq.data.model.GeminiRequest
+import com.trainiq.ai.prompts.AiPrompts
 import com.trainiq.data.remote.GeminiApi
 import com.trainiq.domain.model.BiologicalSex
+import com.trainiq.domain.model.BodyMeasurementPhotoResult
+import com.trainiq.domain.model.BodyMeasurementPhotoSource
 import com.trainiq.domain.model.GoalAdvice
 import com.trainiq.domain.model.GoalAdviceSource
 import com.trainiq.domain.model.MealAnalysisResult
@@ -24,11 +25,13 @@ import java.io.ByteArrayOutputStream
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Base64
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.trainiq.domain.model.buildGoalBaseline
 import com.trainiq.domain.model.suggestMealType
 
@@ -39,27 +42,38 @@ class MealAnalysisUnavailableException(
 
 @Singleton
 class MealAnalysisService internal constructor(
-    private val api: GeminiApi,
+    private val aiJsonGenerator: AiJsonGenerator,
     private val isAiReady: suspend () -> Boolean,
-    private val apiKeyProvider: suspend () -> String?,
+    private val imageBytesProvider: suspend (File) -> ByteArray?,
 ) {
     internal constructor(
         api: GeminiApi,
         apiKeyProvider: suspend () -> String?,
     ) : this(
-        api = api,
+        aiJsonGenerator = GeminiOnlyJsonGenerator(api, apiKeyProvider),
         isAiReady = { apiKeyProvider() != null },
-        apiKeyProvider = apiKeyProvider,
+        imageBytesProvider = ::prepareMealScanImageBytes,
+    )
+
+    internal constructor(
+        api: GeminiApi,
+        isAiReady: suspend () -> Boolean,
+        apiKeyProvider: suspend () -> String?,
+        imageBytesProvider: suspend (File) -> ByteArray?,
+    ) : this(
+        aiJsonGenerator = GeminiOnlyJsonGenerator(api, apiKeyProvider),
+        isAiReady = isAiReady,
+        imageBytesProvider = imageBytesProvider,
     )
 
     @Inject
     constructor(
-        api: GeminiApi,
+        aiProviderRouter: AiProviderRouter,
         aiUsageGate: AiUsageGate,
     ) : this(
-        api = api,
+        aiJsonGenerator = aiProviderRouter,
         isAiReady = { aiUsageGate.isAiReady() },
-        apiKeyProvider = { aiUsageGate.currentApiKeyOrNull() },
+        imageBytesProvider = ::prepareMealScanImageBytes,
     )
 
     private val gson = Gson()
@@ -67,63 +81,50 @@ class MealAnalysisService internal constructor(
 
     suspend fun analyzeMealImage(path: String, userContext: String, capturedAtMillis: Long): MealAnalysisResult {
         if (!isAiReady()) return fallbackMealScan()
-        val apiKey = apiKeyProvider() ?: return fallbackMealScan()
         val file = File(path)
         val suggestedMealType = suggestMealType(capturedAtMillis)
         val captureTime = Instant.ofEpochMilli(capturedAtMillis)
             .atZone(ZoneId.systemDefault())
             .format(captureTimeFormatter)
+        val sanitizedUserContext = userContext.trim().take(MaxMealScanContextChars)
+        val contextOverrides = parseMealContextOverrides(sanitizedUserContext)
         val scanContext = buildString {
             append("De gebruiker nam deze foto om $captureTime. ")
             append("Voorgesteld maaltijdtype: ${suggestedMealType.promptLabel()}. ")
-            append(userContext.ifBlank { "Herken de voeding, schat porties en geef exacte macro's terug." })
+            append(sanitizedUserContext.ifBlank { "Herken de voeding, schat porties en geef exacte macro's terug." })
         }
-        val imageBytes = prepareMealScanImageBytes(file) ?: return fallbackMealScan()
-        val response = runCatching {
-            callGeminiWithBoundedRetry(feature = AiFeature.MEAL_SCAN) {
-                api.generateContent(
-                model = GEMINI_FLASH_MODEL,
-                apiKey = apiKey,
-                request = GeminiRequest(
-                    contents = listOf(
-                        GeminiRequest.Content(
-                            parts = listOf(
-                                GeminiRequest.Part(text = GeminiPrompts.mealScanner(scanContext)),
-                                GeminiRequest.Part(
-                                    inlineData = GeminiRequest.InlineData(
-                                        mimeType = "image/jpeg",
-                                        data = Base64.getEncoder().encodeToString(imageBytes),
-                                    ),
-                                ),
-                            ),
-                        ),
-                    ),
-                    generationConfig = GeminiRequest.GenerationConfig(
-                        responseMimeType = "application/json",
-                        responseJsonSchema = GeminiJsonSchemas.mealScan,
-                        thinkingConfig = GeminiRequest.ThinkingConfig(
-                            includeThoughts = false,
-                            thinkingBudget = 0,
-                        ),
-                    ),
+        val imageBytes = imageBytesProvider(file) ?: return fallbackMealScan()
+        val routed = runCatching {
+            aiJsonGenerator.generateJson(
+                AiRouteRequest(
+                    feature = AiFeature.MEAL_SCAN,
+                    prompt = AiPrompts.mealScanner(scanContext),
+                    schemaName = "meal_scan",
+                    responseJsonSchema = AiJsonSchemas.mealScan,
+                    thinkingBudget = 0,
+                    imageJpegBytes = imageBytes,
                 ),
-                )
-            }
+            )
         }.getOrElse { error ->
             if (error is CancellationException) throw error
             return fallbackMealScan()
         }
-        val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
-        return parseMealScan(text, suggestedMealType)
+        return parseMealScan(routed.rawJson, suggestedMealType, routed.providerUsed, contextOverrides)
     }
 
-    private fun parseMealScan(text: String, fallbackMealType: MealType): MealAnalysisResult {
+    private fun parseMealScan(
+        text: String,
+        fallbackMealType: MealType,
+        provider: AiProvider,
+        contextOverrides: MealContextOverrides = MealContextOverrides(),
+    ): MealAnalysisResult {
         if (text.isBlank()) throw MealAnalysisUnavailableException()
+        val boundedText = requireAiRawResponseWithinLimit(text)
         return runCatching {
-            val root = JsonParser.parseString(text).asJsonObject
-            val items = root.getAsJsonArray("items")?.mapNotNull { element ->
+            val root = JsonParser.parseString(boundedText).asJsonObject
+            val items = root.getAsJsonArray("items")?.take(MaxMealScanItems)?.mapNotNull { element ->
                 val obj = element.asJsonObject
-                val name = obj.get("name")?.asString?.trim().orEmpty()
+                val name = obj.get("name").boundedString(MaxMealScanNameChars).orEmpty()
                 if (name.isBlank()) return@mapNotNull null
                 val estimatedGrams = obj.safeNumber("estimatedGrams", default = 100.0, min = 1.0, max = MaxMealScanGrams)
                     ?: return@mapNotNull null
@@ -144,20 +145,29 @@ class MealAnalysisService internal constructor(
                         carbs = carbs,
                         fat = fat,
                     ),
-                    confidence = obj.get("confidence")?.asString,
-                    notes = obj.get("notes")?.asString,
+                    confidence = obj.get("confidence").boundedString(MaxMealScanMetaChars),
+                    notes = obj.get("notes").boundedString(MaxMealScanNotesChars),
                 )
             }.orEmpty()
+            val normalizedItems = applyMealContextOverrides(items, contextOverrides)
+            val reviewNotes = buildMealScanReviewNotes(
+                originalItems = items,
+                normalizedItems = normalizedItems,
+                overrides = contextOverrides,
+            )
             MealAnalysisResult(
-                items = items,
+                items = normalizedItems,
                 suggestedMealType = root.get("suggestedMealType")
                     ?.asString
                     ?.trim()
                     ?.uppercase()
                     ?.let { raw -> MealType.entries.firstOrNull { it.name == raw } }
                     ?: fallbackMealType,
-                notes = root.get("notes")?.asString,
-                rawResponse = text,
+                notes = listOfNotNull(root.get("notes").boundedString(MaxMealScanNotesChars), reviewNotes)
+                    .joinToString(" ")
+                    .ifBlank { null },
+                rawResponse = boundedText,
+                source = provider.toMealAnalysisSource(),
             )
         }.getOrElse { error ->
             throw MealAnalysisUnavailableException(cause = error)
@@ -171,6 +181,286 @@ class MealAnalysisService internal constructor(
     )
 }
 
+@Singleton
+class BodyMeasurementPhotoService @Inject constructor(
+    private val aiJsonGenerator: AiJsonGenerator,
+    private val aiUsageGate: AiUsageGate,
+) {
+    suspend fun analyzeScaleImage(path: String, userContext: String): BodyMeasurementPhotoResult {
+        if (!aiUsageGate.isAiReady()) return fallbackBodyMeasurementPhoto()
+        val sanitizedContext = userContext.trim().take(MaxBodyMeasurementContextChars)
+        val contextOverrides = parseBodyMeasurementContextOverrides(sanitizedContext)
+        val imageBytes = prepareMealScanImageBytes(File(path)) ?: return fallbackBodyMeasurementPhoto(
+            notes = "Foto kon niet worden gelezen. Vul de meting handmatig in.",
+        )
+        return runCatching {
+            val routed = aiJsonGenerator.generateJson(
+                AiRouteRequest(
+                    feature = AiFeature.BODY_MEASUREMENT_PHOTO,
+                    prompt = AiPrompts.bodyMeasurementPhoto(sanitizedContext),
+                    schemaName = "body_measurement_photo",
+                    responseJsonSchema = AiJsonSchemas.bodyMeasurementPhoto,
+                    thinkingBudget = 0,
+                    imageJpegBytes = imageBytes,
+                ),
+            )
+            parseBodyMeasurementPhoto(routed.rawJson, routed.providerUsed, contextOverrides)
+        }.getOrElse { error ->
+            if (error is CancellationException) throw error
+            fallbackBodyMeasurementPhoto()
+        }
+    }
+
+    private fun parseBodyMeasurementPhoto(
+        text: String,
+        provider: AiProvider,
+        contextOverrides: BodyMeasurementContextOverrides = BodyMeasurementContextOverrides(),
+    ): BodyMeasurementPhotoResult {
+        val boundedText = requireAiRawResponseWithinLimit(text)
+        val root = JsonParser.parseString(boundedText).asJsonObject
+        val weight = contextOverrides.weight
+            ?: root.safeNumber("weight", default = 0.0, min = 30.0, max = 300.0)
+            ?: 0.0
+        val bodyFat = contextOverrides.bodyFat
+            ?: root.safeNumber("bodyFat", default = 0.0, min = 0.0, max = 100.0)
+            ?: 0.0
+        val muscleMass = contextOverrides.muscleMass
+            ?: root.safeNumber("muscleMass", default = 0.0, min = 1.0, max = 200.0)
+            ?: 0.0
+        val source = provider.toBodyMeasurementPhotoSource()
+        if (weight <= 0.0) {
+            return fallbackBodyMeasurementPhoto(
+                notes = root.get("notes")?.asString ?: "AI kon het gewicht niet betrouwbaar uitlezen. Voeg het gewicht als context toe of vul het handmatig in.",
+                rawResponse = boundedText,
+                source = source,
+            )
+        }
+        return BodyMeasurementPhotoResult(
+            weight = weight,
+            bodyFat = bodyFat,
+            muscleMass = muscleMass,
+            confidence = root.get("confidence")?.asString,
+            notes = buildBodyMeasurementNotes(root.get("notes")?.asString, contextOverrides),
+            rawResponse = boundedText,
+            source = source,
+        )
+    }
+}
+
+internal data class MealContextOverrides(
+    val totalGrams: Double? = null,
+    val itemGramsByName: Map<String, Double> = emptyMap(),
+    val itemDisplayNamesByName: Map<String, String> = emptyMap(),
+)
+
+private data class MealContextItemOverride(
+    val normalized: String,
+    val displayName: String,
+    val grams: Double,
+)
+
+internal data class BodyMeasurementContextOverrides(
+    val weight: Double? = null,
+    val bodyFat: Double? = null,
+    val muscleMass: Double? = null,
+)
+
+internal fun parseMealContextOverrides(context: String): MealContextOverrides {
+    if (context.isBlank()) return MealContextOverrides()
+    val total = Regex("""(?i)\b(?:totaal|total)\s*[:=]?\s*(\d+(?:[,.]\d+)?)\s*(?:g|gram|grams)\b""")
+        .find(context)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.toAiDoubleOrNull()
+        ?.takeIf { it in 1.0..MaxMealScanGrams }
+    val itemOverrides = Regex("""(?i)\b([a-zA-ZÀ-ÿ][a-zA-ZÀ-ÿ0-9 '\-]{1,40}?)\s*[:=]?\s*(\d+(?:[,.]\d+)?)\s*(?:g|gram|grams|ml|milliliter|milliliters)\b""")
+        .findAll(context)
+        .mapNotNull { match ->
+            val name = match.groupValues.getOrNull(1)?.trim().orEmpty()
+            val grams = match.groupValues.getOrNull(2)?.toAiDoubleOrNull()
+            val normalized = normalizeAiContextName(name)
+            if (
+                normalized.isNotBlank() &&
+                normalized !in setOf("totaal", "total") &&
+                grams != null &&
+                grams in 1.0..MaxMealScanGrams
+            ) {
+                MealContextItemOverride(normalized = normalized, displayName = name, grams = grams)
+            } else {
+                null
+            }
+        }
+        .toList()
+    return MealContextOverrides(
+        totalGrams = total,
+        itemGramsByName = itemOverrides.associate { it.normalized to it.grams },
+        itemDisplayNamesByName = itemOverrides.associate { it.normalized to it.displayName },
+    )
+}
+internal fun parseBodyMeasurementContextOverrides(context: String): BodyMeasurementContextOverrides {
+    if (context.isBlank()) return BodyMeasurementContextOverrides()
+    fun firstNumber(pattern: String, range: ClosedFloatingPointRange<Double>): Double? =
+        Regex(pattern)
+            .find(context)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toAiDoubleOrNull()
+            ?.takeIf { it in range }
+
+    return BodyMeasurementContextOverrides(
+        weight = firstNumber("""(?i)\b(?:gewicht|weight)\s*[:=]?\s*(\d+(?:[,.]\d+)?)\s*(?:kg)?\b""", 30.0..300.0)
+            ?: firstNumber("""(?i)\b(\d+(?:[,.]\d+)?)\s*kg\b""", 30.0..300.0),
+        bodyFat = firstNumber("""(?i)\b(?:vet|vetpercentage|body\s*fat|fat)\s*[:=]?\s*(\d+(?:[,.]\d+)?)\s*%?\b""", 0.0..100.0),
+        muscleMass = firstNumber("""(?i)\b(?:spier|spiermassa|muscle|muscle\s*mass)\s*[:=]?\s*(\d+(?:[,.]\d+)?)\s*(?:kg)?\b""", 1.0..200.0),
+    )
+}
+
+private fun applyMealContextOverrides(
+    items: List<MealScanItem>,
+    overrides: MealContextOverrides,
+): List<MealScanItem> {
+    if (items.isEmpty()) return items
+    if (overrides.itemGramsByName.size > 1) {
+        return applyLockedMealContextItems(items, overrides)
+    }
+    return items.map { item ->
+        val itemOverride = overrides.itemGramsByName.entries.firstOrNull { (name, _) ->
+            val normalizedItem = normalizeAiContextName(item.name)
+            normalizedItem == name || normalizedItem.contains(name) || name.contains(normalizedItem)
+        }?.value
+        val targetGrams = itemOverride ?: overrides.totalGrams?.takeIf { items.size == 1 } ?: return@map item
+        item.copy(
+            estimatedGrams = targetGrams,
+            nutrition = scaleNutritionToGrams(item.nutrition, item.estimatedGrams, targetGrams),
+            notes = listOfNotNull(item.notes, "Gebruikerscontext gebruikte ${formatAiOneDecimal(targetGrams)} g als vaste hoeveelheid.")
+                .joinToString(" ")
+                .ifBlank { null },
+        )
+    }
+}
+
+private fun applyLockedMealContextItems(
+    items: List<MealScanItem>,
+    overrides: MealContextOverrides,
+): List<MealScanItem> {
+    val remaining = items.toMutableList()
+    return overrides.itemGramsByName.entries.mapIndexed { index, (contextName, grams) ->
+        val matchedIndex = remaining.indexOfFirst { item ->
+            val normalizedItem = normalizeAiContextName(item.name)
+            normalizedItem == contextName || normalizedItem.contains(contextName) || contextName.contains(normalizedItem)
+        }.takeIf { it >= 0 } ?: index.takeIf { it in remaining.indices }
+        val matched = matchedIndex?.let { remaining.removeAt(it) }
+        val displayName = overrides.itemDisplayNamesByName[contextName] ?: contextName
+        val base = matched ?: MealScanItem(
+            name = displayName,
+            estimatedGrams = grams,
+            nutrition = NutritionFacts.Zero,
+            confidence = "low",
+            notes = "Gebruikerscontext genoemd; AI leverde geen apart betrouwbaar component terug.",
+        )
+        base.copy(
+            name = displayName,
+            estimatedGrams = grams,
+            nutrition = scaleNutritionToGrams(base.nutrition, base.estimatedGrams, grams),
+            confidence = base.confidence ?: if (matched == null) "low" else null,
+            notes = listOfNotNull(
+                base.notes,
+                "Gebruikerscontext vergrendelde dit component op ${formatAiOneDecimal(grams)} g.",
+            ).joinToString(" ").ifBlank { null },
+        )
+    }
+}
+
+private fun buildMealScanReviewNotes(
+    originalItems: List<MealScanItem>,
+    normalizedItems: List<MealScanItem>,
+    overrides: MealContextOverrides,
+): String? {
+    val notes = buildList {
+        if (hasSuspiciousMealScanDuplicates(originalItems)) {
+            add("Controleer deze scan: meerdere onderdelen lijken samengevoegd of overschreven.")
+        }
+        val missingContextNames = overrides.itemGramsByName.keys
+            .filterNot { contextName -> normalizedItems.any { normalizeAiContextName(it.name) == contextName } }
+        if (missingContextNames.isNotEmpty()) {
+            add("Controleer deze scan: niet alle contextproducten kwamen betrouwbaar uit de AI-output.")
+        }
+        if (overrides.itemGramsByName.size > 1) {
+            add("Expliciete gebruikerscontext is als vaste componentlijst gebruikt.")
+        }
+    }
+    return notes.joinToString(" ").ifBlank { null }
+}
+
+private fun hasSuspiciousMealScanDuplicates(items: List<MealScanItem>): Boolean {
+    if (items.size < 3) return false
+    val duplicateNames = items
+        .groupingBy { normalizeAiContextName(it.name) }
+        .eachCount()
+        .values
+        .any { it >= 3 }
+    val duplicateMacroSets = items
+        .groupingBy { item ->
+            listOf(
+                item.nutrition.calories,
+                item.nutrition.protein,
+                item.nutrition.carbs,
+                item.nutrition.fat,
+            ).joinToString("|") { formatAiOneDecimal(it) }
+        }
+        .eachCount()
+        .values
+        .any { it >= 3 }
+    return duplicateNames || duplicateMacroSets
+}
+
+private fun scaleNutritionToGrams(nutrition: NutritionFacts, sourceGrams: Double, targetGrams: Double): NutritionFacts {
+    if (sourceGrams <= 0.0 || !sourceGrams.isFinite()) return nutrition
+    val ratio = targetGrams / sourceGrams
+    return NutritionFacts(
+        calories = nutrition.calories * ratio,
+        protein = nutrition.protein * ratio,
+        carbs = nutrition.carbs * ratio,
+        fat = nutrition.fat * ratio,
+    )
+}
+
+private fun buildBodyMeasurementNotes(baseNotes: String?, overrides: BodyMeasurementContextOverrides): String? {
+    val overrideLabels = buildList {
+        if (overrides.weight != null) add("gewicht")
+        if (overrides.bodyFat != null) add("vetpercentage")
+        if (overrides.muscleMass != null) add("spiermassa")
+    }
+    val overrideNote = overrideLabels.takeIf { it.isNotEmpty() }
+        ?.joinToString(prefix = "Gebruikerscontext gebruikt als vaste waarde voor ", separator = ", ", postfix = ".")
+    return listOfNotNull(baseNotes, overrideNote).joinToString(" ").ifBlank { null }
+}
+
+private fun normalizeAiContextName(value: String): String =
+    value.lowercase(Locale.ROOT)
+        .replace(Regex("""[^a-z0-9à-ÿ ]"""), " ")
+        .replace(Regex("""\s+"""), " ")
+        .trim()
+
+private fun String.toAiDoubleOrNull(): Double? =
+    trim().replace(',', '.').toDoubleOrNull()?.takeIf { it.isFinite() }
+
+private fun formatAiOneDecimal(value: Double): String =
+    String.format(Locale.US, "%.1f", value)
+
+private fun fallbackBodyMeasurementPhoto(
+    notes: String = "AI-weegfotoanalyse is nu niet beschikbaar. Vul de meting handmatig in.",
+    rawResponse: String? = null,
+    source: BodyMeasurementPhotoSource = BodyMeasurementPhotoSource.LOCAL_FALLBACK,
+) = BodyMeasurementPhotoResult(
+    weight = 0.0,
+    bodyFat = 0.0,
+    muscleMass = 0.0,
+    notes = notes,
+    rawResponse = rawResponse,
+    source = source,
+)
+
 private fun MealType.promptLabel(): String = when (this) {
     MealType.BREAKFAST -> "Ochtend"
     MealType.LUNCH -> "Middag"
@@ -181,40 +471,85 @@ private fun MealType.promptLabel(): String = when (this) {
 private const val MaxMealScanGrams = 100_000.0
 private const val MaxMealScanCalories = 100_000.0
 private const val MaxMealScanMacro = 100_000.0
+private const val MaxMealScanItems = 20
+private const val MaxMealScanNameChars = 120
+private const val MaxMealScanMetaChars = 40
+private const val MaxMealScanNotesChars = 600
+private const val MaxMealScanContextChars = 2_000
+private const val MaxBodyMeasurementContextChars = 1_000
 private const val MaxMealImageSourceBytes = 6L * 1024L * 1024L
 private const val MaxMealImageUploadBytes = 1_500_000
 private const val MaxMealImageDimensionPx = 1_280
+private const val MaxAiRawResponseChars = 64_000
 
-internal fun prepareMealScanImageBytes(file: File): ByteArray? {
-    if (!file.exists() || file.length() <= 0L || file.length() > MaxMealImageSourceBytes) return null
-    val raw = file.readBytes()
-    if (raw.size <= MaxMealImageUploadBytes) {
-        return runCatching { compressMealImageForGemini(raw) }.getOrDefault(raw)
-    }
-    return runCatching { compressMealImageForGemini(raw) }
+internal class AiRawResponseTooLargeException : RuntimeException("AI-antwoord is te groot.")
+
+internal fun requireAiRawResponseWithinLimit(text: String): String {
+    if (text.length > MaxAiRawResponseChars) throw AiRawResponseTooLargeException()
+    return text
+}
+
+internal suspend fun prepareMealScanImageBytes(
+    file: File,
+    ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    imageCompressor: (File) -> ByteArray? = ::compressMealImageForAiUpload,
+): ByteArray? = withContext(ioDispatcher) {
+    val sourceLength = file.takeIf { it.exists() }?.length() ?: return@withContext null
+    if (sourceLength <= 0L || sourceLength > MaxMealImageSourceBytes) return@withContext null
+
+    runCatching { imageCompressor(file) }
         .getOrNull()
         ?.takeIf { it.size <= MaxMealImageUploadBytes }
 }
 
-private fun compressMealImageForGemini(raw: ByteArray): ByteArray {
-    val source = BitmapFactory.decodeByteArray(raw, 0, raw.size) ?: return raw
-    val scale = minOf(
-        1f,
-        MaxMealImageDimensionPx.toFloat() / maxOf(source.width, source.height).coerceAtLeast(1),
-    )
-    val bitmap = if (scale < 1f) {
-        Bitmap.createScaledBitmap(
-            source,
-            (source.width * scale).toInt().coerceAtLeast(1),
-            (source.height * scale).toInt().coerceAtLeast(1),
-            true,
-        )
-    } else {
-        source
+internal fun calculateImageSampleSize(width: Int, height: Int, maxDimensionPx: Int): Int {
+    val largestDimension = maxOf(width, height).coerceAtLeast(1)
+    var sampleSize = 1
+    while (largestDimension / (sampleSize * 2L) >= maxDimensionPx) {
+        sampleSize *= 2
     }
-    return ByteArrayOutputStream().use { output ->
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 82, output)
-        output.toByteArray()
+    return sampleSize
+}
+
+private fun compressMealImageForAiUpload(file: File): ByteArray? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(file.absolutePath, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+    val source = BitmapFactory.decodeFile(
+        file.absolutePath,
+        BitmapFactory.Options().apply {
+            inSampleSize = calculateImageSampleSize(
+                width = bounds.outWidth,
+                height = bounds.outHeight,
+                maxDimensionPx = MaxMealImageDimensionPx,
+            )
+        },
+    ) ?: return null
+    var prepared: Bitmap? = null
+    return try {
+        val scale = minOf(
+            1f,
+            MaxMealImageDimensionPx.toFloat() / maxOf(source.width, source.height).coerceAtLeast(1),
+        )
+        val target = if (scale < 1f) {
+            Bitmap.createScaledBitmap(
+                source,
+                (source.width * scale).toInt().coerceAtLeast(1),
+                (source.height * scale).toInt().coerceAtLeast(1),
+                true,
+            )
+        } else {
+            source
+        }
+        prepared = target
+        ByteArrayOutputStream().use { output ->
+            if (!target.compress(Bitmap.CompressFormat.JPEG, 82, output)) return@use null
+            output.toByteArray()
+        }
+    } finally {
+        prepared?.takeIf { it !== source && !it.isRecycled }?.recycle()
+        source.takeIf { !it.isRecycled }?.recycle()
     }
 }
 
@@ -229,20 +564,28 @@ private fun com.google.gson.JsonObject.safeNumber(
     return parsed.takeIf { it.isFinite() && it in min..max }
 }
 
+private fun com.google.gson.JsonElement?.boundedString(maxChars: Int): String? =
+    this
+        ?.takeIf { !it.isJsonNull }
+        ?.let { element -> runCatching { element.asString.trim().take(maxChars) }.getOrNull() }
+        ?.takeIf { it.isNotBlank() }
+
 @Singleton
 class WorkoutDebriefService internal constructor(
-    private val api: GeminiApi,
-    private val apiKeyProvider: suspend () -> String?,
+    private val aiJsonGenerator: AiJsonGenerator,
 ) {
+    internal constructor(
+        api: GeminiApi,
+        apiKeyProvider: suspend () -> String?,
+    ) : this(
+        aiJsonGenerator = GeminiOnlyJsonGenerator(api, apiKeyProvider),
+    )
+
     @Inject
     constructor(
-        api: GeminiApi,
-        aiUsageGate: AiUsageGate,
+        aiProviderRouter: AiProviderRouter,
     ) : this(
-        api = api,
-        apiKeyProvider = {
-            if (aiUsageGate.isAiReady()) aiUsageGate.currentApiKeyOrNull() else null
-        },
+        aiJsonGenerator = aiProviderRouter,
     )
 
     suspend fun generateWorkoutDebrief(
@@ -259,17 +602,36 @@ class WorkoutDebriefService internal constructor(
         weeklyFrequency: Int,
     ): WorkoutDebrief =
         runCatching {
-            val apiKey = apiKeyProvider() ?: return fallbackWorkoutDebriefResult(totalVolume, progression)
-            val response = callGeminiWithBoundedRetry(feature = AiFeature.WORKOUT_DEBRIEF) {
-                api.generateContent(
-                model = GEMINI_FLASH_MODEL,
-                apiKey = apiKey,
-                request = GeminiRequest(
-                    contents = listOf(
-                        GeminiRequest.Content(
-                            parts = listOf(
-                                GeminiRequest.Part(
-                                    text = GeminiPrompts.workoutDebrief(
+            generateWorkoutDebriefOrThrow(
+                totalVolume = totalVolume,
+                progression = progression,
+                comparisonSummary = comparisonSummary,
+                distribution = distribution,
+                avgRpe = avgRpe,
+                topExercises = topExercises,
+                weeklyFrequency = weeklyFrequency,
+            )
+        }.getOrElse { error ->
+            if (error is CancellationException) throw error
+            fallbackWorkoutDebriefResult(totalVolume, progression)
+        }
+
+    suspend fun generateWorkoutDebriefOrThrow(
+        totalVolume: Double,
+        progression: Double?,
+        comparisonSummary: String,
+        distribution: String,
+        avgRpe: Float,
+        topExercises: String,
+        weeklyFrequency: Int,
+    ): WorkoutDebrief {
+        val routed = aiJsonGenerator.generateJson(
+                AiRouteRequest(
+                    feature = AiFeature.WORKOUT_DEBRIEF,
+                    schemaName = "workout_debrief",
+                    responseJsonSchema = AiJsonSchemas.workoutDebrief,
+                    thinkingBudget = 1000,
+                    prompt = AiPrompts.workoutDebrief(
                                         totalVolume = totalVolume,
                                         progression = progression,
                                         comparisonSummary = comparisonSummary,
@@ -278,44 +640,33 @@ class WorkoutDebriefService internal constructor(
                                         topExercises = topExercises,
                                         weeklyFrequency = weeklyFrequency,
                                     ),
-                                ),
-                            ),
-                        ),
-                    ),
-                    generationConfig = GeminiRequest.GenerationConfig(
-                        responseMimeType = "application/json",
-                        responseJsonSchema = GeminiJsonSchemas.workoutDebrief,
-                        thinkingConfig = GeminiRequest.ThinkingConfig(
-                            includeThoughts = false,
-                            thinkingBudget = 1000,
-                        ),
-                    ),
                 ),
-                )
-            }
-            val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
-            parseWorkoutDebriefResponse(text, totalVolume, progression)
-        }.getOrElse { error ->
-            if (error is CancellationException) throw error
-            fallbackWorkoutDebriefResult(totalVolume, progression)
-        }
+            )
+        return parseWorkoutDebriefResponse(routed.rawJson, totalVolume, progression, routed.providerUsed)
+    }
 }
 
 @Singleton
 class GoalAdvisorService internal constructor(
-    private val api: GeminiApi,
+    private val aiJsonGenerator: AiJsonGenerator,
     private val isAiReady: suspend () -> Boolean,
-    private val apiKeyProvider: suspend () -> String?,
 ) {
+    internal constructor(
+        api: GeminiApi,
+        isAiReady: suspend () -> Boolean,
+        apiKeyProvider: suspend () -> String?,
+    ) : this(
+        aiJsonGenerator = GeminiOnlyJsonGenerator(api, apiKeyProvider),
+        isAiReady = isAiReady,
+    )
 
     @Inject
     constructor(
-        api: GeminiApi,
+        aiProviderRouter: AiProviderRouter,
         aiUsageGate: AiUsageGate,
     ) : this(
-        api = api,
+        aiJsonGenerator = aiProviderRouter,
         isAiReady = { aiUsageGate.isAiReady() },
-        apiKeyProvider = { aiUsageGate.currentApiKeyOrNull() },
     )
     suspend fun generateGoalAdvice(
         height: Double,
@@ -325,6 +676,7 @@ class GoalAdvisorService internal constructor(
         sex: BiologicalSex,
         activityLevel: String,
         goal: String,
+        manualCalorieTarget: Int? = null,
     ): GoalAdvice =
         runCatching {
             val baseline = deterministicGoalAdvice(
@@ -335,19 +687,16 @@ class GoalAdvisorService internal constructor(
                 sex = sex,
                 activityLevel = activityLevel,
                 goal = goal,
+                manualCalorieTarget = manualCalorieTarget,
             )
             if (!isAiReady()) return baseline
-            val apiKey = apiKeyProvider() ?: return baseline
-            val response = callGeminiWithBoundedRetry(feature = AiFeature.GOAL_ADVICE) {
-                api.generateContent(
-                model = GEMINI_FLASH_MODEL,
-                apiKey = apiKey,
-                request = GeminiRequest(
-                    contents = listOf(
-                        GeminiRequest.Content(
-                            parts = listOf(
-                                GeminiRequest.Part(
-                                    text = GeminiPrompts.goalAdvisor(
+            val routed = aiJsonGenerator.generateJson(
+                AiRouteRequest(
+                    feature = AiFeature.GOAL_ADVICE,
+                    schemaName = "goal_advice",
+                    responseJsonSchema = AiJsonSchemas.goalAdvice,
+                    thinkingBudget = 1000,
+                    prompt = AiPrompts.goalAdvisor(
                                         height = height,
                                         weight = weight,
                                         bodyFat = bodyFat,
@@ -356,24 +705,11 @@ class GoalAdvisorService internal constructor(
                                         activityLevel = activityLevel,
                                         goal = goal,
                                         baseline = baseline,
+                                        manualCalorieTarget = manualCalorieTarget,
                                     ),
-                                ),
-                            ),
-                        ),
-                    ),
-                    generationConfig = GeminiRequest.GenerationConfig(
-                        responseMimeType = "application/json",
-                        responseJsonSchema = GeminiJsonSchemas.goalAdvice,
-                        thinkingConfig = GeminiRequest.ThinkingConfig(
-                            includeThoughts = false,
-                            thinkingBudget = 1000,
-                        ),
-                    ),
                 ),
-                )
-            }
-            val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
-            parseGoalAdvice(text, baseline)
+            )
+            parseGoalAdvice(routed.rawJson, baseline, routed.providerUsed)
         }.getOrElse { error ->
             if (error is CancellationException) throw error
             deterministicGoalAdvice(
@@ -384,12 +720,14 @@ class GoalAdvisorService internal constructor(
                 sex = sex,
                 activityLevel = activityLevel,
                 goal = goal,
+                manualCalorieTarget = manualCalorieTarget,
             )
         }
 
-    private fun parseGoalAdvice(text: String, baseline: GoalAdvice): GoalAdvice =
+    private fun parseGoalAdvice(text: String, baseline: GoalAdvice, provider: AiProvider): GoalAdvice =
         runCatching {
-            val root = JsonParser.parseString(text).asJsonObject
+            val boundedText = requireAiRawResponseWithinLimit(text)
+            val root = JsonParser.parseString(boundedText).asJsonObject
             val textFields = listOf(
                 root.get("trainingFocus")?.asString.orEmpty(),
                 root.get("korteSamenvatting")?.asString ?: root.get("summary")?.asString.orEmpty(),
@@ -412,8 +750,8 @@ class GoalAdvisorService internal constructor(
                     .ifEmpty { baseline.attentionPoints },
                 advice = root.get("advies")?.asString ?: baseline.advice,
                 dataQuality = root.get("dataKwaliteit")?.asString ?: baseline.dataQuality,
-                source = GoalAdviceSource.GEMINI_2_5_FLASH,
-                rawResponse = text,
+                source = provider.toGoalAdviceSource(),
+                rawResponse = boundedText,
             )
         }.getOrElse { baseline }
 
@@ -425,6 +763,7 @@ class GoalAdvisorService internal constructor(
         sex: BiologicalSex,
         activityLevel: String,
         goal: String,
+        manualCalorieTarget: Int? = null,
     ): GoalAdvice {
         val baseline = buildGoalBaseline(
             heightCm = height,
@@ -434,6 +773,7 @@ class GoalAdvisorService internal constructor(
             sex = sex,
             activityLevel = activityLevel,
             goal = goal,
+            manualCalorieTarget = manualCalorieTarget,
         )
         val trainingFocus = when {
             goal.contains("bulk", ignoreCase = true) -> "Progressieve overload op compoundoefeningen"
@@ -451,9 +791,13 @@ class GoalAdvisorService internal constructor(
             carbsTarget = baseline.carbsTarget,
             fatTarget = baseline.fatTarget,
             trainingFocus = trainingFocus,
-            summary = "Lokale berekening: onderhoud ${baseline.maintenanceCalories} kcal en doel ${baseline.targetCalories} kcal op basis van je profiel.",
+            summary = if (manualCalorieTarget != null) {
+                "Lokale berekening: onderhoud ${baseline.maintenanceCalories} kcal en jouw calorie doel ${baseline.targetCalories} kcal op basis van je profiel."
+            } else {
+                "Lokale berekening: onderhoud ${baseline.maintenanceCalories} kcal en doel ${baseline.targetCalories} kcal op basis van je profiel."
+            },
             calorieAdvice = buildCalorieAdvice(baseline),
-            macroAdvice = "Macro's sluiten aan op ${baseline.targetCalories} kcal: ${baseline.proteinTarget} g eiwit, ${baseline.carbsTarget} g koolhydraten en ${baseline.fatTarget} g vet.",
+            macroAdvice = "Auto macro's sluiten aan op ${baseline.targetCalories} kcal: ${baseline.proteinTarget} g eiwit, ${baseline.carbsTarget} g koolhydraten en ${baseline.fatTarget} g vet.",
             activityExplanation = "Activiteitsfactor ${formatActivityMultiplierNl(baseline.activityMultiplier)} betekent dat onderhoud is berekend als BMR x activiteit: ${baseline.bmr} x ${formatActivityMultiplierNl(baseline.activityMultiplier)} = ${baseline.maintenanceCalories} kcal.",
             attentionPoints = buildGoalAttentionPoints(bodyFat = bodyFat, activityLevel = activityLevel),
             advice = buildGoalAdviceText(baseline, goal),
@@ -488,36 +832,22 @@ class GoalAdvisorService internal constructor(
 
 @Singleton
 class WeeklyReportService @Inject constructor(
-    private val api: GeminiApi,
+    private val aiJsonGenerator: AiJsonGenerator,
     private val aiUsageGate: AiUsageGate,
 ) {
     suspend fun generateWeeklyReport(volume: Double, weightTrend: Double, adherence: Int): WeeklyReportResult =
         runCatching {
             if (!aiUsageGate.isAiReady()) return fallbackWeeklyReport(adherence)
-            val apiKey = aiUsageGate.currentApiKeyOrNull() ?: return fallbackWeeklyReport(adherence)
-            val response = callGeminiWithBoundedRetry(feature = AiFeature.WEEKLY_REPORT) {
-                api.generateContent(
-                model = GEMINI_FLASH_MODEL,
-                apiKey = apiKey,
-                request = GeminiRequest(
-                    contents = listOf(
-                        GeminiRequest.Content(
-                            parts = listOf(GeminiRequest.Part(text = GeminiPrompts.weeklyReport(volume, weightTrend, adherence))),
-                        ),
-                    ),
-                    generationConfig = GeminiRequest.GenerationConfig(
-                        responseMimeType = "application/json",
-                        responseJsonSchema = GeminiJsonSchemas.weeklyReport,
-                        thinkingConfig = GeminiRequest.ThinkingConfig(
-                            includeThoughts = false,
-                            thinkingBudget = 1000,
-                        ),
-                    ),
+            val routed = aiJsonGenerator.generateJson(
+                AiRouteRequest(
+                    feature = AiFeature.WEEKLY_REPORT,
+                    prompt = AiPrompts.weeklyReport(volume, weightTrend, adherence),
+                    schemaName = "weekly_report",
+                    responseJsonSchema = AiJsonSchemas.weeklyReport,
+                    thinkingBudget = 1000,
                 ),
-                )
-            }
-            val text = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty()
-            parseWeeklyReportResponse(text, adherence)
+            )
+            parseWeeklyReportResponse(routed.rawJson, adherence, routed.providerUsed)
         }.getOrElse { error ->
             if (error is CancellationException) throw error
             fallbackWeeklyReport(adherence)
@@ -526,8 +856,12 @@ class WeeklyReportService @Inject constructor(
 }
 
 internal fun parseWeeklyReportResponse(text: String, adherence: Int): WeeklyReportResult =
+    parseWeeklyReportResponse(text, adherence, AiProvider.GEMINI)
+
+internal fun parseWeeklyReportResponse(text: String, adherence: Int, provider: AiProvider): WeeklyReportResult =
     runCatching {
-        val root = JsonParser.parseString(text).asJsonObject
+        val boundedText = requireAiRawResponseWithinLimit(text)
+        val root = JsonParser.parseString(boundedText).asJsonObject
         val summary = root.get("summary")?.asString?.trim().orEmpty()
         if (summary.isBlank()) return fallbackWeeklyReport(adherence)
         val wins = root.getAsJsonArray("wins")?.map { it.asString }.orEmpty()
@@ -546,8 +880,8 @@ internal fun parseWeeklyReportResponse(text: String, adherence: Int): WeeklyRepo
             risks = risks,
             nextWeekFocus = nextWeekFocus,
             rationaleBullets = rationaleBullets,
-            source = WeeklyReportSource.GEMINI_2_5_FLASH,
-            rawResponse = text,
+            source = provider.toWeeklyReportSource(),
+            rawResponse = boundedText,
         )
     }.getOrElse { fallbackWeeklyReport(adherence) }
 
@@ -566,8 +900,17 @@ internal fun parseWorkoutDebriefResponse(
     text: String,
     totalVolume: Double,
     progression: Double?,
+): WorkoutDebrief =
+    parseWorkoutDebriefResponse(text, totalVolume, progression, AiProvider.GEMINI)
+
+internal fun parseWorkoutDebriefResponse(
+    text: String,
+    totalVolume: Double,
+    progression: Double?,
+    provider: AiProvider,
 ): WorkoutDebrief = runCatching {
-    val root = JsonParser.parseString(text).asJsonObject
+    val boundedText = requireAiRawResponseWithinLimit(text)
+    val root = JsonParser.parseString(boundedText).asJsonObject
     val summary = root.get("summary")?.asString ?: "Training opgeslagen."
     val progressionFeedback = root.get("progressionFeedback")?.asString ?: "Progressie bleef stabiel."
     val recommendation = root.get("recommendation")?.asString
@@ -599,9 +942,46 @@ internal fun parseWorkoutDebriefResponse(
         risks = risks,
         nextLoadTarget = nextLoadTarget,
         recoveryAdvice = recoveryAdvice,
-        source = WorkoutDebriefSource.GEMINI_2_5_FLASH,
+        source = provider.toWorkoutDebriefSource(),
     )
 }.getOrElse { fallbackWorkoutDebriefResult(totalVolume, progression) }
+
+private fun AiProvider.toMealAnalysisSource(): MealAnalysisSource = when (this) {
+    AiProvider.GEMINI -> MealAnalysisSource.API
+    AiProvider.OPENAI -> MealAnalysisSource.OPENAI
+}
+
+private fun AiProvider.toBodyMeasurementPhotoSource(): BodyMeasurementPhotoSource = when (this) {
+    AiProvider.GEMINI -> BodyMeasurementPhotoSource.GEMINI_2_5_FLASH
+    AiProvider.OPENAI -> BodyMeasurementPhotoSource.OPENAI
+}
+
+private fun AiProvider.toWeeklyReportSource(): WeeklyReportSource = when (this) {
+    AiProvider.GEMINI -> WeeklyReportSource.GEMINI_2_5_FLASH
+    AiProvider.OPENAI -> WeeklyReportSource.OPENAI
+}
+
+private fun AiProvider.toGoalAdviceSource(): GoalAdviceSource = when (this) {
+    AiProvider.GEMINI -> GoalAdviceSource.GEMINI_2_5_FLASH
+    AiProvider.OPENAI -> GoalAdviceSource.OPENAI
+}
+
+private fun AiProvider.toWorkoutDebriefSource(): WorkoutDebriefSource = when (this) {
+    AiProvider.GEMINI -> WorkoutDebriefSource.GEMINI_2_5_FLASH
+    AiProvider.OPENAI -> WorkoutDebriefSource.OPENAI
+}
+
+private class GeminiOnlyJsonGenerator(
+    private val api: GeminiApi,
+    private val apiKeyProvider: suspend () -> String?,
+) : AiJsonGenerator {
+    override suspend fun generateJson(request: AiRouteRequest): AiRouteResult {
+        val apiKey = apiKeyProvider() ?: throw AiProviderUnavailableException(emptyList())
+        return callGeminiWithBoundedRetry(feature = request.feature) {
+            GeminiModelClient(api).generateJson(apiKey, request)
+        }
+    }
+}
 
 internal fun fallbackWorkoutDebriefResult(totalVolume: Double, progression: Double?) = WorkoutDebrief(
     summary = "Lokale samenvatting: volume ${totalVolume.toInt()} kg.",

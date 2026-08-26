@@ -1,0 +1,3 @@
+﻿{"phase":"discovery","candidate_id":"CAND-002","status":"reportable","evidence":"Manifest and HealthConnectDataSource requested/read WeightRecord outside stated HC metric standard."}
+{"phase":"validation","candidate_id":"CAND-002","status":"fixed","evidence":"READ_WEIGHT and WeightRecord read/tracked/status handling removed; manual weight/domain legacy fields preserved."}
+{"phase":"attack_path","candidate_id":"CAND-002","status":"closed","severity":"Low-Medium","evidence":"Automatic Health Connect weight access no longer available."}

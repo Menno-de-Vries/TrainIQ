@@ -1,0 +1,60 @@
+
+> docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:53:05-27 01:00:00.849 17024 17024 D AndroidRuntime: Shutti
+ng down VM
+  docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:54:05-27 01:00:00.849  1507  1734 I AiAiEcho: #remoteViews
+Twiddler: feature disabled.
+  docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:55:05-27 01:00:00.849   701   701 W IPCThreadState: Sendin
+g oneway calls to frozen process.
+  docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:56:05-27 01:00:00.849   701   701 W IPCThreadState: Sendin
+g oneway calls to frozen process.
+> docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:146:05-27 01:00:05.629 17055 17055 D AndroidRuntime: >>>>>
+> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+> docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:147:05-27 01:00:05.636 17055 17055 I AndroidRuntime: Using
+ default boot image
+> docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:148:05-27 01:00:05.636 17055 17055 I AndroidRuntime: Leavi
+ng lock profiling enabled
+  docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:149:05-27 01:00:05.641 17055 17055 I app_process: Using Co
+llectorTypeCMC GC.
+> docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:150:05-27 01:00:05.736 17055 17055 D nativeloader: InitDef
+aultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:lib
+dl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.
+so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:li
+bsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+  docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:151:05-27 01:00:05.750 17055 17055 D nativeloader: Load li
+bicu_jni.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+  docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:152:05-27 01:00:05.750 17055 17055 D app_process: u_setTim
+eZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/9/icu") succeeded.
+  docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:153:05-27 01:00:05.750 17055 17055 D app_process: I18n APE
+X ICU file found: /apex/com.android.i18n/etc/icu/icudt76l.dat
+> docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:162:05-27 01:00:05.781 17055 17055 D AndroidRuntime: Calli
+ng main entry com.android.commands.uiautomator.Launcher
+  docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:163:05-27 01:00:05.786 17055 17055 I AconfigPackage: andro
+id.media.swcodec.flags is mapped to com.android.media.swcodec
+  docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:164:05-27 01:00:05.786 17055 17055 I AconfigPackage: com.g
+oogle.android.settings.simplemode.flags is mapped to system_ext
+  docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:165:05-27 01:00:05.786 17055 17055 I AconfigPackage: com.g
+oogle.android.systemui is mapped to system_ext
+> docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:228:05-27 01:00:05.789 17055 17055 I AconfigPackage: com.a
+ndroid.internal.camera.flags is mapped to system
+  docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:229:05-27 01:00:05.789 17055 17055 I AconfigPackage: com.a
+ndroid.hardware.libsensor.flags is mapped to system
+  docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:230:05-27 01:00:05.789 17055 17055 I AconfigPackage: com.a
+ndroid.internal.jank is mapped to system
+  docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:231:05-27 01:00:05.789 17055 17055 I AconfigPackage: com.a
+ndroid.providers.settings is mapped to system
+> docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:342:05-27 01:00:05.793 17055 17055 I AconfigPackage: libgo
+oglecamerahal.flags is mapped to vendor
+  docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:343:05-27 01:00:05.794 17055 17055 I AconfigPackage: com.a
+ndroid.ipsec.flags is mapped to com.android.ipsec
+  docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:344:05-27 01:00:05.794 17055 17055 I AconfigPackage: com.a
+ndroid.nfc.module.flags is mapped to com.android.nfcservices
+  docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:345:05-27 01:00:05.794 17055 17055 I AconfigPackage: com.a
+ndroid.adservices.ondevicepersonalization.flags is mapped to com.android.ondevicepersonalization
+> docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:488:05-27 01:00:06.931 17055 17055 D AndroidRuntime: Shutt
+ing down VM
+  docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:489:05-27 01:00:06.931  1507  1734 I AiAiEcho: #postPredic
+tionTargets: Sending updates to UISurface home with targets# 0 (types=[])
+  docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:490:05-27 01:00:06.931   701   701 W IPCThreadState: Sendi
+ng oneway calls to frozen process.
+  docs\qa\evidence\2026-05-27-nutrition-loop\logcat-tail.txt:491:05-27 01:00:06.931   701   701 W IPCThreadState: Sendi
+ng oneway calls to frozen process.

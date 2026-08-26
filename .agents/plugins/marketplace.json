@@ -1,0 +1,20 @@
+{
+  "name": "trainiq-local",
+  "interface": {
+    "displayName": "TrainIQ Local"
+  },
+  "plugins": [
+    {
+      "name": "trainiq-full-app-qa",
+      "source": {
+        "source": "local",
+        "path": "./trainiq-full-app-qa"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

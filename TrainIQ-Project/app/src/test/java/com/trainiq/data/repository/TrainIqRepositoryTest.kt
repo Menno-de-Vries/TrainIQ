@@ -16,6 +16,7 @@ import com.trainiq.data.local.LoggedMealItemStorage
 import com.trainiq.data.local.TrainIqStorageState
 import com.trainiq.domain.model.FoodItem
 import com.trainiq.domain.model.FoodSourceType
+import com.trainiq.domain.model.GeneratedExercise
 import com.trainiq.domain.model.LoggedMealItemType
 import com.trainiq.domain.model.NutritionFacts
 import com.trainiq.domain.model.Recipe
@@ -24,12 +25,49 @@ import com.trainiq.domain.model.ReadinessLevel
 import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.BodyMeasurement
 import com.trainiq.domain.repository.MealEntryRequest
+import com.trainiq.domain.repository.MealEntrySnapshot
 import com.trainiq.domain.repository.MealEntryType
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class TrainIqRepositoryTest {
+    @Test
+    fun generatedExerciseMatcher_prefersExistingExerciseId() {
+        val exercises = listOf(
+            ExerciseEntity(id = 3L, name = "Bench Press", muscleGroup = "Chest", equipment = "Barbell"),
+            ExerciseEntity(id = 9L, name = "Incline Press", muscleGroup = "Chest", equipment = "Dumbbell"),
+        )
+        val generated = GeneratedExercise(
+            exerciseName = "Nieuwe press",
+            muscleGroup = "Borst",
+            equipment = "Halterstang",
+            targetSets = 3,
+            repRange = "6-10",
+            restSeconds = 120,
+            existingExerciseId = 9L,
+        )
+
+        assertEquals(9L, exercises.findBestGeneratedExerciseMatch(generated)?.id)
+    }
+
+    @Test
+    fun generatedExerciseMatcher_reusesSimilarExistingExerciseBeforeCreatingDuplicate() {
+        val exercises = listOf(
+            ExerciseEntity(id = 3L, name = "Bench Press", muscleGroup = "Chest", equipment = "Barbell"),
+        )
+        val generated = GeneratedExercise(
+            exerciseName = "Barbell bench press",
+            muscleGroup = "Chest",
+            equipment = "Barbell",
+            targetSets = 3,
+            repRange = "6-10",
+            restSeconds = 120,
+        )
+
+        assertEquals(3L, exercises.findBestGeneratedExerciseMatch(generated)?.id)
+    }
     @Test
     fun generatedRoutineValidationMessagesStayDutchForUiSurfacedErrors() {
         assertEquals(
@@ -80,6 +118,7 @@ class TrainIqRepositoryTest {
 
         assertEquals(1, overview.volumeTrend.size)
         assertEquals(1_300.0, overview.volumeTrend.single().value, 0.0)
+        assertNull(overview.weeklyLoadRatio)
     }
 
     @Test
@@ -116,6 +155,16 @@ class TrainIqRepositoryTest {
         assertEquals(112.5, overview.strengthTrend.first().value, 0.1)
         assertEquals(135.0, overview.strengthTrend.last().value, 0.1)
         assertEquals(listOf(34.0, 35.0), overview.muscleMassTrend.map { it.value })
+        assertEquals(1.2, overview.weeklyLoadRatio ?: -1.0, 0.0)
+    }
+
+    @Test
+    fun buildProgressOverviewFromHistory_ignoresZeroVolumeWeeksWhenSelectingComparisonWeeks() {
+        val zeroWeeksBetweenPositiveWeeks = progressOverviewForWeeklyVolumes(listOf(100.0, 0.0, 0.0, 0.0, 200.0))
+        val trailingZeroWeek = progressOverviewForWeeklyVolumes(listOf(100.0, 200.0, 0.0))
+
+        assertEquals(2.0, zeroWeeksBetweenPositiveWeeks.weeklyLoadRatio ?: -1.0, 0.0)
+        assertEquals(2.0, trailingZeroWeek.weeklyLoadRatio ?: -1.0, 0.0)
     }
 
     @Test
@@ -135,6 +184,35 @@ class TrainIqRepositoryTest {
 
         assertEquals("Deze maaltijd bevat een verwijderd product of recept.", error.message)
     }
+
+    private fun progressOverviewForWeeklyVolumes(volumes: List<Double>) = buildProgressOverviewFromHistory(
+        measurements = emptyList(),
+        sessions = volumes.indices.map { index ->
+            WorkoutSessionEntity(
+                id = index.toLong() + 1L,
+                date = java.time.LocalDate.of(2026, 1, 5)
+                    .plusWeeks(index.toLong())
+                    .atStartOfDay(java.time.ZoneId.systemDefault())
+                    .toInstant()
+                    .toEpochMilli(),
+                duration = 1_800,
+                status = "COMPLETED",
+                completed = true,
+            )
+        },
+        sets = volumes.mapIndexed { index, volume ->
+            WorkoutSetEntity(
+                id = index.toLong() + 1L,
+                sessionId = index.toLong() + 1L,
+                exerciseId = 10L,
+                weight = volume,
+                reps = 1,
+                rpe = 8.0,
+                setType = SetType.NORMAL.name,
+            )
+        },
+        analyticsEngine = AnalyticsEngine(),
+    )
 
     @Test
     fun buildMealItemSnapshots_scalesRecipeFromPositiveCookedGrams() {
@@ -171,6 +249,39 @@ class TrainIqRepositoryTest {
         assertEquals(10.0, items.single().protein, 0.0)
         assertEquals(50.0, items.single().carbs, 0.0)
         assertEquals(4.0, items.single().fat, 0.0)
+    }
+
+    @Test
+    fun buildMealItemSnapshots_storesSnapshotWithoutFoodReference() {
+        val items = buildMealItemSnapshots(
+            mealId = 10L,
+            startItemId = 20L,
+            requests = listOf(
+                MealEntryRequest(
+                    itemType = MealEntryType.SNAPSHOT,
+                    referenceId = 0L,
+                    gramsUsed = 125.0,
+                    snapshot = MealEntrySnapshot(
+                        name = "Broodje kip",
+                        calories = 320.0,
+                        protein = 28.0,
+                        carbs = 34.0,
+                        fat = 8.0,
+                    ),
+                ),
+            ),
+            foods = emptyList(),
+            recipes = emptyList(),
+        )
+
+        assertEquals(1, items.size)
+        assertEquals(LoggedMealItemType.SNAPSHOT, items.single().itemType)
+        assertEquals(0L, items.single().referenceId)
+        assertEquals("Broodje kip", items.single().name)
+        assertEquals(320.0, items.single().calories, 0.0)
+        assertEquals(28.0, items.single().protein, 0.0)
+        assertEquals(34.0, items.single().carbs, 0.0)
+        assertEquals(8.0, items.single().fat, 0.0)
     }
 
     @Test

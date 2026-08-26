@@ -1,0 +1,5 @@
+Focusable/clickable nodes inspected: 31
+Nodes without direct text/content-desc: 30
+Unlabeled nodes with child text/content-desc: 30
+Unlabeled nodes without child label in parsed subtree: 0
+NAF attributes: none emitted by this UIAutomator build

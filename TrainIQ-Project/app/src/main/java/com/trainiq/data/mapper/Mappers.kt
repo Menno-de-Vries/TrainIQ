@@ -3,6 +3,7 @@ package com.trainiq.data.mapper
 import com.trainiq.core.database.BodyMeasurementEntity
 import com.trainiq.core.database.ExerciseEntity
 import com.trainiq.core.database.RoutineSetEntity
+import com.trainiq.core.database.SavedGoalAdviceEntity
 import com.trainiq.core.database.UserProfileEntity
 import com.trainiq.core.database.WorkoutDayEntity
 import com.trainiq.core.database.WorkoutExerciseEntity
@@ -12,7 +13,6 @@ import com.trainiq.data.datasource.CachedHeartRateRecord
 import com.trainiq.data.datasource.CachedCaloriesBurnedRecord
 import com.trainiq.data.datasource.CachedExerciseSessionRecord
 import com.trainiq.data.datasource.CachedSleepSessionRecord
-import com.trainiq.data.datasource.CachedStepRecord
 import com.trainiq.data.datasource.CachedWeightRecord
 import com.trainiq.data.datasource.HealthConnectCacheState
 import com.trainiq.domain.model.BodyMeasurement
@@ -20,20 +20,25 @@ import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.Exercise
 import com.trainiq.domain.model.HealthConnectMetrics
 import com.trainiq.domain.model.RoutineSet
+import com.trainiq.domain.model.SavedGoalAdvice
 import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutExercisePlan
+import com.trainiq.domain.model.resolveSamsungComparableDisplaySteps
 import com.trainiq.domain.model.WorkoutRoutine
 import com.trainiq.domain.model.WorkoutSessionSummary
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.SleepSessionRecord
-import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.WeightRecord
 import java.time.Duration
+import java.time.Instant
+import java.time.ZoneId
 import kotlin.math.roundToInt
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 
 fun UserProfileEntity.toDomain() = UserProfile(
     id = id,
@@ -50,6 +55,55 @@ fun UserProfileEntity.toDomain() = UserProfile(
     carbsTarget = carbsTarget,
     fatTarget = fatTarget,
     trainingFocus = trainingFocus,
+)
+
+fun SavedGoalAdviceEntity.toDomain() = SavedGoalAdvice(
+    advice = com.trainiq.domain.model.GoalAdvice(
+        bmr = bmr,
+        maintenanceCalories = maintenanceCalories,
+        activityMultiplier = activityMultiplier,
+        calorieTarget = calorieTarget,
+        proteinTarget = proteinTarget,
+        carbsTarget = carbsTarget,
+        fatTarget = fatTarget,
+        trainingFocus = trainingFocus,
+        summary = summary,
+        calorieAdvice = calorieAdvice,
+        macroAdvice = macroAdvice,
+        activityExplanation = activityExplanation,
+        attentionPoints = runCatching {
+            Gson().fromJson<List<String>>(attentionPointsJson, object : TypeToken<List<String>>() {}.type)
+        }.getOrDefault(emptyList()),
+        advice = advice,
+        dataQuality = dataQuality,
+        source = runCatching { com.trainiq.domain.model.GoalAdviceSource.valueOf(source) }
+            .getOrDefault(com.trainiq.domain.model.GoalAdviceSource.LOCAL_CALCULATION),
+        rawResponse = rawResponse,
+    ),
+    profileFingerprint = profileFingerprint,
+    savedAt = savedAt,
+)
+
+fun SavedGoalAdvice.toEntity() = SavedGoalAdviceEntity(
+    profileFingerprint = profileFingerprint,
+    savedAt = savedAt,
+    bmr = advice.bmr,
+    maintenanceCalories = advice.maintenanceCalories,
+    activityMultiplier = advice.activityMultiplier,
+    calorieTarget = advice.calorieTarget,
+    proteinTarget = advice.proteinTarget,
+    carbsTarget = advice.carbsTarget,
+    fatTarget = advice.fatTarget,
+    trainingFocus = advice.trainingFocus,
+    summary = advice.summary,
+    calorieAdvice = advice.calorieAdvice,
+    macroAdvice = advice.macroAdvice,
+    activityExplanation = advice.activityExplanation,
+    attentionPointsJson = Gson().toJson(advice.attentionPoints),
+    advice = advice.advice,
+    dataQuality = advice.dataQuality,
+    source = advice.source.name,
+    rawResponse = advice.rawResponse,
 )
 
 fun ExerciseEntity.toDomain() = Exercise(id, name, muscleGroup, equipment)
@@ -117,13 +171,6 @@ fun WorkoutExerciseEntity.legacyRoutineSets(): List<RoutineSet> {
     }
 }
 
-internal fun StepsRecord.toCachedStepRecord() = CachedStepRecord(
-    recordId = metadata.id,
-    startTimeMillis = startTime.toEpochMilli(),
-    endTimeMillis = endTime.toEpochMilli(),
-    count = count.toInt(),
-)
-
 internal fun HeartRateRecord.toCachedHeartRateRecord(): CachedHeartRateRecord {
     val latestSample = samples.maxByOrNull { it.time }
     val averageBpm = samples.takeIf { it.isNotEmpty() }
@@ -170,10 +217,25 @@ internal fun WeightRecord.toCachedWeightRecord() = CachedWeightRecord(
 )
 
 internal fun HealthConnectCacheState.toDomainMetrics(): HealthConnectMetrics = HealthConnectMetrics(
-    // Prefer the aggregate API result (deduplication-aware). Fall back to the manual sum only
-    // for old DataStore caches that predate the aggregate field (aggregatedStepsToday == 0).
-    stepsToday = if (aggregatedStepsToday > 0) aggregatedStepsToday.toInt()
-                 else stepRecords.sumOf(CachedStepRecord::count),
+    // Only deduplication-aware aggregate/direct values may drive the visible total.
+    // Raw records remain diagnostic because summing them can double count steps.
+    stepsToday = samsungHealthDirectStepsToday
+        ?.coerceIn(0L, Int.MAX_VALUE.toLong())
+        ?.toInt()
+        ?: displayStepsToday
+            ?.coerceIn(0L, Int.MAX_VALUE.toLong())
+            ?.toInt()
+        ?: resolveSamsungComparableDisplaySteps(
+            healthConnectAggregateSteps = aggregatedStepsToday.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+            samsungHealthVisibleSteps = samsungHealthStepsToday
+                ?.takeIf { it > 0L }
+                ?.coerceAtMost(Int.MAX_VALUE.toLong())
+                ?.toInt(),
+            samsungHealthDirectSteps = samsungHealthDirectStepsToday
+                ?.takeIf { it > 0L }
+                ?.coerceAtMost(Int.MAX_VALUE.toLong())
+                ?.toInt(),
+        ).coerceAtLeast(0),
     averageHeartRateBpm = heartRateRecords
         .takeIf { it.isNotEmpty() }
         ?.let { records ->
@@ -190,10 +252,28 @@ internal fun HealthConnectCacheState.toDomainMetrics(): HealthConnectMetrics = H
     latestHeartRateBpm = heartRateRecords
         .maxByOrNull { it.latestSampleTimeMillis ?: Long.MIN_VALUE }
         ?.latestBeatsPerMinute,
-    sleepMinutes = sleepSessionRecords.sumOf(CachedSleepSessionRecord::durationMinutes),
+    sleepMinutes = sleepSessionRecords.mainRecentSleepSession()?.durationMinutes ?: 0L,
     sleepSessionCount = sleepSessionRecords.size,
     caloriesBurnedToday = caloriesBurnedRecords.takeIf { it.isNotEmpty() }?.sumOf(CachedCaloriesBurnedRecord::kcal),
     latestWeightKg = weightRecords.maxByOrNull(CachedWeightRecord::timeMillis)?.weightKg,
     workoutSessionCountToday = exerciseSessionRecords.size,
     workoutMinutesToday = exerciseSessionRecords.sumOf(CachedExerciseSessionRecord::durationMinutes),
 )
+
+internal fun List<CachedSleepSessionRecord>.mainRecentSleepSession(): CachedSleepSessionRecord? {
+    if (isEmpty()) return null
+    val preferred = filter { it.isLikelyOvernightSleep() }.ifEmpty { this }
+    return preferred.maxWithOrNull(
+        compareBy<CachedSleepSessionRecord> { it.durationMinutes }
+            .thenBy { it.endTimeMillis },
+    )
+}
+
+private fun CachedSleepSessionRecord.isLikelyOvernightSleep(): Boolean {
+    val zone = ZoneId.systemDefault()
+    val start = Instant.ofEpochMilli(startTimeMillis).atZone(zone).toLocalDateTime()
+    val end = Instant.ofEpochMilli(endTimeMillis).atZone(zone).toLocalDateTime()
+    return start.toLocalDate() != end.toLocalDate() ||
+        start.hour >= 18 ||
+        end.hour <= 12
+}

@@ -4,6 +4,7 @@ import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
+import androidx.health.connect.client.records.WeightRecord
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -22,6 +23,16 @@ class HealthConnectReadPermissionsTest {
     }
 
     @Test
+    fun readPermissionsDoNotRequestWeightByDefault() {
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+
+        assertFalse(HealthPermission.getReadPermission(WeightRecord::class) in HealthConnectReadPermissions)
+        assertFalse(manifest.contains("android.permission.health.READ_WEIGHT"))
+        assertFalse(HealthConnectPermissionCopyBySignal.any { it.label == "Gewicht" })
+        assertFalse(HealthConnectRationaleReasons.any { it.title == "Gewicht" })
+    }
+
+    @Test
     fun permissionResultMessageCelebratesPartialSuccessAndNamesDeniedSignals() {
         val message = healthConnectPermissionResultMessage(
             grantedPermissions = setOf(HealthPermission.getReadPermission(StepsRecord::class)),
@@ -30,6 +41,16 @@ class HealthConnectReadPermissionsTest {
         assertTrue(message.contains("Stappen zijn gekoppeld"))
         assertTrue(message.contains("Nog niet gekoppeld"))
         assertFalse(message.contains("alle zes Health Connect-signalen samen nodig"))
+    }
+
+    @Test
+    fun rationaleActivityCopyMatchesRequestedSignalsAndDoesNotMentionWeight() {
+        val source = File("src/main/java/com/trainiq/core/health/HealthConnectPermissionsRationaleActivity.kt").readText()
+
+        assertFalse(source.contains("zes signalen"))
+        assertFalse(source.contains("Weight("))
+        assertFalse(source.contains("Gewichtstrends"))
+        assertTrue(source.contains("vijf signalen"))
     }
 
     @Test
@@ -61,13 +82,31 @@ class HealthConnectReadPermissionsTest {
 
         assertTrue(manifest.contains("""<package android:name="com.google.android.apps.healthdata" />"""))
         assertTrue(manifest.contains("""<package android:name="com.google.android.healthconnect.controller" />"""))
+        assertTrue(manifest.contains("""<package android:name="com.sec.android.app.shealth" />"""))
         assertTrue(manifest.contains("""<package android:name="com.android.vending" />"""))
+    }
+
+    @Test
+    fun manifestDeclaresSamsungHealthDataSdkMigrationReadinessWithoutLegacyPermissionMetadata() {
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+
+        assertTrue(manifest.contains("android:name=\"com.samsung.android.sdk.health.data.MIGRATION_COMPLETED\""))
+        assertTrue(manifest.contains("android:value=\"true\""))
+        assertTrue(manifest.contains("xmlns:tools=\"http://schemas.android.com/tools\""))
+        assertTrue(manifest.contains("tools:overrideLibrary=\"com.samsung.android.sdk.health.data\""))
+        assertFalse(manifest.contains("com.samsung.android.health.permission.read"))
+        assertFalse(manifest.contains("com.samsung.android.health.permission.write"))
+        assertFalse(manifest.contains("com.samsung.shealth.step_daily_trend"))
     }
 
     @Test
     fun manifestDeclaresBackgroundReadPermissionUsedBySchedulerGate() {
         val manifest = File("src/main/AndroidManifest.xml").readText()
+        val rationale = File("src/main/java/com/trainiq/core/health/HealthConnectPermissionsRationaleActivity.kt").readText()
+        val settings = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
 
         assertTrue(manifest.contains("""android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"""))
+        assertTrue(rationale.contains("Achtergrondsync"))
+        assertTrue(settings.contains("Achtergrondsync"))
     }
 }

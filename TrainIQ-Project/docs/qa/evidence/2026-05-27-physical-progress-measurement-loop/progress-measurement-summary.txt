@@ -1,0 +1,6 @@
+progressTopHasVoortgang=True
+invalidDumpCaptured=True
+validBeforeSaveHasWeight=True
+afterSaveHasWeightOrLatest=True
+afterBackCaptured=True
+crashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES

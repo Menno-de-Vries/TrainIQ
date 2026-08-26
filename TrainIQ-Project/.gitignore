@@ -13,3 +13,11 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Local verification output
+/.codex/
+/.kotlin/
+/dist/
+/TrainIQ-Project/
+*.hprof
+*.logcat

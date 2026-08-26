@@ -1,7 +1,7 @@
 package com.trainiq.ai.services
 
 import com.google.gson.Gson
-import com.trainiq.ai.prompts.GeminiPrompts
+import com.trainiq.ai.prompts.AiPrompts
 import com.trainiq.data.model.GeminiRequest
 import com.trainiq.data.model.GeminiResponse
 import com.trainiq.data.remote.GeminiApi
@@ -12,6 +12,7 @@ import com.trainiq.domain.model.WeeklyReportSource
 import java.io.File
 import java.io.RandomAccessFile
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import okhttp3.ResponseBody.Companion.toResponseBody
@@ -22,8 +23,50 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import retrofit2.HttpException
 import retrofit2.Response
+import kotlin.coroutines.CoroutineContext
 
 class AiServicesTest {
+    @Test
+    fun calculateImageSampleSize_largeImageBoundsAvoidsFullResolutionDecode() {
+        assertEquals(4, calculateImageSampleSize(width = 5_120, height = 2_880, maxDimensionPx = 1_280))
+    }
+
+    @Test
+    fun prepareMealScanImageBytes_usesProvidedBackgroundDispatcher() = runTest {
+        var dispatchCount = 0
+        val recordingDispatcher = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                dispatchCount += 1
+                block.run()
+            }
+        }
+        val file = File.createTempFile("meal-scan-dispatcher", ".jpg").apply {
+            writeBytes(byteArrayOf(1, 2, 3))
+            deleteOnExit()
+        }
+
+        val prepared = prepareMealScanImageBytes(
+            file = file,
+            ioDispatcher = recordingDispatcher,
+            imageCompressor = { byteArrayOf(1, 2, 3) },
+        )
+
+        assertEquals(listOf<Byte>(1, 2, 3), prepared?.toList())
+        assertTrue("Image preparation should dispatch off the caller context", dispatchCount > 0)
+    }
+
+    @Test
+    fun prepareMealScanImageBytes_rejectsUndecodableInputInsteadOfUploadingRawBytes() = runTest {
+        val file = File.createTempFile("meal-scan-invalid", ".jpg").apply {
+            writeBytes(byteArrayOf(1, 2, 3))
+            deleteOnExit()
+        }
+
+        val prepared = prepareMealScanImageBytes(file)
+
+        assertEquals(null, prepared)
+    }
+
     @Test
     fun geminiRequest_serializesOfficialRestGenerationConfigShape() {
         val json = Gson().toJson(
@@ -31,7 +74,7 @@ class AiServicesTest {
                 contents = listOf(GeminiRequest.Content(parts = listOf(GeminiRequest.Part(text = "Geef JSON")))),
                 generationConfig = GeminiRequest.GenerationConfig(
                     responseMimeType = "application/json",
-                    responseJsonSchema = GeminiJsonSchemas.workoutDebrief,
+                    responseJsonSchema = AiJsonSchemas.workoutDebrief,
                     thinkingConfig = GeminiRequest.ThinkingConfig(
                         includeThoughts = false,
                         thinkingBudget = 1000,
@@ -55,13 +98,18 @@ class AiServicesTest {
 
     @Test
     fun geminiSchemas_requireOnlyStableCoreFieldsAndLeaveLowConfidenceNotesOptional() {
-        val mealScanRequired = GeminiJsonSchemas.mealScan["required"] as List<*>
-        val mealItemSchema = ((GeminiJsonSchemas.mealScan["properties"] as Map<*, *>)["items"] as Map<*, *>)["items"] as Map<*, *>
+        val mealScanRequired = AiJsonSchemas.mealScan["required"] as List<*>
+        val mealItemsSchema = (AiJsonSchemas.mealScan["properties"] as Map<*, *>)["items"] as Map<*, *>
+        val mealItemSchema = mealItemsSchema["items"] as Map<*, *>
+        val mealItemProperties = mealItemSchema["properties"] as Map<*, *>
+        val mealItemNameSchema = mealItemProperties["name"] as Map<*, *>
         val mealItemRequired = mealItemSchema["required"] as List<*>
-        val weeklyRequired = GeminiJsonSchemas.weeklyReport["required"] as List<*>
-        val goalProperties = GeminiJsonSchemas.goalAdvice["properties"] as Map<*, *>
+        val weeklyRequired = AiJsonSchemas.weeklyReport["required"] as List<*>
+        val goalProperties = AiJsonSchemas.goalAdvice["properties"] as Map<*, *>
 
         assertEquals(listOf("items", "suggestedMealType"), mealScanRequired)
+        assertEquals(20, mealItemsSchema["maxItems"])
+        assertEquals(120, mealItemNameSchema["maxLength"])
         assertFalse("Top-level scan notes are optional", "notes" in mealScanRequired)
         assertFalse("Per-item confidence is optional", "confidence" in mealItemRequired)
         assertFalse("Per-item notes are optional", "notes" in mealItemRequired)
@@ -80,7 +128,12 @@ class AiServicesTest {
                 ),
             ),
         )
-        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
 
         val result = service.analyzeMealImage(tempImagePath(), "", 43_200_000L)
 
@@ -183,12 +236,26 @@ class AiServicesTest {
     @Test
     fun analyzeMealImage_withOversizedImageReturnsFallbackWithoutCallingGemini() = runTest {
         val api = FakeGeminiApi(response = mealScanResponse("""{"items":[],"suggestedMealType":"LUNCH"}"""))
-        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
 
         val result = service.analyzeMealImage(oversizedImagePath(), "", 43_200_000L)
 
         assertEquals(MealAnalysisSource.LOCAL_FALLBACK, result.source)
         assertEquals(0, api.callCount)
+    }
+
+    @Test
+    fun aiRawResponseGuardRejectsOversizedModelOutput() {
+        val error = runCatching {
+            requireAiRawResponseWithinLimit("x".repeat(64_001))
+        }.exceptionOrNull()
+
+        assertTrue(error is AiRawResponseTooLargeException)
     }
 
     @Test
@@ -214,7 +281,12 @@ class AiServicesTest {
                 """.trimIndent(),
             ),
         )
-        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
 
         val result = service.analyzeMealImage(tempImagePath(), "ontbijt", 1_800_000L)
 
@@ -230,9 +302,212 @@ class AiServicesTest {
     }
 
     @Test
+    fun analyzeMealImage_capsModelItemCountBeforeUiState() = runTest {
+        val items = (1..25).joinToString(",") { index ->
+            """
+                {
+                  "name": "Product $index",
+                  "estimatedGrams": 100,
+                  "calories": 120,
+                  "protein": 8,
+                  "carbs": 12,
+                  "fat": 4
+                }
+            """.trimIndent()
+        }
+        val api = FakeGeminiApi(
+            response = mealScanResponse("""{"items":[$items],"suggestedMealType":"LUNCH"}"""),
+        )
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
+
+        val result = service.analyzeMealImage(tempImagePath(), "", 43_200_000L)
+
+        assertEquals(20, result.items.size)
+        assertEquals("Product 1", result.items.first().name)
+        assertEquals("Product 20", result.items.last().name)
+    }
+
+    @Test
+    fun analyzeMealImage_withExplicitContextWeight_keepsUserWeightAsTruth() = runTest {
+        val api = FakeGeminiApi(
+            response = mealScanResponse(
+                """
+                    {
+                      "items": [
+                        {
+                          "name": "Kip",
+                          "estimatedGrams": 120,
+                          "calories": 198,
+                          "protein": 36,
+                          "carbs": 0,
+                          "fat": 4
+                        }
+                      ],
+                      "suggestedMealType": "DINNER"
+                    }
+                """.trimIndent(),
+            ),
+        )
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
+
+        val result = service.analyzeMealImage(tempImagePath(), "kip 200g", 72_000_000L)
+
+        val item = result.items.single()
+        assertEquals(200.0, item.estimatedGrams, 0.0)
+        assertEquals(330.0, item.nutrition.calories, 0.01)
+        assertTrue(item.notes.orEmpty().contains("Gebruikerscontext"))
+    }
+
+    @Test
+    fun analyzeMealImage_withKipRolladeAndKaasContext_keepsSeparateItemIdentity() = runTest {
+        val api = FakeGeminiApi(
+            response = mealScanResponse(
+                """
+                    {
+                      "items": [
+                        {
+                          "name": "Kaas",
+                          "estimatedGrams": 30,
+                          "calories": 110,
+                          "protein": 7,
+                          "carbs": 0,
+                          "fat": 9
+                        },
+                        {
+                          "name": "Kaas",
+                          "estimatedGrams": 30,
+                          "calories": 110,
+                          "protein": 7,
+                          "carbs": 0,
+                          "fat": 9
+                        }
+                      ],
+                      "suggestedMealType": "LUNCH",
+                      "notes": "Foto lijkt op lunch."
+                    }
+                """.trimIndent(),
+            ),
+        )
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
+
+        val result = service.analyzeMealImage(
+            tempImagePath(),
+            "kip rollade 80g, kaas 30g",
+            43_200_000L,
+        )
+
+        assertEquals(listOf("kip rollade", "kaas"), result.items.map { it.name })
+        assertEquals(80.0, result.items[0].estimatedGrams, 0.0)
+        assertEquals(30.0, result.items[1].estimatedGrams, 0.0)
+        assertTrue(result.notes.orEmpty().contains("Expliciete gebruikerscontext"))
+    }
+
+    @Test
+    fun analyzeMealImage_withFiveContextComponents_preservesFiveComponents() = runTest {
+        val api = FakeGeminiApi(
+            response = mealScanResponse(
+                """
+                    {
+                      "items": [
+                        {"name":"Kiprollade","estimatedGrams":100,"calories":150,"protein":22,"carbs":1,"fat":6},
+                        {"name":"Kaas","estimatedGrams":50,"calories":180,"protein":12,"carbs":1,"fat":15},
+                        {"name":"Wrap","estimatedGrams":80,"calories":240,"protein":7,"carbs":42,"fat":5},
+                        {"name":"Kaas","estimatedGrams":50,"calories":180,"protein":12,"carbs":1,"fat":15},
+                        {"name":"Kaas","estimatedGrams":50,"calories":180,"protein":12,"carbs":1,"fat":15}
+                      ],
+                      "suggestedMealType": "LUNCH"
+                    }
+                """.trimIndent(),
+            ),
+        )
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
+
+        val result = service.analyzeMealImage(
+            tempImagePath(),
+            "kip rollade 80g, kaas 30g, wrap 60g, saus 15g, sla 20g",
+            43_200_000L,
+        )
+
+        assertEquals(
+            listOf("kip rollade", "kaas", "wrap", "saus", "sla"),
+            result.items.map { it.name },
+        )
+        assertEquals(5, result.items.size)
+        assertTrue(result.notes.orEmpty().contains("meerdere onderdelen lijken samengevoegd"))
+        assertTrue(result.items[3].notes.orEmpty().contains("Gebruikerscontext"))
+        assertTrue(result.items[4].notes.orEmpty().contains("Gebruikerscontext"))
+    }
+
+    @Test
+    fun analyzeMealImage_whenContextItemMissing_addsLowConfidenceReviewItem() = runTest {
+        val api = FakeGeminiApi(
+            response = mealScanResponse(
+                """
+                    {
+                      "items": [
+                        {"name":"Kaas","estimatedGrams":30,"calories":110,"protein":7,"carbs":0,"fat":9}
+                      ],
+                      "suggestedMealType": "LUNCH"
+                    }
+                """.trimIndent(),
+            ),
+        )
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
+
+        val result = service.analyzeMealImage(
+            tempImagePath(),
+            "kip rollade 80g, kaas 30g",
+            43_200_000L,
+        )
+
+        assertEquals(listOf("kip rollade", "kaas"), result.items.map { it.name })
+        assertEquals("low", result.items[1].confidence)
+        assertTrue(result.items[1].notes.orEmpty().contains("AI leverde geen apart betrouwbaar component terug"))
+    }
+
+    @Test
+    fun parseBodyMeasurementContextOverrides_acceptsPartialScaleContext() {
+        val overrides = parseBodyMeasurementContextOverrides("weegschaal toont 82.4 kg, vet 18,1%, spier 63.0 kg")
+
+        assertEquals(82.4, overrides.weight ?: 0.0, 0.0)
+        assertEquals(18.1, overrides.bodyFat ?: 0.0, 0.0)
+        assertEquals(63.0, overrides.muscleMass ?: 0.0, 0.0)
+    }
+
+    @Test
     fun analyzeMealImage_withStructuredEmptyItems_returnsApiEmptyResult() = runTest {
         val api = FakeGeminiApi(response = mealScanResponse("""{"items":[],"suggestedMealType":"LUNCH"}"""))
-        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
 
         val result = service.analyzeMealImage(tempImagePath(), "", 43_200_000L)
 
@@ -269,7 +544,12 @@ class AiServicesTest {
                 """.trimIndent(),
             ),
         )
-        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
 
         val result = service.analyzeMealImage(tempImagePath(), "", 1_800_000L)
 
@@ -280,7 +560,12 @@ class AiServicesTest {
     @Test
     fun analyzeMealImage_whenApiFails_returnsExplicitLocalFallback() = runTest {
         val api = FakeGeminiApi(error = IllegalStateException("network down"))
-        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
 
         val result = service.analyzeMealImage(tempImagePath(), "", 43_200_000L)
 
@@ -292,7 +577,12 @@ class AiServicesTest {
     @Test
     fun analyzeMealImage_whenCallerCancels_propagatesCancellationInsteadOfFallback() = runTest {
         val api = FakeGeminiApi(error = CancellationException("screen stopped"))
-        val service = MealAnalysisService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { true },
+            apiKeyProvider = { "key" },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
 
         val error = runCatching {
             service.analyzeMealImage(tempImagePath(), "", 43_200_000L)
@@ -305,7 +595,12 @@ class AiServicesTest {
     @Test
     fun analyzeMealImage_withoutApiConfig_returnsExplicitLocalFallback() = runTest {
         val api = FakeGeminiApi()
-        val service = MealAnalysisService(api, isAiReady = { false }, apiKeyProvider = { null })
+        val service = MealAnalysisService(
+            api = api,
+            isAiReady = { false },
+            apiKeyProvider = { null },
+            imageBytesProvider = { file -> testPreparedImageBytes(file) },
+        )
 
         val result = service.analyzeMealImage(tempImagePath(), "", 43_200_000L)
 
@@ -371,7 +666,7 @@ class AiServicesTest {
         assertEquals("gemini-2.5-flash", api.lastModel)
         assertEquals(GEMINI_FLASH_MODEL, api.lastModel)
         assertEquals("application/json", api.lastRequest?.generationConfig?.responseMimeType)
-        assertEquals(GeminiJsonSchemas.workoutDebrief, api.lastRequest?.generationConfig?.responseJsonSchema)
+        assertEquals(AiJsonSchemas.workoutDebrief, api.lastRequest?.generationConfig?.responseJsonSchema)
         assertEquals(1000, api.lastRequest?.generationConfig?.thinkingConfig?.thinkingBudget)
         val prompt = api.lastRequest?.contents?.single()?.parts?.single()?.text.orEmpty()
         assertTrue(prompt.contains("Antwoord altijd in het Nederlands volgens locale nl-NL."))
@@ -380,7 +675,7 @@ class AiServicesTest {
 
     @Test
     fun workoutDebriefPrompt_defaultsToDutchLocaleAndStructuredShortFields() {
-        val prompt = GeminiPrompts.workoutDebrief(
+        val prompt = AiPrompts.workoutDebrief(
             totalVolume = 1_500.0,
             progression = 2.0,
             distribution = "Borst 2, Rug 2",
@@ -504,12 +799,52 @@ class AiServicesTest {
         assertEquals("Houd dit doel eerst stabiel en stuur op gewichtstrend.", result.advice)
         assertEquals("Redelijk: profiel compleet, maar geen gevalideerde TDEE.", result.dataQuality)
         assertEquals(GoalAdviceSource.GEMINI_2_5_FLASH, result.source)
-        assertEquals(GeminiJsonSchemas.goalAdvice, api.lastRequest?.generationConfig?.responseJsonSchema)
+        assertEquals(AiJsonSchemas.goalAdvice, api.lastRequest?.generationConfig?.responseJsonSchema)
         val prompt = api.lastRequest?.contents?.single()?.parts?.single()?.text.orEmpty()
         assertTrue(prompt.contains("Antwoord altijd in het Nederlands volgens locale nl-NL."))
         assertTrue(prompt.contains("\"korteSamenvatting\""))
         assertTrue(prompt.contains("\"activiteitUitleg\""))
         assertTrue(prompt.contains("korteSamenvatting maximaal 2 korte zinnen"))
+        assertTrue(prompt.contains("Wijzig deze calorie- en macrocijfers niet"))
+    }
+
+    @Test
+    fun generateGoalAdvice_withManualCalorieTargetPassesFixedTargetsToGeminiPrompt() = runTest {
+        val api = FakeGeminiApi(
+            response = mealScanResponse(
+                """
+                    {
+                      "trainingFocus": "Rustige opbouw met stabiele voedingsinname.",
+                      "korteSamenvatting": "Je gebruikt bewust een hoger calorie doel.",
+                      "calorieAdvies": "Houd dit doel twee weken vast en evalueer trend en training.",
+                      "macroAdvies": "Auto macro's verdelen extra energie vooral over koolhydraten.",
+                      "activiteitUitleg": "Onderhoud blijft berekend vanuit BMR en activiteit.",
+                      "aandachtspunten": ["Gebruik gewichtstrend om bij te sturen."],
+                      "advies": "Stuur pas bij na voldoende meetdagen.",
+                      "dataKwaliteit": "Redelijk: profiel compleet met handmatig calorie doel."
+                    }
+                """.trimIndent(),
+            ),
+        )
+        val service = GoalAdvisorService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+
+        val result = service.generateGoalAdvice(
+            height = 195.0,
+            weight = 107.2,
+            bodyFat = 25.0,
+            age = 30,
+            sex = BiologicalSex.MALE,
+            activityLevel = "Licht actief",
+            goal = "fat loss",
+            manualCalorieTarget = 3_050,
+        )
+
+        assertEquals(3_050, result.calorieTarget)
+        assertEquals(177, result.proteinTarget)
+        assertEquals(GoalAdviceSource.GEMINI_2_5_FLASH, result.source)
+        val prompt = api.lastRequest?.contents?.single()?.parts?.single()?.text.orEmpty()
+        assertTrue(prompt.contains("3050 kcal"))
+        assertTrue(prompt.contains("Jouw calorie doel is handmatig ingesteld"))
         assertTrue(prompt.contains("Wijzig deze calorie- en macrocijfers niet"))
     }
 
@@ -568,6 +903,41 @@ class AiServicesTest {
         assertTrue(result.activityExplanation.contains("Activiteitsfactor"))
         assertTrue(result.dataQuality.contains("schatting"))
         assertTrue(result.attentionPoints.isNotEmpty())
+    }
+
+    @Test
+    fun generateGoalAdvice_withOversizedJsonReturnsLocalFallbackWithoutRetainingRawResponse() = runTest {
+        val longDutch = "Trainingsweek blijft stabiel en herstel blijft leidend. ".repeat(1_400)
+        val api = FakeGeminiApi(
+            response = mealScanResponse(
+                """
+                    {
+                      "trainingFocus": "$longDutch",
+                      "korteSamenvatting": "Je onderhoud is lokaal berekend.",
+                      "calorieAdvies": "Houd je vaste doel stabiel.",
+                      "macroAdvies": "Auto macro's blijven leidend.",
+                      "activiteitUitleg": "Activiteit blijft een schatting.",
+                      "aandachtspunten": ["Gebruik trenddata voorzichtig."],
+                      "advies": "Evalueer pas na voldoende meetdagen.",
+                      "dataKwaliteit": "Redelijk."
+                    }
+                """.trimIndent(),
+            ),
+        )
+        val service = GoalAdvisorService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+
+        val result = service.generateGoalAdvice(
+            height = 180.0,
+            weight = 90.0,
+            bodyFat = 20.0,
+            age = 35,
+            sex = BiologicalSex.MALE,
+            activityLevel = "Licht actief",
+            goal = "spiermassa",
+        )
+
+        assertEquals(GoalAdviceSource.LOCAL_CALCULATION, result.source)
+        assertEquals(null, result.rawResponse)
     }
 
     @Test
@@ -644,6 +1014,46 @@ class AiServicesTest {
         assertTrue(result.summary.contains("Lokale samenvatting"))
     }
 
+    @Test
+    fun parseWeeklyReportResponse_withOversizedJsonReturnsLocalFallbackWithoutRawResponse() {
+        val longDutch = "Herstel blijft leidend en training blijft stabiel. ".repeat(1_500)
+
+        val result = parseWeeklyReportResponse(
+            text = """
+                {
+                  "summary": "$longDutch",
+                  "wins": ["Je hield drie sessies vast."],
+                  "risks": ["Slaapdata blijft beperkt."],
+                  "nextWeekFocus": "Houd volume gelijk."
+                }
+            """.trimIndent(),
+            adherence = 82,
+        )
+
+        assertEquals(WeeklyReportSource.LOCAL_FALLBACK, result.source)
+        assertEquals(null, result.rawResponse)
+    }
+
+    @Test
+    fun parseWorkoutDebriefResponse_withOversizedJsonReturnsLocalFallback() {
+        val longDutch = "Training opgeslagen en herstel blijft de eerste limiter. ".repeat(1_500)
+
+        val result = parseWorkoutDebriefResponse(
+            text = """
+                {
+                  "summary": "$longDutch",
+                  "progressionFeedback": "Volume bleef stabiel.",
+                  "recommendation": "Herhaal de sessie rustig.",
+                  "nextSessionFocus": "Techniek vasthouden"
+                }
+            """.trimIndent(),
+            totalVolume = 4_000.0,
+            progression = 1.0,
+        )
+
+        assertEquals(com.trainiq.domain.model.WorkoutDebriefSource.LOCAL_FALLBACK, result.source)
+    }
+
     private class FakeGeminiApi(
         private val response: GeminiResponse = GeminiResponse(),
         private val error: Throwable? = null,
@@ -687,6 +1097,10 @@ class AiServicesTest {
             writeBytes(byteArrayOf(1, 2, 3))
             deleteOnExit()
         }.absolutePath
+
+    private fun testPreparedImageBytes(file: File): ByteArray? =
+        file.takeIf { it.exists() && it.length() in 1..(6L * 1024L * 1024L) }
+            ?.let { byteArrayOf(1, 2, 3) }
 
     private fun oversizedImagePath(): String =
         File.createTempFile("meal-scan-oversized", ".jpg").apply {

@@ -1,0 +1,4 @@
+filesAudited=13
+textNodes=187
+suspectTextNodes=1
+suspectDetails=see text-node-bounds-suspect.txt

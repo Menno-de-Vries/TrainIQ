@@ -12,4 +12,5 @@ sealed interface ScreenUiState<out T> {
 
 data class UiMessage(
     val text: String,
+    val id: Long = System.nanoTime(),
 )

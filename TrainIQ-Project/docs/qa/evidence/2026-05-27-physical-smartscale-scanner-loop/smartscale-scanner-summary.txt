@@ -1,0 +1,6 @@
+cameraPermissionGranted=True
+progressBeforeHasSmartscaleCta=True
+afterTapHasPermissionFallback=False
+afterTapHasScannerOrCameraText=True
+afterTapStillProgress=False
+crashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES

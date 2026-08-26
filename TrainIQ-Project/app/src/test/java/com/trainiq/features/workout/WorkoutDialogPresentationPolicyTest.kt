@@ -17,6 +17,33 @@ class WorkoutDialogPresentationPolicyTest {
     }
 
     @Test
+    fun generatedRoutinePreviewKeepsActionsOutsideWeightedScrollArea() {
+        val source = File("src/main/java/com/trainiq/features/workout/RoutineDialogs.kt").readText()
+        val body = source.substringAfter("fun GeneratedRoutinePreviewDialog").substringBefore("private fun GeneratedRoutineSource.label")
+        val scrollArea = body.substringAfter(".weight(1f, fill = false)").substringBefore("Button(onClick = onSave")
+        val actionArea = body.substringAfter("Button(onClick = onSave")
+
+        assertTrue(body.contains(".fillMaxHeight(0.92f)"))
+        assertTrue(scrollArea.contains(".verticalScroll(rememberScrollState())"))
+        assertTrue(actionArea.contains("modifier = Modifier.fillMaxWidth()"))
+        assertTrue(actionArea.contains("Text(if (isSaving) \"Opslaan...\" else \"Opslaan\")"))
+        assertTrue(actionArea.contains("Text(\"Opnieuw proberen\")"))
+        assertTrue(actionArea.contains("Text(\"Annuleren\")"))
+    }
+
+    @Test
+    fun generatedRoutinePreviewUsesFullWidthWrappedActions() {
+        val source = File("src/main/java/com/trainiq/features/workout/RoutineDialogs.kt").readText()
+        val body = source.substringAfter("fun GeneratedRoutinePreviewDialog").substringBefore("private fun GeneratedRoutineSource.label")
+        val actionArea = body.substringAfter("Button(onClick = onSave")
+
+        assertFalse(actionArea.contains("Row("))
+        assertFalse(actionArea.contains("Modifier.weight(1f)"))
+        assertTrue(actionArea.contains("TextButton(onClick = onRetry, modifier = Modifier.fillMaxWidth())"))
+        assertTrue(actionArea.contains("TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth())"))
+    }
+
+    @Test
     fun generatedRoutinePreviewUsesReadOnlyDutchMetadataInsteadOfNoOpChips() {
         val source = File("src/main/java/com/trainiq/features/workout/RoutineDialogs.kt").readText()
         val body = source.substringAfter("fun GeneratedRoutinePreviewDialog").substringBeforeLast("}")

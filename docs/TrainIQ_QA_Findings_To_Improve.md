@@ -2,9 +2,531 @@
 
 Audit date: 2026-05-09
 
-Refresh date: 2026-05-10, current worktree
+Refresh date: 2026-05-10, 2026-07-12 current worktree
 
 Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emulator smoke, Health Connect, Gemini/AI, Room/data, UI/UX/accessibility, release readiness.
+
+## 2026-07-12 Option 2 Balanced Improvement Batch
+
+- status: implemented and independently re-reviewed for Tasks 1-4; no Room schema version or dependency change was required.
+- backend/data: Nutrition no longer allocates new food IDs from stale `Flow.state.value`; explicit ID, barcode reuse, and fresh ID selection occur in the serialized Room transaction and return the persisted row. Export uses a one-shot transactional Room snapshot, so a just-written record is present without waiting for Flow invalidation.
+- Health Connect: failed full-sync metrics emit token tombstones so an old token cannot incorrectly force the next run onto incremental sync. Steps token acquisition failures remain visible after recovered reads, worker retry evaluates the full per-metric status, and Settings status refresh safely reconciles background scheduling while preserving coroutine cancellation.
+- performance/AI: meal and scale image preparation moved to a suspending IO boundary with bounds-first sampled decode, a 1,280 px maximum dimension, JPEG quality 82, and a 1,500,000-byte maximum prepared payload. Decode/compression failure no longer uploads the raw image and keeps the existing local fallback behavior.
+- functionality: Coach profile input is a lightweight `Serializable` draft plus dirty Boolean in `SavedStateHandle`. Dirty edits survive repository refresh and recreation; save completion cannot overwrite a newer in-flight edit.
+- UI/UX: the compact bar is exactly Start, Training, Voeding, Coach, and Meer. Voortgang remains a typed route, is directly reachable from Meer, visually selects Meer while open, and stays visible as its own destination in the six-item navigation rail.
+- CI/release: `.github/workflows/android.yml` automatically validates pull requests only, using read-only permissions and immutable action SHAs. Manual dispatch can generate Room migration markers or build secret-backed signed APK/AAB artifacts after fresh marker generation. Neither path publishes or deploys artifacts.
+- regression evidence: the Task 1 Room suite passed 29/29 on `Medium_Phone_2 (AVD) - API 16`; Health Connect focused/broad suites, the bounded-image 4096 x 2048 instrumentation regression, and 51 Coach/navigation/Settings tests passed. Individual tasks also passed proportional debug assemble/lint/Android-test compile gates and final independent re-review.
+- intentionally unchanged: active-workout snapshot architecture, Room v16 schema/migrations, provider selection, AI prompt contracts, image limits, and the existing saved-goal-advice entity were not broadened or replaced.
+- remaining risk: the first hosted workflow run can still reveal runner/emulator infrastructure issues; signed release requires owner-managed repository secrets; provider/permission mutation and exact Samsung Health parity still require their existing disposable-profile and physical-device acceptance paths.
+
+## 2026-07-12 Trust and Interaction Polish
+
+- status: done for this bounded batch; no known regression was found in the covered debug gates or emulator journey.
+- navigation: removed the hidden full-screen horizontal swipe between top-level destinations. The visible Material navigation bar/rail remains the single typed navigation path, including its existing haptic feedback, so horizontal gestures inside screen content no longer compete with app navigation.
+- trust copy: Home now labels its deterministic local summary as `Coach-inzicht` and `Lokale analyse`; no Gemini/provider behavior changed.
+- progress semantics: the former fatigue-style percentage is now a nullable weekly load ratio. It compares the latest positive training week with the average of at most three preceding positive training weeks and stays unavailable until at least two training weeks exist. UI copy no longer implies fatigue or RPE measurement.
+- recovery: a fatal Trend observation can now resubscribe through the shared reloadable-observation path. The error card exposes an accessible `Opnieuw proberen` action with a 48 dp minimum height.
+- regression evidence: focused tests were written red-first for each changed contract. `:app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:compileDebugAndroidTestKotlin` passed, followed by a successful debug install and cold emulator launch (`Status: ok`, `TotalTime: 4836 ms`). Trend rendered, a horizontal swipe stayed on Trend, Home remained reachable, and the TrainIQ crash/ANR slices were empty.
+- independent review: the first review found a sparse-week baseline edge case; a new regression test exposed it, the calculation was corrected to select positive weeks before choosing the baseline window, and the final re-review reported no remaining critical or important issue.
+- intentionally unchanged: no dependency, Room schema, AI provider, persistence model, broad redesign or CI workflow change is part of this batch.
+- remaining risk: physical-device gesture feel and release-mode performance still require their existing owner/device acceptance paths.
+
+## 2026-07-12 Home Finite-Scroll and Momentum Tile Balance
+
+- status: partially-done; the reported clipped-Macro regression is fixed in source and broad Android gates pass, while real-device visual confirmation remains open.
+- root cause and fix: Home rendered a small, fixed, full-width card sequence in `LazyVerticalGrid`, so scrolling could cross lazy composition/measurement boundaries with no grid layout benefit. It now uses one remembered finite `Column.verticalScroll`; card order, callbacks, Health Connect states, data flow and bottom padding remain unchanged.
+- clipping follow-up: the finite Home scroll initially applied navigation, IME and bottom content padding outside the scroll viewport. On the Samsung screenshot this reserved a large empty lower area and clipped Macro's today. Home now matches the working Settings modifier order so the complete viewport scrolls before those insets/content margins are applied.
+- layout fix: the two weighted Momentum metric tiles now share the Row's maximum intrinsic height, so longer Stappen/heart-rate/training text expands both tiles rather than leaving Reeks shorter.
+- test-first evidence: focused Home/UI source guards failed on the unsafe modifier order and passed after the minimal reordering. Full debug assemble, unit suite and lint passed.
+- emulator smoke: debug update installed on `emulator-5554`; Training, Voeding, Trend and Meer each accepted down/up scroll gestures without TrainIQ crash/fatal-error logcat entries. Start and Coach could not be read in the final pass because UiAutomator returned a temporary null root node; no claim is made for their populated runtime visual state.
+- external sources: Android's finite-list Compose guidance recommends `Column.verticalScroll(rememberScrollState())` for smaller bounded collections, and Material's Scaffold guidance warns against applying padding/insets outside vertical scroll content: https://developer.android.com/develop/ui/compose/quick-guides/content/finite-scrolling-list and https://developer.android.com/develop/ui/compose/system/material-insets
+- remaining risk: validate perceived smoothness and populated Macro/Momentum appearance on the user's real profile/device.
+
+## 2026-07-11 Settings Section-Boundary Jank Fix
+
+- status: done for the reported Settings-only section-boundary hitch; physical-device subjective confirmation remains with the user.
+- root cause and fix: Settings contained nine fixed sections but used lazy item insertion, so each large card was first composed and measured as its boundary entered the viewport. The successful Settings screen now uses one remembered finite `ScrollState` with `Column.verticalScroll`; order, cards, copy, callbacks, fields, snackbar, dialogs, focus clearing and IME padding are unchanged.
+- test-first evidence: the new finite-container regression failed on the old `LazyColumn` and passed after the minimal container replacement. Settings, onboarding and benchmark architecture regressions pass.
+- emulator smoke: debug update install passed; after the existing first-run completion route, Settings rendered as one scrollable view. Repeated slow/fast full-length swipes crossed every section in both directions, both AI key fields remained reachable, scrolling after field focus cleared input (`mInputShown=false`), `MainActivity` remained resumed, and crash/severe logcat slices were empty.
+- profileable benchmark: NOT RUN to completion. The expanded five-run Settings journey was compiled and its source guards pass, but the current Android 16 emulator/profileable target repeatedly failed to expose the Settings destination to UiAutomator within the benchmark wait window after startup. No frame numbers are claimed from these aborted runs.
+- external sources: Android finite-list and Compose list guidance recommends `Column.verticalScroll` for small bounded collections and notes that all content emitted by one lazy item is composed/measured together: https://developer.android.com/develop/ui/compose/quick-guides/content/finite-scrolling-list and https://developer.android.com/develop/ui/compose/lists
+- remaining risk: a normal debug Settings render and interaction pass is green, but profileable emulator automation is not certification evidence; the user's device feel remains the acceptance signal for the original hitch.
+
+## 2026-07-11 App Performance and Test-Health Pass
+
+- status: partially-done; concrete Settings lazy-layout and benchmark reliability risks are fixed, while physical-device certification remains open.
+- Settings now gives every large `LazyColumn` item a unique stable key and compatible content type so Compose can preserve item identity and reuse section compositions during down/up scrolling.
+- The top-level/Settings Macrobenchmark no longer selects ambiguous body text such as `Training`; it targets the five navigation slots directly and measures both downward and upward Settings scroll. The final five profileable emulator iterations completed and produced five Perfetto traces. Emulator-only result: median frame count `126`, frame CPU P50 `45.3 ms` and P95 `119.3 ms`; frame overrun P50 `49.0 ms` and P95 `159.9 ms`. An earlier pass was materially faster, confirming high emulator variance; these numbers are diagnostic trend evidence, not release certification.
+- Test cleanup removed only the two untouched Android Studio template tests (`2 + 2 = 4` and package-name-only instrumentation). Privacy, data, architecture, accessibility and behavioral regression coverage remains intact.
+- verification: focused Settings and benchmark RED/GREEN tests passed; `:app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:compileDebugAndroidTestKotlin :macrobenchmark:compileProfileableJavaWithJavac` passed; debug update install passed; emulator cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 4831 ms`; Settings down/up smoke kept `MainActivity` resumed and crash/severe logcat slices were empty.
+- active-workout profileable measurement: NOT RUN to completion. Iteration one entered and scrolled the seeded active workout, but the next setup could not find the seeded routine after the prior active-session flow. The benchmark failed before comparable five-run metrics were emitted; app workout behavior was not marked regressed from this automation failure.
+- external source: Android Developers Compose performance and lazy-list guidance recommends stable lazy keys, `contentType`, release-like builds and measurement rather than debug-only conclusions: https://developer.android.com/develop/ui/compose/performance and https://developer.android.com/develop/ui/compose/lists
+- remaining risk: repeatable active-workout benchmark reset and physical-device Settings/workout frame certification remain open.
+
+## 2026-07-10 Compact Health Connect Presentation
+
+- Home now shows one concise Health Connect card with the displayed step count, friendly source label, last update time and refresh action. Raw, aggregate, query-window and parity diagnostics no longer compete with the primary dashboard information.
+- Home renders either that compact sync card or the Health Connect permission/status card, never both in the same state.
+- Settings now defaults to status, `N stappen via bron`, the compact last-checked time and necessary actions. All existing source, raw, aggregate, direct-SDK, parity, priority, workout-overlap and copy diagnostics remain available through the saveable `Technische details tonen` disclosure.
+- This is presentation-only: Samsung official-raw selection, Health Connect reads, cache behavior, permissions and diagnostic values are unchanged. Focused Home/Settings/source-copy regressions pass, followed by the complete debug unit, assemble, lint, AndroidTest compile and Samsung parity build gate.
+- Physical Samsung smoke: update install on SM-S931B succeeded without clearing data; a cold `com.trainiq/.MainActivity` launch returned `Status: ok` in 536 ms, the process remained alive and the crash buffer was empty. Final copy/layout and refreshed step parity remain for the user's visual check on-device.
+
+## 2026-07-10 Samsung Health Official Raw Step Fallback
+
+- physical-device evidence: at 01:38 on the user's Samsung, Samsung Health showed 84 steps while TrainIQ showed 5. TrainIQ's copied diagnosis exposed the exact mismatch: general Health Connect aggregate 5, Samsung-origin aggregate 5, official Samsung raw `StepsRecord` sum 84, and direct Samsung Health Data SDK unavailable with authorization error 2003.
+- corrected authority: a successful direct Samsung Data SDK `TOTAL`, including zero, remains first. Otherwise the highest positive official Samsung raw/aggregate value is authoritative; the general Health Connect aggregate is only used when no usable Samsung-specific value exists. The reported `5/5/84` case therefore resolves to 84.
+- source guard: raw authority is limited case-insensitively to exact `com.sec.android.app.shealth`. Packages merely containing `samsung` can remain diagnostic labels but cannot contribute raw counts or Samsung aggregate authority.
+- cache/privacy behavior: no raw record IDs, timestamps, or record lists are newly persisted. A fresh Samsung raw/aggregate value cannot be overwritten by a stale direct-SDK cache, and cached selected Samsung scalars no longer invent raw or aggregate provenance when that provenance is unavailable.
+- diagnostics: Settings explicitly identifies when the official Samsung Health raw fallback is displayed and keeps displayed, general aggregate, Samsung aggregate, Samsung raw and direct status separate for fresh reads.
+- regression evidence: RED/GREEN coverage includes aggregate 5 versus official raw 84, official-package/lookalike filtering, direct `TOTAL` including zero, Samsung-specific priority over a higher general aggregate, fresh raw versus cached direct during aggregate failure, and stale provenance. The complete debug unit suite, `:app:assembleDebug`, `:app:lintDebug`, `:app:compileDebugAndroidTestKotlin`, and `:app:assembleSamsungHealthParityDebug` pass; SDK readiness reports `samsung-health-data-api-1.1.0.aar` ready. Independent re-review is clean.
+- emulator runtime: final APK update install returned `Success`. Runtime launch evidence is partial, not a pass: the x86 emulator killed both cold and warm starts with `failed to complete startup` while logcat showed unusually slow class verification and 50% kernel CPU; there was no TrainIQ exception, but `cmd package compile -m speed -f com.trainiq` also exceeded the 244-second hard timeout. This emulator state is not accepted as product runtime proof.
+- remaining acceptance: the emulator cannot validate Samsung Health parity. The user must install this candidate on the physical Samsung, open Samsung Health first, refresh TrainIQ, and confirm that TrainIQ now shows the same value as Samsung Health; Settings should say the official Samsung Health raw fallback is active while direct SDK error 2003 remains.
+
+## 2026-07-09 Samsung Health Step Parity Source and Authority Fix
+
+> Historical snapshot. The 2026-07-10 physical-device evidence supersedes this section's raw-diagnostic-only fallback policy.
+
+- status: the local parity candidate is code-complete and regression-verified; exact Samsung Health All steps acceptance remains pending the user's own-phone comparison.
+- source-of-truth note: this dated entry supersedes the older higher-Health-Connect/lower-direct selection rule described in the preserved untracked handoff; successful direct Samsung `TOTAL`, including zero, is now intentionally authoritative.
+- root causes fixed: TrainIQ now recognizes Samsung Health's official `com.sec.android.app.shealth` package from one shared constant; a successful direct Samsung value could previously lose to a higher non-Samsung value; legacy display cache could override direct Samsung; aggregate failures could become a successful zero; and scalar day totals had no owning local date.
+- parity behavior: every successful consented Samsung Health Data SDK `DataType.StepsType.TOTAL` read, including a valid zero, is authoritative for the displayed day total. If direct Samsung is unavailable, TrainIQ uses deduplication-aware Health Connect aggregates. Raw `StepsRecord` sums remain diagnostics only and can never win display selection or modern zero-cache mapping.
+- resilience: nullable Samsung aggregate buckets contribute zero instead of aborting the direct read; non-numeric values still fail explicitly. Full and incremental sync share one local-day range, same-day transient aggregate failures preserve only same-day cache, a date rollover never reuses yesterday's scalar total, explicit Samsung permission loss never reuses a cached direct total, and unrelated change-token failures cannot masquerade as an aggregate failure.
+- cache/UI behavior: legacy Gson mapping no longer lets an old display scalar override an available direct Samsung scalar; unknown-date legacy step scalars expire on the next sync instead of being presented as today, so no appdata clear is required. Fresh zero is shown as a measured `0` only with successful step evidence; missing permission/error remains `Geen data`. Reused display/direct cache is labeled stale in Settings and copied diagnostics.
+- privacy/token hardening: raw step records are no longer mapped into the persisted cache and legacy raw rows are purged during normalization. Expired ChangesTokens now persist their full-sync replacement or an explicit removal tombstone, and revoked metric token updates cannot re-enter storage.
+- tests: focused RED/PASS cycles cover official package classification, direct authority including zero, legacy Gson cache, nullable/non-numeric aggregate values, raw-diagnostic-only policy, aggregate failure isolation, permission loss, shared day range, same-day preservation, midnight rollover/outer fallback, cache provenance, token expiry/revocation, raw-record minimization, measured-zero state, and Home/Settings zero rendering. The complete `HealthConnectPermissionPolicyTest`, related mapper/Home/Settings/use-case tests, and the broad debug/unit/lint/Android-test compile gate pass.
+- build/runtime evidence: `:app:assembleSamsungHealthParityDebug --no-configuration-cache` passes and `:app:checkSamsungHealthDataSdkReadiness` reports `samsung-health-data-api-1.1.0.aar` ready. Final emulator update install/cold launch passed with `Status: ok`, `TotalTime: 5289`, TrainIQ remained the resumed activity with process `11896`, Samsung Health was absent as expected, and the crash buffer was empty.
+- external sources: Samsung documents `StepsType.TOTAL` as the phone-plus-wearables deduplicated total comparable to its Pedometer/All steps tracker; Android requires `StepsRecord.COUNT_TOTAL` aggregation for Health Connect cumulative-step fallback and warns against general raw-record summing because it can double count.
+- remaining risk: the emulator cannot execute Samsung Health Data SDK. Final acceptance requires the user to grant `Samsung toegang geven`, refresh immediately after Samsung Health Sync now, and compare Samsung Health All steps with TrainIQ plus the copied Settings diagnosis on the physical Samsung. Raw Samsung Health Connect sums are diagnostic evidence only and are never final parity proof.
+
+## 2026-06-21 Samsung Health Step Display Follow-Up
+
+> Historical snapshot. The 2026-07-09 entry supersedes this section's raw-record fallback and positive-only direct-value behavior: raw records are now diagnostics only, and a successful direct Samsung zero is authoritative.
+
+- status: partially-done for making TrainIQ's displayed daily step count use the highest Health Connect-visible daily total while preserving Health Connect best practices; physical Samsung Health parity still needs a retest on the user's device.
+- files changed: Health Connect step sync now keeps the general `StepsRecord.COUNT_TOTAL` aggregate, additionally reads Samsung Health-origin `StepsRecord.COUNT_TOTAL` via `AggregateRequest.dataOriginFilter`, stores both diagnostic values plus the chosen display value, and maps Home/Settings step totals through a small resolver that never lets a lower Samsung-origin export hide a higher Health Connect aggregate. TrainIQ discovers Samsung package origins from Health Connect records and also tries the public Samsung Health package `com.sec.android.app.shealth`, but only accepts positive Samsung values so an empty Samsung-origin read cannot zero out the dashboard. The main manifest now also declares `com.sec.android.app.shealth` in package visibility queries so Android package visibility does not hide Samsung Health from the Samsung-specific parity path. If the Samsung aggregate under-reports while Samsung-origin raw `StepsRecord` exports contain a higher total, TrainIQ now uses that higher Samsung raw export as a compatibility fallback for Samsung Health matching and makes that visible in Settings. If multiple Samsung package origins are seen, TrainIQ reads each origin independently, ignores per-origin failures, and uses the highest positive Samsung-origin aggregate instead of summing package aggregates, avoiding double counting from the same provider family. Home now names whether the refreshed display value is `Samsung Health-stappen` or `Health Connect-stappen`, and stale Home copy points to Samsung Health `Sync now` instead of a vague cloud-sync route. Settings exposes the fuller Samsung comparison next to source, query-window, exact displayed/Health Connect/Samsung aggregate/Samsung raw/direct values, Samsung source recency timing, Health Connect visible step count, and workout-overlap diagnostics, plus a copy action for the Samsung steps diagnostic so physical-device mismatch evidence can be shared without retyping. `SamsungHealthDirectStepsDataSource` now contains a compile-safe reflection adapter for Samsung Health Data SDK: without the AAR it returns an explicit unavailable status, with the AAR it checks Samsung `DataTypes.STEPS` read permission and reads `DataType.StepsType.TOTAL` over the same local-day range through `HealthDataStore.aggregateData`. The adapter now resolves `DataType.StepsType.TOTAL.requestBuilder` defensively across static-field, static-getter, and Kotlin companion-property bytecode shapes and returns explicit diagnostic failures if the SDK surface differs from Samsung's docs. It also supports Samsung's documented grouped aggregate request shape by falling back from `setLocalTimeFilter(...)` to `setLocalTimeFilterWithGroup(LocalTimeFilter.of(...), LocalTimeGroup.of(LocalTimeGroupUnit.MINUTELY, 30))` before building the total request. It also classifies Samsung's documented `ResolvablePlatformException`, `AuthorizationException`, `InvalidRequestException`, `PlatformInternalException`, and `HealthDataException` into user-facing Settings statuses so physical-device parity failures identify whether Samsung Health needs a resolvable action, permission repair, request repair, or platform retry. When the Settings Samsung permission action receives a resolvable Samsung Health platform exception, TrainIQ now invokes Samsung's `resolve(activity)` flow reflectively and asks the user to finish that Samsung action before refreshing TrainIQ. Settings now also exposes a Samsung Health step-permission action behind `SAMSUNG_HEALTH_DATA_SDK_AAR_PRESENT`, calls Samsung `requestPermissions` for the missing steps permission, then refreshes Health Connect/Samsung diagnostics so the direct SDK total can be used immediately after consent. The display resolver and diagnostics prefer that direct value when it is positive, Gradle includes `app/libs/*.aar`, and the BuildConfig flag prevents hard SDK imports from breaking normal builds. `scripts/collect-samsung-step-parity-evidence.ps1` captures the remaining physical-device proof path: Samsung AAR presence, physical device metadata, Samsung Health package state, TrainIQ launch/crash evidence, and manual three-point Samsung Health All steps versus TrainIQ comparison placeholders. `docs/qa/samsung-health-step-parity-acceptance-2026-06-22.md` records the physical-device acceptance path and Samsung Health Data SDK requirements. Physical-device evidence showed a representative Samsung Health 600 versus TrainIQ 180 mismatch that persisted during the day, so the fallback now treats aggregate under-reporting as a real compatibility path rather than only a stale-sync explanation.
+- implementation hardening: the Samsung direct adapter now resolves `DataTypes.STEPS`, `AccessType.READ`, and `Permission.of(...)` across static field, static getter, and Kotlin companion property/function bytecode shapes, matching the defensive `DataType.StepsType.TOTAL` handling so a real Samsung SDK binary does not silently fall back to lower Health Connect-only totals because the permission lookup failed before the direct steps read.
+- implementation hardening: the Samsung aggregate response reader now sums the documented `dataList` item values through method-or-field lookup and reports explicit SDK-surface diagnostics when `dataList`, `value`, or a numeric value is missing, instead of quietly returning zero and leaving TrainIQ visibly below Samsung Health.
+- implementation hardening: the Samsung Health Data SDK `TOTAL` request now prefers Samsung's documented grouped aggregate shape, `setLocalTimeFilterWithGroup(LocalTimeFilter, LocalTimeGroup)`, before falling back to an ungrouped local-time filter, reducing the risk that a physical Samsung direct read under-reports compared with Samsung Health All steps while keeping the direct read available if a Samsung SDK binary exposes only the ungrouped local-time setter.
+- implementation hardening: the Samsung Health Data SDK grouped `TOTAL` request now uses Samsung's documented `LocalTimeGroupUnit.HOURLY, 1` shape first and keeps the previous `MINUTELY, 30` group only as a compatibility fallback, aligning the direct All steps read with Samsung's Pedometer tracker verification example.
+- implementation hardening: the Samsung Health Data SDK grouped `TOTAL` request now also applies Samsung's documented `Ordering.ASC` before `build()` when that SDK surface is available, while staying fallback-safe if the ordering class or setter is absent.
+- implementation hardening: direct Samsung Health Data SDK steps are now persisted as `samsungHealthDirectStepsToday` in the Health Connect cache and included in domain step mapping plus cached failure diagnostics, so a successful direct Samsung All steps read cannot live only in transient diagnostics and later fall back to a lower Health Connect-visible value.
+- implementation hardening: Home fresh-step diagnostics now surface the same `Pariteit:` gap that Settings exposes when the direct Samsung Health Data SDK source is not active, so a phone showing a low TrainIQ value immediately points to the missing Samsung Data SDK API AAR / direct All steps route instead of only saying the lower Health Connect-visible value was refreshed.
+- project readiness: Gradle now exposes `:app:checkSamsungHealthDataSdkReadiness` and an opt-in `-Ptrainiq.requireSamsungHealthDataSdk=true` build gate for debug/profileable Samsung parity builds, preventing another physical Samsung Health All steps comparison build from being installed without `samsung-health-data-api*.aar` in `app/libs`.
+- project readiness: `scripts/install-samsung-health-data-sdk-aar.ps1` now installs a user-supplied Samsung Health Data SDK API AAR from an exact `.aar`, SDK folder, or SDK zip into `app/libs`, rejects legacy/non-API Samsung Health AARs, records SHA-256/status evidence, and points to the readiness and parity-build commands.
+- project readiness: the same install helper now has `-HelpSamsungDownload`, prints Samsung's official Health Data SDK overview/download page, steps codelab, and release-note URLs, and fails fast with `SourcePath is required unless -HelpSamsungDownload is used.` when no local AAR/folder/zip is supplied. The overview page exposes Samsung's SDK download behind SDK terms, so the helper intentionally keeps a user-supplied local source flow instead of bypassing Samsung's download/terms flow.
+- project readiness: `scripts/build-samsung-step-parity-debug.ps1` now provides a single physical Samsung parity path: optionally install a user-supplied `samsung-health-data-api*.aar`, run `:app:checkSamsungHealthDataSdkReadiness`, require one selected physical Samsung Android 10+ target, reject emulators through `ro.kernel.qemu`, verify `com.sec.android.app.shealth` with Samsung Health 6.30.2+, build/install with `-Ptrainiq.requireSamsungHealthDataSdk=true`, and then collect the standard Samsung step-parity evidence packet.
+- project readiness: the app module now exposes explicit `:app:assembleSamsungHealthParityDebug` and `:app:installSamsungHealthParityDebug` tasks, both gated by `:app:checkSamsungHealthDataSdkReadiness`, so the physical Samsung Health All steps test does not rely on a normal debug build that can still be Health Connect-only.
+- project readiness: because Samsung Health Data SDK API AAR v1.1.0 declares `minSdkVersion 29`, the app manifest now uses a focused `tools:overrideLibrary="com.samsung.android.sdk.health.data"` while the direct Samsung datasource hard-gates all Samsung SDK class-loading on Android 10/API 29+. This keeps TrainIQ's normal `minSdk 26` support while preventing the direct Samsung path from running on unsupported Android runtimes.
+- implementation hardening: the Samsung permission check/request path now parses both direct permission sets and Samsung's documented granted-permissions wrapper shape, falls back to a fresh granted-permissions read after `requestPermissions` when the request result is not a set, and wraps the Settings Samsung access action so unexpected Samsung SDK/runtime failures become a snackbar/status instead of an uncaught app crash.
+- implementation hardening: the Samsung Health Data SDK suspend bridge now forwards success/failure into the original downstream continuation instead of using unqualified `::resume` / `::resumeWithException` on the wrapper continuation. Physical SM-S931B launch evidence reproduced the pre-fix `StackOverflowError` at `SamsungHealthDirectStepsDataSource.kt:447`, and the focused regression guard now rejects that recursive callable-reference shape.
+- physical-device follow-up: the user's latest phone retest still showed TrainIQ under-reporting versus Samsung Health through the day. Local inspection on 2026-06-22 found no `TrainIQ-Project/app/libs` directory and no `samsung-health-data-api*.aar` in the repo or Downloads, so exact Samsung Health All steps parity remains unproven and blocked by the missing Samsung Health Data SDK API AAR plus a fresh physical Samsung comparison.
+- project readiness: the app now follows Samsung Health Data SDK migration readiness by applying Kotlin Parcelize, declaring Gson directly, adding `com.samsung.android.sdk.health.data.MIGRATION_COMPLETED=true` manifest metadata, and guarding against legacy Samsung Health SDK permission metadata returning.
+- project readiness: the Samsung SDK readiness flag and evidence helper now only count `samsung-health-data-api*.aar` as direct Data SDK-ready, preventing a legacy `samsung-health-data*.aar` from falsely enabling the direct Samsung steps path.
+- diagnostics: the in-app Samsung direct status now names the exact missing `samsung-health-data-api*.aar` file pattern, so Settings and copied diagnostics do not imply that any legacy Samsung AAR can enable direct All steps parity.
+- diagnostics: the app now also exposes a separate `SAMSUNG_HEALTH_NON_API_AAR_PRESENT` build flag and status for the case where a Samsung Health AAR exists but is not the required Data SDK API AAR, so physical parity runs can distinguish a missing SDK from a wrong SDK file.
+- diagnostics: Samsung AAR filename detection is now case-insensitive for the `.aar` extension in both BuildConfig and the parity evidence helper, preventing `.AAR` bundles from being missed during physical-device setup.
+- diagnostics: the parity evidence helper now writes `samsung-health-readiness.txt` with Samsung Health install status and `versionName`/`versionCode` evidence, so physical-device runs can verify Samsung's 6.30.2+ Data SDK runtime requirement before comparing Samsung Health All steps to TrainIQ.
+- diagnostics: the in-app Samsung direct status now also reports whether Samsung Health is installed and whether its visible version meets Samsung's 6.30.2+ Data SDK runtime requirement, so Settings can explain a physical-device mismatch even before the direct All steps read succeeds.
+- diagnostics: the Samsung Health version readiness comparison is now behavior-tested against the 6.30.2 minimum, including lower, exact, patch-suffixed, higher, and unknown version names.
+- diagnostics: when the Samsung Health Data SDK API AAR is present, TrainIQ now checks Samsung Health runtime readiness before calling Samsung `HealthDataService`; missing or too-old Samsung Health returns an immediate actionable Settings status instead of a lower-level SDK failure, while unknown version text remains non-blocking.
+- diagnostics: the full Samsung Health runtime-readiness decision is now behavior-tested, including missing Samsung Health, below-minimum runtime, exact-minimum runtime, and unknown version text.
+- diagnostics: the parity evidence helper now writes `parity-result.txt` and classifies captured Samsung Health versus TrainIQ values as `MATCH`, `TRAINIQ_UNDER_REPORTS`, `TRAINIQ_OVER_REPORTS`, or `NOT_CAPTURED`, including absolute difference and TrainIQ percent of Samsung Health.
+- diagnostics: the copied Settings step diagnostic now includes a `Pariteit:` line explaining whether direct Samsung Health Data SDK parity is available, blocked by missing AAR, blocked by missing Samsung permission, blocked by missing/old Samsung Health runtime, or still required after Health Connect-visible Samsung export remains lower.
+- diagnostics: the Settings Health Connect section now shows the same `Pariteit:` Samsung gap summary inline, so physical-device testing can see the active mismatch cause without first copying the diagnostic text.
+- diagnostics: Home and Settings diagnostics now label a displayed direct Samsung Health Data SDK step value as direct Samsung data instead of generic Health Connect data, and Home now says `Live uit Samsung Health` for that winning direct source, so a successful All steps direct read is not mistaken for the lower Health Connect aggregate during physical-device parity testing.
+- diagnostics: the parity evidence helper now writes `device-readiness.txt` with manufacturer/model/Android version, Android 10+ readiness, `ro.kernel.qemu`, Samsung manufacturer detection, emulator detection, physical Samsung likelihood, combined Samsung Data SDK runtime target readiness, and Samsung's no-emulator Data SDK limitation.
+- diagnostics: Settings and the copied Samsung step diagnostic now also explain Health Connect App priorities when multiple step sources are visible, because Android documents that Activity/Steps aggregates are deduplicated according to the user's Health Connect app-priority order. This gives the physical-phone mismatch test one more source-backed check before relying solely on the direct Samsung Health Data SDK path.
+- diagnostics: when multiple Health Connect step sources are visible, Settings now shows a focused `Prioriteiten openen` action next to the priority explanation. It reuses the official Health Connect settings intent already used by TrainIQ, avoiding an undocumented deep link while making the physical-phone parity check one tap faster.
+- project readiness: the Samsung Data SDK readiness guard now explicitly checks that the app module keeps Java 17 source/target compatibility and Kotlin JVM toolchain 17, matching Samsung's SDK requirement.
+- diagnostics: the parity evidence helper now writes `acceptance-gates.txt`, which combines physical Samsung Android 10+ readiness, Samsung Data SDK API AAR presence, Samsung Health install status, Samsung Health 6.30.2+ readiness, captured step values, and value equality into `Exact Samsung Health All steps parity proof ready`.
+- verification evidence:
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --tests "com.trainiq.features.home.HomeDashboardRefreshTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+  - PASS: after the higher-visible-total policy update, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --tests "com.trainiq.features.home.HomeDashboardRefreshTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+  - PASS: after the Samsung Health Data SDK readiness guard and `Sync now` Home-copy guard, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --tests "com.trainiq.features.home.HomeDashboardRefreshTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding the exact Settings step-value snapshot, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --tests "com.trainiq.features.home.HomeDashboardRefreshTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding Samsung source recency timing, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --tests "com.trainiq.features.home.HomeDashboardRefreshTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding the copyable Samsung steps diagnostic, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --tests "com.trainiq.features.home.HomeDashboardRefreshTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding the direct Samsung Health Data SDK seam, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --tests "com.trainiq.features.home.HomeDashboardRefreshTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding optional `app/libs/*.aar` SDK wiring, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --tests "com.trainiq.features.home.HomeDashboardRefreshTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding the Samsung Health Data SDK AAR BuildConfig readiness flag, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --tests "com.trainiq.features.home.HomeDashboardRefreshTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+  - PASS: after aligning the default Samsung direct status text, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --tests "com.trainiq.features.home.HomeDashboardRefreshTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+  - PASS: after implementing the compile-safe Samsung Health Data SDK reflection adapter, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after wiring the Samsung Health Data SDK step-permission action into Settings, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding the repeatable Samsung step-parity evidence helper, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after hardening the Samsung Health Data SDK reflection adapter for `DataType.StepsType.TOTAL.requestBuilder`, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding Samsung Health package visibility, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.core.health.HealthConnectReadPermissionsTest" --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding Samsung Health Data SDK exception-specific diagnostics, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding Samsung resolvable-platform action launch from the Settings Samsung permission path, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding the Samsung documented grouped aggregate-request fallback, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after hardening `DataTypes.STEPS` reflection lookup, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after hardening Samsung `Permission.of(DataTypes.STEPS, AccessType.READ)` reflection lookup, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after hardening Samsung aggregate response `dataList` / `value` parsing, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after making the Samsung direct `TOTAL` request prefer the documented grouped aggregate shape, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after making the grouped Samsung `TOTAL` request fallback-safe for SDK binaries that only expose the ungrouped setter, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after aligning the Samsung grouped `TOTAL` request with Samsung's documented `LocalTimeGroupUnit.HOURLY, 1` Pedometer verification example, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding optional Samsung `Ordering.ASC` to the direct grouped `TOTAL` request, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after Samsung Health Data SDK project-readiness metadata/dependency/plugin update, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.core.health.HealthConnectReadPermissionsTest" --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`; the first run timed out at the shell after plugin resolution changed, and the immediate rerun passed.
+  - PASS: after narrowing Samsung AAR readiness to `samsung-health-data-api*.aar`, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after making the in-app missing-AAR status name `samsung-health-data-api*.aar`, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding the non-API Samsung AAR diagnostic flag/status, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after making Samsung `.aar` extension detection case-insensitive in BuildConfig and the parity evidence helper, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding Samsung Health runtime-version evidence to the parity helper, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding Samsung Health runtime-version evidence to the parity helper, `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\collect-samsung-step-parity-evidence.ps1 -OutputDir $env:TEMP\trainiq-samsung-step-parity-readiness-smoke` produced `samsung-health-readiness.txt`; current emulator correctly reported Samsung Health not installed and `versionName=(not found)`.
+  - PASS: after adding Samsung Health runtime-version evidence to the parity helper, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after adding in-app Samsung Health runtime readiness to the Samsung direct status, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding in-app Samsung Health runtime readiness to the Samsung direct status, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after behavior-testing Samsung Health version readiness against the 6.30.2+ Data SDK minimum, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after behavior-testing Samsung Health version readiness against the 6.30.2+ Data SDK minimum, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after gating direct Samsung SDK reads and permission requests on Samsung Health runtime readiness, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after gating direct Samsung SDK reads and permission requests on Samsung Health runtime readiness, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after extracting and behavior-testing the full Samsung Health runtime-readiness decision, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after extracting and behavior-testing the full Samsung Health runtime-readiness decision, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after adding scripted Samsung/TrainIQ parity classification, `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\collect-samsung-step-parity-evidence.ps1 -OutputDir $env:TEMP\trainiq-samsung-step-parity-mismatch-smoke -SamsungHealthAllSteps 600 -TrainIqDisplayedSteps 180` produced `parity-result.txt` with difference `420`, TrainIQ percent `30%`, and status `TRAINIQ_UNDER_REPORTS`.
+  - FAIL/PASS: physical SM-S931B launch reproduced a Samsung Device Care app-error dialog and `java.lang.StackOverflowError` in the Samsung Health direct suspend bridge before the continuation fix; after the fix, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache` passed.
+  - PASS: after the continuation forwarding fix, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache` passed.
+  - PASS: physical SM-S931B cold launch after the fix returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 569`, `TrainIQVisible=True`, `AppErrorVisible=False`, `CrashBufferHasTrainIQFatal=False`, and a quick `/sdcard` scan found no TrainIQ-named test files left on the phone.
+  - PASS: after adding scripted Samsung/TrainIQ parity classification, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding scripted Samsung/TrainIQ parity classification, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after adding the copied Settings `Pariteit:` diagnostic line for direct Samsung parity gap causes, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding the copied Settings `Pariteit:` diagnostic line for direct Samsung parity gap causes, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after showing the Samsung `Pariteit:` gap summary inline in Settings, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.settings.SettingsUiStateTest" --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after showing the Samsung `Pariteit:` gap summary inline in Settings, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after labeling direct Samsung Health Data SDK step values correctly in Home and diagnostics, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.home.HomeDashboardRefreshTest" --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after making Home's live source prefix say `Samsung Health` when the direct Samsung Data SDK value wins, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.home.HomeDashboardRefreshTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding physical Samsung/emulator readiness output to the parity helper, `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\collect-samsung-step-parity-evidence.ps1 -OutputDir $env:TEMP\trainiq-samsung-step-parity-device-readiness-smoke -SamsungHealthAllSteps 600 -TrainIqDisplayedSteps 180` produced `device-readiness.txt` marking the current Google `sdk_gphone64_x86_64` target as emulator detected and `Physical Samsung device likely: False`.
+  - PASS: after adding physical Samsung/emulator readiness output to the parity helper, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding physical Samsung/emulator readiness output to the parity helper, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after adding Android 10+ runtime readiness to `device-readiness.txt`, `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\collect-samsung-step-parity-evidence.ps1 -OutputDir $env:TEMP\trainiq-samsung-step-parity-android-runtime-smoke -SamsungHealthAllSteps 600 -TrainIqDisplayedSteps 180` reported Android `16`, `Android 10 or later: True`, emulator detected, and `Device meets Samsung Health Data SDK runtime target: False`.
+  - PASS: after adding Android 10+ runtime readiness to `device-readiness.txt`, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding Android 10+ runtime readiness to `device-readiness.txt`, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after guarding Java 17 Samsung Data SDK readiness, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after guarding Java 17 Samsung Data SDK readiness, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after adding exact-parity acceptance gates to the evidence helper, `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\collect-samsung-step-parity-evidence.ps1 -OutputDir $env:TEMP\trainiq-samsung-step-parity-acceptance-gates-smoke -SamsungHealthAllSteps 600 -TrainIqDisplayedSteps 180` produced `acceptance-gates.txt` with captured values true, matching values false, and `Exact Samsung Health All steps parity proof ready: False`.
+  - PASS: after adding exact-parity acceptance gates to the evidence helper, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding exact-parity acceptance gates to the evidence helper, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after wiring Samsung Health 6.30.2+ into the exact-parity acceptance gate, `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\collect-samsung-step-parity-evidence.ps1 -OutputDir $env:TEMP\trainiq-samsung-step-parity-health-version-gate-smoke -SamsungHealthAllSteps 600 -TrainIqDisplayedSteps 180` produced `acceptance-gates.txt` with `Samsung Health version 6.30.2 or later: False` and `Exact Samsung Health All steps parity proof ready: False` on the current non-Samsung emulator.
+  - PASS: after making Samsung `.aar` extension detection case-insensitive, `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\collect-samsung-step-parity-evidence.ps1 -OutputDir $env:TEMP\trainiq-samsung-step-parity-aar-case-smoke` reported no local Data SDK API AAR and no legacy/other Samsung Health AARs with clean status formatting.
+  - PASS: after narrowing Samsung AAR readiness to `samsung-health-data-api*.aar`, `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\collect-samsung-step-parity-evidence.ps1 -OutputDir $env:TEMP\trainiq-samsung-step-parity-aar-detection-smoke` reported no Data SDK API AAR and no legacy/other Samsung Health AARs.
+  - PASS: after direct Samsung cache hardening, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after Home parity-gap diagnostics and the opt-in Samsung SDK readiness gate, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.home.HomeDashboardRefreshTest" --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after adding Health Connect App priorities diagnostics for multiple visible step sources, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+  - PASS: after the same diagnostics update, broad gate `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: emulator debug install/cold launch on `emulator-5554` returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 8266`, with no filtered AndroidRuntime crash output.
+  - PASS: after adding the focused `Prioriteiten openen` Health Connect settings action, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.settings.SettingsUiStateTest" --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: after the same action, broad gate `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: emulator debug install/cold launch on `emulator-5554` returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 7903`, with no filtered AndroidRuntime crash output.
+  - EXPECTED FAIL: `./gradlew.bat :app:assembleSamsungHealthParityDebug --console=plain --no-configuration-cache` failed at `:app:checkSamsungHealthDataSdkReadiness` with `Samsung Health Data SDK API AAR missing`, proving the parity-only task cannot be mistaken for a Health Connect-only build while the AAR is absent.
+  - PASS: after adding explicit Samsung parity Gradle tasks and updating the physical parity helper to use them, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+  - PASS: after the same parity-task hardening, broad gate `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after the same parity-task hardening, emulator debug install/cold launch on `emulator-5554` returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 9424`, with no filtered AndroidRuntime crash output.
+  - EXPECTED FAIL: `./gradlew.bat :app:checkSamsungHealthDataSdkReadiness --console=plain --no-configuration-cache` failed with `Samsung Health Data SDK API AAR missing... app\libs`, confirming this checkout is not yet capable of exact Samsung Health All steps parity builds.
+  - PASS: `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-samsung-health-data-sdk-aar.ps1 -HelpSamsungDownload` printed official Samsung SDK download/codelab/release-note guidance and exited successfully.
+  - EXPECTED FAIL: `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-samsung-health-data-sdk-aar.ps1` printed the same guidance and failed with `SourcePath is required unless -HelpSamsungDownload is used.`, confirming the missing-AAR state is explicit.
+  - PASS: `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-samsung-health-data-sdk-aar.ps1 -SourcePath <temp-dummy-source> -DestinationDir <temp-dummy-dest>` installed a dummy `samsung-health-data-api-1.1.0.aar` into a temporary destination and wrote `samsung-health-data-sdk-aar-status.txt` with SHA-256 plus next readiness/parity commands.
+  - PASS: after adding the official Samsung SDK overview/download page to the AAR helper, `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-samsung-health-data-sdk-aar.ps1 -HelpSamsungDownload` printed the SDK download, codelab, and release-note URLs plus the SDK-terms reminder.
+  - PASS: after the same helper update, targeted Samsung/Settings tests passed with `.\gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+  - PASS: after the same helper update, broad gate passed with `.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after the same helper update, `.\gradlew.bat :app:installDebug --console=plain --no-configuration-cache` installed on emulator `emulator-5554`; cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 6255`, and filtered logcat showed no `AndroidRuntime`/fatal crash.
+  - PASS: after fixing the Samsung AAR `minSdkVersion 29` manifest-merge failure with a focused Samsung override plus Android 10/API 29 runtime gate, targeted manifest/Samsung/Settings tests passed with `.\gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.core.health.HealthConnectReadPermissionsTest" --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+  - PASS: `powershell -NoProfile -ExecutionPolicy Bypass -File "D:\GitHub\TrainIQ\TrainIQ-Project\scripts\build-samsung-step-parity-debug.ps1" -AdbPath "C:\Users\menno\AppData\Local\Android\Sdk\platform-tools\adb.exe" -Serial "adb-RFCY60HNHNJ-Jf2gXF._adb-tls-connect._tcp"` completed successfully and wrote evidence to `.codex\device-qa\samsung-step-parity-build-2026-06-22-110239`.
+  - PASS: that physical-device evidence identified `SM-S931B`, manufacturer `samsung`, Android `16`, `ro.kernel.qemu: 0`, Samsung Health installed, and Samsung Health `versionName=6.32.0.001`, satisfying the helper's physical Samsung Android 10+ and Samsung Health 6.30.2+ gates.
+  - PASS: after the physical Samsung parity build/install succeeded, broad gate passed with `.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after Samsung permission-result crash hardening, targeted Samsung/Settings tests passed with `.\gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+  - PASS: after the same crash hardening, broad gate passed with `.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: emulator crash smoke installed the Samsung AAR-present debug build on `emulator-5554`, cold-launched `com.trainiq/.MainActivity` with `Status: ok`, reached Settings, displayed `Samsung Health runtime: app niet gevonden`, tapped `Samsung toegang geven`, kept the `com.trainiq` process alive, and left the crash buffer empty. Evidence: `.codex/device-qa/emulator-crash-smoke-2026-06-22/`.
+  - PASS: after adding the Samsung Data SDK API AAR install helper, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS expected-fail physical parity helper smoke: `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-samsung-step-parity-debug.ps1 -SkipInstall` stopped before device install/build at `:app:checkSamsungHealthDataSdkReadiness` with `Samsung Health Data SDK API AAR readiness failed`, which is the intended guard while no `samsung-health-data-api*.aar` exists.
+  - PASS: `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\collect-samsung-step-parity-evidence.ps1 -OutputDir $env:TEMP\trainiq-samsung-step-parity-script-smoke` executed on the current emulator environment, produced summary/manual comparison/diagnosis/crash files, and correctly reported no local Samsung Health Data SDK AAR.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin :app:assembleProfileable :macrobenchmark:compileProfileableJavaWithJavac --console=plain --no-configuration-cache`.
+  - PASS: after the higher-visible-total policy update, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after the Samsung Health Data SDK readiness guard and `Sync now` Home-copy guard, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after adding the exact Settings step-value snapshot, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after adding Samsung source recency timing, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after adding the copyable Samsung steps diagnostic, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after adding the direct Samsung Health Data SDK seam, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after adding optional `app/libs/*.aar` SDK wiring, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after adding the Samsung Health Data SDK AAR BuildConfig readiness flag, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after aligning the default Samsung direct status text, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after implementing the compile-safe Samsung Health Data SDK reflection adapter, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after wiring the Samsung Health Data SDK step-permission action into Settings, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after adding and smoke-testing the repeatable Samsung step-parity evidence helper, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - PASS: `git diff --check` returned only LF-to-CRLF warnings.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 5698`, and filtered AndroidRuntime crash buffer was empty.
+  - PASS: after hardening the Samsung request-builder reflection, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after hardening the Samsung request-builder reflection, `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 5461`, and filtered AndroidRuntime crash buffer was empty.
+  - PASS: after Samsung SDK exception-specific diagnostics, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after Samsung SDK exception-specific diagnostics, `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 6686`, and filtered AndroidRuntime crash buffer was empty.
+  - PASS: after Samsung resolvable-platform action launch, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after Samsung resolvable-platform action launch, `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 5667`, and filtered AndroidRuntime crash buffer was empty.
+  - PASS: after adding the Samsung documented grouped aggregate-request fallback, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after adding the Samsung documented grouped aggregate-request fallback, `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 5829`, and filtered AndroidRuntime crash buffer was empty.
+  - PASS: after hardening `DataTypes.STEPS` reflection lookup, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after hardening `DataTypes.STEPS` reflection lookup, `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 5795`, and filtered AndroidRuntime crash buffer was empty.
+  - PASS: after hardening Samsung `Permission.of(DataTypes.STEPS, AccessType.READ)` reflection lookup, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after hardening Samsung `Permission.of(DataTypes.STEPS, AccessType.READ)` reflection lookup, `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 6435`, and filtered AndroidRuntime crash buffer was empty.
+  - PASS: after hardening Samsung aggregate response `dataList` / `value` parsing, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after hardening Samsung aggregate response `dataList` / `value` parsing, `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 5861`, and filtered AndroidRuntime crash buffer was empty.
+  - PASS: after Samsung Health Data SDK project-readiness metadata/dependency/plugin update, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after Samsung Health Data SDK project-readiness metadata/dependency/plugin update, `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 5598`, and filtered AndroidRuntime crash buffer was empty.
+  - PASS: after narrowing Samsung AAR readiness to `samsung-health-data-api*.aar`, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after narrowing Samsung AAR readiness to `samsung-health-data-api*.aar`, `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 6245`, and filtered AndroidRuntime crash buffer was empty.
+  - PASS: after making the in-app missing-AAR status name `samsung-health-data-api*.aar`, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after making the in-app missing-AAR status name `samsung-health-data-api*.aar`, `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 6905`, and filtered AndroidRuntime crash buffer was empty.
+  - PASS: after adding the non-API Samsung AAR diagnostic flag/status, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after adding the non-API Samsung AAR diagnostic flag/status, `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 6360`, and filtered AndroidRuntime crash buffer was empty.
+  - PASS: after making Samsung `.aar` extension detection case-insensitive, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: after making Samsung `.aar` extension detection case-insensitive, `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 5637`, and filtered AndroidRuntime crash buffer was empty.
+- external sources used:
+  - Android Developers Health Connect read-data guidance: cumulative `StepsRecord` should use `aggregate()` instead of raw `readRecords()` summing to avoid double counting.
+  - Android Developers aggregate-data guidance: `AggregateRequest` supports `StepsRecord.COUNT_TOTAL` and optional `dataOriginFilter` for app-origin-specific aggregates.
+  - Samsung support: Samsung Health `All steps` is the combined step total for the phone and connected devices.
+  - Google Play Samsung Health listing: Samsung Health's public Android package is `com.sec.android.app.shealth`.
+  - Samsung Health Data SDK overview, app-module guide, permission-request guide, StepsType API, aggregate-data guide, codelab, and release notes: Samsung's current SDK can read Samsung Health steps from phone plus connected wearables, exposes `DataTypes.STEPS` / `DataType.StepsType.TOTAL`, uses the `samsung-health-data-api-1.1.0.aar` codelab path, needs Samsung Health runtime readiness/permission handling, and is not supported on emulators.
+- remaining risk: if Samsung Health has not written its latest watch/phone total into Health Connect at all, TrainIQ can only show the highest Health Connect-visible aggregate or Samsung raw export; the UI now surfaces that mismatch path and keeps `Sync now` guidance. A full long-term match to Samsung Health's own graph requires Samsung Health Data SDK integration plus physical Samsung-device verification once the SDK AAR and Samsung developer-mode/partnership requirements are available.
+
+## 2026-06-21 Active Workout Scroll + Samsung Step Diagnostic Follow-Up
+
+- status: done for reducing the reported active strength-workout scroll stutter risk and clarifying Samsung Health step-count ambiguity; active workout scroll composition was reduced, profileable scroll benchmark coverage was added, and emulator runtime proof now covers the seeded active-workout up/down scroll path. Physical-device frame-timing remains a recommended follow-up for final performance certification.
+- files changed: active workout cards now receive per-exercise state slices instead of the full `ActiveWorkoutUiState`; the active workout `LazyColumn` now declares stable content types for header, rest timer, exercise, superset, and debrief items; draft-only persistence no longer replays the whole active session into UI state on every keystroke; the profileable benchmark seed now creates a longer active workout and `TrainIqStartupBenchmark` includes up/down active workout scroll measurement; Health Connect step diagnostics now keep the daily `StepsRecord.COUNT_TOTAL` aggregate as the authoritative step count while separately reporting steps that fall inside Health Connect workout windows when workout permission/data is available; Settings explains that workout overlap is diagnostic and not subtracted.
+- verification evidence:
+  - Baseline PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+  - First after-change targeted run completed with `BUILD SUCCESSFUL` but the shell returned a timeout at 121 seconds after Gradle had finished.
+  - After-change PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+  - Broad PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin :app:assembleProfileable :macrobenchmark:compileProfileableJavaWithJavac --console=plain --no-configuration-cache`.
+  - Broad JVM PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - Runtime PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 4698`, and filtered AndroidRuntime crash buffer was empty.
+  - Profileable PASS: `./gradlew.bat :app:assembleProfileable :macrobenchmark:compileProfileableJavaWithJavac --console=plain --no-configuration-cache`.
+  - Active-scroll benchmark PASS on emulator with emulator warning suppressed: `./gradlew.bat :macrobenchmark:compileProfileableJavaWithJavac :macrobenchmark:connectedProfileableAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.macrobenchmark.TrainIqStartupBenchmark#activeWorkoutScrollFrames" "-Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR" --console=plain --no-configuration-cache`.
+- external sources used:
+  - Android Developers Health Connect read-data guidance: cumulative steps should use aggregate reads to avoid duplicate data from multiple apps/devices.
+  - Android Developers Health Connect aggregate-data guidance: `StepsRecord.COUNT_TOTAL` can be read with `AggregateRequest`.
+  - Android Health Connect sample: exercise-session steps can be calculated by aggregating steps over the session time range.
+  - Samsung support: automatic workout detection can start after 10 minutes, and Samsung Health `All steps` is a combined step total across connected devices/sources.
+  - Android Developers Compose performance/lazy-list guidance: keep lazy list identity stable and verify jank with profileable or release-like measurement.
+- remaining risk: emulator benchmark proof is useful as a regression guard but not a final performance certificate; confirm frame timing on a physical Samsung device if the user's exact device still stutters. Samsung Health workout-window overlap depends on granted Workout permission and the provider actually exposing exercise-session windows through Health Connect.
+
+## 2026-06-20 Active Routine Scroll Performance Polish
+
+- status: done for reducing active-routine card scroll jank by removing the generic wrapping action layout from the fixed two-button active routine action area.
+- files changed: `ActiveRoutineCard` now delegates start/edit actions to a lightweight `ActiveRoutineActionRow` with stable equal-width buttons and a single computed start label; workout start and routine detail callbacks are unchanged.
+- verification evidence:
+  - RED: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest.activeRoutineCardUsesStableActionRowForScrollPerformance" --console=plain --no-configuration-cache` failed before implementation because the active routine card still used `WrappingActionRow`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest.activeRoutineCardUsesStableActionRowForScrollPerformance" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --tests "com.trainiq.core.ui.ActionButtonLayoutPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 2797`, and filtered AndroidRuntime crash buffer was empty.
+- external sources used: none; local source and the reported scroll behavior were sufficient.
+- remaining risk: install/launch proof confirms no crash; real frame timing can still vary by device and seeded data size.
+
+## 2026-06-20 Nutrition AI Header Action Full-Width Follow-Up
+
+- status: done for making the single third Foto/AI action in Producten and Recepten span the full row width instead of sitting as a half-width orphan below the first button.
+- files changed: shared `EqualNutritionHeaderActions` now keeps paired rows as equal 50/50 cells but renders a single final row item with `Modifier.fillMaxWidth()` and no spacer; Producten and Recepten inherit the same layout.
+- verification evidence:
+  - RED: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest.nutritionLibraryHeaderActionsUseEqualWidthCells" --console=plain --no-configuration-cache` failed before implementation because the helper still used a spacer for odd rows.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest.nutritionLibraryHeaderActionsUseEqualWidthCells" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 2446`, and filtered AndroidRuntime crash buffer was empty.
+- external sources used: none; local screenshot/request context and source guards were sufficient.
+- remaining risk: install/launch proof confirms no crash; runtime visual proof on the exact seeded Producten/Recepten state remains optional because the shared source guard now protects both tabs.
+
+## 2026-06-20 Training/Nutrition Action Alignment Polish
+
+- status: done for small visual alignment polish in Training routine actions, Producten/Recepten header actions, and expanded Nutrition history details without changing persistence, AI routing, scanner routing, meal reuse/delete behavior, or workout start behavior.
+- files changed: inactive routine overview actions now render through a fixed equal-width strip for Details/Actief maken/Start; Producten and Recepten creation/scan/photo actions now share equal-width header cells instead of a full-width odd action; expanded Nutrition history meals now use a detail card with meal-type chip, Kcal/Eiwit/Kh/Vet metric grid, snapshot item rows, and aligned reuse/delete actions.
+- verification evidence:
+  - RED: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest.routineActionsUseWrappingSharedButtons" --tests "com.trainiq.features.nutrition.NutritionInputValidationTest.nutritionLibraryHeaderActionsUseEqualWidthCells" --tests "com.trainiq.features.nutrition.NutritionInputValidationTest.mealHistoryDetailsUseMetricCardsAndAlignedActions" --console=plain --no-configuration-cache` failed before implementation on the missing equal action strip/header cells/history detail components.
+  - FAIL then fixed: the first after-change targeted run failed at compile because `Modifier.weight(...)` was constructed outside the `Row` scope; the modifier is now created inside the row scope.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest.routineActionsUseWrappingSharedButtons" --tests "com.trainiq.features.nutrition.NutritionInputValidationTest.nutritionLibraryHeaderActionsUseEqualWidthCells" --tests "com.trainiq.features.nutrition.NutritionInputValidationTest.mealHistoryDetailsUseMetricCardsAndAlignedActions" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --tests "com.trainiq.core.ui.ActionButtonLayoutPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - PASS: `git diff --check` returned only existing LF-to-CRLF warnings.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 2370`, and filtered AndroidRuntime crash buffer was empty.
+- external sources used: none; local screenshots/request context, Compose source, and existing TrainIQ source guards were sufficient.
+- remaining risk: runtime proof confirms install/launch/no crash; seeded small-screen tap-through of all three polished surfaces can still be added when representative Training/Nutrition data is preloaded.
+
+## 2026-06-20 Nutrition History Day Summary Polish
+
+- status: done for replacing the per-meal nutrition history list with compact day summaries while preserving meal reuse/delete behavior.
+- files changed: Nutrition history now groups logged meals by local day using existing `LoggedMeal.timestamp`; each day card shows Kcal/Eiwit/Kh/Vet with the shared centered metric strip, meal/item counts, and meal-type summary; individual meal snapshots are available behind `Maaltijden bekijken` / `Verbergen`, where `Opnieuw gebruiken` and `Verwijderen` remain available.
+- verification evidence:
+  - RED: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --console=plain --no-configuration-cache` failed before implementation because `groupedHistoryDays` and day-summary properties did not exist.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - PASS: `git diff --check` returned only existing LF-to-CRLF warnings.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 2570`, and filtered AndroidRuntime crash buffer was empty.
+- external sources used: none; local source, tests, screenshot/request context, and emulator smoke were sufficient.
+- remaining risk: runtime smoke confirms install/launch/no crash; a seeded tap-through of expanding multiple history day cards can be added if visual QA data is required.
+
+## 2026-06-20 Hidden Nutrition AI Result Routing Polish
+
+- status: done for hiding the Nutrition `AI-resultaat` section from manual navigation while keeping it as an internal result surface for meal, product, and recipe AI/photo flows.
+- files changed: `AI-resultaat` is no longer listed in the visible Voeding section menu; internal tab index `2` and the existing AI result rendering remain available for automatic routing; Producten now offers `Foto/AI product`; Recepten and recipe-editor AI/photo actions route to the same hidden result surface; the AI result card now uses target-specific copy and primary actions for `Aan maaltijd toevoegen`, `Producten opslaan`, and `Als ingrediënten toevoegen`; AI product saves reuse the existing `FoodSourceType.AI` batch-save path.
+- verification evidence:
+  - RED: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --console=plain --no-configuration-cache` failed before implementation on hidden AI-result tab, product AI action, target enum/routing, and target-specific AI actions.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --tests "com.trainiq.features.ui.CompactSectionTabsSourceTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - PASS: `git diff --check` returned only existing LF-to-CRLF warnings.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 3162`, and filtered AndroidRuntime crash buffer was empty.
+- external sources used: none; local source, tests, requested screenshot/context, and emulator smoke were sufficient.
+- remaining risk: runtime proof confirms install/launch/no crash; a seeded end-to-end AI scan proof still needs a configured AI provider and test photo/camera input.
+
+## 2026-06-20 Nutrition Product/Recipe Creation Flow Polish
+
+- status: done for aligning Producten/Recepten creation and add flows without changing nutrition persistence, AI contracts, barcode routes, or meal-draft data behavior.
+- files changed: Nutrition section menu now shows `Producten` before `Recepten` while preserving internal tab indexes for scanner/barcode routing; Producten and Recepten header actions now use comparable primary/secondary controls; the Recepten action sheet no longer mixes in the direct meal-photo concept flow; the recipe editor now groups ingredient sources as `Uit producten`, `Nieuw product`, `Barcode`, and `Foto/AI`; recipe ingredient creation now mirrors the product field order and labels itself as saving a product into the recipe; saved recipes now have search/filtering similar to saved products.
+- verification evidence:
+  - RED: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --console=plain --no-configuration-cache` failed before implementation on `nutritionTabTitles_keepOverviewEntryAndAiResultSeparated`, `nutritionScreen_usesSectionMenuInsteadOfPersistentTabRow`, `recipeCreationFlowMirrorsProductFlowWithoutMealConceptShortcut`, and `savedRecipesCanBeSearchedLikeProducts`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --tests "com.trainiq.features.ui.CompactSectionTabsSourceTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - PASS: `git diff --check` returned only existing LF-to-CRLF warnings.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 4183`, and filtered AndroidRuntime crash buffer was empty.
+- external sources used: none; local source, tests, app screenshots/request context, and emulator smoke were sufficient.
+- remaining risk: runtime proof confirms install/launch/no crash; a seeded end-to-end tap-through for creating a recipe from product, barcode, and AI-photo sources remains a useful follow-up when seeded nutrition data and scanner inputs are available.
+
+## 2026-06-20 Training Action Overlap + Nutrition Metric Strip Polish
+
+- status: done for source-guarded Training routine action overlap prevention and Nutrition day/meal-section metric strip polish.
+- files changed: shared `ActionButtonRow`/`WrappingActionRow` now passes a safe per-action modifier instead of rendering all child buttons inside one measured box; medium phone widths stack long Dutch routine labels earlier; Training routine action rows apply the shared modifier to primary, secondary, and text actions; Nutrition day and meal-section totals now use centered 1x4 Kcal/Eiwit/Kh/Vet metric strips; logged meal 2x2 nutrition pills now center their label/value content.
+- verification evidence:
+  - RED: targeted tests failed before implementation for medium-phone routine edit label stacking, shared action-row per-action modifier structure, Training action modifier usage, and Nutrition 1x4 centered metric strips.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.core.ui.ActionButtonLayoutPolicyTest" --tests "com.trainiq.core.ui.WarmFuturisticUiSourceTest" --tests "com.trainiq.features.workout.WorkoutInputValidationTest.routineActionsUseWrappingSharedButtons" --tests "com.trainiq.features.nutrition.NutritionInputValidationTest.dailyAndMealSectionTotalsUseCenteredOneByFourMetricStrip" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.core.ui.ActionButtonLayoutPolicyTest" --tests "com.trainiq.core.ui.WarmFuturisticUiSourceTest" --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --tests "com.trainiq.features.ui.WarmFuturisticScreenPolishSourceTest" --tests "com.trainiq.navigation.TrainDetailModeChromeTest" --tests "com.trainiq.domain.usecase.StartWorkoutSessionUseCaseTest" --tests "com.trainiq.data.repository.ActiveWorkoutSessionMutationsTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 4280`, and filtered AndroidRuntime crash buffer was empty.
+- external sources used: none; local screenshots, source, tests, and emulator smoke were sufficient.
+- remaining risk: the emulator stayed on setup-gated Start during quick tab taps, so Training/Voeding visual proof is source/unit guarded and launch-smoked but not fully runtime-click verified in seeded data state for this pass.
+
+## 2026-06-20 Active Workout Conflict + Routine/Nutrition Polish
+
+- status: done for explicit active-workout start conflict handling, routine action wrapping, and fixed 2x2 logged-meal nutrition values.
+- files changed: active-workout start now detects a different unfinished active session and shows explicit `Oude training hervatten`, `Nieuwe training starten`, and `Annuleren` actions; replacing the conflict discards the old active session by `sessionId` through the targeted Room discard path before loading the requested routine; active-workout navigation now only suppresses same-day duplicate navigation; routine actions use shared wrapping action buttons; logged meal Kcal/Eiwit/Kh/Vet values render in a fixed 2x2 grid.
+- verification evidence:
+  - RED: targeted tests failed before implementation for missing discard-by-session use case, active-workout route helper, conflict dialog, routine wrapping actions, and nutrition 2x2 grid.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --tests "com.trainiq.navigation.TrainDetailModeChromeTest" --tests "com.trainiq.domain.usecase.StartWorkoutSessionUseCaseTest" --tests "com.trainiq.data.repository.ActiveWorkoutSessionMutationsTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 4242`, and filtered AndroidRuntime crash buffer was empty.
+  - PASS: `git diff --check` returned only existing LF-to-CRLF warnings.
+- external sources used: none; local source, tests, and emulator smoke were sufficient.
+- remaining risk: the explicit conflict dialog is source/unit guarded and app-launch smoked; a full end-to-end seeded UI interaction for replacing an active workout can still be added to connected tests if this path becomes release-critical.
+
+## 2026-06-05 Home/Reminder/Training/Nutrition/Sleep Polish
+
+- status: done for compact Home Health Connect copy, varied opt-in reminders, active-routine edit access, clearer Training history layout, less cramped Nutrition day rows, and main-session recent sleep display.
+- files changed: Home now keeps Samsung/Health Connect troubleshooting off the Start card while preserving last-sync, aggregate update time, day window, and source labels; reminder content rotates through concise, subtle emoji variants without changing WorkManager cadence, channel, or permissions; active routines now expose `Routine aanpassen` even when they can start; workout history uses metric tiles and separate debrief blocks; meal rows give long names full width and move calories into macro pills; Health Connect sleep metrics now choose the likely main recent sleep session instead of summing every cached sleep record; Settings shows multiple Health Connect sleep records as compact context only.
+- verification evidence:
+  - RED: targeted tests failed before implementation for compact Home copy, reminder variety, active routine edit action, Training history metric tiles, Nutrition meal-row layout, and main-sleep mapping.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.home.HomeDashboardRefreshTest" --tests "com.trainiq.core.reminders.ReminderPolicyTest" --tests "com.trainiq.features.workout.WorkoutInputValidationTest.activeRoutineCardOffersEditActionWhenRoutineCanStart" --tests "com.trainiq.features.workout.WorkoutInputValidationTest.workoutHistoryCardUsesReadableMetricTilesAndSeparateAdviceSections" --tests "com.trainiq.features.nutrition.NutritionInputValidationTest.mealEntryRowGivesLongNamesFullWidthAndMovesCaloriesIntoMacroArea" --tests "com.trainiq.data.mapper.MappersTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
+  - PASS: `git diff --check` returned only existing CRLF conversion warnings.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 2945`, rendered Home/Start navigation, and filtered AndroidRuntime crash buffer was empty.
+- external sources used: Android Health Connect sleep-session docs and `SleepSessionRecord` API reference for interval-record behavior; Android notification creation and mobile notification guidance for concise user-controlled reminder notifications; Material onboarding/communication guidance for concise, useful user-facing copy.
+- remaining risk: sleep display now avoids inflated totals from multiple records, but provider-specific duplicate/fragment behavior still needs real Samsung Health Connect device verification with fresh sleep data.
+
+## 2026-06-05 Steps Diagnostic + Onboarding/Coach Target Polish
+
+- status: done for the requested tour copy cleanup, Samsung Health diagnostic polish, exact calorie target override, auto macro recalculation, and AI prompt constraint.
+- files changed: guided tour copy now keeps routines in Training and gives Coach only profile/calorie/macro/advice wording; onboarding copy now explains setup, optional Health Connect/AI/reminders, skipped setup follow-up, and the post-setup tour more concretely; Health Connect step diagnostics now include aggregate authority copy, local query window, freshness, Samsung source presence, latest Samsung source timestamp, and Samsung sync guidance while keeping displayed steps on `StepsRecord.COUNT_TOTAL`; Coach Doelen now accepts optional exact `Jouw calorie doel`, saves final calorie/protein/carbs/fat targets in `UserProfile`, and feeds fixed targets to Home/Nutrition/Coach/AI context through the existing profile/advice paths.
+- verification evidence:
+  - RED: targeted tests failed before implementation on missing manual calorie target APIs, missing richer `HealthConnectStepDiagnostic` fields/freshness behavior, and incorrect guided-tour copy expectations.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.navigation.OnboardingNavigationTest" --tests "com.trainiq.features.coach.GoalAdviceInputTest" --tests "com.trainiq.domain.model.EnergyMathTest" --tests "com.trainiq.ai.services.AiServicesTest.generateGoalAdvice_withManualCalorieTargetPassesFixedTargetsToGeminiPrompt" --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator `emulator-5554` cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 2762`, rendered Home/Start navigation, and filtered AndroidRuntime crash buffer was empty.
+  - PASS: `git diff --check` returned only existing CRLF conversion warnings.
+- external sources used: Android Health Connect steps/aggregate/sync docs for `StepsRecord`, aggregate `StepsRecord.COUNT_TOTAL`, no displayed-total `dataOriginFilter`, local time ranges, and changes-token direction; Samsung Health Connect FAQ and Samsung step support docs for Samsung Health-to-Health Connect permissions, `Sync now`, Galaxy Watch phone sync, and `All steps` combining phone/watch sources; Android Health Connect UX/onboarding guidance for clarity/transparency around permissions; USDA MyPlate and National Academies DRI references for personalized calorie planning and macro distribution context.
+- remaining risk: exact parity with Samsung Health remains limited by what Samsung Health has synchronized into Health Connect; no Samsung private SDK/API or manual step correction was added. Manual Health Connect edge-state QA for missing/provider/partial-permission/stale real Samsung sync states still needs a physical-device pass.
+
+## 2026-06-05 Steps Accuracy Foreground Refresh + First-Run Onboarding
+
+- status: done for immediate Home foreground Health Connect step refresh, user-facing step freshness diagnostics, first-run onboarding, and Settings resume/reopen support.
+- files changed: Home no longer waits behind the prior initial Health Connect delay before requesting status refresh; Health Connect status now carries step freshness and last-step-update state without logging raw health payloads; daily steps stay on `StepsRecord.COUNT_TOTAL` aggregate over the local day range without a `DataOrigin` filter; onboarding preferences are persisted in DataStore separately from profile fields; type-safe navigation gates first launch through `Onboarding`; Settings can reopen onboarding and shows skipped setup actions.
+- verification evidence:
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "*HealthConnect*" --tests "*Home*" --tests "*Onboarding*" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: emulator `emulator-5554` fresh appdata smoke with `:app:installDebug`; cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 5682`; first screen showed `Welkom bij TrainIQ`; tapping `Overslaan` reached Start/Home; Settings showed `Onboarding`, `Nog open`, `Health Connect koppelen`, and `AI-coach instellen`; `Onboarding openen` reopened `Eerste setup`; filtered logcat had no `FATAL EXCEPTION`.
+- external sources rechecked: Android Health Connect aggregate docs for `StepsRecord.COUNT_TOTAL` and `TimeRangeFilter`; Android Health Connect sync docs for changes-token direction; Samsung Health Connect FAQ/blog for Samsung Health-to-Health Connect permissions, sync timing, and the `All steps` to `StepsRecord` mapping.
+- remaining risk: exact parity with Samsung Health still depends on Samsung Health and Galaxy Watch data being synced into Health Connect and TrainIQ having `READ_STEPS`; direct Samsung Health SDK access remains out of scope.
+
+## 2026-06-05 Onboarding Tour + Samsung Steps Diagnostic Follow-up
+
+- status: done for no-flash onboarding startup gating, setup-plus-tour flow, clearer AI/Health Connect onboarding choices, Settings reopen preservation, and Samsung Health step-source diagnostics.
+- files changed: Main startup now waits for a real DataStore onboarding emission before rendering `TrainIqApp`; onboarding preferences now persist guided-tour completion/skipped state and deferred-AI intent; Settings onboarding open no longer marks first-run incomplete; top-level navigation hosts a guided tour across Start, Training, Voeding, Voortgang, Coach, and Instellingen; Health Connect status now carries aggregate step diagnostics with raw source labels used only for troubleshooting.
+- verification evidence:
+  - RED: targeted onboarding/tour/diagnostic test run failed before implementation on missing `MainOnboardingState`, `HealthConnectStepDiagnostic`, guided-tour helpers, and distinct AI events.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.MainOnboardingStateTest" --tests "com.trainiq.navigation.OnboardingNavigationTest" --tests "com.trainiq.features.onboarding.OnboardingStateTest" --tests "com.trainiq.core.datastore.OnboardingPreferencesSourceTest" --tests "com.trainiq.data.datasource.HealthConnectPermissionPolicyTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug --console=plain --no-configuration-cache`.
+- external sources used: Android Health Connect read/steps/sync docs for aggregate-first step totals, no `DataOrigin` filtering for displayed totals, and changes-token behavior; Samsung Health Connect FAQ and Samsung step-count support docs for Samsung Health All steps, phone/watch sync behavior, and Health Connect synchronization dependency.
+- remaining risk: Samsung Health All steps can only match when Samsung Health has synchronized the same phone/watch data into Health Connect; no direct Samsung Health private SDK integration was added.
+
+## 2026-06-04 Steps Accuracy + Home/Product Portion Regression Fix
+
+- status: done for the Health Connect-only step-count correction path, Home streak/steps metric readability fix, and product default-serving editor IME visibility fix.
+- files changed: Health Connect daily steps now aggregate `StepsRecord.COUNT_TOTAL` over a local `LocalDateTime` day range without `DataOrigin` filtering; shared warm cards use a measured background layer instead of unbounded `fillMaxSize()`; Home streak/steps metric cards span full rows on compact width and use full-width readable subtitle surfaces; the product editor bottom sheet is scrollable with navigation/IME padding, and the default serving field requests a later post-IME bring-into-view pass.
+- verification evidence:
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests com.trainiq.data.datasource.HealthConnectPermissionPolicyTest --tests com.trainiq.features.home.HomeDashboardRefreshTest --tests com.trainiq.features.nutrition.NutritionInputValidationTest --tests com.trainiq.core.ui.WarmFuturisticUiSourceTest --tests com.trainiq.features.ui.WarmFuturisticScreenPolishSourceTest --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 7639`, and AndroidRuntime crash buffer was empty.
+  - PASS: emulator Home UI dump showed `TrainIQ`, `Start`, `Training`, and `Voeding`.
+- external sources used: Android Health Connect aggregate/time-range docs for `StepsRecord.COUNT_TOTAL` and local `TimeRangeFilter` day ranges; Samsung Health support docs for the product limitation that Samsung Health "All steps" can combine phone and wearable sources that may not all be present in Health Connect.
+- remaining risk: exact parity with Samsung Health "All steps" still depends on Samsung Health syncing the same phone/wearable sources into Health Connect. A direct Samsung Health SDK source remains out of scope for this Health Connect-only fix.
+
+## 2026-06-03 JSON Import + Health Connect Steps Correctness
+
+- status: done for safe local JSON import preview/confirm and the reported Health Connect step mismatch class.
+- files changed: Settings now supports `Data importeren uit JSON` next to export, validates selected JSON with a preview dialog before destructive replacement, and labels data-storage actions for accessibility; export-wrapper JSON is accepted by the Room import planner; confirmed import uses the existing Room import coordinator/sink transactionally; Home refresh now uses the Health Connect status/cache path so fresh `StepsRecord.COUNT_TOTAL` aggregate steps update the dashboard and Settings consistently.
+- verification evidence:
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests com.trainiq.features.settings.SettingsUiStateTest --tests com.trainiq.data.migration.JsonRoomImportPlannerTest --tests com.trainiq.data.datasource.HealthConnectPermissionPolicyTest --tests com.trainiq.features.home.HomeDashboardRefreshTest --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 4827`, and crash buffer was empty.
+  - PASS: emulator Settings UI dump showed `Gegevens / opslag`, `Data exporteren als JSON`, and `Data importeren uit JSON`.
+- external sources used: Android Health Connect aggregate data docs for using aggregate metrics such as `StepsRecord.COUNT_TOTAL` as the deduplication-aware daily step source.
+- remaining risk: file-picker import confirmation was source/unit guarded and Settings-render smoke verified; a full end-to-end SAF import with a real selected JSON file remains a manual/device QA follow-up because automating Android DocumentsUI file selection safely in this workspace is brittle.
+
+## 2026-06-03 Home/Training History/Settings Polish Follow-up
+
+- status: done for the requested Home card strip, Settings theme-button alignment, scored exercise-library filtering, and workout-history feedback visibility.
+- files changed: shared `AppCard` gradient now fills the whole card surface; Settings theme choices wrap in a single aligned `FlowRow`; Training library items now include sessions, score/rank, last-performed, best estimated 1RM, and total volume; Training history cards now show routine name, duration, volume, exercise/set counts, strongest set, recovery score, stored debrief summary, recommendation, and next-session focus.
+- verification evidence:
+  - PASS: `./gradlew.bat :app:compileDebugKotlin :app:testDebugUnitTest --tests com.trainiq.features.workout.WorkoutInputValidationTest --tests com.trainiq.features.settings.SettingsUiStateTest --tests com.trainiq.core.ui.WarmFuturisticUiSourceTest --tests com.trainiq.data.repository.TrainIqRepositoryTest --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 6008`, and the crash buffer was empty.
+- remaining risk: manual screenshot/font-scale signoff is still needed for the exact Home/Settings visual result on the user's device class; no new AI provider behavior was introduced in this follow-up.
+
+## 2026-06-03 Training/Nutrition/Trend/Coach Polish Update
+
+- status: partially-done for related P2 layout polish and AI routine duplicate-prevention; routine merge is proposal-first and non-destructive unless the user opens/compares routines.
+- files changed: Training now separates Routines, Bibliotheek, and Geschiedenis inside the Train tab; active routine is no longer duplicated in the routine list; AI routine save reuses existing exercises by returned ID or conservative normalized matching; Nutrition daily meal cards and recipe editor are lighter; Trend is split into Lichaam/Kracht/Historie; Coach is split into Week/Doelen/Advies.
+- verification evidence:
+  - PASS: `./gradlew.bat :app:compileDebugKotlin :app:testDebugUnitTest --tests com.trainiq.features.workout.WorkoutInputValidationTest --tests com.trainiq.ai.services.RoutineGeneratorServiceTest --tests com.trainiq.data.repository.TrainIqRepositoryTest --tests com.trainiq.features.nutrition.NutritionInputValidationTest --tests com.trainiq.features.coach.GoalAdviceInputTest --tests com.trainiq.features.progress.ProgressMeasurementValidationTest --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 8014`, and the crash buffer was empty.
+- remaining risk: routine merge currently surfaces overlap proposals and compare actions, but a full confirmed transactional merge/archive workflow remains future work; manual screenshot/font-scale signoff is still needed.
+
+## 2026-06-03 Safe UI/AI/Product Portion Polish Update
+
+- status: partially-done for related P2 polish and AI-output confidence items; no blocked release/accessibility owner gates were closed.
+- files changed: Settings/Navigation removed the duplicate Settings-to-Voortgang CTA; Home metrics moved to shared warm metric cards; Coach goal advice uses wrapping warm sections; Nutrition product storage/editor/quick-add now supports `default_serving_grams`; Room schema advanced to v15 with a 14->15 migration and marker update.
+- verification evidence:
+  - PASS: `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --tests "com.trainiq.features.coach.GoalAdviceInputTest" --tests "com.trainiq.features.ui.WarmFuturisticScreenPolishSourceTest" --tests "com.trainiq.navigation.AdaptiveNavigationPolicyTest" --tests "com.trainiq.ai.services.AiServicesTest" --tests "com.trainiq.architecture.RoomAuthorityArchitectureTest" --tests "com.trainiq.data.mapper.MappersTest" --tests "com.trainiq.data.migration.RoomMigrationChainVerificationProviderTest" --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+  - PASS: `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; emulator cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 6366`, and the crash buffer was empty.
+- remaining risk: manual font-scale/TalkBack visual signoff, live Gemini key-backed workout debrief proof, and connected migration execution remain follow-up evidence items.
 
 ## Findings
 
@@ -1017,485 +1539,125 @@ Audit scope: full target-state QA refresh against `TrainIQ_Target_State_Blueprin
 - External sources used: None. Local runtime evidence and existing app tests were sufficient.
 - Remaining risk: completion with Gemini-enabled debrief still needs API-key/network-path evidence; this pass verified local fallback completion.
 
-## 2026-08-05 Coach Profile Draft Recreation Polish
+## 2026-05-12 Warm Futuristic UI Polish
 
-### QA-2026-08-05-023
-
-- finding_id: QA-2026-08-05-023
-- priority: P2
-- area: Android lifecycle, UX, tests
-- status: done
-- owner suggestion: Android UI owner
-- current evidence with file references:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/coach/CoachScreen.kt` held every unsaved profile/goal field, biological-sex choice, activity-level choice, and validation error in ordinary `remember` state.
-  - The target-state blueprint requires onboarding input to survive rotation, resize, app switching, and process recreation where feasible.
-  - A real `MainActivity` instrumentation test reproduced the defect: `Rotatieprofiel` was entered and `Vrouw` selected, then `ActivityScenario.recreate()` reset the name field to empty.
-- external sources used: None. Repository target-state requirements, Compose behavior, and local instrumentation evidence were sufficient.
-- expected target-state behavior: Unsaved Coach profile/goal input remains intact across Activity recreation until the user saves or explicitly changes it.
-- concrete implemented fix: `CoachScreen` now uses `rememberSaveable` for all editable profile/goal strings, `BiologicalSex`, activity level, and the current validation error while leaving persisted profile hydration and Room ownership unchanged.
-- files changed:
+- Target-state link: Primary screens should feel modern, calm, readable, compact-safe, and aligned with the new warm futuristic mockups without changing core data, navigation, Health Connect, Gemini, or Room behavior.
+- Scope: conservative visual polish for shared theme/components, Home, Nutrition, Progress, Coach, and Active Workout using existing app state only. Settings received only shared component/theme effects.
+- Files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/core/theme/Theme.kt`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/core/ui/AppDesign.kt`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/home/HomeScreen.kt`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/progress/ProgressScreen.kt`
   - `TrainIQ-Project/app/src/main/java/com/trainiq/features/coach/CoachScreen.kt`
-  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
-- regression risk: Low. The change affects only ephemeral pre-save UI state; persisted profile mapping, validation, use cases, and Room writes are unchanged.
-- verification evidence:
-  - RED: the focused connected test failed after recreation with `EditableText = ''` while expecting `Rotatieprofiel`.
-  - PASS: the same focused connected test after `rememberSaveable` implementation.
-  - PASS: focused `ProfileInputValidationTest`.
-  - PASS: local baseline surfaces `:app:assembleDebug`, `:app:testDebugUnitTest`, and `:app:lintDebug`.
-  - PASS: `:app:generateDebugRoomMigrationChainVerificationMarker`, including 45 connected tests on agent-owned `Pixel_8_API_36` / Android 16 with 0 failures.
-  - PASS: `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
-  - PASS: post-fix debug install and cold launch returned `Status: ok`, `TotalTime: 1832`, with empty crash and TrainIQ fatal/ANR slices.
-- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#profileDraftSurvivesActivityRecreationBeforeSave" --console=plain --no-configuration-cache`.
-- remaining risk: This test proves Activity recreation. Full OS-killed process restoration remains bounded by Android's saveable-state delivery and should be rechecked if navigation state restoration changes.
-
-### QA-2026-08-06-025
-
-- finding_id: QA-2026-08-06-025
-- priority: P2
-- area: Android lifecycle, UX, tests
-- status: done
-- owner suggestion: Android UI owner
-- current evidence with file references:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt` kept the complete manual product draft, selected product ID, and field validation feedback in ordinary `remember` state.
-  - The target-state blueprint requires manual nutrition logging to remain reliable without AI and user-entered state to survive rotation, resize, app switching, and Activity recreation where feasible.
-  - A real `MainActivity` instrumentation test reproduced the defect on Android 16: after entering a complete `Rotatiehavermout` product draft and triggering fat validation feedback, `ActivityScenario.recreate()` reset the product name to empty and discarded the remaining draft.
-- external sources used: None. Repository target-state requirements, Compose behavior, and local instrumentation evidence were sufficient.
-- expected target-state behavior: Manual product name, barcode, nutrition values, edit selection, and current validation feedback remain intact across Activity recreation until the user saves, cancels, or explicitly changes them.
-- implementation plan:
-  1. Add a red connected regression test that enters all manual product fields, triggers representative validation feedback, and recreates `MainActivity`.
-  2. Make only the product editor's draft, selected product ID, and derived error feedback saveable; leave submit guards, ViewModel actions, domain validation, and Room persistence unchanged.
-  3. Re-run the focused test, then the local baseline, connected suite, migration marker, profileable packaging, signing-readiness check, and runtime crash smoke.
-  4. Produce an explicitly non-production debug APK for user testing; retain production release blockers unchanged.
-- concrete implemented fix: `NutritionScreen` now uses `rememberSaveable` for the selected product ID and manual product name, barcode, calories, protein, carbohydrates, and fat fields. A compact `listSaver` preserves `FoodFieldErrors` without making domain/storage models Android-specific.
-- files changed:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt`
-  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
-- regression risk: Low. The change affects only ephemeral pre-submit UI state; validation rules, duplicate-submit guards, save use cases, targeted Room writes, and persisted food models are unchanged.
-- verification evidence:
-  - Baseline PASS: `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug`.
-  - RED: the focused connected test found `EditableText = ''` for `Productnaam` after Activity recreation while expecting `Rotatiehavermout`.
-  - PASS: the focused connected test after the saveable-state implementation, including preservation of all six fields and `Vul een niet-negatieve waarde in.` feedback, on agent-owned `Pixel_8_API_36` / Android 16.
-  - PASS: after-change `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin`.
-  - PASS: full `:app:connectedDebugAndroidTest` with 46 tests, 0 failures, 0 errors, and 0 skipped on the same emulator.
-  - PASS: `:app:generateDebugRoomMigrationChainVerificationMarker` in the documented separate invocation.
-  - PASS: `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness` in separate invocations; production signing remains intentionally unconfigured.
-  - Tooling note: the first combined no-daemon profileable/macrobenchmark/signing invocation exceeded the 120-second shell limit while Gradle was still active. After confirming the stop-requested daemon exited, the same three unchanged gates passed separately; no product failure was hidden or retried unchanged.
-  - PASS: debug install and cold launch returned `Status: ok`, `TotalTime: 6045`; crash buffer and TrainIQ fatal/ANR slices were empty.
-  - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 51,116,437 bytes, SHA-256 `E4EDA2C206E28F2E7D646FFBC715E46E9228D1F7D018E10B0C626A666D8B7503`.
-- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#manualFoodDraftSurvivesActivityRecreationBeforeSave" --console=plain --no-configuration-cache`.
-- remaining risk: The connected test proves Activity recreation and representative validation feedback. Full OS-killed process restoration remains bounded by Android saveable-state delivery; AI-result drafts remain a separate future lifecycle batch.
-
-### QA-2026-08-06-027
-
-- finding_id: QA-2026-08-06-027
-- priority: P2
-- area: Android lifecycle, UX, tests
-- status: done
-- owner suggestion: Android UI owner
-- current evidence with file references:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt` kept meal type, meal name/notes, edit identity, manual quick-add quantities, meal item requests, and meal/quantity validation feedback in ordinary `remember` state.
-  - The target-state blueprint requires complete manual meal logging without AI and editable rows before save, while entered state should survive recreation where feasible.
-  - A real `MainActivity` instrumentation test reproduced the defect on Android 16: after adding a local product to an evening meal, editing it to 175g, adding a note, and triggering name validation, `ActivityScenario.recreate()` removed `Maaltijd controleren` because the item draft was empty again.
-- external sources used: None. Repository target-state requirements, Compose behavior, and local instrumentation evidence were sufficient.
-- expected target-state behavior: Meal type, name/notes, edit identity, product/recipe quantities, draft item references/grams/notes, and current validation feedback remain intact across Activity recreation until the user saves or explicitly changes the concept.
-- implementation plan:
-  1. Add a connected regression test that creates a deterministic local product, adds it to a meal, edits the meal, triggers validation feedback, and recreates `MainActivity`.
-  2. Make only the manual meal editor's primitive draft and error state saveable; leave modal/scanner state, validation, submit guards, ViewModel actions, use cases, and Room persistence unchanged.
-  3. Re-run the focused test and full local baseline, connected suite, migration marker, profileable/macrobenchmark packaging, signing-readiness, and runtime crash smoke.
-  4. Produce an explicitly non-production debug APK and retain all production owner gates.
-- concrete implemented fix: `NutritionScreen` now uses `rememberSaveable` for meal type, name, notes, quick-add quantities, and edit ID. Compact primitive `listSaver` implementations preserve `MealEntryRequest` values, `MealFieldErrors`, and quick-add errors without making domain models Android-specific.
-- files changed:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt`
-  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
-- regression risk: Low. Only ephemeral pre-submit UI state changed; meal validation, duplicate-submit guards, use cases, targeted Room transactions, persisted meals, action sheets, and scanner navigation remain unchanged.
-- verification evidence:
-  - Baseline PASS: `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug`.
-  - RED: after correcting the test's expected validation copy to the repository-owned `Naam is verplicht.`, the focused connected test timed out after recreation because `Maaltijd controleren` no longer existed.
-  - PASS: focused connected test after implementation, preserving `Avond`, the meal note, the local product reference, edited 175g, and name-validation feedback on agent-owned `Pixel_8_API_36` / Android 16.
-  - PASS: after-change `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin`.
-  - PASS: full `:app:connectedDebugAndroidTest` with 48 tests, 0 failures, 0 errors, and 0 skipped on the same emulator.
-  - PASS: `:app:generateDebugRoomMigrationChainVerificationMarker`.
-  - PASS: `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
-  - PASS: debug install and cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 5581`; the TrainIQ fatal/ANR scan was empty.
-  - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 51,116,437 bytes, SHA-256 `44C5CEC9B91534099F232AB33BC36B67551F34C97829162659D36A3991124FBD`.
-  - Test-hardening note: the first broad-suite run exposed multiple same-label product actions retained by the long-lived instrumentation process. The test now waits for the product action and scrolls/clicks the last matching action, representing the newly created product deterministically; the changed focused test and the full suite then passed.
-- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#mealDraftSurvivesActivityRecreationBeforeSave" --console=plain --no-configuration-cache`.
-- remaining risk: The connected test proves Activity recreation and representative validation feedback. Full OS-killed process restoration remains bounded by Android saveable-state delivery; AI-result drafts remain a separate future lifecycle batch.
-
-### QA-2026-08-06-026
-
-- finding_id: QA-2026-08-06-026
-- priority: P2
-- area: Android lifecycle, UX, tests
-- status: done
-- owner suggestion: Android UI owner
-- current evidence with file references:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt` kept the selected recipe ID, recipe fields, quick-ingredient input, ingredient list, and recipe/ingredient validation feedback in ordinary `remember` state.
-  - The target-state blueprint requires manual nutrition logging to remain reliable without AI and user-entered state to survive rotation, resize, app switching, and Activity recreation where feasible.
-  - A real `MainActivity` instrumentation test reproduced the defect on Android 16: after adding an 80g ingredient and entering an unfinished invalid second ingredient, `ActivityScenario.recreate()` reset `Receptnaam` to empty and discarded the ingredient draft.
-- external sources used: None. Repository target-state requirements, Compose behavior, and local instrumentation evidence were sufficient.
-- expected target-state behavior: Recipe identity, recipe and quick-ingredient fields, added ingredients, and current validation feedback remain intact across Activity recreation until the user saves, cancels, removes, or explicitly changes them.
-- implementation plan:
-  1. Add a red connected regression test that covers both an already-added recipe ingredient and unfinished invalid quick-ingredient input before recreating `MainActivity`.
-  2. Make only the recipe editor's manual draft and validation state saveable through primitive values; leave action sheets, scanner navigation, submit guards, ViewModel actions, domain validation, and Room persistence unchanged.
-  3. Re-run the focused test, then the local baseline, connected suite, migration marker, profileable packaging, macrobenchmark packaging, signing-readiness check, and runtime crash smoke.
-  4. Produce an explicitly non-production debug APK for user testing; retain production release blockers unchanged.
-- concrete implemented fix: `NutritionScreen` now uses `rememberSaveable` for the selected recipe ID and every recipe/quick-ingredient input. Compact primitive `listSaver` implementations preserve ingredient `(foodId, grams)` pairs plus `RecipeFieldErrors`; the existing food-error saver preserves quick-ingredient validation feedback.
-- files changed:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt`
-  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
-- regression risk: Low. The change affects only ephemeral pre-submit UI state; validation rules, duplicate-submit guards, save use cases, targeted Room writes, and persisted recipe models are unchanged. Transient modals and scanner-navigation state intentionally remain transient.
-- verification evidence:
-  - Baseline PASS: `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug`.
-  - RED: the focused connected test found `EditableText = ''` for `Receptnaam` after Activity recreation while expecting `Rotatierecept`.
-  - PASS: the focused connected test after the saveable-state implementation, including the added 80g ingredient, all recipe fields, unfinished quick-ingredient values, and `Vul een niet-negatieve waarde in.` feedback, on agent-owned `Pixel_8_API_36` / Android 16.
-  - PASS: after-change `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin`.
-  - PASS: full `:app:connectedDebugAndroidTest` with 47 tests, 0 failures, 0 errors, and 0 skipped on the same emulator.
-  - PASS: `:app:generateDebugRoomMigrationChainVerificationMarker` in the documented separate invocation.
-  - PASS: `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
-  - PASS: debug install and cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 2905`; the TrainIQ fatal/ANR scan was empty.
-  - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 51,116,437 bytes, SHA-256 `507376A24B544421BCC380B0AD78EEB072E3DF1D616EB91B9A87EEEF76FC88E3`.
-  - Tooling notes: the first focused Gradle filter was parsed as a task because its PowerShell argument was not quoted; the corrected quoted invocation produced the expected red test. The emulator disconnected before the first green attempt, so the same agent-owned AVD was safely restarted and the unchanged focused test then passed. The first standalone migration-marker shell omitted the SDK environment; the corrected canonical invocation passed. None of these were product failures.
-- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#recipeDraftSurvivesActivityRecreationBeforeSave" --console=plain --no-configuration-cache`.
-- remaining risk: The connected test proves Activity recreation and representative validation feedback. Full OS-killed process restoration remains bounded by Android saveable-state delivery; AI-result drafts remain a separate future lifecycle batch.
-
-### QA-2026-08-06-028
-
-- finding_id: QA-2026-08-06-028
-- priority: P2
-- area: Android lifecycle, UX, tests
-- status: done
-- owner suggestion: Android UI owner
-- current evidence with file references:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt` kept the optional AI meal-scan context in ordinary `remember` state even though the field is editable before any scanner, camera, credential, or network action.
-  - The Nutrition target state requires scanner entry to remain available and recover cleanly across hostile display/lifecycle changes without blocking manual logging.
-  - A real `MainActivity` instrumentation test reproduced the defect on Android 16: `Vegetarische maaltijd na krachttraining` was entered under `AI-resultaat`, then `ActivityScenario.recreate()` reset `Optionele context` to empty.
-- external sources used: None. Repository target-state requirements, Compose behavior, and local instrumentation evidence were sufficient.
-- expected target-state behavior: User-entered meal-scan context remains intact across Activity recreation until the user edits it or launches a flow that explicitly consumes it, regardless of whether AI is currently configured.
-- implementation plan:
-  1. Add a connected red regression test using the disabled-AI local fallback state so camera, Gemini, API keys, and network are never invoked.
-  2. Make only the optional AI meal context saveable; leave AI preferences, credentials, scanner navigation, analysis results, and remote boundaries unchanged.
-  3. Re-run the focused test and full local baseline, connected suite, migration marker, profileable/macrobenchmark packaging, signing-readiness, and runtime crash smoke.
-  4. Produce an explicitly non-production debug APK and retain all production AI/release owner gates.
-- concrete implemented fix: `NutritionScreen` now owns `aiContext` with `rememberSaveable`, matching the already saveable manual product, recipe, and meal inputs without persisting it to Room or preferences.
-- files changed:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt`
-  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
-- regression risk: Very low. One ephemeral string changes from `remember` to `rememberSaveable`; AI opt-in, key storage, scanner enablement, navigation, analysis, schema validation, and Gemini transport are unchanged.
-- verification evidence:
-  - Baseline PASS: `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug`.
-  - RED: focused connected test found `EditableText = ''` after recreation while expecting `Vegetarische maaltijd na krachttraining`.
-  - PASS: the same focused test after the one-line saveable-state implementation on agent-owned `Pixel_8_API_36` / Android 16 with AI disabled and no external boundary invoked.
-  - PASS: after-change `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin`.
-  - PASS: full `:app:connectedDebugAndroidTest` with 49 tests, 0 failures, 0 errors, and 0 skipped on the same emulator.
-  - PASS: `:app:generateDebugRoomMigrationChainVerificationMarker`.
-  - PASS: `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
-  - PASS: after restarting the agent-owned AVD following an emulator disconnect, debug install and cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 8785`; the TrainIQ fatal/ANR scan was empty.
-  - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 51,116,437 bytes, SHA-256 `92630A82B52839FF5A61D7191C84B2324DA31BA1A2C87C7D4222E1D8DE492FB9`.
-- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#aiMealContextSurvivesActivityRecreationBeforeScan" --console=plain --no-configuration-cache`.
-- remaining risk: Activity recreation is proven; OS-killed restoration remains bounded by Android saveable-state delivery. User-edited AI result items and their validation feedback remain a separate lifecycle batch requiring deterministic synthetic-result test infrastructure, not live Gemini or camera use.
-
-### QA-2026-08-06-029
-
-- finding_id: QA-2026-08-06-029
-- priority: P2
-- area: Android lifecycle, Nutrition UX, tests
-- status: done
-- owner suggestion: Android UI owner
-- current evidence with file references:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt` held editable AI-result rows and per-field validation errors in ordinary `remember` state.
-  - `LaunchedEffect(scanResult)` also rebuilt those rows from the original analysis result after recreation, overwriting user corrections before save.
-  - A deterministic `StateRestorationTester` component test reproduced the defect without camera, Gemini, credentials, network, or persistence: after editing `Originele bowl` to `Bewerkte bowl`, changing grams to `180`, and entering invalid fat `-4`, restoration returned the name to `Originele bowl`.
-- external sources used: None. Repository target-state requirements, pinned local Compose test APIs, and synthetic local test evidence were sufficient.
-- expected target-state behavior: User corrections to every editable AI meal-result field and current validation feedback survive saveable-state restoration until the user saves, deletes, or receives a genuinely new analysis result.
-- implementation plan:
-  1. Prove result-state loss with one synthetic connected component test and representative validation feedback.
-  2. Serialize only editable row primitives and indexed field errors with compact Compose savers, keyed by the current scan result so a new analysis resets stale edits.
-  3. Remove unconditional result rehydration from the lifecycle effect; leave scanning, Gemini, schema validation, submit behavior, and Room ownership unchanged.
-  4. Run the full local quality matrix and produce a non-production debug APK.
-- concrete implemented fix: `NutritionScreen` now initializes editable AI rows from a new `scanResult` through `rememberSaveable(scanResult, saver = ...)`. Primitive savers preserve all row values, nullable confidence/notes, and indexed `AiItemFieldErrors`; the scan-result effect now handles only routing and meal-type suggestions.
-- files changed:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt`
-  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/features/nutrition/NutritionAiResultStateRestorationInstrumentedTest.kt`
-- regression risk: Low. The change is limited to ephemeral pre-submit UI state. New scan results still reset the draft, while AI opt-in, credentials, camera navigation, Gemini transport, nutrition validation, use cases, and Room writes are unchanged.
-- verification evidence:
-  - Baseline PASS: `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug`.
-  - RED: the focused test restored `EditableText = 'Originele bowl'` while expecting `Bewerkte bowl`.
-  - GREEN: the focused test preserved `Bewerkte bowl`, `180`, `-4`, and `Vul een niet-negatieve waarde in.` after save/restore.
-  - PASS: after-change `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin`.
-  - PASS: full `:app:connectedDebugAndroidTest` with 50 tests, 0 failures, 0 errors, and 0 skipped on agent-owned `Pixel_8_API_36` / Android 16.
-  - PASS: `:app:generateDebugRoomMigrationChainVerificationMarker`, `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
-  - PASS: debug install and cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 5444`; the TrainIQ fatal/ANR scan returned 0 matches.
-  - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 51,116,437 bytes, SHA-256 `E70A39254B034F5CEC02A0C3EE5E6570B7D413856C4826ABFE94F2C9F4EFC3B1`.
-- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.features.nutrition.NutritionAiResultStateRestorationInstrumentedTest#editedAiResultAndValidationErrorSurviveStateRestoration" --no-daemon --stacktrace`.
-- remaining risk: The deterministic test proves Compose save/restore for meal-result edits. Recipe-target routing remains transient and should be a separate bounded lifecycle test; production release remains blocked by existing owner/manual/device gates.
-
-### QA-2026-08-06-030
-
-- finding_id: QA-2026-08-06-030
-- priority: P2
-- area: Android lifecycle, Nutrition UX, tests
-- status: done
-- owner suggestion: Android UI owner
-- current evidence with file references:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt` kept the recipe-versus-meal AI destination flag `aiScanForRecipe` in ordinary `remember` state.
-  - Recipe photo actions set the flag before scanning, and `LaunchedEffect(scanResult)` uses it to route successful results to either `Recepten / Fotocontrole` or the ordinary meal `AI-resultaat` destination.
-  - A deterministic `StateRestorationTester` component test reproduced the defect without camera, Gemini, credentials, network, or persistence: a synthetic local-fallback result initially opened in `Fotocontrole`, but save/restore reset the flag and rerouted it to the meal result flow.
-- external sources used: None. Repository target-state requirements, pinned local Compose test APIs, and synthetic local test evidence were sufficient.
-- expected target-state behavior: An AI result initiated for a recipe ingredient remains in `Recepten / Fotocontrole` across Compose save/restore until the user completes or leaves that flow.
-- implementation plan:
-  1. Prove the destination loss with a synthetic result and no external service or persistence boundary.
-  2. Make only the boolean destination flag saveable; leave result data, camera/Gemini integration, credentials, submit behavior, and Room ownership unchanged.
-  3. Re-run both AI-result restoration tests and the full local build, unit, lint, connected, Room, profileable, packaging, signing-readiness, and runtime matrix.
-  4. Produce an explicitly non-production debug APK for user testing while retaining all release gates.
-- concrete implemented fix: `NutritionScreen` now stores `aiScanForRecipe` with `rememberSaveable`, so the scan-result routing effect retains the recipe destination after restoration.
-- files changed:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt`
-  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/features/nutrition/NutritionAiResultStateRestorationInstrumentedTest.kt`
-- regression risk: Low. The production change is one ephemeral boolean state holder. The scanner, AI request, schema, credentials, nutrition validation, submission, and Room paths are unchanged.
-- verification evidence:
-  - Baseline PASS: `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug`.
-  - RED: after save/restore the focused test could not find `Fotocontrole`, proving the recipe destination had been lost.
-  - GREEN: both tests in `NutritionAiResultStateRestorationInstrumentedTest` passed, preserving the recipe destination and the previously covered editable row/error state.
-  - PASS: after-change `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin`.
-  - PASS: full isolated `:app:connectedDebugAndroidTest` with 51 tests, 0 failures, 0 errors, and 0 skipped on agent-owned `TrainIQ_Agent_API36_20260806` / Android 16.
-  - PASS: `:app:generateDebugRoomMigrationChainVerificationMarker`, including the isolated connected dependency.
-  - PASS: `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
-  - PASS: final-branch debug install and cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 3024`; the TrainIQ fatal/ANR scan returned 0 matches.
-  - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 51,116,437 bytes, SHA-256 `6B0726F56CB744930A42A037A5CE3249B5A99A243D389EF7F7CC2A20720C1E23`.
-  - Isolation note: an unisolated aggregate Gradle attempt discovered an unrelated emulator as well as the agent AVD. The agent device completed 51 tests green, while the unrelated emulator disconnected; authoritative connected and Room-marker evidence was rerun through an isolated local adb server exposing only the agent AVD.
-- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.features.nutrition.NutritionAiResultStateRestorationInstrumentedTest" --no-daemon --stacktrace`.
-- remaining risk: No known local synthetic AI-result routing/restoration gap remains in this bounded Nutrition batch. Production release remains blocked by existing owner/manual/safe-device gates.
-
-### QA-2026-08-06-031
-
-- finding_id: QA-2026-08-06-031
-- priority: P2
-- area: Android lifecycle, Settings UX, tests
-- status: done
-- owner suggestion: Android UI owner
-- current evidence with file references:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/settings/SettingsSection.kt` declared editable profile fields with `rememberSaveable`, but an unconditional `LaunchedEffect(profile)` rehydrated every field and cleared `profileInputError` whenever a recreated Activity launched a new composition.
-  - `profileInputError` additionally used ordinary `remember`, so the invalid-field context itself was never registered for saveable restoration.
-  - A real `MainActivity` test entered `Rotatie-instellingen`, set age to `0`, triggered `Leeftijd moet tussen 1 en 120 zijn.`, and proved recreation restored the name as empty before the fix.
-  - The blueprint requires hostile display/lifecycle changes to recover cleanly and includes the Settings/profile form in critical lifecycle and profile evidence.
-- external sources used: None. Repository target-state requirements, local Compose behavior, and the existing keyed saveable-state pattern provide sufficient evidence.
-- expected target-state behavior: The complete Settings profile draft and its current validation feedback survive Activity recreation until the user edits input, saves successfully, resets the profile, clears app data, or receives a genuinely changed persisted profile.
-- implementation plan:
-  1. Add a red real-UI test with a non-empty name, invalid age, and field-specific error, then recreate `MainActivity`.
-  2. Key every profile-derived saveable field and its error to `profile`, and remove the lifecycle effect that overwrites restored state; retain current initialization when persisted profile content actually changes.
-  3. Re-run the focused test and full local build, unit, lint, connected, Room, profileable, packaging, signing-readiness, and runtime matrix.
-  4. Produce an explicitly non-production debug APK while retaining all production release gates.
-- concrete implemented fix: `SettingsScreen` now initializes its profile draft and `ProfileInputValidationError` through `rememberSaveable(profile)`. Removing the unconditional `LaunchedEffect(profile)` lets Android restore unsaved input/error state while a changed persisted `profile` still resets the keyed editors to the authoritative values.
-- files changed:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/settings/SettingsSection.kt`
-  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
-- regression risk: Low. The change affects only ephemeral pre-submit Settings state. Profile validation, use cases, Room ownership, destructive confirmations, AI credentials, Health Connect, and network behavior are unchanged.
-- verification evidence:
-  - Baseline reuse PASS: the unchanged branch commit from the preceding cycle had passed `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin`, 51 connected tests, Room marker, profileable/macrobenchmark packaging, signing-readiness, and runtime smoke.
-  - RED: after Activity recreation the strengthened focused test found `EditableText = ''` for `Naam` while expecting `Rotatie-instellingen`; the invalid age and error were also no longer available.
-  - GREEN: the same focused test preserved `Rotatie-instellingen`, age `0`, and `Leeftijd moet tussen 1 en 120 zijn.` after the keyed saveable-state implementation.
-  - PASS: after-change `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin`.
-  - PASS: full isolated `:app:connectedDebugAndroidTest` with 52 tests, 0 failures, 0 errors, and 0 skipped on agent-owned `TrainIQ_Agent_API36_20260806` / Android 16.
-  - PASS: `:app:generateDebugRoomMigrationChainVerificationMarker`, including its isolated 52-test connected dependency.
-  - PASS: `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
-  - PASS: debug install and cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 3472`; the TrainIQ fatal/ANR scan returned 0 matches.
-  - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 51,116,437 bytes, SHA-256 `8A971D5891E1EB0636A5AC8F1732AFF3C44F48DCCE37CD5889346E34A608F586`.
-  - Test-debugging note: the first post-recreation assertion waited for the off-screen header instead of the restored profile section. After correcting that test condition, a one-line saveable error change still failed; systematic root-cause tracing identified the overwriting `LaunchedEffect(profile)` before the final implementation.
-- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#settingsProfileValidationErrorSurvivesActivityRecreation" --console=plain --no-configuration-cache`.
-- remaining risk: The test proves Activity recreation with a null persisted profile. Full OS-killed process restoration remains bounded by Android saveable-state delivery; production release remains blocked by existing owner/manual/safe-device gates.
-
-### QA-2026-08-06-032
-
-- finding_id: QA-2026-08-06-032
-- priority: P2
-- area: Android lifecycle, training UX, tests
-- status: done
-- owner suggestion: Android UI owner
-- current evidence with file references:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt` kept both `showCreateDialog` and the unsaved `CreateRoutineDialog` name in ordinary `remember` state.
-  - A real `MainActivity` test opened `Lege routine maken`, entered `Rotatieroutine`, recreated the Activity, and timed out waiting for `Routinenaam` because the complete dialog disappeared.
-  - The blueprint requires unsaved form/workflow state to recover across Activity recreation and explicitly includes routine creation among lifecycle-sensitive training flows.
-- external sources used:
-  - Android Developers, `Start the emulator from the command line`, accessed 2026-08-06: https://developer.android.com/studio/run/emulator-commandline. Used only to recover the local Android test harness with an even explicit port and supported headless startup; the product defect and fix are established by repository/runtime evidence.
-- expected target-state behavior: The manual routine-creation dialog and its non-empty draft name survive Activity recreation until the user creates the routine or explicitly dismisses the dialog.
-- implementation plan:
-  1. Add a red real-UI test that opens the manual routine dialog, enters a unique name, recreates `MainActivity`, and asserts the dialog plus draft remain.
-  2. Make only the dialog visibility and name saveable; leave AI generation, loading, Room, navigation, and other workout state unchanged.
-  3. Re-run the focused test, local baseline, full connected/Room matrix, release-like packaging, signing-readiness, and runtime smoke.
-  4. Produce an explicitly non-production debug APK while retaining every production release gate.
-- concrete implemented fix: `WorkoutScreen` now stores `showCreateDialog` with `rememberSaveable`, and `CreateRoutineDialog` stores its name with `rememberSaveable`. Normal create/dismiss callbacks still remove the dialog and its ephemeral draft.
-- files changed:
   - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt`
-  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
-- regression risk: Low. The change affects only unsaved manual routine-creation UI state. Routine persistence, AI generation, workout execution, validation, Room, permissions, and network behavior are unchanged.
-- verification evidence:
-  - Baseline reuse PASS: exact `main` tree `cca2990a493596ea27d621375a3c9265b7b126a3` had passed build/unit/lint, 52 connected tests, Room marker, release-like packaging, signing-readiness, and runtime smoke in the preceding authorized cycle.
-  - RED: the focused real-Activity test failed 1/1 after recreation with a timeout on the second `Routinenaam` wait at `TrainIqFlowSmokeInstrumentedTest.kt:149`; unchanged production code had closed the dialog.
-  - GREEN: the identical focused test passed 1/1 after the two saveable-state changes and retained `Rotatieroutine`.
-  - PASS: `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin`.
-  - PASS: full `:app:connectedDebugAndroidTest` with 53 tests, 0 failures, 0 errors, and 0 skipped on agent-owned `Pixel_8_API_36` / Android 16.
-  - PASS: `:app:generateDebugRoomMigrationChainVerificationMarker`, including its 53-test connected dependency.
-  - PASS: `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
-  - PASS: debug install and cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 8069`; the TrainIQ fatal/ANR scan returned 0 matches.
-  - PASS: branch debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 50,834,984 bytes, SHA-256 `BD7D25618E1291B14450351E6755EE623E039D768E3600A675D5D5ED624A8D46`.
-  - Test-environment note: initial cold boots exceeded the first 55-second bound, and one pre-result run was terminated after its ADB transport stalled. Verbose, even-port headless startup isolated the problem to emulator boot/cleanup timing; the authoritative RED, GREEN, 53-test suite, packaging, install, launch, and crash evidence all ran afterward on the stable Pixel AVD.
-- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#manualRoutineDraftSurvivesActivityRecreationBeforeCreate" --console=plain --no-configuration-cache`.
-- remaining risk: Activity recreation is proven. Full OS-killed restoration remains bounded by Android saveable-state delivery; AI routine generation has separate transient form state and remains outside this manual-creation batch. Production release remains blocked by existing owner/manual/safe-device gates.
+  - focused UI/source regression tests under `TrainIQ-Project/app/src/test/java/com/trainiq/`
+- Fix: added warm moodboard tokens, warm-glass shared styling, pill/metric/action layout helpers, safer full-width or wrapping actions for long Dutch labels, stronger hierarchy on Home/Nutrition/Progress/Coach, and a clearer Active Workout summary/action layout.
+- Verification: baseline PASS, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+- Verification: RED/PASS, focused warm moodboard/shared UI tests and source guards.
+- Verification: PASS, `WorkoutInputValidationTest`, `ProgressMeasurementValidationTest`, Home/Nutrition/Coach/Settings/architecture targeted tests.
+- Verification: PASS, after-change broad gate `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+- Runtime QA: PASS on `emulator-5554` after reinstall. Fresh launch returned `Status: ok`, `WaitTime: 5303`; Start, Training, Voeding, Coach, Meer/Settings, and Voortgang opened without crash; crash buffers were empty.
+- Font-scale QA: PASS/PARTIAL at system font scale `1.3`; Start, Training, Voeding, Coach, and Meer/Settings rendered and crash buffer stayed empty. Active Workout seeded-flow font-scale proof remains covered by earlier targeted evidence and was not rerun in this pass.
+- Evidence folder: `TrainIQ-Project/.codex/device-qa/2026-05-12-warm-futuristic-ui-polish/`.
+- External sources used: None. Local mockups, blueprint criteria, source inspection, tests, and emulator evidence were sufficient.
+- Remaining risk: this pass did not certify manual TalkBack/Switch Access, physical-device performance, Gemini-enabled workout debrief, or deeper seeded active-workout runtime flows.
 
-### QA-2026-08-06-033
+## 2026-05-13 Nutrition Flow Polish
 
-- finding_id: QA-2026-08-06-033
-- priority: P2
-- area: Android lifecycle, Coach UX, tests
-- status: done
-- owner suggestion: Android UI owner
-- current evidence with file references:
-  - Before the first fix, `TrainIQ-Project/app/src/main/java/com/trainiq/features/coach/CoachScreen.kt` restored editable fields with `rememberSaveable`, but an unconditional `LaunchedEffect(profile)` overwrote that restored draft whenever an existing persisted profile was present in a new composition.
-  - QA-2026-08-05-023 covered Activity recreation only while `currentProfile` was null, so the profile-hydration branch was never exercised.
-  - PR #10 review correctly identified that `rememberSaveable(profile)` does not validate restored values against the current inputs, leaving a draft from another or changed profile eligible for restoration.
-  - Deterministic Compose state-restoration tests now cover the same profile, a different profile ID, and changed profile content under the same ID without invoking Room, Gemini, network, credentials, or a camera.
-- external sources used:
-  - Android Developers, `rememberSaveable`, accessed 2026-08-06: https://developer.android.com/reference/kotlin/androidx/compose/runtime/saveable/rememberSaveable.composable. Confirms that restoration does not validate saved values against prior inputs.
-  - AndroidX source, `DisposableSaveableStateRegistry.android.kt`, accessed 2026-08-06: https://android.googlesource.com/platform/frameworks/support/+/785a1d4b45c8964d32c110c788d9146d875f63a3/compose/ui/ui/src/androidMain/kotlin/androidx/compose/ui/platform/DisposableSaveableStateRegistry.android.kt. Confirms Android saveable-state accepts `Serializable`; the review request for an explicit enum saver is therefore not applicable to the pinned Android behavior and was additionally disproven by the existing validation-error recreation test.
-- expected target-state behavior: Unsaved Coach profile and goal edits survive state restoration even when the form was initially hydrated from an existing persisted profile; genuinely changed persisted profile content remains authoritative.
-- implementation plan:
-  1. Run the focused synthetic restoration test unchanged against current production code and retain the failing evidence.
-  2. Persist an exact saveable snapshot of the resolved profile source fields and rehydrate the editor only when that snapshot differs from the current source.
-  3. Re-run the focused test and the full local build, unit, lint, connected, Room, profileable, packaging, signing-readiness, and runtime matrix.
-  4. Produce an explicitly non-production debug APK while retaining every production release gate.
-- concrete implemented fix: `CoachScreen` keeps the editable values saveable and separately saves whether their source was resolved plus the exact primitive/String value of every profile field that hydrates the editor. A guarded `LaunchedEffect` compares the complete source snapshot, preserves a same-source draft, and rehydrates all inputs while clearing stale validation feedback whenever any source value differs.
-- files changed:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/coach/CoachScreen.kt`
-  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/features/coach/CoachProfileStateRestorationInstrumentedTest.kt`
-- regression risk: Low. The intended change affects ephemeral pre-save Coach form state only; validation, advice generation, Room ownership, AI boundaries, and network behavior remain unchanged.
-- verification evidence:
-  - PASS: exact current-main baseline `a6b35ec` completed `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, and `:app:compileDebugAndroidTestKotlin` before production edits.
-  - RED: the focused synthetic restoration test could no longer find the edited `Onopgeslagen coachnaam` after `emulateSaveAndRestore()`; the existing profile had overwritten it.
-  - GREEN: the identical focused test retained `Onopgeslagen coachnaam` after the keyed saveable-state implementation.
-  - PASS: after-change `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, and `:app:compileDebugAndroidTestKotlin`.
-  - PASS: full isolated `:app:connectedDebugAndroidTest` with 54 tests, 0 failures, 0 errors, and 0 skipped on agent-owned `TrainIQ_Agent_API36_20260806` / Android 16.
-  - PASS: `:app:generateDebugRoomMigrationChainVerificationMarker`, including its isolated 54-test connected dependency.
-  - PASS: `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
-  - PASS: debug install and cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 2996`; the TrainIQ fatal/ANR scan returned 0 matches.
-  - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 51,116,755 bytes, SHA-256 `34121DF393D5F3191AE578DF96799543A04ED6DB3C036FC9A4FAAD1169BD2F20`.
-  - PR review RED: the expanded three-test restoration class passed the same-profile case but failed 2/3 because neither `Ander profiel` nor `Bijgewerkt profiel` replaced the restored stale draft.
-  - PR review GREEN: the identical focused class passed 3/3 after adding resolved-source, profile-ID, and content-fingerprint validation.
-  - Follow-up review RED: changing the same profile ID from hash-colliding name `Aa` to `BB` left the stale draft in place, so the expanded class passed 2/3 and failed exactly on the missing `BB` field.
-  - Final GREEN: the unchanged collision-aware class passed 3/3 after replacing the 32-bit fingerprint with exact source-field comparison.
-  - PASS: final `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, and `:app:compileDebugAndroidTestKotlin`.
-  - PASS: final full isolated `:app:connectedDebugAndroidTest` with 56 tests, 0 failures, 0 errors, and 0 skipped on agent-owned `TrainIQ_Agent_API36_20260806` / Android 16.
-  - PASS: final `:app:generateDebugRoomMigrationChainVerificationMarker`, including its second isolated 56-test connected dependency.
-  - PASS: final `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
-  - PASS: final debug install and cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 6603`; the TrainIQ fatal/ANR scan returned 0 matches.
-  - PASS: final review-hardened debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 51,116,755 bytes, SHA-256 `34BD888399638945ED37D5B86288A4FB4752502058611FB5E76168481BCA2A88`.
-  - Test-environment note: the first attempted RED run lost its agent AVD and left the owned emulator launcher/isolated adb transport stale. After resolving those exact owned processes, a cold snapshotless boot produced the authoritative RED, GREEN, full-suite, packaging, install, launch, and crash evidence.
-- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.features.coach.CoachProfileStateRestorationInstrumentedTest" --console=plain --no-configuration-cache`.
-- remaining risk: The synthetic tests prove local Compose save/restore source validation; a full OS-killed end-to-end process path remains bounded by Android saveable-state delivery. Production release remains blocked by existing owner/manual/safe-device gates.
+- Target-state link: Nutrition logging should be calmer, direct from the selected meal moment, and editable without forcing users to search products or recipes again.
+- Files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/nutrition/NutritionInputValidationTest.kt`
+- Fix: replaced the persistent nutrition tab row with a compact `|||` section menu, kept meal-moment `Toevoegen` on the current screen with the contextual add-to-meal sheet, and made existing meal quantity editing explicit with `Hoeveelheid wijzigen` plus edit-mode save copy.
+- Regression coverage: added targeted nutrition helper tests and source guards for the section menu, contextual add flow, and existing-meal edit draft flow.
+- Verification: baseline PASS, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --console=plain --no-configuration-cache`.
+- Verification: RED, the targeted nutrition test failed on missing section-menu/edit helper functions before implementation.
+- Verification: PASS, targeted nutrition test after implementation.
+- Verification: PASS, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+- Verification: PASS, `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+- Runtime QA: PASS after emulator storage was increased. `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache` installed on `emulator-5554`; cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 6170`.
+- Runtime QA: PASS, UI dump showed `Voeding`, `|||`, and content description `Voeding secties openen`; tapping the section control opened `Voeding secties` with `Vandaag`, `Toevoegen`, `AI-resultaat`, `Recepten`, `Producten`, and `Historie`.
+- Runtime QA: PASS, tapping `Toevoegen` in the `Ochtend` section opened the contextual `Toevoegen aan Ochtend` sheet with manual product, saved product, saved recipe, AI context, and photo/AI actions.
+- Crash evidence: PASS, `adb logcat -d -t 2000 AndroidRuntime:E '*:S'` was empty after launch, section menu, and add-sheet checks.
+- External sources used: Microsoft Learn ADB0060 guidance was used only for the earlier install blocker; after storage increase, local runtime evidence was sufficient.
+- Remaining risk: existing-meal quantity edit runtime proof still needs seeded/created meal data; source guards and unit tests cover the edit draft path.
 
-### QA-2026-08-06-034
+## 2026-05-13 Nutrition Plus And AI Routine Layout Polish
 
-- finding_id: QA-2026-08-06-034
-- priority: P2
-- area: Android lifecycle, Training UX, tests
-- status: done
-- owner suggestion: Android UI owner
-- current evidence with file references:
-  - Before the fix, `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt` held `showAiDialog` and every routine-generator field in ordinary `remember`, so Activity recreation discarded the entire unsaved workflow.
-  - QA-2026-08-06-032 explicitly retained AI routine-generator input restoration as an open lifecycle risk.
-  - After making the dialog saveable, a focused state-restoration test exposed the coupled safety defect: local `isGenerating` reset to false after restoration, making the request duplicate-submittable while the original ViewModel job was still running.
-- external sources used: None. Repository source, the recorded QA-2026-08-06-032 risk, existing state-hoisting patterns, and executable Android tests were sufficient.
-- expected target-state behavior: The open AI routine-generator and all entered pre-submit values survive Activity recreation. If generation is already running, recreation preserves the blocked loading state and cannot submit the same request again; process recreation must not restore a permanently stuck request flag.
-- implementation plan:
-  1. Add an Activity recreation test for dialog visibility and representative values, and retain its failing evidence against current production code.
-  2. Save dialog/form state with Compose saveable primitives without changing validation or generation inputs.
-  3. Add a component restoration test for an externally owned in-flight state, retain RED evidence, then hoist generation state to `WorkoutViewModel` with a duplicate-request guard.
-  4. Re-run focused tests plus the complete local build, unit, lint, connected, Room, profileable, packaging, signing-readiness, visual/runtime, and artifact matrix.
-- concrete implemented fix: `WorkoutScreen` and `RoutineGeneratorDialog` preserve the dialog plus focus, days, equipment, experience, duration, and deload fields with `rememberSaveable`. `WorkoutViewModel` exposes `isGeneratingAiRoutine` through `WorkoutUiContent`, sets it synchronously before starting generation, clears it after completion, and ignores duplicate calls. The composable consumes this authoritative state to keep generate/dismiss controls blocked across Activity recreation; a new process starts safely with false because its canceled request cannot still be active.
-- files changed:
+- Target-state link: Nutrition logging should respond immediately, meal-moment add actions should be direct and compact, and AI routine creation/preview should remain readable and actionable on compact screens.
+- Parallel-agent execution:
+  - Nutrition worker owned `NutritionScreen.kt` and `NutritionInputValidationTest.kt`.
+  - AI routine worker owned `WorkoutScreen.kt`, `RoutineDialogs.kt`, `WorkoutInputValidationTest.kt`, and `WorkoutDialogPresentationPolicyTest.kt`.
+- Files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt`
   - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt`
-  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/workout/WorkoutUiStateReducerTest.kt`
-  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
-  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/features/workout/WorkoutAiRoutineGenerationStateRestorationInstrumentedTest.kt`
-- regression risk: Low-to-medium. The change affects ephemeral routine-generator UI/request state and duplicate-submit behavior; generation inputs, Gemini schema/timeout/error handling, Room ownership, navigation, and persistence remain unchanged.
-- verification evidence:
-  - RED: `aiRoutineDraftSurvivesActivityRecreationBeforeGenerate` timed out finding `AI-routine genereren` after `ActivityScenario.recreate()` because the dialog was lost.
-  - GREEN: the identical Activity test retained the dialog, `Rotatie upper/lower`, 4 days, `Dumbbells en bank`, advanced experience, and the disabled deload preference.
-  - RED: `inFlightGenerationRemainsBlockedAcrossStateRestoration` found one unexpected `Genereren` action after `emulateSaveAndRestore()`, proving local loading state had reset.
-  - GREEN: the identical component test kept the dialog present and `Genereren` absent after restoration once progress was hoisted.
-  - PASS: final `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, and `:app:compileDebugAndroidTestKotlin`.
-  - PASS: final full isolated `:app:connectedDebugAndroidTest` with 58 tests, 0 failures, 0 errors, and 0 skipped on agent-owned `TrainIQ_Agent_API36_20260806` / Android 16.
-  - PASS: final `:app:generateDebugRoomMigrationChainVerificationMarker`, including its second isolated 58-test connected dependency.
-  - PASS: final `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
-  - PASS: final debug install and cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 2906`; the TrainIQ fatal/ANR scan returned 0 matches.
-  - PASS: screenshot and UI-tree inspection at 1080x2400 showed one unclipped `AI-routine genereren` dialog, its inputs, deload semantics, and one pre-submit `Genereren` action.
-  - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 50,835,498 bytes, SHA-256 `7AB130F142D7C1F0DDE5C6B4E2121167499A4694275C86ABD861FDA4EF6A46E3`.
-- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#aiRoutineDraftSurvivesActivityRecreationBeforeGenerate,com.trainiq.features.workout.WorkoutAiRoutineGenerationStateRestorationInstrumentedTest" --console=plain --no-configuration-cache`.
-- remaining risk: Activity and local Compose restoration are proven. OS process death cancels the process-owned request and a new ViewModel deliberately starts unblocked; draft recovery still depends on Android delivering saveable state. Real Gemini execution was intentionally not invoked. Physical-device performance and production release remain governed by the existing owner/manual/safe-device gates.
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/RoutineDialogs.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/nutrition/NutritionInputValidationTest.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/workout/WorkoutInputValidationTest.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/workout/WorkoutDialogPresentationPolicyTest.kt`
+- Fix: removed the focus-clearing pointer interceptor from normal Nutrition browsing lists, replaced meal-section `Toevoegen` text buttons with accessible plus icon actions, preserved the selected meal moment through saved-food/saved-recipe/AI/photo/reuse add flows, wrapped AI routine suggestion and experience controls, localized generator labels, and moved generated-routine preview actions into a persistent full-width bottom action area.
+- Regression coverage: added focused Nutrition source/helper guards for plus actions, immediate browsing scroll policy, contextual meal targets, and draft routing; added Workout source guards for Dutch generator labels, wrapped chip/choice controls, deload semantics, and generated-routine preview action placement.
+- Verification: baseline PASS, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --tests "com.trainiq.features.workout.WorkoutInputValidationTest" --tests "com.trainiq.features.workout.WorkoutDialogPresentationPolicyTest" --console=plain --no-configuration-cache`.
+- Verification: after-change PASS, same targeted Gradle command.
+- Verification: after-change PASS, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+- Verification: after-change PASS, `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+- Verification: PASS, `git diff --check` reported only CRLF conversion warnings.
+- Runtime QA: PASS on `emulator-5554`, installed debug APK, cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 5979`; evidence folder `TrainIQ-Project/.codex/device-qa/2026-05-13-nutrition-ai-routine-polish/`.
+- Runtime QA: PASS, immediately after opening `Voeding` an input swipe produced a scrolled Nutrition dump with `Voedingsdag`, meal sections, `Toevoegen aan Ochtend/Middag/Avond` plus-button content descriptions, and no visible meal-section `Toevoegen` text.
+- Runtime QA: PASS, tapping the Ochtend plus action opened `Toevoegen aan Ochtend` with manual product, saved product, saved recipe, AI-context, and photo AI actions.
+- Runtime QA: PASS/PARTIAL, Training opened the AI routine dialog with Dutch labels (`Dagen per week`, `Beschikbaar materiaal`, `Ervaringsniveau`, `Sessieduur`) and wrapped suggestion/experience controls; AndroidRuntime crash buffers stayed empty.
+- Runtime QA: NOT RUN for generated-routine preview after-change runtime proof: tapping `Genereren` kept the dialog in loading during the smoke window on this emulator, likely because no usable AI provider/key path was available. Source guards and compile/unit checks cover the persistent preview action area; runtime proof should be rerun with a configured AI provider or deterministic local-fallback path.
+- External sources used: None. Local source, tests, existing target-state evidence, and emulator smoke were sufficient.
+- Remaining risk: generated-routine preview bottom actions still need fresh runtime proof after generation completes; saved-food/saved-recipe add-to-draft behavior is source/unit guarded but needs seeded nutrition data for a full end-to-end runtime proof.
 
-### QA-2026-08-07-035
+## 2026-05-13 Nutrition Scroll Regression Follow-Up
 
-- finding_id: QA-2026-08-07-035
-- priority: P2
-- area: Android lifecycle, Training UX, tests
-- status: done
-- owner suggestion: Android UI owner
-- current evidence with file references:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt` kept the first-exercise custom-dialog visibility in ordinary `remember`, so recreating the Activity closed the workflow.
-  - The shared `CustomExerciseDialog` also kept `Oefening`, `Spiergroep`, and `Materiaal` in ordinary `remember`, discarding all three entered values with the dialog composition.
-  - A real `MainActivity` test created an empty routine, opened `Eerste oefening toevoegen` -> `Voeg eigen oefening toe`, entered `Rotatie squat`, `Benen`, and `Halters`, then reproduced the missing dialog after `ActivityScenario.recreate()`.
-  - The blueprint requires unsaved training workflow state to survive hostile display and lifecycle changes until the user completes or explicitly dismisses the action.
-- external sources used: None. Repository source, target-state requirements, existing saveable-state patterns, and executable Android 16 evidence were sufficient.
-- expected target-state behavior: While adding the first custom exercise to an empty routine, the open dialog and its exercise, muscle-group, and equipment draft survive Activity recreation until the user adds the exercise or explicitly dismisses the dialog.
-- implementation plan:
-  1. Add a real-UI regression test that reaches the first-exercise custom dialog, enters all three concept fields, recreates `MainActivity`, and retains the failing evidence.
-  2. Make only the starter-dialog visibility and the three primitive draft strings saveable; leave Room, routine creation, workout execution, validation, navigation, AI, permissions, and network behavior unchanged.
-  3. Harden the test against existing local routines and arbitrary suite order, then run the focused flow plus the complete local quality matrix.
-  4. Install, cold-launch, inspect, and hash a new explicitly non-production debug APK while retaining all production release gates.
-- concrete implemented fix: `RoutineCard` now keeps `showStarterCustomExerciseDialog` with `rememberSaveable(routine.id)`, and `CustomExerciseDialog` keeps `exerciseName`, `muscleGroup`, and `equipment` with `rememberSaveable`. Confirm and dismiss callbacks still clear the dialog through normal composition removal. Each routine's detail action also exposes a contextual accessibility label and stable name-specific test tag, so automated navigation cannot select another routine's global `Details` button.
-- files changed:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt`
-  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
-- regression risk: Low. The production change is limited to ephemeral pre-add UI state. Routine persistence, exercise creation, active workouts, AI, Health Connect, camera, credentials, permissions, and remote boundaries are unchanged.
-- verification evidence:
-  - Baseline reuse PASS: exact clean branch head `9256f9833676ce21b3c58558ffc4534ea936598d` had already passed the prior cycle's build, unit, lint, connected, Room, release-like packaging, signing-readiness, visual, and runtime gates.
-  - Authoritative RED: after correcting an initially over-broad text selector, the focused unchanged-production test reached the populated dialog and timed out on `Voeg eigen oefening toe` after Activity recreation because the dialog had disappeared.
-  - GREEN: the identical focused lifecycle test passed 1/1 and retained `Rotatie squat`, `Benen`, and `Halters` after the four saveable-state changes.
-  - Test hardening PASS: the broad suite exposed that a newly created routine is not necessarily the active routine when prior app data exists. The test now uses a unique name, waits for successful creation, and targets that routine's detail action through a stable name-specific tag and contextual accessibility label; the complete flow class passed 10/10 without clearing or weakening valid assertions.
-  - PASS: final `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, and `:app:compileDebugAndroidTestKotlin`.
-  - PASS: final full `:app:connectedDebugAndroidTest` with 59 tests, 0 failures, 0 errors, and 0 skipped on agent-owned `TrainIQ_Agent_API36_20260806` / Android 16.
-  - PASS: `:app:generateDebugRoomMigrationChainVerificationMarker`, including its second 59-test connected dependency.
-  - PASS: `:app:assembleProfileable`, `:macrobenchmark:assembleAndroidTest`, and `:app:checkReleaseSigningReadiness`; production signing remains intentionally unconfigured.
-  - PASS: final APK install and cold launch returned `Status: ok`, `LaunchState: COLD`, `TotalTime: 6396`, and a live TrainIQ PID; no `FATAL EXCEPTION`, TrainIQ process-crash, or TrainIQ ANR signal was present.
-  - PASS: screenshot and UI-tree inspection at 1080x2400 after portrait-landscape-portrait recreation showed one readable custom-exercise dialog retaining `QA035Squat`, `Benen`, and `Halters`, with reachable cancel/add actions and no clipped concept fields.
-  - PASS: final debug APK at `TrainIQ-Project/app/build/outputs/apk/debug/app-debug.apk`, 50,836,035 bytes, SHA-256 `CF64F194B7446E217A6BDD649E6B37E525627B90C93E20F55064F2A9E8BB8F53`.
-- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#customExerciseDraftSurvivesActivityRecreationBeforeAdd" --console=plain --no-configuration-cache`.
-- remaining risk: This test covers the empty-routine starter path. The day-editor and active-workout replacement entry points still own their parent custom-dialog visibility in transient state and require separate focused lifecycle batches. Full OS-killed restoration remains bounded by Android saveable-state delivery; physical-device performance and production release remain governed by existing owner/manual/safe-device gates.
+- Target-state link: Nutrition logging should respond immediately and add-source sheets should not consume initial drag gestures.
+- Files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/nutrition/NutritionInputValidationTest.kt`
+- Fix: removed the remaining `clearFocusOnScrollOrDrag()` usage from Nutrition add sheets. `RecipeActionBottomSheet` no longer uses a focus-clearing gesture modifier, and `AddToMealActionSheet` uses tap-outside focus clearing instead of drag/scroll focus clearing.
+- Regression coverage: added a focused Nutrition source guard that the browsing list and Nutrition action sheets do not use the scroll/drag focus-clear interceptor while the meal add sheet still has tap-outside focus behavior.
+- Verification: baseline PASS, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --console=plain --no-configuration-cache`.
+- Verification: after-change PASS, same targeted Nutrition test.
+- Verification: after-change PASS, targeted no-regression command for `NutritionInputValidationTest`, `WorkoutInputValidationTest`, and `WorkoutDialogPresentationPolicyTest`.
+- Verification: after-change PASS, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+- Verification: after-change PASS, `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+- Runtime QA: PASS on `emulator-5554`, `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 5356`.
+- Runtime QA: PASS, after opening `Voeding`, a fast immediate vertical swipe moved the visible meal sections from top-of-day `Ochtend/Middag/Avond` to scrolled `Middag/Avond/Snacks`, confirming the main Nutrition list responds immediately. Evidence: `TrainIQ-Project/.codex/device-qa/2026-05-13-nutrition-scroll-regression/11-nutrition-tab-before.xml`, `12-nutrition-tab-after-fast-swipe.xml`, and `13-nutrition-tab-after-late-swipe.xml`.
+- Runtime QA: PASS, tapping the visible meal plus action opened `Toevoegen aan Middag` with manual product, saved product, saved recipe, `AI-context voor foto`, `Foto / AI-inschatting`, and `Sluiten`. Evidence: `TrainIQ-Project/.codex/device-qa/2026-05-13-nutrition-scroll-regression/24-add-sheet-open-midday.xml`.
+- Crash evidence: PASS, AndroidRuntime crash buffers captured during the Nutrition scroll/add-sheet smokes were empty.
+- External sources used: None. Local source, tests, and emulator evidence were sufficient.
+- Remaining risk: add-sheet runtime scroll was opened and inspected, but on the large emulator the sheet content fit without requiring a scroll range; the source guard covers the removed drag-interceptor regression, and compact/font-scale sheet scroll proof can be rerun on a smaller viewport if needed.
 
-### QA-2026-08-25-025
+## 2026-05-13 Voeding Initial Scroll Stability Polish
 
-- finding_id: QA-2026-08-25-025
-- priority: P2
-- area: Android lifecycle, Training UX, tests
-- status: done
-- owner suggestion: Android UI owner
-- current evidence with file references:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt` kept the active exercise-plan editor, active routine-set editor, and both editors' unsaved fields in ordinary `remember` state.
-  - Two real `MainActivity` tests created a routine and exercise, edited representative values and set types, then reproduced both editors closing after `ActivityScenario.recreate()`.
-  - Existing creation-flow restoration tests did not cover edits to an already configured exercise plan or routine set.
-- external sources used: None. Repository code, existing lifecycle patterns, target-state requirements, and executable Android 16 evidence were sufficient.
-- expected target-state behavior: An open exercise-plan or routine-set editor and all unsaved primitive field values remain available after Activity recreation until the user saves or dismisses the editor.
-- concrete implemented fix: `WorkoutDayEditor` and `RoutineExerciseCard` retain the active editor by saveable entity ID and resolve the latest model from the current ordered collection. `ExercisePlanEditDialog` and `EditSetBottomSheet` retain their editable strings and `SetType` with `rememberSaveable`; save and dismiss behavior is unchanged.
-- files changed:
-  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt`
-  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
-- regression risk: Low. The change is limited to ephemeral editor state; validation, Room writes, domain models, navigation routes, public interfaces, styling, AI, Health Connect, camera, and remote behavior are unchanged.
-- verification evidence:
-  - RED: `exercisePlanEditorDraftSurvivesActivityRecreationBeforeSave` reached the edited plan dialog and timed out after recreation because `Rest s` was no longer present.
-  - GREEN: the identical test retained `5`, `6-8`, `150`, `72.5`, `8.5`, and `Drop set` after recreation.
-  - RED: `routineSetEditorDraftSurvivesActivityRecreationBeforeSave` reached the edited set surface and timed out after recreation because `Set #1 bewerken` was no longer present.
-  - GREEN: the identical test retained `7`, `67.5`, `135`, `9`, and `Failure` after recreation.
-  - PASS: combined focused Android 16 run completed 2 tests with 0 failures, errors, or skips.
-  - PASS: `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, and `:app:compileDebugAndroidTestKotlin`.
-- minimal verification command/check: `./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#exercisePlanEditorDraftSurvivesActivityRecreationBeforeSave,com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest#routineSetEditorDraftSurvivesActivityRecreationBeforeSave" --console=plain --no-configuration-cache`.
-- remaining risk: Activity recreation is proven on Android 16. Full OS-killed restoration remains bounded by Android saveable-state delivery; active-workout replacement dialogs and production release gates remain separate scope.
+- Target-state link: Nutrition should be calm and responsive immediately when the user opens the tab, without a first loading surface that resets input before the loaded content appears.
+- Files changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/nutrition/NutritionInputValidationTest.kt`
+- Fix: removed the full `AnimatedContent` replacement between `NutritionUiState.Loading` and `Success`. The Voeding header and `nutritionListState`-backed `LazyColumn` now stay mounted from first composition, and loading/error/success render as items inside that stable scroll surface.
+- Regression coverage: added a focused source guard that Voeding uses one stable browsing `LazyColumn`, no longer wraps the body in `AnimatedContent`, and renders `NutritionUiState.Loading` inside the stable list with enough shimmer items to accept immediate scroll.
+- Verification: baseline PASS, `./gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.nutrition.NutritionInputValidationTest" --console=plain --no-configuration-cache`.
+- Verification: after-change PASS, same targeted Nutrition test.
+- Verification: after-change PASS, targeted no-regression command for `NutritionInputValidationTest`, `WorkoutInputValidationTest`, and `WorkoutDialogPresentationPolicyTest`.
+- Verification: after-change PASS, `./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin --console=plain --no-configuration-cache`.
+- Verification: after-change PASS, `./gradlew.bat :app:test --console=plain --no-configuration-cache`.
+- Runtime QA: PASS on `emulator-5554`, `./gradlew.bat :app:installDebug --console=plain --no-configuration-cache`; cold launch returned `Status: ok`, `LaunchState: COLD`, `WaitTime: 5595`.
+- Runtime QA: PASS, after opening `Voeding`, the UI dump showed the stable `Voeding` header and one scrollable content node; an immediate vertical swipe produced the scrolled nutrition dump while plus-button content descriptions remained present. Evidence: `TrainIQ-Project/.codex/device-qa/2026-05-13-voeding-initial-scroll-stable/02-voeding-before-immediate.xml`, `03-voeding-after-immediate-swipe.xml`, and `04-voeding-settled.xml`.
+- Runtime QA: PASS, tapping a visible meal plus action opened `Toevoegen aan Avond` with manual product, saved product, saved recipe, `AI-context voor foto`, `Foto / AI-inschatting`, and `Sluiten`. Evidence: `TrainIQ-Project/.codex/device-qa/2026-05-13-voeding-initial-scroll-stable/05-voeding-add-sheet.xml`.
+- Crash evidence: PASS, AndroidRuntime crash buffer captured during the initial-scroll smoke was empty.
+- External sources used: None. Local source, tests, and emulator evidence were sufficient.
+- Remaining risk: the emulator's local nutrition overview settled very quickly, so runtime evidence mainly proves the stable loaded scroll and source guards prove the initial loading path. A slower seeded startup profile can further prove placeholder-scroll behavior if needed.
+
+## 2026-07-10 Compact Guided Tour and Focused Jank Follow-up
+
+- Status: partially-done (UI and code-level performance fixes verified; physical-device frame certification remains open).
+- Guided tour: replaced the oversized three-equal-button overlay with a compact panel above app/system navigation. `Later afronden` is now a quiet header action; `Terug` and `Volgende` keep 48dp minimum touch targets and the six-step flow remains intact.
+- App-wide diagnostics: replaced the unbounded boxed frame-duration list with a bounded primitive ring buffer, keeping per-frame recording O(1) and moving sorting to summary generation.
+- Active workout: removed per-second elapsed/rest values from broad `ActiveWorkoutUiState`; only the session summary, rest card, and bottom bar read the stable clock state.
+- Benchmark readiness: top-level and baseline-profile journeys now seed completed onboarding before navigation. The emulator profileable run no longer failed on the missing `Training` target, but did not finish within 180 seconds; metric status is `NOT RUN`.
+- Sources: Android Compose performance guidance (`https://developer.android.com/develop/ui/compose/performance`, `https://developer.android.com/develop/ui/compose/performance/bestpractices`) and Compose accessibility defaults (`https://developer.android.com/develop/ui/compose/accessibility/api-defaults`).
+- Verification: focused RED/PASS tests; PASS broad `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:compileDebugAndroidTestKotlin :macrobenchmark:compileProfileableJavaWithJavac`; PASS adb cold launch (`Status: ok`, `LaunchState: COLD`, `TotalTime: 4792`) with an empty fatal buffer; PASS UI-tree/screenshot for `Stap 1 van 6`, unwrapped `Volgende`, and navigation to `Stap 2 van 6` / Training.
+- Remaining risk: repeat top-level and active-workout profileable benchmarks plus fast workout scrolling on a physical Samsung before closing performance certification.

@@ -57,8 +57,13 @@ class CameraScannerStateTest {
 
         assertTrue(numberBody.contains(".semantics(mergeDescendants = true) { contentDescription = label }"))
         assertTrue(fieldBody.contains(".semantics(mergeDescendants = true) { contentDescription = label }"))
+        assertTrue(numberBody.contains("TrainIqFormField("))
+        assertTrue(fieldBody.contains("TrainIqFormField("))
+        assertTrue(numberBody.contains("TrainIqFormFieldContext.Nutrition"))
+        assertTrue(fieldBody.contains("TrainIqFormFieldContext.Nutrition"))
         assertTrue(source.contains("label = \"Productnaam\""))
         assertTrue(source.contains("label = \"Barcode (optioneel)\""))
+        assertTrue(source.contains("Open Food Facts"))
         assertTrue(source.contains("label = \"kcal / 100g\""))
         assertTrue(source.contains("label = \"Eiwit / 100g\""))
     }
@@ -100,6 +105,8 @@ class CameraScannerStateTest {
     fun scannerManualFallbackLabel_matchesScannerMode() {
         assertEquals("Handmatig toevoegen", scannerManualFallbackLabel(ScannerMode.AI_MEAL))
         assertEquals("Code handmatig invoeren", scannerManualFallbackLabel(ScannerMode.BARCODE))
+        assertEquals("Handmatig invoeren", scannerManualFallbackLabel(ScannerMode.AI_SCALE))
+        assertEquals("Foto importeren", scalePhotoImportLabel())
     }
 
     @Test

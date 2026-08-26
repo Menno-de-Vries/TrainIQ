@@ -678,6 +678,95 @@ object TrainIqMigrations {
         }
     }
 
+    val Migration12To13 = object : Migration(12, 13) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.addColumnIfMissing("meal_items", "serving_count", "INTEGER NOT NULL DEFAULT 1")
+        }
+    }
+
+    val Migration13To14 = object : Migration(13, 14) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("PRAGMA foreign_keys=OFF")
+            db.recreateTable(
+                table = "active_workout_drafts",
+                columns = """
+                    session_id, exercise_id, weight, reps, rpe, set_type
+                """.trimIndent(),
+                createSql = """
+                    CREATE TABLE active_workout_drafts (
+                        session_id INTEGER NOT NULL,
+                        exercise_id INTEGER NOT NULL,
+                        weight TEXT NOT NULL,
+                        reps TEXT NOT NULL,
+                        rpe TEXT NOT NULL,
+                        set_type TEXT NOT NULL,
+                        PRIMARY KEY(session_id, exercise_id),
+                        FOREIGN KEY(session_id) REFERENCES active_workout_sessions(sessionId) ON DELETE CASCADE
+                    )
+                """.trimIndent(),
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_active_workout_drafts_session_id ON active_workout_drafts(session_id)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_active_workout_drafts_exercise_id ON active_workout_drafts(exercise_id)")
+
+            db.recreateTable(
+                table = "active_workout_collapsed_exercises",
+                columns = """
+                    session_id, exercise_id
+                """.trimIndent(),
+                createSql = """
+                    CREATE TABLE active_workout_collapsed_exercises (
+                        session_id INTEGER NOT NULL,
+                        exercise_id INTEGER NOT NULL,
+                        PRIMARY KEY(session_id, exercise_id),
+                        FOREIGN KEY(session_id) REFERENCES active_workout_sessions(sessionId) ON DELETE CASCADE
+                    )
+                """.trimIndent(),
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_active_workout_collapsed_exercises_session_id ON active_workout_collapsed_exercises(session_id)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_active_workout_collapsed_exercises_exercise_id ON active_workout_collapsed_exercises(exercise_id)")
+            db.execSQL("PRAGMA foreign_keys=ON")
+            db.assertNoForeignKeyViolations()
+        }
+    }
+
+    val Migration14To15 = object : Migration(14, 15) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.addColumnIfMissing("food_items", "default_serving_grams", "REAL NOT NULL DEFAULT 100.0")
+        }
+    }
+
+    val Migration15To16 = object : Migration(15, 16) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS saved_goal_advice (
+                    id INTEGER NOT NULL,
+                    profile_fingerprint TEXT NOT NULL,
+                    saved_at INTEGER NOT NULL,
+                    bmr INTEGER NOT NULL,
+                    maintenance_calories INTEGER NOT NULL,
+                    activity_multiplier REAL NOT NULL,
+                    calorie_target INTEGER NOT NULL,
+                    protein_target INTEGER NOT NULL,
+                    carbs_target INTEGER NOT NULL,
+                    fat_target INTEGER NOT NULL,
+                    training_focus TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    calorie_advice TEXT NOT NULL,
+                    macro_advice TEXT NOT NULL,
+                    activity_explanation TEXT NOT NULL,
+                    attention_points_json TEXT NOT NULL,
+                    advice TEXT NOT NULL,
+                    data_quality TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    raw_response TEXT,
+                    PRIMARY KEY(id)
+                )
+                """.trimIndent(),
+            )
+        }
+    }
+
     val All = arrayOf(
         Migration2To3,
         Migration3To4,
@@ -689,6 +778,10 @@ object TrainIqMigrations {
         Migration9To10,
         Migration10To11,
         Migration11To12,
+        Migration12To13,
+        Migration13To14,
+        Migration14To15,
+        Migration15To16,
     )
 
     private fun SupportSQLiteDatabase.recreateTable(

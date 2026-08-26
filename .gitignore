@@ -28,3 +28,18 @@ qa-cycle-runtime/training-after-fix.png
 /.codex/device-qa
 /TrainIQ-Project/.codex/device-qa/2026-05-11-ai-routine-deeper-fontscale-qa
 /TrainIQ-Project/.codex/device-qa
+/artifacts/
+/TrainIQ-Project/.kotlin/errors
+/TrainIQ-Project/docs/qa/evidence/2026-05-27-emulator-nutrition-longform-ime-loop
+/TrainIQ-Project/docs/qa/evidence/2026-05-27-emulator-modal-focus-loop
+/TrainIQ-Project/docs/qa
+
+# Local runtime / verification output
+/runtime-*/
+/qa-cycle-runtime/
+/TrainIQ-Project/dist/
+/TrainIQ-Project/.codex/
+/TrainIQ-Project/.kotlin/
+/TrainIQ-Project/TrainIQ-Project/
+*.hprof
+*.logcat

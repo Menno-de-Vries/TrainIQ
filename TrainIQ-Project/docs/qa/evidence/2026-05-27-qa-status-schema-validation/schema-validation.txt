@@ -1,0 +1,5 @@
+QA_STATUS_SCHEMA_VALIDATION_PASS
+schemaParsed=true
+statusParsed=true
+requiredKeysPresent=true
+baselineKeysPresent=true

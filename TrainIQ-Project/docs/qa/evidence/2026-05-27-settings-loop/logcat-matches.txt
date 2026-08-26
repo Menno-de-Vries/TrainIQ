@@ -1,0 +1,40 @@
+
+> docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:73:05-27 00:58:01.864 16738 16738 D AndroidRuntime: Shuttin
+g down VM
+  docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:74:05-27 00:58:01.864 16738 16754 W IPCThreadState: call to
+ talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+  docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:75:05-27 00:58:01.864   701   701 W IPCThreadState: Sending
+ oneway calls to frozen process.
+  docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:76:05-27 00:58:01.864  1507  1734 I AiAiEcho: Predicting[0]
+:  [CONTEXT sampling_count=5 ]
+> docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:148:05-27 00:58:06.183 16769 16769 D AndroidRuntime: >>>>>>
+ START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+> docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:149:05-27 00:58:06.189 16769 16769 I AndroidRuntime: Using
+default boot image
+> docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:150:05-27 00:58:06.189 16769 16769 I AndroidRuntime: Leavin
+g lock profiling enabled
+  docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:151:05-27 00:58:06.193 16769 16769 I app_process: Using Col
+lectorTypeCMC GC.
+  docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:152:05-27 00:58:06.289 16769 16769 D nativeloader: InitDefa
+ultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libd
+l.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.s
+o:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:lib
+sync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+  docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:153:05-27 00:58:06.303 16769 16769 D nativeloader: Load lib
+icu_jni.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+> docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:164:05-27 00:58:06.333 16769 16769 D AndroidRuntime: Callin
+g main entry com.android.commands.uiautomator.Launcher
+  docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:165:05-27 00:58:06.338 16769 16769 I AconfigPackage: androi
+d.media.swcodec.flags is mapped to com.android.media.swcodec
+  docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:166:05-27 00:58:06.339 16769 16769 I AconfigPackage: com.go
+ogle.android.settings.simplemode.flags is mapped to system_ext
+  docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:167:05-27 00:58:06.339 16769 16769 I AconfigPackage: com.go
+ogle.android.systemui is mapped to system_ext
+> docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:472:05-27 00:58:07.511 16769 16769 D AndroidRuntime: Shutti
+ng down VM
+  docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:473:05-27 00:58:07.511  1507  1734 I AiAiEcho: Predicting[0
+]:  [CONTEXT sampling_count=5 ]
+  docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:474:05-27 00:58:07.511 16769 16778 W IPCThreadState: call t
+o talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+  docs\qa\evidence\2026-05-27-settings-loop\logcat-tail.txt:475:05-27 00:58:07.512 16769 16779 W IPCThreadState: call t
+o talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1

@@ -1,7 +1,9 @@
 package com.trainiq.features.progress
 
 import com.trainiq.domain.model.BodyMeasurement
+import com.trainiq.core.ui.UiMessage
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -72,8 +74,37 @@ class ProgressMeasurementValidationTest {
     }
 
     @Test
+    fun latestMeasurementHeroText_usesNewestRealMeasurementWithoutInventingData() {
+        val older = BodyMeasurement(id = 1L, date = 100L, weight = 80.0, bodyFat = 15.0, muscleMass = 40.0)
+        val newer = BodyMeasurement(id = 2L, date = 200L, weight = 81.2, bodyFat = 14.8, muscleMass = 40.5)
+
+        assertEquals("81.2 kg", latestBodyWeightText(listOf(older, newer)))
+        assertEquals("14.8%", latestBodyFatText(listOf(older, newer)))
+        assertEquals("40.5 kg", latestMuscleMassText(listOf(older, newer)))
+    }
+
+    @Test
+    fun latestMeasurementHeroText_usesEmptyPlaceholdersWhenNoMeasurementsExist() {
+        assertEquals("-- kg", latestBodyWeightText(emptyList()))
+        assertEquals("--%", latestBodyFatText(emptyList()))
+        assertEquals("-- kg", latestMuscleMassText(emptyList()))
+    }
+
+    @Test
     fun deleteMeasurementActionLabel_isCompactForNarrowRows() {
         assertEquals("Verwijderen", deleteMeasurementActionLabel())
+    }
+
+    @Test
+    fun weeklyLoadRatioCopyAvoidsFatigueAndRpeClaims() {
+        assertEquals("Nog geen vergelijking", weeklyLoadRatioText(null))
+        assertEquals("1.20×", weeklyLoadRatioText(1.2))
+        assertTrue(weeklyLoadRatioSupportingText(null).contains("twee trainingsweken"))
+        assertTrue(weeklyLoadRatioSupportingText(1.2).contains("maximaal drie voorgaande trainingsweken"))
+
+        val source = java.io.File("src/main/java/com/trainiq/features/progress/ProgressScreen.kt").readText()
+        assertFalse(source.contains("Vermoeidheidsindex"))
+        assertFalse(source.contains("volume + RPE"))
     }
 
     @Test
@@ -86,14 +117,29 @@ class ProgressMeasurementValidationTest {
             strengthTrend = emptyList(),
             volumeTrend = emptyList(),
             estimatedOneRepMax = 0.0,
-            fatigueIndex = 0.0,
+            weeklyLoadRatio = null,
         )
 
-        assertEquals(ProgressUiState.Loading, progressUiState(overview = null, message = null))
+        val message = UiMessage("Meting opgeslagen.", id = 1L)
+        assertEquals(ProgressUiState.Loading, progressUiState(observation = null, message = null))
         assertEquals(
-            ProgressUiState.Success(overview = overview, message = "Meting opgeslagen."),
-            progressUiState(overview = overview, message = "Meting opgeslagen."),
+            ProgressUiState.Error("Voortgang kon niet worden geladen."),
+            progressUiState(observation = Result.failure(IllegalStateException("Room unavailable")), message = null),
         )
+        assertEquals(
+            ProgressUiState.Success(overview = overview, message = message),
+            progressUiState(observation = Result.success(overview), message = message),
+        )
+    }
+
+    @Test
+    fun progressScreen_importsScalePhotoBeforeOpeningCameraScanner() {
+        val source = java.io.File("src/main/java/com/trainiq/features/progress/ProgressScreen.kt").readText()
+
+        assertTrue(source.contains("ActivityResultContracts.PickVisualMedia()"))
+        assertTrue(source.contains("copyScannerImageFromUri(context, uri)"))
+        assertTrue(source.contains("onAnalyzeImportedScalePhoto(path)"))
+        assertTrue(source.contains("Text(scalePhotoImportLabel())"))
     }
 
     private fun assertValidationError(

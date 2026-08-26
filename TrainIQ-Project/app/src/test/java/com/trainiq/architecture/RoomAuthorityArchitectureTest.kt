@@ -41,31 +41,54 @@ class RoomAuthorityArchitectureTest {
     }
 
     @Test
+    fun legacyRoomPreflightCannotCrashStartupLoadJob() {
+        val localStore = File(mainSources, "data/local/TrainIqLocalStore.kt").readText()
+        val loadJobBody = localStore.substringAfter("private val loadJob = scope.launch {")
+            .substringBefore("private val legacyState")
+
+        assertTrue(loadJobBody.contains("loadState()"))
+        assertTrue(loadJobBody.contains("runCatching"))
+        assertTrue(loadJobBody.contains("updateRoomPreflightStatus("))
+    }
+
+    @Test
     fun runtimeStoreDoesNotExposeBroadFullStateUpdateApi() {
         val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
         val legacySeedBody = runtimeStore.substringAfter("private suspend fun seedRoomFromLegacyJsonIfNeeded()")
             .substringBefore("private data class CorePlanTables")
+        val initBody = runtimeStore.substringAfter("init {")
+            .substringBefore("val state:")
 
         assertFalse(runtimeStore.contains("suspend fun update(transform:"))
         assertFalse(runtimeStore.contains("RoomMirrorImportRun"))
+        assertTrue(initBody.contains("runCatching"))
         assertTrue(legacySeedBody.contains("legacyStore.exportLegacyState()"))
         assertTrue(legacySeedBody.contains("sink.importTransaction(planner.plan(gson.toJson(legacyState)))"))
     }
 
     @Test
-    fun workoutCompletionPersistsLocalDebriefBeforeAsyncGeminiRefresh() {
+    fun workoutCompletionPersistsLocalDebriefWithoutLaunchingUnobservedAiWork() {
         val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
         val finishBody = repository.substringAfter("private suspend fun finishWorkout(")
-            .substringBefore("suspend fun createRoutine(")
+            .substringBefore("suspend fun refreshWorkoutDebrief(")
         val localDebriefIndex = finishBody.indexOf("fallbackWorkoutDebriefResult")
-        val asyncRefreshIndex = finishBody.indexOf("scope.launch")
-        val geminiDebriefIndex = finishBody.indexOf("workoutDebriefService.generateWorkoutDebrief")
         val returnIndex = finishBody.lastIndexOf("return WorkoutCompletionResult")
 
         assertTrue(localDebriefIndex >= 0)
-        assertTrue(asyncRefreshIndex > localDebriefIndex)
-        assertTrue(geminiDebriefIndex > asyncRefreshIndex)
         assertTrue(returnIndex > localDebriefIndex)
+        assertFalse(finishBody.contains("scope.launch"))
+        assertFalse(finishBody.contains("workoutDebriefService.generateWorkoutDebrief"))
+    }
+
+    @Test
+    fun delayedExerciseLibrarySeedingCannotCrashRepositoryScope() {
+        val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
+        val initBody = repository.substringAfter("init {")
+            .substringBefore("fun observeDashboard()")
+
+        assertTrue(initBody.contains("delay(3_000L)"))
+        assertTrue(initBody.contains("runCatching"))
+        assertTrue(initBody.contains("exerciseLibrarySeeder.ensureSeeded()"))
     }
 
     @Test
@@ -298,12 +321,12 @@ class RoomAuthorityArchitectureTest {
             .substringBefore("private fun buildWeeklySummary(")
         val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
         val clearProfileBody = runtimeStore.substringAfter("suspend fun clearProfile()")
-            .substringBefore("suspend fun saveProfile(profile: UserProfileEntity)")
+            .substringBefore("suspend fun saveProfile(profile: UserProfileEntity, savedGoalAdvice: SavedGoalAdviceEntity? = null)")
         val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
 
         assertTrue(profileBody.contains("runtimeStore.saveProfile("))
         assertFalse(profileBody.contains("runtimeStore.update {"))
-        assertTrue(runtimeStore.contains("suspend fun saveProfile(profile: UserProfileEntity)"))
+        assertTrue(runtimeStore.contains("suspend fun saveProfile(profile: UserProfileEntity, savedGoalAdvice: SavedGoalAdviceEntity? = null)"))
         assertTrue(clearProfileBody.contains("dao.clearMirrorUserProfile()"))
         assertFalse(clearProfileBody.contains("update {"))
         assertTrue(dao.contains("suspend fun upsertUserProfile(profile: UserProfileEntity)"))

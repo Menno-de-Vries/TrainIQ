@@ -1,0 +1,5 @@
+coachTopHasProfileRequired=True
+coachTopHasGoalAdviceForm=True
+scrolledHasGoalFieldsOrActions=True
+secretLikeTextVisible=False
+crashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES

@@ -1,0 +1,5 @@
+themeTopHasSystem=True
+optionsExposeLightOrDark=True
+afterToggleCaptured=True
+afterToggleStillSettings=True
+crashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES

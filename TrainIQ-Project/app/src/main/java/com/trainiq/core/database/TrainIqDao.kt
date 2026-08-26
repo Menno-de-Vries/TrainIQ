@@ -47,6 +47,9 @@ interface TrainIqDao {
     @Query("DELETE FROM user_profile")
     suspend fun clearMirrorUserProfile()
 
+    @Query("DELETE FROM saved_goal_advice")
+    suspend fun clearSavedGoalAdvice()
+
     @Query("DELETE FROM workout_routines")
     suspend fun clearMirrorRoutines()
 
@@ -109,6 +112,7 @@ interface TrainIqDao {
 
     @Transaction
     suspend fun clearMirrorTables() {
+        clearSavedGoalAdvice()
         clearMirrorWorkoutLogEventSets()
         clearMirrorWorkoutLogEvents()
         clearMirrorActiveWorkoutSets()
@@ -134,6 +138,9 @@ interface TrainIqDao {
 
     @Upsert
     suspend fun upsertUserProfile(profile: UserProfileEntity)
+
+    @Upsert
+    suspend fun upsertSavedGoalAdvice(advice: SavedGoalAdviceEntity)
 
     @Upsert
     suspend fun insertRoutines(routines: List<WorkoutRoutineEntity>)
@@ -170,6 +177,15 @@ interface TrainIqDao {
 
     @Upsert
     suspend fun insertFoodItems(foodItems: List<FoodItemEntity>)
+
+    @Query("SELECT * FROM food_items WHERE id = :foodId LIMIT 1")
+    suspend fun getFoodItem(foodId: Long): FoodItemEntity?
+
+    @Query("SELECT * FROM food_items WHERE barcode = :barcode LIMIT 1")
+    suspend fun getFoodItemByBarcode(barcode: String): FoodItemEntity?
+
+    @Query("SELECT MAX(id) FROM food_items")
+    suspend fun getMaxFoodItemId(): Long?
 
     @Upsert
     suspend fun insertRecipes(recipes: List<RecipeEntity>)
@@ -353,26 +369,53 @@ interface TrainIqDao {
     @Query("SELECT * FROM user_profile LIMIT 1")
     fun observeUserProfile(): Flow<UserProfileEntity?>
 
+    @Query("SELECT * FROM user_profile LIMIT 1")
+    suspend fun readUserProfileForExport(): UserProfileEntity?
+
+    @Query("SELECT * FROM saved_goal_advice WHERE id = 1")
+    fun observeSavedGoalAdvice(): Flow<SavedGoalAdviceEntity?>
+
     @Query("SELECT * FROM workout_routines ORDER BY active DESC, id ASC")
     fun observeRoutines(): Flow<List<WorkoutRoutineEntity>>
+
+    @Query("SELECT * FROM workout_routines ORDER BY active DESC, id ASC")
+    suspend fun readRoutinesForExport(): List<WorkoutRoutineEntity>
 
     @Query("SELECT * FROM workout_days ORDER BY orderIndex ASC")
     fun observeWorkoutDays(): Flow<List<WorkoutDayEntity>>
 
+    @Query("SELECT * FROM workout_days ORDER BY orderIndex ASC")
+    suspend fun readWorkoutDaysForExport(): List<WorkoutDayEntity>
+
     @Query("SELECT * FROM exercises ORDER BY name ASC")
     fun observeExercises(): Flow<List<ExerciseEntity>>
+
+    @Query("SELECT * FROM exercises ORDER BY name ASC")
+    suspend fun readExercisesForExport(): List<ExerciseEntity>
 
     @Query("SELECT * FROM workout_exercises ORDER BY order_index ASC, id ASC")
     fun observeWorkoutExercises(): Flow<List<WorkoutExerciseEntity>>
 
+    @Query("SELECT * FROM workout_exercises ORDER BY order_index ASC, id ASC")
+    suspend fun readWorkoutExercisesForExport(): List<WorkoutExerciseEntity>
+
     @Query("SELECT * FROM routine_sets ORDER BY workoutExerciseId ASC, order_index ASC, id ASC")
     fun observeRoutineSets(): Flow<List<RoutineSetEntity>>
+
+    @Query("SELECT * FROM routine_sets ORDER BY workoutExerciseId ASC, order_index ASC, id ASC")
+    suspend fun readRoutineSetsForExport(): List<RoutineSetEntity>
 
     @Query("SELECT * FROM workout_sessions ORDER BY date DESC")
     fun observeWorkoutSessions(): Flow<List<WorkoutSessionEntity>>
 
+    @Query("SELECT * FROM workout_sessions ORDER BY date DESC")
+    suspend fun readWorkoutSessionsForExport(): List<WorkoutSessionEntity>
+
     @Query("SELECT * FROM performed_exercises ORDER BY session_id DESC, order_index ASC")
     fun observePerformedExercises(): Flow<List<PerformedExerciseEntity>>
+
+    @Query("SELECT * FROM performed_exercises ORDER BY session_id DESC, order_index ASC")
+    suspend fun readPerformedExercisesForExport(): List<PerformedExerciseEntity>
 
     @Query("SELECT * FROM performed_exercises WHERE exercise_id = :exerciseId ORDER BY session_id DESC, order_index ASC")
     fun observePerformedExercisesForExercise(exerciseId: Long): Flow<List<PerformedExerciseEntity>>
@@ -380,26 +423,74 @@ interface TrainIqDao {
     @Query("SELECT * FROM workout_sets ORDER BY id DESC")
     fun observeWorkoutSets(): Flow<List<WorkoutSetEntity>>
 
+    @Query("SELECT * FROM workout_sets ORDER BY id DESC")
+    suspend fun readWorkoutSetsForExport(): List<WorkoutSetEntity>
+
+    @Query("SELECT * FROM workout_sessions WHERE id = :sessionId AND completed = 1 AND status = 'COMPLETED' LIMIT 1")
+    suspend fun getCompletedWorkoutSession(sessionId: Long): WorkoutSessionEntity?
+
+    @Query("SELECT * FROM workout_sessions ORDER BY date DESC")
+    suspend fun getWorkoutSessions(): List<WorkoutSessionEntity>
+
+    @Query("SELECT * FROM workout_sets ORDER BY id DESC")
+    suspend fun getWorkoutSets(): List<WorkoutSetEntity>
+
+    @Query("SELECT * FROM workout_days ORDER BY orderIndex ASC")
+    suspend fun getWorkoutDays(): List<WorkoutDayEntity>
+
+    @Query("SELECT * FROM exercises ORDER BY name ASC")
+    suspend fun getExercises(): List<ExerciseEntity>
+
+    @Query("SELECT * FROM workout_exercises ORDER BY order_index ASC, id ASC")
+    suspend fun getWorkoutExercises(): List<WorkoutExerciseEntity>
+
     @Query("SELECT * FROM meals ORDER BY date DESC")
     fun observeMeals(): Flow<List<MealEntity>>
+
+    @Query("SELECT * FROM meals ORDER BY date DESC")
+    suspend fun readMealsForExport(): List<MealEntity>
+
+    @Query("SELECT MAX(date) FROM meals")
+    suspend fun latestMealDate(): Long?
+
+    @Query("SELECT MAX(date) FROM workout_sessions WHERE completed = 1 AND status = 'COMPLETED'")
+    suspend fun latestCompletedWorkoutDate(): Long?
 
     @Query("SELECT * FROM body_measurements ORDER BY date ASC")
     fun observeMeasurements(): Flow<List<BodyMeasurementEntity>>
 
+    @Query("SELECT * FROM body_measurements ORDER BY date ASC")
+    suspend fun readMeasurementsForExport(): List<BodyMeasurementEntity>
+
     @Query("SELECT * FROM food_items ORDER BY name ASC")
     fun observeFoodItems(): Flow<List<FoodItemEntity>>
+
+    @Query("SELECT * FROM food_items ORDER BY name ASC")
+    suspend fun readFoodItemsForExport(): List<FoodItemEntity>
 
     @Query("SELECT * FROM recipes ORDER BY name ASC")
     fun observeRecipes(): Flow<List<RecipeEntity>>
 
+    @Query("SELECT * FROM recipes ORDER BY name ASC")
+    suspend fun readRecipesForExport(): List<RecipeEntity>
+
     @Query("SELECT * FROM recipe_ingredients ORDER BY recipe_id ASC, order_index ASC")
     fun observeRecipeIngredients(): Flow<List<RecipeIngredientEntity>>
+
+    @Query("SELECT * FROM recipe_ingredients ORDER BY recipe_id ASC, order_index ASC")
+    suspend fun readRecipeIngredientsForExport(): List<RecipeIngredientEntity>
 
     @Query("SELECT * FROM meal_items ORDER BY meal_id ASC, order_index ASC")
     fun observeMealItems(): Flow<List<MealItemEntity>>
 
+    @Query("SELECT * FROM meal_items ORDER BY meal_id ASC, order_index ASC")
+    suspend fun readMealItemsForExport(): List<MealItemEntity>
+
     @Query("SELECT * FROM active_workout_sessions ORDER BY updatedAt DESC LIMIT 1")
     fun observeActiveWorkoutSessions(): Flow<List<ActiveWorkoutSessionEntity>>
+
+    @Query("SELECT * FROM active_workout_sessions ORDER BY updatedAt DESC LIMIT 1")
+    suspend fun readActiveWorkoutSessionsForExport(): List<ActiveWorkoutSessionEntity>
 
     @Query(
         """
@@ -433,14 +524,26 @@ interface TrainIqDao {
     @Query("SELECT * FROM active_workout_drafts ORDER BY session_id ASC, exercise_id ASC")
     fun observeActiveWorkoutDrafts(): Flow<List<ActiveWorkoutDraftEntity>>
 
+    @Query("SELECT * FROM active_workout_drafts ORDER BY session_id ASC, exercise_id ASC")
+    suspend fun readActiveWorkoutDraftsForExport(): List<ActiveWorkoutDraftEntity>
+
     @Query("SELECT * FROM active_workout_collapsed_exercises ORDER BY session_id ASC, exercise_id ASC")
     fun observeActiveWorkoutCollapsedExercises(): Flow<List<ActiveWorkoutCollapsedExerciseEntity>>
+
+    @Query("SELECT * FROM active_workout_collapsed_exercises ORDER BY session_id ASC, exercise_id ASC")
+    suspend fun readActiveWorkoutCollapsedExercisesForExport(): List<ActiveWorkoutCollapsedExerciseEntity>
 
     @Query("SELECT * FROM active_workout_sets ORDER BY session_id ASC, order_index ASC, id ASC")
     fun observeActiveWorkoutSets(): Flow<List<ActiveWorkoutSetEntity>>
 
+    @Query("SELECT * FROM active_workout_sets ORDER BY session_id ASC, order_index ASC, id ASC")
+    suspend fun readActiveWorkoutSetsForExport(): List<ActiveWorkoutSetEntity>
+
     @Query("SELECT * FROM workout_log_events ORDER BY created_at ASC")
     fun observeWorkoutLogEvents(): Flow<List<WorkoutLogEventEntity>>
+
+    @Query("SELECT * FROM workout_log_events ORDER BY created_at ASC")
+    suspend fun readWorkoutLogEventsForExport(): List<WorkoutLogEventEntity>
 
     @Transaction
     suspend fun startOrResumeActiveWorkoutSession(
@@ -634,6 +737,9 @@ interface TrainIqDao {
     @Query("SELECT * FROM workout_log_event_sets ORDER BY event_id ASC, snapshot_role ASC, snapshot_index ASC")
     fun observeWorkoutLogEventSets(): Flow<List<WorkoutLogEventSetEntity>>
 
+    @Query("SELECT * FROM workout_log_event_sets ORDER BY event_id ASC, snapshot_role ASC, snapshot_index ASC")
+    suspend fun readWorkoutLogEventSetsForExport(): List<WorkoutLogEventSetEntity>
+
     @Query("DELETE FROM workout_log_event_sets WHERE event_id IN (SELECT id FROM workout_log_events WHERE session_id = :sessionId)")
     suspend fun deleteWorkoutLogEventSetsForSession(sessionId: Long)
 
@@ -713,6 +819,7 @@ interface TrainIqDao {
         WHERE id = :sessionId
             AND completed = 1
             AND status = 'COMPLETED'
+            AND debrief_source = 'LOCAL_FALLBACK'
         """,
     )
     suspend fun updateWorkoutSessionDebrief(
@@ -728,7 +835,7 @@ interface TrainIqDao {
         nextLoadTarget: String,
         recoveryAdvice: String,
         source: String,
-    )
+    ): Int
 
     @Query("SELECT * FROM workout_days WHERE id = :dayId LIMIT 1")
     suspend fun getWorkoutDay(dayId: Long): WorkoutDayEntity?

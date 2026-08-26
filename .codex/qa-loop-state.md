@@ -1,0 +1,1941 @@
+﻿# QA Loop State
+
+- updated: 2026-05-29 12:10
+- mcp_used: yes - requested by user via @superpowers and @test-android-apps
+- last_checked_areas:
+  - release dark/font-scale startup loop: release cold launch under dark mode and font scale 1.3 reproduced TrainIQ `MainActivity` input-dispatch ANR. Fixed by replacing Home startup shimmer placeholders with static placeholders and delaying startup diagnostics/JankStats/background sync scheduling by 8 seconds. Post-fix no-dump dark/font launch stayed strict TrainIQ crash/ANR/security-clean for 35 seconds; top-level UI dump traversal remains partial because emulator Pixel Launcher ANR overlay blocked TrainIQ UI dumps.
+  - final packet consistency refresh: QA status JSON parses, status remains PARTIAL/NO, evidence declared count matches actual links, missing evidence/status refs are 0, DoD audit has 16 gate rows, all 7 open gates are documented, latest runtime and connected baselines are PASS.
+  - current connected baseline refresh: current worktree full `:app:connectedDebugAndroidTest` passed 57/57 on `emulator-5554`; strict TrainIQ crash/ANR/input-timeout/security logcat scan returned `NO_ACTIONABLE_MATCHES`; `qa-status-2026-05-27.json` connected baseline now points to this evidence.
+  - current DoD completion audit refreshed after connected baseline: gate matrix now references latest connected 57/57 run, current top-level traversal, 1742 evidence links and 0 missing references; Direct APK Ready remains NO due owner/manual/live gates.
+  - current release top-level traversal refresh: current release APK installed on `emulator-5554`, `pm clear`, cold launch, Start/Training/Voeding/Coach/Meer/Start-return UIAutomator dumps and screenshots passed; strict TrainIQ crash/ANR/input-timeout/security scan returned `NO_ACTIONABLE_MATCHES`; `qa-status-2026-05-27.json` latest runtime smoke now points to this broader evidence.
+  - current DoD completion audit refreshed after top-level traversal: gate matrix now references current top-level traversal as latest runtime smoke, 1730 evidence links and 0 missing references; Direct APK Ready remains NO due owner/manual/live gates.
+  - current release install/launch refresh: current release APK installed on `emulator-5554`, `pm clear`, cold launch, UIAutomator dump and strict TrainIQ crash/ANR/input-timeout/security logcat scan passed; `qa-status-2026-05-27.json` latest runtime smoke now points to this evidence.
+  - current DoD completion audit refreshed after latest automated/release refreshes: gate matrix now references current automated baseline, current release signing/build, current release install/launch runtime smoke, 1688 evidence links and 0 missing references; Direct APK Ready remains NO due owner/manual/live gates.
+  - current release build refresh: current worktree `:app:checkReleaseSigningReadiness :app:assembleRelease` passed; release signing configuration reported complete and `app-release.apk` SHA-256 is `E86E3C9B721C60568B5E8C690DC702A07C33136C147FAE2E68FF98C439045BA6`.
+  - current automated baseline refresh: current worktree `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug` passed in one Gradle invocation; `qa-status-2026-05-27.json` latest automated baseline now points to this evidence for JVM/unit, lint and debug assembly.
+  - current DoD completion audit: gate matrix confirms automated/release/runtime/documentation checks are broad and green for executed checks, with known executed P0/P1/P2 count at 0 and fixed findings at 16; Direct APK Ready remains NO because owner/manual/live gates are not PASS or owner-approved DEFER.
+  - release offline/network smoke: current release APK install, `pm clear`, airplane mode with Wi-Fi/mobile data disabled, offline launch, Start/Coach/Settings XML dumps and screenshots passed on `emulator-5554`; connectivity restore commands were executed; strict TrainIQ crash/ANR/input-timeout/security scans returned `NO_ACTIONABLE_MATCHES`. This is top-level offline rendering evidence, not live AI/provider offline action UX.
+  - release force-stop/process recreation smoke: current release APK install, `pm clear`, cold launch, Training navigation, `am force-stop com.trainiq`, relaunch, UIAutomator dumps and screenshots passed on `emulator-5554`; strict TrainIQ crash/ANR/input-timeout/security logcat scan returned `NO_ACTIONABLE_MATCHES`. This verifies safe rendered relaunch, not full in-progress persistence.
+  - release rotation/configuration smoke: current release APK install, `pm clear`, portrait cold launch, forced landscape, forced portrait, UIAutomator dumps and screenshots passed on `emulator-5554`; system rotation settings were restored; strict TrainIQ crash/ANR/input-timeout/security logcat scan returned `NO_ACTIONABLE_MATCHES`.
+  - release lifecycle lock/background smoke: current release APK install, `pm clear`, cold launch, Home/background return, device sleep/wake/unlock return, UIAutomator dumps and screenshots passed on `emulator-5554`; strict TrainIQ crash/ANR/input-timeout/security logcat scan returned `NO_ACTIONABLE_MATCHES`. This is emulator lifecycle evidence, not physical/assistive-tech/performance owner signoff.
+  - AI/scanner static contract audit: static assertions confirmed Gemini 2.5 Flash model constant, JSON response MIME default, thinking config, fast/deep thinking-budget usage, missing-key handling, provider ordering, barcode image-analysis wiring, scanner disposal, camera-permission copy, scanner navigation result contract, and no high-risk source/config token pattern matches. This does not close live provider/key or optical decode gates.
+  - archived release to current release over-install smoke: archived `1.0.1-A` release APK and current release APK have same package/version and release cert but different SHA-256; archived install/launch and current-over-archived install/launch passed with empty strict TrainIQ crash/ANR/security scan. This does not close true older-version upgrade/persistence.
+  - release Baseline Profile artifact audit: `assembleRelease` and macrobenchmark compile paths passed; source `baseline-prof.txt` is present with 18 lines; release APK contains `assets/dexopt/baseline.prof`, `baseline.profm`, and AndroidX profileinstaller metadata. This is artifact evidence only, not physical performance threshold signoff.
+  - release UI dump accessibility static audit: latest release top-level UIAutomator XML dumps for Start/Training/Voeding/Coach/Meer/Start-return had 0 under-48px clickable/focusable nodes, 0 NAF nodes, and 0 effectively unlabeled clickable/focusable nodes after descendant-label accounting. This does not replace TalkBack/Switch Access traversal.
+  - release artifact secret-safety audit: static scan of current release APK compressed bytes, streamed APK zip entries, and recent release smoke `.txt`/`.xml` evidence found 0 Gemini/OpenAI/API-key/secret/token/password pattern matches. This does not replace owner real-key privacy signoff.
+  - release APK fresh smoke after connected regression: `checkReleaseSigningReadiness`, `assembleRelease`, `installRelease`, release `pm clear`, cold launch, screenshots/XML dumps for Start/Training/Voeding/Coach/Meer/Start-return, strict TrainIQ crash/ANR/security scans, and debug unit/lint/assemble regression all passed on `emulator-5554`.
+  - current connected regression after startup fixes: first full connected run could not install because emulator framework services were missing (`package`/`activity`); AVD recovered only after `-wipe-data -no-snapshot-load`. Hardened `ActiveWorkoutSetActionsInstrumentedTest` against full-suite timing, then targeted test and full `:app:connectedDebugAndroidTest` passed with empty strict TrainIQ crash/ANR/security scans.
+  - profileable cold-start benchmark loop: initial run failed before app execution because the emulator still had a release-signed `com.trainiq` installed; after uninstalling stale `com.trainiq` and `com.trainiq.macrobenchmark`, targeted `coldStartupWithRequiredBaselineProfile` passed 1/1 with explicit `EMULATOR` suppression, and strict post-benchmark TrainIQ crash/ANR/security scan was empty.
+  - current release readiness refresh loop: release signing/build/install passed, then fresh release cold launch plus early UIAutomator dump reproduced a TrainIQ `MainActivity` input-dispatch ANR. Fixed by moving Home Health Connect status refresh to `Dispatchers.IO` and dashboard mapping to `Dispatchers.Default`; post-fix release cold launch plus early UIAutomator dump has empty strict TrainIQ crash/ANR/security scan.
+  - profileable active-workout benchmark loop: reproduced a profileable seeded-launch TrainIQ `MainActivity` input-dispatch ANR and active-workout benchmark flake; fixed profileable seed activity background seeding/task cleanup and lengthened bounded Macrobenchmark UI waits. Targeted active-workout Macrobenchmark now passes 1/1 on emulator with explicit `EMULATOR` suppression; post-fix strict TrainIQ crash/ANR/security scans are empty.
+  - profileable top-nav benchmark loop: existing Macrobenchmark top-level navigation test initially failed on AndroidX Benchmark emulator guard, then exposed a `StaleObjectException` harness flake when `EMULATOR` was explicitly suppressed; benchmark harness fixed and targeted profileable top-nav benchmark now passes 1/1 on emulator with `EMULATOR` suppression. Metrics remain diagnostic only (`frameDurationCpuMs` P50 873.2, P90 1056.3; `frameOverrunMs` P50 1235.3, P90 1492.3), not release performance PASS evidence.
+  - release top-nav performance smoke: release install/cold launch passed and strict TrainIQ crash/ANR/security scans were empty, but `gfxinfo` on emulator reported high jank after reset and no-dump-between-taps rerun (`Janky frames: 27 (90.00%)`, p50 950ms, p90 1350ms); performance threshold/signoff remains open pending owner-approved thresholds and stronger profileable/physical-device evidence.
+  - deep runtime regression loop: targeted connected runtime tests passed 4/4 for active workout logged-set correction/delete, Exercise History progress path, Nutrition long AI-context IME at font scale 1.5, and barcode scanner denied/granted copy; post-test TrainIQ crash/ANR/security scan empty; unit/lint/assembleDebug passed.
+- remaining_risks:
+  - Owner/manual/performance gates from `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`: release top-level performance threshold/signoff, TalkBack/Switch Access traversal, full visual deep-flow overlap certification, privacy/security real-key signoff, live AI/provider flows, real camera/scanner return, true older-release upgrade/persistence, live Health Connect background data-read proof with seeded provider data, manual deep-runtime UX audits.
+  - Current emulator benchmark and `gfxinfo` evidence are diagnostic high-jank evidence, not release performance PASS evidence; requires owner-approved thresholds and stronger profileable/physical-device evidence before readiness can be claimed.
+- previous_failing_checks:
+  - Release dark mode/font-scale 1.3 cold launch reproduced `ANR in com.trainiq`; fixed in `QA-2026-05-29-008` and no-dump repro passed after delayed diagnostics/static Home placeholder changes.
+  - Current release cold launch with early UIAutomator/accessibility dump reproduced `ANR in com.trainiq` before the Home startup dispatcher fix; same check passed after the fix.
+  - Profileable active-workout Macrobenchmark initially failed after a seeded-launch TrainIQ ANR and short UI waits; fixed in profileable seed activity and benchmark harness, then passed targeted verification.
+  - Full connected baseline initially reproduced active-workout restore, set-actions, Exercise History and first-run smoke failures; targeted reruns isolated suite-order DB state and a real active-workout draft FK crash. All reproduced connected failures passed after the fixes.
+  - Profileable top-nav Macrobenchmark was flaky before harness hardening due stale UIAutomator nodes and redundant Settings heading click.
+- next_suggested_loop_target:
+  - Physical-device/profileable performance evidence with owner-approved thresholds, TalkBack/Switch Access traversal, real-key signoff, live AI/provider flows, real optical scanner decode/result return, true older-release upgrade/persistence, full visual deep-flow overlap certification, or live Health Connect background data-read proof with seeded provider data if owner gates become available.
+- no_op_count: 0
+- blocked_count: 0
+- absent_terms_recorded:
+  - not checked this loop
+
+## Latest Loop
+
+- target: final packet consistency refresh
+- priority: P1 release decision/documentation integrity
+- result: partial - QA packet consistency passed; Direct APK Ready remains NO due owner/manual/live gates
+- commands:
+  - parse `qa-status-2026-05-27.json`
+  - verify evidence-index declared count and filesystem targets
+  - verify QA status handoff references
+  - verify DoD audit count/matrix/open-gate consistency
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-final-packet-consistency-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-final-packet-consistency-refresh-loop/packet-checks.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-final-packet-consistency-refresh-loop/missing-evidence.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-final-packet-consistency-refresh-loop/missing-status-refs.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-final-packet-consistency-refresh-loop/undocumented-open-gates.txt`
+- files_changed:
+  - `.codex/qa-loop-state.md`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+- webresearch_used: no
+- next: owner/device/material support for TalkBack/Switch Access traversal, physical/profileable performance threshold signoff, seeded Health Connect background data-read proof, real-key privacy signoff, live AI/provider flows, real optical scanner decode, and true lower-version upgrade/persistence.
+
+## Previous Loop
+
+- target: current connected baseline refresh
+- priority: P1 automated connected gate currency
+- result: partial - full connected debug suite passed 57/57; Direct APK Ready remains NO due owner/manual/live gates
+- commands:
+  - `adb uninstall com.trainiq`
+  - `adb uninstall com.trainiq.test`
+  - `.\gradlew.bat :app:connectedDebugAndroidTest --console=plain`
+  - strict TrainIQ logcat scan
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-connected-baseline-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-connected-baseline-refresh-loop/connectedDebugAndroidTest.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-connected-baseline-refresh-loop/logcat-after-connected.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-connected-baseline-refresh-loop/logcat-actionable-matches.txt`
+- files_changed:
+  - `.codex/qa-loop-state.md`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+- webresearch_used: no
+- next: refresh DoD audit to this latest connected evidence, or owner/device/material support for TalkBack/Switch Access traversal, physical/profileable performance threshold signoff, seeded Health Connect background data-read proof, real-key privacy signoff, live AI/provider flows, real optical scanner decode, and true lower-version upgrade/persistence.
+
+## Previous Loop
+
+- target: current release top-level traversal refresh
+- priority: P1 release APK runtime/top-level navigation gate currency
+- result: partial - current release top-level traversal passed; Direct APK Ready remains NO due owner/manual/live gates
+- commands:
+  - `.\gradlew.bat :app:installRelease --console=plain`
+  - `adb shell pm clear com.trainiq`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - top-level taps for Start, Training, Voeding, Coach, Meer/Instellingen, and Start return
+  - UIAutomator dumps, screenshots, strict TrainIQ logcat scan
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/installRelease.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/launch-release.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/trainiq-top-start.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/trainiq-top-training.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/trainiq-top-nutrition.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/trainiq-top-coach.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/trainiq-top-settings.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/trainiq-top-start-return.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/logcat-actionable-matches.txt`
+- files_changed:
+  - `.codex/qa-loop-state.md`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+- webresearch_used: no
+- next: refresh DoD audit to this latest top-level runtime evidence, or owner/device/material support for TalkBack/Switch Access traversal, physical/profileable performance threshold signoff, seeded Health Connect background data-read proof, real-key privacy signoff, live AI/provider flows, real optical scanner decode, and true lower-version upgrade/persistence.
+
+## Previous Loop
+
+- target: current release install/launch refresh
+- priority: P1 release APK runtime gate currency
+- result: partial - current release APK install/launch smoke passed; Direct APK Ready remains NO due owner/manual/live gates
+- commands:
+  - `.\gradlew.bat :app:installRelease --console=plain`
+  - `adb shell pm clear com.trainiq`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - UIAutomator dump, screenshot, strict TrainIQ logcat scan
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-install-launch-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-install-launch-refresh-loop/installRelease.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-install-launch-refresh-loop/launch-release.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-install-launch-refresh-loop/trainiq-current-release-refresh.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-install-launch-refresh-loop/logcat-actionable-matches.txt`
+- files_changed:
+  - `.codex/qa-loop-state.md`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+- webresearch_used: no
+- next: full release top-level traversal refresh if needed, or owner/device/material support for TalkBack/Switch Access traversal, physical/profileable performance threshold signoff, seeded Health Connect background data-read proof, real-key privacy signoff, live AI/provider flows, real optical scanner decode, and true lower-version upgrade/persistence.
+
+## Previous Loop
+
+- target: current release signing/build refresh
+- priority: P1 release APK build gate currency
+- result: partial - current release signing readiness and assembleRelease passed; Direct APK Ready remains NO due owner/manual/live gates
+- commands:
+  - `.\gradlew.bat :app:checkReleaseSigningReadiness :app:assembleRelease --console=plain`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-build-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-build-refresh-loop/checkReleaseSigningReadiness-assembleRelease.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-build-refresh-loop/result.txt`
+- files_changed:
+  - `.codex/qa-loop-state.md`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+- webresearch_used: no
+- next: release install/launch refresh if needed, or owner/device/material support for TalkBack/Switch Access traversal, physical/profileable performance threshold signoff, seeded Health Connect background data-read proof, real-key privacy signoff, live AI/provider flows, real optical scanner decode, and true lower-version upgrade/persistence.
+
+## Previous Loop
+
+- target: current automated baseline refresh
+- priority: P1 automated gate currency
+- result: partial - current JVM/unit, lint and debug assembly baseline passed; Direct APK Ready remains NO due owner/manual/live gates
+- commands:
+  - `.\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --console=plain`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-automated-baseline-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-automated-baseline-refresh-loop/testDebugUnitTest-lintDebug-assembleDebug.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-automated-baseline-refresh-loop/result.txt`
+- files_changed:
+  - `.codex/qa-loop-state.md`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+- webresearch_used: no
+- next: connected/release runtime refresh if needed, or owner/device/material support for TalkBack/Switch Access traversal, physical/profileable performance threshold signoff, seeded Health Connect background data-read proof, real-key privacy signoff, live AI/provider flows, real optical scanner decode, and true lower-version upgrade/persistence.
+
+## Previous Loop
+
+- target: current DoD completion audit
+- priority: P0/P1 release decision accuracy
+- result: partial - current evidence matrix generated; Direct APK Ready remains NO because owner/manual/live gates are still incomplete
+- commands:
+  - parse `qa-status-2026-05-27.json`
+  - parse `qa-status-summary-2026-05-27.md`
+  - parse `evidence-index-2026-05-27.md`
+  - verify evidence count and missing evidence count
+  - generate gate matrix JSON and summary
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-dod-completion-audit-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-dod-completion-audit-loop/dod-gate-matrix.json`
+- files_changed:
+  - `.codex/qa-loop-state.md`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+- webresearch_used: no
+- next: obtain owner/device/material support for TalkBack/Switch Access traversal, physical/profileable performance threshold signoff, seeded Health Connect background data-read proof, real-key privacy signoff, live AI/provider flows, real optical scanner decode, and true lower-version upgrade/persistence; otherwise keep status PARTIAL/NO.
+
+## Previous Loop
+
+- target: release offline/network top-level smoke
+- priority: P1 direct APK offline/runtime release-risk reduction
+- result: partial - release offline launch/top-level rendering passed on emulator; Direct APK Ready remains NO due owner/manual/live gates and deeper offline action gates
+- commands:
+  - `.\gradlew.bat :app:installRelease --console=plain`
+  - `adb shell pm clear com.trainiq`
+  - `adb shell cmd connectivity airplane-mode enable`
+  - `adb shell svc wifi disable`
+  - `adb shell svc data disable`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - top-level taps to Coach and Settings/Meer
+  - UIAutomator dumps, screenshots, strict TrainIQ logcat scans
+  - connectivity restore commands
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-offline-network-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-offline-network-loop/launch-offline.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-offline-network-loop/trainiq-offline-start.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-offline-network-loop/trainiq-offline-coach.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-offline-network-loop/trainiq-offline-settings.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-offline-network-loop/logcat-actionable-matches.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-offline-network-loop/logcat-start-recapture-actionable-matches.txt`
+- files_changed:
+  - `.codex/qa-loop-state.md`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+- webresearch_used: no
+- next: live AI/provider offline action UX, deeper in-progress persistence runtime checks, TalkBack/Switch traversal, tablet/foldable certification, physical/profileable performance threshold signoff, Health Connect seeded background-read proof, real-key signoff, or real optical scanner decode.
+
+## Previous Loop
+
+- target: release force-stop/process recreation smoke
+- priority: P1 Android runtime process recreation release-risk reduction
+- result: partial - release force-stop/relaunch smoke passed on emulator; Direct APK Ready remains NO due owner/manual/live gates and deeper persistence gates
+- commands:
+  - `.\gradlew.bat :app:installRelease --console=plain`
+  - `adb shell pm clear com.trainiq`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - `adb shell input tap 330 2285`
+  - `adb shell am force-stop com.trainiq`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - UIAutomator dumps, screenshots, and strict TrainIQ logcat scan
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/installRelease.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/launch-cold.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/trainiq-force-stop-training-before.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/launch-after-force-stop.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/trainiq-force-stop-after-relaunch.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-force-stop-recreation-loop/logcat-actionable-matches.txt`
+- files_changed:
+  - `.codex/qa-loop-state.md`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+- webresearch_used: no
+- next: deeper in-progress persistence runtime checks, TalkBack/Switch traversal, tablet/foldable certification, physical/profileable performance threshold signoff, Health Connect seeded background-read proof, real-key signoff, live provider calls, or real optical scanner decode.
+
+## Previous Loop
+
+- target: release rotation/configuration smoke
+- priority: P1 Android runtime configuration-change release-risk reduction
+- result: partial - release portrait/landscape/portrait smoke passed on emulator; Direct APK Ready remains NO due owner/manual/live gates
+- commands:
+  - `.\gradlew.bat :app:installRelease --console=plain`
+  - `adb shell pm clear com.trainiq`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - `adb shell settings put system accelerometer_rotation 0`
+  - `adb shell settings put system user_rotation 1`
+  - `adb shell settings put system user_rotation 0`
+  - restore prior `accelerometer_rotation` and `user_rotation`
+  - UIAutomator dumps, screenshots, and strict TrainIQ logcat scan
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-rotation-config-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-rotation-config-loop/installRelease.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-rotation-config-loop/launch-portrait.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-rotation-config-loop/trainiq-rotation-portrait-before.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-rotation-config-loop/trainiq-rotation-landscape.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-rotation-config-loop/trainiq-rotation-portrait-after.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-rotation-config-loop/logcat-actionable-matches.txt`
+- files_changed:
+  - `.codex/qa-loop-state.md`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+- webresearch_used: no
+- next: TalkBack/Switch traversal, tablet/foldable certification, physical/profileable performance threshold signoff, Health Connect seeded background-read proof, real-key signoff, live provider calls, real optical scanner decode, or another safe non-owner-gated runtime gap.
+
+## Previous Loop
+
+- target: release lifecycle background/foreground and lock/unlock smoke
+- priority: P1 Android runtime lifecycle release-risk reduction
+- result: partial - release lifecycle smoke passed on emulator; Direct APK Ready remains NO due owner/manual/live gates
+- commands:
+  - `.\gradlew.bat :app:installRelease --console=plain`
+  - `adb shell pm clear com.trainiq`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - `adb shell input keyevent HOME`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - `adb shell input keyevent SLEEP`
+  - `adb shell input keyevent WAKEUP`
+  - `adb shell input swipe 540 2100 540 600 300`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - UIAutomator dumps, screenshots, and strict TrainIQ logcat scan
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/installRelease.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/launch-cold.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/return-from-home.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/return-after-lock-unlock.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/trainiq-lifecycle-cold.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/trainiq-lifecycle-return-home.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/trainiq-lifecycle-lock-unlock.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-lifecycle-lock-background-loop/logcat-actionable-matches.txt`
+- files_changed:
+  - `.codex/qa-loop-state.md`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+- webresearch_used: no
+- next: TalkBack/Switch traversal, physical/profileable performance threshold signoff, Health Connect seeded background-read proof, real-key signoff, live provider calls, real optical scanner decode, or another safe non-owner-gated lifecycle/runtime gap.
+
+## Previous Loop
+
+- target: AI/scanner static provider contract audit
+- priority: P2 provider/runtime-gated flow hardening
+- result: partial - static AI/scanner contracts passed; Direct APK Ready remains NO due live provider/key, real optical decode, and owner/manual gates
+- commands:
+  - `rg -n 'GEMINI_MODEL|OPENAI_MODEL|GEMINI_BASE_URL|OPENAI_BASE_URL|gemini-2\.5|gpt-|responseMimeType|application/json|thinkingBudget|ThinkingConfig|responseJsonSchema|ScannerMode|CameraScanner|BarcodeScanning|getStateFlow|apiKeyProvider|AiProviderUnavailableException|BuildConfig\.(GEMINI|OPENAI)' ...`
+  - source/config high-risk secret-pattern scan for Gemini/OpenAI/API-key/token strings
+  - PowerShell static contract assertions over `AiProviders.kt`, `AiServices.kt`, `RoutineGeneratorService.kt`, `GeminiDtos.kt`, `CameraScannerScreen.kt`, and `TrainIqNav.kt`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-ai-scanner-static-contract-audit-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-ai-scanner-static-contract-audit-loop/source-files-reviewed.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-ai-scanner-static-contract-audit-loop/ai-scanner-contract-grep.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-ai-scanner-static-contract-audit-loop/contract-checks.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-ai-scanner-static-contract-audit-loop/secret-pattern-scan.txt`
+- files_changed:
+  - `.codex/qa-loop-state.md`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+- webresearch_used: no
+- next: live AI/provider owner gates, real optical scanner decode/result return, real-key privacy signoff, TalkBack/Switch traversal, Health Connect seeded background-read proof, or another safe non-owner-gated deep runtime/static gap.
+
+## Previous Loop
+
+- target: archived release to current release over-install smoke
+- priority: P1 upgrade/signing-lineage evidence quality
+- result: partial - same-version archived-to-current release over-install passed; Direct APK Ready remains NO because true older-version upgrade/persistence still lacks a lower-version signed APK and persisted-data scenario
+- commands:
+  - search workspace for APK/AAB and signing material candidates
+  - inspect package/version/signature for archived release, current release, profileable, and debug APK candidates
+  - `adb uninstall com.trainiq`
+  - `adb install -r artifacts/TrainIQ-1.0.1-A-release-signed/TrainIQ-1.0.1-A-release-signed.apk`
+  - archived release cold launch and UIAutomator dump
+  - `adb install -r app/build/outputs/apk/release/app-release.apk`
+  - current release cold launch, UIAutomator dump, and strict TrainIQ crash/ANR/security logcat scan
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/badging-TrainIQ-1.0.1-A-release-signed.apk.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/badging-app-release.apk.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/apksigner-TrainIQ-1.0.1-A-release-signed.apk.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/apksigner-app-release.apk.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/adb-install-current-release-over-archived-release.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/launch-current-release-after-overinstall.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/logcat-actionable-matches-current-release-after-overinstall.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-archived-release-to-current-release-overinstall-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: true older-version upgrade/persistence with lower-version compatible release APK and persisted user-data scenario, owner-approved physical/profileable performance thresholds, full TalkBack/Switch Access traversal, owner real-key signoff, live Health Connect seeded background-read proof, provider/scanner live flows, or manual deep-runtime UX audits.
+
+## Previous Loop
+
+- target: release Baseline Profile artifact audit
+- priority: P1/P2 startup/performance artifact readiness
+- result: partial - release artifact contains Baseline Profile assets and macrobenchmark compile path passes; Direct APK Ready remains NO because owner-approved physical/profileable performance thresholds remain open
+- commands:
+  - inspect `app/src/main/baseline-prof.txt`
+  - inspect profileable/macrobenchmark Gradle config
+  - `./gradlew.bat :app:assembleRelease :macrobenchmark:compileProfileableJavaWithJavac :macrobenchmark:compileDebugJavaWithJavac --console=plain`
+  - inspect release APK entries for `assets/dexopt/baseline.prof`, `assets/dexopt/baseline.profm`, and profileinstaller metadata
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-baseline-profile-artifact-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-baseline-profile-artifact-loop/assembleRelease-and-macrobenchmark-compile.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-baseline-profile-artifact-loop/source-baseline-prof.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-baseline-profile-artifact-loop/release-apk-baseline-profile-entries.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-baseline-profile-artifact-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: owner-approved physical/profileable performance thresholds, full TalkBack/Switch Access traversal, owner real-key signoff, live Health Connect seeded background-read proof, provider/scanner live flows, manual deep-runtime UX audits, or true older-version upgrade/persistence.
+
+## Previous Loop
+
+- target: release UI dump accessibility static audit
+- priority: P2 top-level accessibility evidence
+- result: partial - static UIAutomator XML accessibility audit passed; Direct APK Ready remains NO because TalkBack/Switch Access and other owner/manual gates remain open
+- commands:
+  - parse latest release `release-*.xml` UIAutomator dumps from `2026-05-29-release-apk-fresh-smoke-after-connected-loop`
+  - audit clickable/focusable node bounds against 48px minimum
+  - audit `NAF=true` nodes
+  - audit effective labels using node text/content-desc/hint plus descendant text/content-desc/hint
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-ui-dump-accessibility-static-audit-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-ui-dump-accessibility-static-audit-loop/summary-metrics.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-ui-dump-accessibility-static-audit-loop/effective-label-summary-metrics.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-ui-dump-accessibility-static-audit-loop/release-ui-under-48px-clickable-focusable.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-ui-dump-accessibility-static-audit-loop/release-ui-effective-unlabeled-clickable-focusable.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-ui-dump-accessibility-static-audit-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: full TalkBack/Switch Access traversal, owner real-key signoff, physical-device/profileable performance evidence with owner-approved thresholds, live Health Connect seeded background-read proof, provider/scanner live flows, manual deep-runtime UX audits, or true older-version upgrade/persistence.
+
+## Previous Loop
+
+- target: release artifact/log secret-safety audit
+- priority: P1 privacy/security artifact leak check
+- result: partial - static artifact/log scan passed; Direct APK Ready remains NO because owner real-key signoff and other owner/manual gates remain open
+- commands:
+  - inspect `app/build/outputs/apk/release/app-release.apk`
+  - enumerate release APK zip entries
+  - scan release APK compressed bytes for Gemini/OpenAI/API-key/secret/token/password patterns
+  - scan recent release smoke `.txt`/`.xml` evidence for the same patterns
+  - stream-scan 1023 APK zip entries directly from the APK for the same patterns
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-artifact-secret-safety-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-artifact-secret-safety-loop/release-artifact-secret-scan.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-artifact-secret-safety-loop/release-apk-entry-stream-secret-scan-summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-artifact-secret-safety-loop/release-apk-entry-stream-secret-scan-matches.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-artifact-secret-safety-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: owner real-key signoff, physical-device/profileable performance evidence with owner-approved thresholds, TalkBack/Switch Access traversal, live Health Connect seeded background-read proof, provider/scanner live flows, manual deep-runtime UX audits, or true older-version upgrade/persistence.
+
+## Previous Loop
+
+- target: release APK fresh smoke after connected regression
+- priority: P1 release APK build/install/launch/top-level smoke
+- result: partial - safe release APK gates passed on emulator; Direct APK Ready remains NO due owner/manual and physical-device gates
+- commands:
+  - `./gradlew.bat :app:checkReleaseSigningReadiness --console=plain`
+  - `./gradlew.bat :app:assembleRelease --console=plain`
+  - `./gradlew.bat :app:installRelease --console=plain`
+  - `adb shell pm clear com.trainiq`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - top-level release tap traversal with screenshots and UIAutomator dumps for Start, Training, Voeding, Coach, Meer/Instellingen, and Start return
+  - strict TrainIQ crash/ANR/security logcat scans after cold launch and top-level traversal
+  - `./gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --console=plain`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/checkReleaseSigningReadiness.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/assembleRelease.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/installRelease.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/launch-release-cold.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/release-start-return.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/logcat-actionable-matches-release-topnav.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/regression-unit-lint-assembleDebug.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-apk-fresh-smoke-after-connected-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: physical-device/profileable performance evidence with owner-approved thresholds, TalkBack/Switch Access traversal, live Health Connect seeded background-read proof, real-key signoff, provider/scanner live flows, manual deep-runtime UX audits, or true older-version upgrade/persistence.
+
+## Previous Loop
+
+- target: current connected debug regression after startup fixes
+- priority: P1 automated regression gate
+- result: partial - full connected debug suite now passes 57/57 after emulator recovery and active-workout test hardening; Direct APK Ready remains NO due owner/manual gates
+- commands:
+  - `adb shell cmd package list packages com.trainiq`
+  - `adb shell cmd activity get-current-user`
+  - `adb reboot`
+  - cold emulator restart with `-no-snapshot-load`
+  - emulator restart with `-wipe-data -no-snapshot-load`
+  - `./gradlew.bat :app:connectedDebugAndroidTest --console=plain`
+  - targeted `./gradlew.bat :app:connectedDebugAndroidTest --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.features.workout.ActiveWorkoutSetActionsInstrumentedTest`
+  - strict TrainIQ crash/ANR/security logcat scans after targeted and full connected runs
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/connectedDebugAndroidTest-full-after-startup-fixes.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/adb-boot-wait-after-wipe-start.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/connectedDebugAndroidTest-active-workout-set-actions-targeted-after-delete-state-wait.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/connectedDebugAndroidTest-full-after-delete-state-wait.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/logcat-actionable-matches-after-connectedDebugAndroidTest-full-after-delete-state-wait.txt`
+- files_changed:
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/features/workout/ActiveWorkoutSetActionsInstrumentedTest.kt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-connected-regression-after-startup-fixes-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: physical-device/profileable performance evidence with owner-approved thresholds, TalkBack/Switch Access traversal, live Health Connect seeded background-read proof, real-key signoff, provider/scanner live flows, manual deep-runtime UX audits, or true older-version upgrade/persistence.
+
+## Previous Loop
+
+- target: release dark mode/font-scale 1.3 startup responsiveness
+- priority: P0 release APK accessibility/large-font startup responsiveness
+- result: fixed - `QA-2026-05-29-008` release dark/font startup ANR fixed; Direct APK Ready remains NO due physical/owner performance threshold, full visual/accessibility certification, and other owner/manual gates
+- commands:
+  - `./gradlew.bat :app:assembleRelease :app:installRelease --console=plain`
+  - `adb shell settings put system font_scale 1.3`
+  - `adb shell cmd uimode night yes`
+  - `adb shell pm clear com.trainiq`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - strict TrainIQ crash/ANR/security logcat scans before and after fix
+  - post-fix top-level tap/dump traversal under dark/font 1.3
+  - `./gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease --console=plain`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/logcat-actionable-matches-dark-font13-no-dump-repro.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/logcat-actionable-matches-dark-font13-after-delayed-refresh.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/logcat-actionable-matches-dark-font13-after-static-placeholder.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/logcat-actionable-matches-dark-font13-after-delayed-diagnostics.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/regression-after-release-dark-font13-startup-fix.txt`
+- files_changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/MainActivity.kt`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/home/HomeScreen.kt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-dark-font13-topnav-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/fixed-findings-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: stable-device visual/accessibility certification, physical-device/profileable performance evidence with owner-approved thresholds, or remaining owner/manual gates.
+## Latest Loop
+
+- target: profileable cold-start benchmark diagnostic evidence
+- priority: P1/P2 release performance evidence quality
+- result: partial - benchmark passed on emulator with explicit `EMULATOR` suppression after cleaning stale package signing state; Direct APK Ready remains NO due physical/owner performance threshold gate and other owner/manual gates
+- commands:
+  - `./gradlew.bat :macrobenchmark:connectedProfileableAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.macrobenchmark.TrainIqStartupBenchmark#coldStartupWithRequiredBaselineProfile -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR --console=plain`
+  - `adb uninstall com.trainiq`
+  - `adb uninstall com.trainiq.macrobenchmark`
+  - reran the same targeted Macrobenchmark command
+  - strict TrainIQ crash/ANR/security logcat scan
+  - `./gradlew.bat :macrobenchmark:compileProfileableJavaWithJavac :macrobenchmark:compileDebugJavaWithJavac :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --console=plain`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-cold-start-benchmark-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-cold-start-benchmark-loop/connectedProfileableAndroidTest-cold-start-emulator-suppressed.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-cold-start-benchmark-loop/connectedProfileableAndroidTest-cold-start-after-uninstall-emulator-suppressed.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-cold-start-benchmark-loop/macrobenchmark-cold-start-after-uninstall-report.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-cold-start-benchmark-loop/logcat-actionable-matches-after-cold-start-benchmark.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-cold-start-benchmark-loop/regression-after-profileable-cold-start-benchmark.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-cold-start-benchmark-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: physical-device/profileable performance evidence with owner-approved thresholds, or remaining owner/manual gates.
+## Latest Loop
+
+- target: current release readiness refresh and early accessibility dump responsiveness
+- priority: P0 release APK startup/accessibility responsiveness
+- result: fixed - `QA-2026-05-29-007` release cold-launch early UIAutomator/accessibility dump ANR fixed; Direct APK Ready remains NO due physical/owner performance threshold gate and other owner/manual gates
+- commands:
+  - `./gradlew.bat :app:checkReleaseSigningReadiness :app:assembleRelease --console=plain`
+  - `./gradlew.bat :app:installRelease --console=plain`
+  - `adb shell pm clear com.trainiq`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - early `adb shell uiautomator dump` and strict TrainIQ crash/ANR/security logcat scan
+  - `./gradlew.bat :app:compileReleaseKotlin :app:assembleRelease --console=plain`
+  - post-fix release install/cold launch/UIAutomator dump/logcat scan
+  - `./gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease --console=plain`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/logcat-actionable-matches-release-cold.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/logcat-actionable-matches-release-cold-no-dump-repro.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/logcat-actionable-matches-release-cold-delayed-dump-repro.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/logcat-actionable-matches-release-cold-after-home-startup-dispatcher-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/regression-after-release-cold-startup-dispatcher-fix.txt`
+- files_changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/home/HomeScreen.kt`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/data/repository/TrainIqRepository.kt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-readiness-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/fixed-findings-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: physical-device/profileable performance evidence with owner-approved thresholds, or remaining owner/manual gates.
+## Latest Loop
+
+- target: profileable active-workout benchmark seed/start/logging path
+- priority: P1 release-readiness benchmark/runtime evidence quality
+- result: fixed - `QA-2026-05-29-006` profileable seeded-launch ANR and benchmark harness flake fixed; Direct APK Ready remains NO due physical/owner performance threshold gate and other owner/manual gates
+- commands:
+  - `./gradlew.bat :app:compileProfileableKotlin :app:processProfileableManifest :app:installProfileable --console=plain`
+  - profileable seed launch, MainActivity launch, UIAutomator dump, strict TrainIQ crash/ANR/security logcat scan
+  - `./gradlew.bat :macrobenchmark:connectedProfileableAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.macrobenchmark.TrainIqStartupBenchmark#activeWorkoutLoggingFrames -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR --console=plain`
+  - `./gradlew.bat :app:compileProfileableKotlin :app:processProfileableManifest :macrobenchmark:compileProfileableJavaWithJavac :macrobenchmark:compileDebugJavaWithJavac :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --console=plain`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/logcat-actionable-matches-seeded-launch-after-task-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/connectedProfileableAndroidTest-active-workout-after-wait-fix-emulator-suppressed.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/macrobenchmark-active-workout-after-wait-fix-report.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/logcat-actionable-matches-after-active-workout-benchmark-wait-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/regression-after-active-workout-profileable-benchmark-fix.txt`
+- files_changed:
+  - `TrainIQ-Project/app/src/profileable/AndroidManifest.xml`
+  - `TrainIQ-Project/app/src/profileable/java/com/trainiq/benchmark/BenchmarkSeedActivity.kt`
+  - `TrainIQ-Project/macrobenchmark/src/main/java/com/trainiq/macrobenchmark/TrainIqStartupBenchmark.java`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-active-workout-benchmark-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/fixed-findings-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: physical-device/profileable performance evidence with owner-approved thresholds, or remaining owner/manual gates.
+## Latest Loop
+
+- target: profileable top-nav benchmark harness and diagnostic performance evidence
+- priority: P1/P2 performance-gate evidence quality
+- result: partial - benchmark harness fixed and diagnostic emulator Macrobenchmark passes; Direct APK Ready remains NO due physical/owner performance threshold gate and other owner/manual gates
+- commands:
+  - `./gradlew.bat :macrobenchmark:connectedProfileableAndroidTest --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.macrobenchmark.TrainIqStartupBenchmark#topLevelNavigationAndSettingsScrollFrames`
+  - same command with `-Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR`
+  - `./gradlew.bat :macrobenchmark:compileProfileableJavaWithJavac --console=plain`
+  - fixed `TrainIqStartupBenchmark` stale-node handling and Settings navigation verification
+  - reran targeted Macrobenchmark with `EMULATOR` suppression
+  - `./gradlew.bat :macrobenchmark:compileProfileableJavaWithJavac :macrobenchmark:compileDebugJavaWithJavac :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --console=plain`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/connectedProfileableAndroidTest-topnav.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/connectedProfileableAndroidTest-topnav-emulator-suppressed.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/connectedProfileableAndroidTest-topnav-after-harness-fix-emulator-suppressed.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/macrobenchmark-topnav-after-harness-fix-report.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/macrobenchmark-topnav-after-harness-fix-metrics.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/logcat-actionable-matches-after-harness-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/regression-after-profileable-benchmark-harness-fix.txt`
+- files_changed:
+  - `TrainIQ-Project/macrobenchmark/src/main/java/com/trainiq/macrobenchmark/TrainIqStartupBenchmark.java`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-profileable-topnav-benchmark-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: physical-device/profileable performance evidence with owner-approved thresholds, or remaining owner/manual gates.
+## Latest Loop
+
+- target: release top-nav performance smoke
+- priority: P1/P2 release feel and top-level navigation performance risk
+- result: partial - release install/launch/logcat passed; emulator `gfxinfo` reports high jank, so performance gate remains open
+- commands:
+  - `./gradlew.bat :app:installRelease --console=plain`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - top-level `adb shell input tap` traversal Start -> Training -> Voeding -> Coach -> Meer -> Start
+  - `adb shell dumpsys gfxinfo com.trainiq reset`
+  - `adb shell dumpsys gfxinfo com.trainiq framestats`
+  - `adb shell dumpsys gfxinfo com.trainiq`
+  - strict TrainIQ crash/ANR/security logcat scan
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/installRelease.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/rerun-launch-release.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/rerun-release-topnav-final.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/rerun-logcat-actionable-matches.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/rerun-gfxinfo-summary-after-topnav.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/rerun-gfxinfo-framestats-after-topnav.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-topnav-performance-smoke-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: profileable/physical-device performance evidence with owner-approved thresholds, or remaining owner/manual gates.
+## Latest Loop
+
+- target: deep runtime regression coverage
+- priority: P1/P2 runtime UX, persistence and scanner permission confidence
+- result: partial - targeted runtime checks passed; Direct APK Ready remains NO due remaining live/manual gates
+- commands:
+  - `adb uninstall com.trainiq`
+  - `adb uninstall com.trainiq.test`
+  - targeted `./gradlew.bat :app:connectedDebugAndroidTest --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.features.workout.ActiveWorkoutSetActionsInstrumentedTest,com.trainiq.features.workout.ExerciseHistoryInstrumentedTest,com.trainiq.features.nutrition.NutritionLongFormImeInstrumentedTest,com.trainiq.features.nutrition.CameraPermissionScannerInstrumentedTest`
+  - `./gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --console=plain`
+  - post-test logcat strict TrainIQ crash/ANR/security scan
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/connected-deep-runtime-targeted.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/connected-deep-runtime-targeted-report.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/connected-deep-runtime-targeted-testcases.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/logcat-actionable-matches.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/unit-lint-assembleDebug-after-deep-runtime.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-deep-runtime-regression-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: remaining owner/manual gates: TalkBack/Switch Access traversal, real-key privacy/security signoff, live AI/provider flows, real optical scanner decode/result return, true older-release upgrade/persistence, full manual visual deep-flow overlap certification, and live Health Connect background data-read proof with seeded provider data.
+## Latest Loop
+
+- target: Health Connect Settings relaunch after partial grant/revoke
+- priority: P1/P2 Health Connect runtime permission confidence
+- result: partial - executed release Settings state check passed; Direct APK Ready remains NO due remaining live/manual gates
+- commands:
+  - `./gradlew.bat :app:installRelease --console=plain`
+  - `adb shell pm grant com.trainiq android.permission.health.READ_ACTIVE_CALORIES_BURNED`
+  - release launch and Settings UI dump under partial grant
+  - `adb shell pm revoke com.trainiq android.permission.health.READ_ACTIVE_CALORIES_BURNED` while app was open
+  - release relaunch and Settings UI dump after revoke
+  - logcat strict TrainIQ crash/ANR/input-timeout scans
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/rerun-package-after-active-calories-grant.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/partial-settings-rerun2.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/partial-settings-rerun2-actionable-matches.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/package-after-revoke-while-open.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/settings-after-revoke-relaunch.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/settings-after-revoke-relaunch-actionable-matches.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-settings-relaunch-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: remaining owner/manual gates: TalkBack/Switch Access traversal, real-key privacy/security signoff, live AI/provider flows, real optical scanner decode/result return, true older-release upgrade/persistence, full manual visual deep-flow overlap certification, and live Health Connect background data-read proof with seeded provider data.
+## Latest Loop
+
+- target: tablet/foldable release layout smoke
+- priority: P2 large-screen UX/runtime risk reduction
+- result: partial - release tablet-style launch/traversal passed; Direct APK Ready remains NO due remaining live/manual gates
+- commands:
+  - `adb shell wm size 1600x2560`
+  - `adb shell wm density 320`
+  - `.\gradlew.bat :app:installRelease --console=plain`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - `adb shell uiautomator dump ...`
+  - `adb logcat -d -t 3500`
+  - `adb shell wm size reset`
+  - `adb shell wm density reset`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/launch-release-tablet.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/release-tablet-start-fresh.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/release-tablet-settings.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/tablet-layout-heuristic-scan.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/logcat-release-tablet-actionable-matches.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/wm-size-after-restore.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/logcat-after-display-restore-actionable-matches.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-tablet-foldable-layout-smoke-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: physical TalkBack/Switch traversal, full manual visual deep-flow overlap certification, real-key save/readback owner signoff, live AI/provider calls, real optical scanner decode/result return, true older-release upgrade/persistence, or live Health Connect background data-read proof with seeded provider data.
+
+## Current Loop
+
+- target: Health Connect partial grant and revoke-while-open release stability
+- priority: P0/P1
+- result: fixed
+- commands:
+  - `adb shell pm grant com.trainiq android.permission.health.READ_ACTIVE_CALORIES_BURNED`
+  - release launch with partial Health Connect grant
+  - `adb shell pm revoke com.trainiq android.permission.health.READ_ACTIVE_CALORIES_BURNED` while app was open
+  - release relaunch after revoke
+  - `.\gradlew.bat :app:compileDebugKotlin :app:compileReleaseKotlin --console=plain`
+  - `.\gradlew.bat :app:assembleRelease --console=plain`
+  - `.\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --console=plain`
+- finding:
+  - `QA-2026-05-29-005` (`P0`): pre-fix release launch with `READ_ACTIVE_CALORIES_BURNED` granted produced `ANR in com.trainiq (com.trainiq/.MainActivity)`.
+- fix:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/data/datasource/HealthConnectDataSource.kt`: moved Health Connect datasource entrypoints to `Dispatchers.IO` and limited paged record reads to page size 100.
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/logcat-revoke-while-open-actionable-matches.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/isolated-grant-strict-actionable-matches.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/relaunch-after-revoke-actionable-matches.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/unit-lint-assembleDebug-after-healthconnect-io-page-fix.txt`
+- files_changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/data/datasource/HealthConnectDataSource.kt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-revoke-while-open-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/fixed-findings-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: remaining owner/manual gates: TalkBack/Switch Access traversal, real-key privacy/security signoff, live AI/provider flows, real optical scanner decode/result return, true older-release upgrade/persistence, full manual visual deep-flow overlap certification, and live Health Connect background data-read proof with seeded provider data.
+
+## Previous Loop
+
+- target: release lifecycle runtime smoke and ANR fix
+- priority: P0
+- result: fixed
+- commands:
+  - `.\gradlew.bat :app:assembleRelease --console=plain`
+  - `.\gradlew.bat :app:installRelease --console=plain`
+  - release cold launch + 20s idle wait + UI dump + logcat actionable scan
+  - release rotation-only repro + landscape/portrait UI dumps + logcat actionable scan
+  - full release lifecycle smoke: cold launch, HOME/return, sleep/wake/return, landscape, portrait restore, UI dumps and logcat actionable scan
+  - `.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug --console=plain`
+- finding:
+  - `QA-2026-05-29-004` (`P0`): pre-fix release lifecycle smoke and rotation-only repro produced `ANR in com.trainiq (com.trainiq/.MainActivity)`.
+- fix:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/MainActivity.kt`: moved Health Connect background sync scheduling and telemetry flush lifecycle side effects to `Dispatchers.IO`.
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/logcat-release-lifecycle-actionable-matches.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/rotation-only-actionable-matches.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/cold-wait-after-fix-actionable-matches.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/rotation-only-after-fix-actionable-matches.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/full-lifecycle-after-fix-actionable-matches.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/unit-assembleDebug-after-main-thread-lifecycle-fix.txt`
+- files_changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/MainActivity.kt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-lifecycle-runtime-smoke-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/fixed-findings-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: owner/manual gates remain open: TalkBack/Switch Access traversal, real-key privacy/security signoff, live AI/provider flows, real optical scanner decode/result return, true older-release upgrade/persistence, full manual visual deep-flow overlap certification, and live Health Connect background data-read proof with seeded provider data.
+
+## Previous Loop
+
+- target: current automated regression refresh and connected-suite hardening
+- priority: P1 release-regression confidence
+- result: partial - automated baseline, targeted flow and full connected suite passed; Direct APK Ready remains NO due remaining live/manual gates
+- commands:
+  - `.\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --console=plain`
+  - `.\gradlew.bat :app:connectedDebugAndroidTest --console=plain`
+  - `.\gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest" --console=plain`
+  - `.\gradlew.bat :app:installDebug --console=plain`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - `adb shell uiautomator dump /sdcard/trainiq-debug-final-smoke.xml`
+  - `adb logcat -d -t 2500`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-regression-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-regression-refresh-loop/unit-lint-assembleDebug.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-regression-refresh-loop/TrainIqFlowSmokeInstrumentedTest-targeted-after-dispatcher-hardening.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-regression-refresh-loop/connectedDebugAndroidTest-full-after-hardening.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-regression-refresh-loop/logcat-debug-final-smoke-actionable-matches.txt`
+- files_changed:
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-regression-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: TalkBack/Switch traversal, full visual deep-flow overlap certification, real-key save/readback owner signoff, live AI/provider calls, real optical scanner decode/result return, true older-release upgrade/persistence, or live Health Connect background data-read proof with seeded provider data.
+
+## Earlier Loop
+
+- target: active-workout dense controls at font scale 1.5
+- priority: P2 accessibility/deep-runtime UX risk reduction
+- result: partial - targeted dense-control flow passed under large font; Direct APK Ready remains NO due remaining live/manual gates
+- commands:
+  - `adb shell settings get system font_scale`
+  - `adb shell settings put system font_scale 1.5`
+  - `.\gradlew.bat :app:connectedDebugAndroidTest --console=plain "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.features.workout.ActiveWorkoutSetActionsInstrumentedTest"`
+  - `adb shell settings put system font_scale 1.0`
+  - `adb logcat -d -t 2500`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/ActiveWorkoutSetActionsInstrumentedTest-font15.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/font-scale-during.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/font-scale-after-restore.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/logcat-crash-anr-security-matches.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-active-workout-font15-dense-controls-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: TalkBack/Switch traversal, full visual deep-flow overlap certification, real-key save/readback owner signoff, live AI/provider calls, real optical scanner decode/result return, true older-release upgrade/persistence, or live Health Connect background data-read proof with seeded provider data.
+
+## Earlier Loop
+
+- target: Health Connect all-metric foreground grant and background-read package state
+- priority: P1 Health Connect runtime permission matrix reduction
+- result: partial - all visible foreground metrics and package-level background read verified; Direct APK Ready remains NO due remaining live/manual gates
+- commands:
+  - `.\gradlew.bat :app:installRelease --console=plain`
+  - `adb shell am start -W -n com.trainiq/.core.health.HealthConnectPermissionsRationaleActivity`
+  - `adb shell input tap ...` for `Health Connect-toegang geven`, `Allow all`, and enabled `Allow`
+  - `adb shell dumpsys package com.trainiq`
+  - `adb shell pm grant com.trainiq android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - `adb shell pm revoke com.trainiq <health permission>`
+  - `adb logcat -d -t 3000`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/permissions-after-all-metric-grant.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/permissions-after-background-grant-attempt.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/hc-all-settings.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/permissions-after-revoke.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/logcat-crash-anr-security-matches.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-all-metric-background-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: live Health Connect background data-read proof with seeded provider data, TalkBack/Switch traversal, real-key save/readback owner signoff, live AI/provider calls, real optical scanner decode/result return, true older-release upgrade/persistence, or manual deep-runtime UX audits.
+
+## Previous Loop
+
+- target: Health Connect partial grant/revoke mutation and Settings partial-copy fix
+- priority: P2 Health Connect permission UX/runtime risk reduction
+- result: partial - one-metric partial grant/revoke passed, P2 partial-copy bug fixed; Direct APK Ready remains NO due remaining gates
+- commands:
+  - `.\gradlew.bat :app:installRelease --console=plain`
+  - `adb shell am start -W -n com.trainiq/.core.health.HealthConnectPermissionsRationaleActivity`
+  - `adb shell input tap ...` for `Health Connect-toegang geven`, `Active calories burned`, and enabled `Allow`
+  - `adb shell dumpsys package com.trainiq`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - `adb shell pm revoke com.trainiq <health permission>`
+  - `.\gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain`
+  - `.\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --console=plain`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/permissions-after-partial-grant.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/hc-partial-settings.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/permissions-after-revoke.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/SettingsUiStateTest-after-partial-copy-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/unit-lint-assemble-after-partial-copy-fix.txt`
+- finding_fixed:
+  - `QA-2026-05-29-003` P2 Settings Health Connect partial-permission copy
+- files_changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/settings/SettingsSection.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/features/settings/SettingsUiStateTest.kt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-partial-grant-revoke-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/fixed-findings-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: Health Connect background-read/all-metric mutation coverage, TalkBack/Switch traversal, real-key save/readback owner signoff, live AI/provider calls, real optical scanner decode/result return, true older-release upgrade/persistence, or manual deep-runtime UX audits.
+
+## Previous Loop
+
+- target: Health Connect rationale CTA to Android system permission prompt
+- priority: P1 Health Connect permission contract/runtime risk reduction
+- result: partial - app-side CTA opened Android Health Connect system prompt; Direct APK Ready remains NO due owner/manual/live gates
+- commands:
+  - `.\gradlew.bat :app:installRelease --console=plain`
+  - `adb shell am start -W -n com.trainiq/.core.health.HealthConnectPermissionsRationaleActivity`
+  - `adb shell uiautomator dump /sdcard/hc-rationale-initial.xml`
+  - `adb shell input swipe ...` until `Health Connect-toegang geven` was visible
+  - `adb shell input tap ...` on the CTA
+  - `adb shell uiautomator dump /sdcard/hc-system-prompt.xml`
+  - `adb shell input keyevent BACK`
+  - `adb shell dumpsys package com.trainiq`
+  - `adb logcat -d -t 2500`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/hc-rationale-bottom.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/hc-system-prompt.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/permissions-before.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/permissions-after-back.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/logcat-crash-anr-security-matches.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-healthconnect-system-prompt-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: full Health Connect partial-grant/revoke/background-read matrix, TalkBack/Switch traversal, real-key save/readback owner signoff, live AI/provider calls, real optical scanner decode/result return, true older-release upgrade/persistence, or manual deep-runtime UX audits.
+
+## Previous Loop
+
+- target: release permission-state audit after fresh install
+- priority: P1 privacy/permission release-risk reduction
+- result: partial - release permission-state audit passed; Direct APK Ready remains NO due owner/manual gates
+- commands:
+  - `adb uninstall com.trainiq`
+  - `.\gradlew.bat :app:installRelease --console=plain`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - `adb shell uiautomator dump /sdcard/trainiq-release-permission-state.xml`
+  - `adb shell dumpsys package com.trainiq`
+  - `adb shell appops get com.trainiq`
+  - `adb logcat -d -t 2500`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/launch-release.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/permission-lines-extract.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/appops-release.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/logcat-crash-anr-security-matches.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-permission-state-audit-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: TalkBack/Switch traversal, Health Connect mutation matrix, real-key save/readback owner signoff, live AI/provider calls, real optical scanner decode/result return, true older-release upgrade/persistence, or manual deep-runtime UX audits.
+
+## Previous Loop
+
+- target: backup/data-extraction privacy audit
+- priority: P1 privacy/security release-risk reduction
+- result: partial - backup/data-extraction audit passed; Direct APK Ready remains NO due owner/manual gates
+- commands:
+  - reviewed `app/src/main/res/xml/backup_rules.xml`
+  - reviewed `app/src/main/res/xml/data_extraction_rules.xml`
+  - inspected merged release manifest backup lines from the current release APK `aapt2` dump
+  - parsed expected backup/data-extraction exclusions
+  - source-mapped DataStore, encrypted AI key SharedPreferences, performance session store and legacy JSON state
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-backup-data-extraction-audit-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-backup-data-extraction-audit-loop/backup_rules.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-backup-data-extraction-audit-loop/data_extraction_rules.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-backup-data-extraction-audit-loop/merged-manifest-backup-lines.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-backup-data-extraction-audit-loop/backup-rule-exclusion-check.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-backup-data-extraction-audit-loop/source-store-mapping.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-backup-data-extraction-audit-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: real-key save/readback owner signoff, TalkBack/Switch traversal, Health Connect mutation matrix, live AI/provider calls, real optical scanner decode/result return, true older-release upgrade/persistence, or manual deep-runtime UX audits.
+
+## Previous Loop
+
+- target: release APK manifest/permission artifact audit
+- priority: P1 release/privacy/security risk reduction
+- result: partial - release manifest/permission audit passed; Direct APK Ready remains NO due owner/manual gates
+- commands:
+  - `aapt2 dump badging app/build/outputs/apk/release/app-release.apk`
+  - `aapt2 dump permissions app/build/outputs/apk/release/app-release.apk`
+  - `aapt2 dump xmltree --file AndroidManifest.xml app/build/outputs/apk/release/app-release.apk`
+  - `Get-FileHash app/build/outputs/apk/release/app-release.apk -Algorithm SHA256`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-apk-manifest-permission-audit-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-apk-manifest-permission-audit-loop/aapt2-dump-badging.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-apk-manifest-permission-audit-loop/aapt2-dump-permissions.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-apk-manifest-permission-audit-loop/aapt2-dump-xmltree-manifest.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-apk-manifest-permission-audit-loop/permission-diff.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-apk-manifest-permission-audit-loop/permission-component-classification.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-apk-manifest-permission-audit-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: real-key save/readback owner signoff, TalkBack/Switch traversal, Health Connect mutation matrix, live AI/provider calls, real optical scanner decode/result return, true older-release upgrade/persistence, or manual deep-runtime UX audits.
+
+## Previous Loop
+
+- target: QA packet consistency refresh
+- priority: P2 documentation/evidence integrity
+- result: partial - QA packet integrity passed after correcting Evidence Index declared current-index count; Direct APK Ready remains NO due owner/manual gates
+- commands:
+  - Python JSON parse/reference check for `qa-status-2026-05-27.json`
+  - Python local evidence linkcheck across status summary, full ledger, evidence index and `.codex/qa-loop-state.md`
+  - Python `NOT RUN` count consistency check against open-gaps snapshot
+  - Python Evidence Index declared-count sanity check
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/local-evidence-linkcheck-after-index-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/not-run-count-consistency-after-index-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/evidence-index-count-sanity-after-index-fix.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-qa-packet-consistency-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: real-key save/readback owner signoff, TalkBack/Switch traversal, Health Connect mutation matrix, live AI/provider calls, real optical scanner decode/result return, true older-release upgrade/persistence, or manual deep-runtime UX audits.
+
+## Previous Loop
+
+- target: privacy artifact/secret scan
+- priority: P1 privacy/security release-risk reduction
+- result: partial - no real secret material found in scanned source/docs/evidence/log paths; real-key save/readback signoff remains owner-gated
+- commands:
+  - `rg --pcre2` high-risk secret patterns across app source/tests, QA docs/evidence, and text release output paths
+  - `rg --pcre2` release evidence scan for API key/bearer strings
+  - `rg --pcre2` context scan for `apiKey`, `token`, `secret`, `password`, `Bearer`, and `Authorization`
+  - `Get-ChildItem app/build/outputs -Recurse -Include *.apk,*.aab`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-privacy-artifact-secret-scan-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-privacy-artifact-secret-scan-loop/secret-pattern-scan-raw.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-privacy-artifact-secret-scan-loop/release-evidence-sensitive-term-scan.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-privacy-artifact-secret-scan-loop/sensitive-term-classification.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-privacy-artifact-secret-scan-loop/sensitive-term-context-scan.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-privacy-artifact-secret-scan-loop/release-output-artifacts.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-privacy-artifact-secret-scan-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: real-key save/readback owner signoff, TalkBack/Switch traversal, Health Connect mutation matrix, live AI/provider calls, real optical scanner decode/result return, true older-release upgrade/persistence, or manual deep-runtime UX audits.
+
+## Previous Loop
+
+- target: release-over-release same-lineage install smoke
+- priority: P0/P1 release APK install/update risk reduction
+- result: partial - current same-lineage release over-install passed; true older-version upgrade/persistence gate remains open
+- commands:
+  - `./gradlew :app:checkReleaseSigningReadiness`
+  - `./gradlew :app:assembleRelease`
+  - `adb uninstall com.trainiq`
+  - `./gradlew :app:installRelease`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - `adb shell uiautomator dump /sdcard/trainiq-release-baseline.xml`
+  - `./gradlew :app:installRelease` over the existing release-signed install
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - `adb shell uiautomator dump /sdcard/trainiq-release-after-overinstall.xml`
+  - `adb logcat -d -t 2000`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/checkReleaseSigningReadiness.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/assembleRelease.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/installRelease-baseline.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/installRelease-over-release.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/launch-release-after-overinstall.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/trainiq-release-after-overinstall.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/logcat-release-after-overinstall-crash-anr-matches.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-over-release-same-lineage-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: true older-release upgrade/persistence if a compatible older signed APK is available, TalkBack/Switch traversal, Health Connect mutation matrix, real-key signoff, live AI/provider calls, real optical scanner decode/result return, or manual deep-runtime UX audits.
+
+## Previous Loop
+
+- target: current-worktree dark-mode top-level runtime audit
+- priority: P2 UX/accessibility release-risk reduction
+- result: partial - no new reproducible app bug found; Direct APK Ready remains NO due owner/manual gates
+- commands:
+  - `./gradlew :app:installDebug`
+  - `adb shell cmd uimode night yes`
+  - `adb shell pm clear com.trainiq`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - `adb shell uiautomator dump` for Start, Training, Voeding, Coach, Settings, Progress, and Start return
+  - Python XML parser for 48dp touch targets, NAF nodes, effective unlabeled interactive controls, and text-bounds suspects
+  - `adb logcat -d -t 2000`
+  - restored previous `cmd uimode night no`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/dark-mode-audit-summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/touch-target-under-48dp.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/naf-matches.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/unlabeled-interactive-effective.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/text-bounds-suspects.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/logcat-crash-anr-matches.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-dark-mode-top-level-audit-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: TalkBack/Switch traversal, Health Connect mutation matrix, real-key signoff, live AI/provider calls, real optical scanner decode/result return, or manual deep-runtime UX audits.
+
+## Previous Loop
+
+- target: top-level recreation/back-stack runtime behavior
+- priority: P1/P2 navigation/lifecycle release-risk reduction
+- result: partial - added runtime coverage and found no app bug; Direct APK Ready remains NO due owner/manual gates
+- commands:
+  - `./gradlew :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest"` first run failed because the new test expected Back from Voortgang to return to Meer
+  - source review confirmed Voortgang is opened with `navigateTopLevel()`, so Back should return to Start
+  - corrected targeted `TrainIqFlowSmokeInstrumentedTest` passed 2/2
+  - `./gradlew :app:testDebugUnitTest`
+  - `./gradlew :app:lintDebug`
+  - `./gradlew :app:assembleDebug`
+  - `./gradlew :app:connectedDebugAndroidTest`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-top-level-recreation-backstack-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-top-level-recreation-backstack-loop/TrainIqFlowSmokeInstrumentedTest.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-top-level-recreation-backstack-loop/TrainIqFlowSmokeInstrumentedTest-after-contract-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-top-level-recreation-backstack-loop/testDebugUnitTest.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-top-level-recreation-backstack-loop/lintDebug.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-top-level-recreation-backstack-loop/assembleDebug.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-top-level-recreation-backstack-loop/connectedDebugAndroidTest-full.txt`
+- files_changed:
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-top-level-recreation-backstack-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: TalkBack/Switch traversal, Health Connect mutation matrix, real-key signoff, live AI/provider calls, real optical scanner decode/result return, or manual deep-runtime UX audits.
+
+## Previous Loop
+
+- target: current-worktree font-scale 1.5 accessibility/top-level UIAutomator audit
+- priority: P2 accessibility/design release-risk reduction
+- result: partial - no new reproducible app bug found; two under-48dp/NAF candidates were reviewed as partially visible scroll-continuation nodes, while owner/manual assistive-tech traversal remains open
+- commands:
+  - `./gradlew :app:installDebug`
+  - `adb shell settings put system font_scale 1.5`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - `adb shell uiautomator dump` for Start, Training, Voeding, Progress, Coach, Settings, and Start return
+  - UIAutomator XML parser for 48dp touch targets, NAF/unlabeled interactive nodes, and text-bounds suspects
+  - `adb logcat -d -t 2000`
+  - restored previous `font_scale`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/false-positive-review.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/font15-a11y-audit-summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/touch-target-under-48dp.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/naf-matches.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/text-bounds-suspects.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-font15-a11y-audit-loop/false-positive-review.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: TalkBack/Switch traversal, Health Connect mutation matrix, real-key signoff, live AI/provider calls, real optical scanner decode/result return, or manual deep-runtime UX audits.
+
+## Previous Loop
+
+- target: AI meal and smart-scale scanner preview runtime surfaces
+- priority: P2 provider/scanner runtime gate hardening
+- result: partial - AI meal and smart-scale preview UI surfaces covered; real AI analysis, valid smart-scale result processing, and real optical decode remain open
+- commands:
+  - `./gradlew :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.features.nutrition.AiCameraScannerModesInstrumentedTest'`
+  - `./gradlew :app:testDebugUnitTest`
+  - `./gradlew :app:lintDebug`
+  - `./gradlew :app:assembleDebug`
+  - `./gradlew :app:connectedDebugAndroidTest`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-ai-camera-scanner-modes-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-ai-camera-scanner-modes-loop/AiCameraScannerModesInstrumentedTest-after-permission-override.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-ai-camera-scanner-modes-loop/testDebugUnitTest.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-ai-camera-scanner-modes-loop/lintDebug.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-ai-camera-scanner-modes-loop/assembleDebug.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-ai-camera-scanner-modes-loop/connectedDebugAndroidTest-full.txt`
+- files_changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/nutrition/CameraScannerScreen.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/features/nutrition/AiCameraScannerModesInstrumentedTest.kt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-ai-camera-scanner-modes-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: real optical scanner decode/result return, live AI/provider calls, owner-gated Health Connect mutation matrix, TalkBack/Switch traversal, real-key signoff, or another safe non-owner-gated deep runtime gap.
+
+## Previous Loop
+
+- target: current-worktree release APK readiness refresh
+- priority: P0/P1 direct APK release gate
+- result: partial - release signing/build/install/launch/logcat gates passed; Direct APK Ready remains NO due owner/manual gates
+- commands:
+  - `./gradlew :app:checkReleaseSigningReadiness`
+  - `./gradlew :app:assembleRelease`
+  - `./gradlew :app:installRelease`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - `adb shell uiautomator dump /sdcard/trainiq-current-release-smoke.xml`
+  - `adb pull /sdcard/trainiq-current-release-smoke.xml docs/qa/evidence/2026-05-29-current-release-readiness-refresh/trainiq-current-release-smoke.xml`
+  - `adb logcat -d -t 2000`
+  - release crash/ANR/input-timeout `Select-String` scan
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-readiness-refresh/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-readiness-refresh/checkReleaseSigningReadiness.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-readiness-refresh/assembleRelease.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-readiness-refresh/installRelease.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-readiness-refresh/launch-release.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-readiness-refresh/trainiq-current-release-smoke.xml`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-readiness-refresh/logcat-release.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-readiness-refresh/logcat-release-crash-anr-matches.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-release-readiness-refresh/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: owner-gated Health Connect mutation matrix, TalkBack/Switch traversal, real-key signoff, live AI/provider calls, real optical scanner decode/result return, or another safe non-owner-gated deep runtime gap.
+
+## Previous Loop
+
+- target: generated routine preview runtime actions
+- priority: P2 provider-gated flow hardening
+- result: partial - preview Save/Retry/Cancel runtime surface covered; live AI provider generation and end-to-end real-provider save remain open
+- commands:
+  - `./gradlew :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.features.workout.GeneratedRoutinePreviewInstrumentedTest'`
+  - `./gradlew :app:testDebugUnitTest`
+  - `./gradlew :app:lintDebug`
+  - `./gradlew :app:assembleDebug`
+  - `./gradlew :app:connectedDebugAndroidTest`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-generated-routine-preview-runtime-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-generated-routine-preview-runtime-loop/GeneratedRoutinePreviewInstrumentedTest.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-generated-routine-preview-runtime-loop/testDebugUnitTest.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-generated-routine-preview-runtime-loop/lintDebug.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-generated-routine-preview-runtime-loop/assembleDebug.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-generated-routine-preview-runtime-loop/connectedDebugAndroidTest-full.txt`
+- files_changed:
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/features/workout/GeneratedRoutinePreviewInstrumentedTest.kt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-generated-routine-preview-runtime-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: live AI/provider owner gates, real camera/barcode decode, Health Connect mutation matrix, TalkBack/Switch traversal, or another safe non-owner-gated runtime gap.
+
+## Previous Loop
+
+- target: Health Connect rationale CTA reachability/clickability
+- priority: P2 / open Health Connect runtime gate hardening
+- result: partial - app-side rationale CTA click path covered; full Health Connect mutation matrix remains open
+- commands:
+  - `./gradlew :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.core.health.HealthConnectPermissionsRationaleInstrumentedTest'`
+  - `./gradlew :app:testDebugUnitTest`
+  - `./gradlew :app:lintDebug`
+  - `./gradlew :app:assembleDebug`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-health-connect-rationale-cta-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-health-connect-rationale-cta-loop/connected-health-rationale-targeted.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-health-connect-rationale-cta-loop/test-debug-unit.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-health-connect-rationale-cta-loop/lint-debug.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-health-connect-rationale-cta-loop/assemble-debug.txt`
+- files_changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/core/health/HealthConnectPermissionsRationaleActivity.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/core/health/HealthConnectPermissionsRationaleInstrumentedTest.kt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-health-connect-rationale-cta-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: actual Health Connect partial grant/revoke/background-read runtime matrix with owner-approved device mutation, or another non-owner-gated runtime coverage gap.
+
+## Previous Loop
+
+- target: AI provider router transient failover
+- priority: P1 provider/runtime-gated release evidence
+- result: fixed - one reproducible AI provider failover bug found and verified; Direct APK Ready remains NO due real provider/key and owner/manual gates
+- commands:
+  - `.\gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.ai.services.AiProviderRouterTest" --console=plain` reproduced OpenAI-first rate-limit blocking Gemini fallback
+  - `.\gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.ai.services.AiProviderRouterTest" --console=plain` passed after provider-scoped throttle fix and expectation correction
+  - `.\gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.ai.services.*" --console=plain`
+  - `.\gradlew.bat :app:compileDebugKotlin --console=plain`
+  - `.\gradlew.bat :app:testDebugUnitTest --console=plain`
+  - `.\gradlew.bat :app:lintDebug --console=plain`
+  - `.\gradlew.bat :app:assembleDebug --console=plain`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-ai-provider-router-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-ai-provider-router-loop/AiProviderRouterTest.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-ai-provider-router-loop/AiProviderRouterTest-after-expectation-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-ai-provider-router-loop/ai-services-tests-after-router-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-ai-provider-router-loop/testDebugUnitTest-after-router-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-ai-provider-router-loop/lintDebug-after-router-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-ai-provider-router-loop/assembleDebug-after-router-fix.txt`
+- files_changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/ai/services/AiProviders.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/ai/services/AiProviderRouterTest.kt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-ai-provider-router-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/fixed-findings-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: real provider/key owner gates, real optical scanner decode, Health Connect mutation matrix, or assistive-tech traversal.
+
+## Previous Loop
+
+- target: barcode offline/runtime lookup resilience
+- priority: P2 runtime/provider-gated release evidence
+- result: partial - barcode offline/malformed-response behavior now covered; Direct APK Ready remains NO due open AI/provider/owner/manual gates
+- commands:
+  - `.\gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.remote.BarcodeProductLookupServiceTest" --console=plain` first compile attempt caught fake-connection test issue
+  - `.\gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.data.remote.BarcodeProductLookupServiceTest" --console=plain` passed after fake connection fix
+  - `.\gradlew.bat :app:testDebugUnitTest --console=plain`
+  - `.\gradlew.bat :app:lintDebug --console=plain`
+  - `.\gradlew.bat :app:assembleDebug --console=plain`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-barcode-offline-runtime-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-barcode-offline-runtime-loop/BarcodeProductLookupServiceTest-after-fake-connection-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-barcode-offline-runtime-loop/testDebugUnitTest-after-barcode-offline.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-barcode-offline-runtime-loop/lintDebug-after-barcode-offline.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-barcode-offline-runtime-loop/assembleDebug-after-barcode-offline.txt`
+- files_changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/data/remote/BarcodeProductLookupService.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/data/remote/BarcodeProductLookupServiceTest.kt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-barcode-offline-runtime-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: real camera/barcode decode, AI provider/offline gates, or owner/manual gates.
+
+## Previous Loop
+
+- target: scanner savedStateHandle runtime return and clear-after-consumption
+- priority: P1 navigation/data-flow release gate
+- result: fixed - one reproducible scanner navigation clear bug found and verified; Direct APK Ready remains NO due open owner/manual gates
+- commands:
+  - `.\gradlew.bat :app:compileDebugAndroidTestKotlin --console=plain`
+  - targeted `.\gradlew.bat :app:connectedDebugAndroidTest --console=plain "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.navigation.ScannerSavedStateHandleInstrumentedTest"` reproduced the clear-after-consumption failure after install blocker cleanup
+  - `.\gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.navigation.ScannerModeRouteTest" --console=plain`
+  - `.\gradlew.bat :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin --console=plain`
+  - targeted `ScannerSavedStateHandleInstrumentedTest` passed after the clear-helper fix
+  - `.\gradlew.bat :app:testDebugUnitTest --console=plain`
+  - isolated `ActiveWorkoutSetActionsInstrumentedTest` passed after a full-suite order failure
+  - clean full `.\gradlew.bat :app:connectedDebugAndroidTest --console=plain` passed 51/51 after uninstalling `com.trainiq` and `com.trainiq.test`
+  - `.\gradlew.bat :app:lintDebug --console=plain`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/ScannerSavedStateHandleInstrumentedTest-rerun-after-uninstall.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/ScannerSavedStateHandleInstrumentedTest-final.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/ScannerSavedStateHandleInstrumentedTest-after-clear-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/ScannerModeRouteTest-after-clear-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/testDebugUnitTest-after-clear-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/connectedDebugAndroidTest-full-rerun-after-uninstall.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/lintDebug-after-clear-fix.txt`
+- files_changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/navigation/TrainIqNav.kt`
+  - `TrainIQ-Project/app/src/test/java/com/trainiq/navigation/ScannerModeRouteTest.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/navigation/ScannerSavedStateHandleInstrumentedTest.kt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-scanner-savedstate-runtime-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: owner/manual gates or real camera/barcode decode result return with a controllable barcode target.
+
+## Previous Loop
+
+- target: direct APK readiness refresh
+- priority: P0/P1 release gate
+- result: partial - no new app bugs found; Direct APK Ready remains NO due open owner/manual gates
+- commands:
+  - `.\gradlew.bat :app:assembleDebug --console=plain`
+  - `.\gradlew.bat :app:testDebugUnitTest --console=plain`
+  - `.\gradlew.bat :app:lintDebug --console=plain`
+  - `.\gradlew.bat :app:checkReleaseSigningReadiness --console=plain`
+  - `.\gradlew.bat :app:assembleRelease --console=plain`
+  - `.\gradlew.bat :app:connectedDebugAndroidTest --console=plain` first attempt failed before tests with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` due existing release-signed install
+  - `adb uninstall com.trainiq`; `adb uninstall com.trainiq.test`; `.\gradlew.bat :app:connectedDebugAndroidTest --console=plain` passed 50/50
+  - `.\gradlew.bat :app:installRelease --console=plain`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - release logcat crash/ANR `Select-String` gate
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/assembleDebug.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/testDebugUnitTest.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/lintDebug.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/checkReleaseSigningReadiness.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/assembleRelease.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/connectedDebugAndroidTest-rerun-after-uninstall.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/installRelease.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/launch-release-smoke.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/logcat-release-crash-matches.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-direct-apk-readiness-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: owner/manual gates or release-over-release upgrade with a prior APK signed by the same release key.
+
+## Previous Loop
+
+- target: direct APK bug-free readiness refresh
+- priority: P0/P1 release gate
+- result: partial - no new app bugs found; Direct APK Ready remains NO due open owner/manual gates
+- commands:
+  - `.\gradlew.bat :app:assembleDebug --console=plain`
+  - `.\gradlew.bat :app:testDebugUnitTest --console=plain`
+  - `.\gradlew.bat :app:lintDebug --console=plain`
+  - `.\gradlew.bat :app:connectedDebugAndroidTest --console=plain`
+  - `.\gradlew.bat :app:checkReleaseSigningReadiness --console=plain`
+  - `.\gradlew.bat :app:assembleRelease --console=plain`
+  - `.\gradlew.bat :app:installRelease --console=plain`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - release logcat crash/ANR `Select-String` gate
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/assembleDebug.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/testDebugUnitTest.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/lintDebug.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/connectedDebugAndroidTest.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/checkReleaseSigningReadiness.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/assembleRelease.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/installRelease.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/launch-release-smoke.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/logcat-release-crash-matches.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/upgrade-controlled-installRelease-over-debug.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-28-direct-apk-readiness-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: owner/manual gates or release-over-release upgrade with a prior APK signed by the same release key.
+
+## Previous Loop
+- target: connected baseline refresh and active-workout active-key crash fix
+- priority: P1
+- result: fixed
+- commands:
+  - `.\gradlew.bat :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin --console=plain`
+  - `.\gradlew.bat :app:connectedDebugAndroidTest --console=plain "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.features.workout.ActiveWorkoutSetActionsInstrumentedTest,com.trainiq.features.workout.ActiveWorkoutRestoreInstrumentedTest,com.trainiq.features.workout.ExerciseHistoryInstrumentedTest,com.trainiq.flow.TrainIqFlowSmokeInstrumentedTest"`
+  - `.\gradlew.bat :app:connectedDebugAndroidTest --console=plain`
+  - `.\gradlew.bat :app:installDebug --console=plain`; `adb shell pm clear com.trainiq`; `adb shell am start -W -n com.trainiq/.MainActivity`; `adb logcat -d -t 1000`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/compile-after-active-key-schema-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/failing-classes-rerun-after-active-key-schema-fix-quoted.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/unit-and-lint-after-room-v14-marker-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/connectedDebugAndroidTest-final-after-room-v14-marker-fix.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/launch-final-smoke.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-connected-baseline-refresh-loop/logcat-final-room-v14-crash-matches.txt`
+- files_changed:
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/core/database/Entities.kt`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/core/database/TrainIqDatabase.kt`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/core/database/TrainIqMigrations.kt`
+  - `TrainIQ-Project/app/schemas/com.trainiq.core.database.TrainIqDatabase/14.json`
+  - `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/WorkoutScreen.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/testing/TrainIqAndroidTestDatabase.kt`
+  - `TrainIQ-Project/app/src/debug/java/com/trainiq/core/testing/TrainIqDebugDatabaseEntryPoint.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/features/workout/ActiveWorkoutSetActionsInstrumentedTest.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/features/workout/ActiveWorkoutRestoreInstrumentedTest.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/features/workout/ExerciseHistoryInstrumentedTest.kt`
+  - `TrainIQ-Project/app/src/androidTest/java/com/trainiq/flow/TrainIqFlowSmokeInstrumentedTest.kt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/fixed-findings-index-2026-05-27.md`
+- webresearch_used: no
+- next: owner-approved Health Connect partial/revoke/background-read runtime matrix, TalkBack/Switch Access traversal, or another safe non-mutating runtime smoke if owner gates remain unavailable.
+
+## Previous Loop
+
+- target: safe Gradle baseline refresh
+- priority: P1
+- result: no-op
+- commands:
+  - `.\gradlew.bat :app:assembleDebug --console=plain`
+  - `.\gradlew.bat :app:testDebugUnitTest --console=plain`
+  - `.\gradlew.bat :app:lintDebug --console=plain`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-baseline-refresh-loop/summary.txt`: assembleDebug, testDebugUnitTest and lintDebug passed.
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-baseline-refresh-loop/assembleDebug.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-baseline-refresh-loop/testDebugUnitTest.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-baseline-refresh-loop/lintDebug.txt`
+- files_changed:
+  - `.codex/qa-loop-state.md`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-dod-open-gaps-audit/not-run-snapshot.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-qa-metadata-refresh-loop/not-run-count-consistency.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-qa-metadata-refresh-loop/qa-status-consistency-validation.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-qa-packet-link-refresh-loop/local-linkcheck.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-contract-rescan-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-contract-rescan-refresh-loop/ai-coach-routine-contract-tests.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-contract-rescan-refresh-loop/scanner-barcode-nutrition-contract-tests.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-contract-rescan-refresh-loop/healthconnect-policy-contract-tests.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-contract-rescan-refresh-loop/accessibility-contract-tests.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-baseline-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-baseline-refresh-loop/assembleDebug.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-baseline-refresh-loop/testDebugUnitTest.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-27-baseline-refresh-loop/lintDebug.txt`
+  - `TrainIQ-Project/docs/qa/qa-status-2026-05-27.json`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+- webresearch_used: no
+- next: owner-approved Health Connect partial/revoke/background-read runtime matrix, TalkBack/Switch Access traversal, or another safe non-mutating runtime smoke if owner gates remain unavailable.
+
+
+
+
+
+## Previous Loop
+
+- target: current direct APK artifact refresh
+- priority: P0 release APK artifact gate
+- result: pass for build/install/launch artifact smoke; Direct APK Ready remains NO due owner/manual/live gates
+- commands:
+  - `.\gradlew.bat :app:checkReleaseSigningReadiness :app:assembleRelease --console=plain`
+  - release APK SHA-256, badging and APK signer metadata capture
+  - `adb install -r app-release.apk`
+  - `adb shell pm clear com.trainiq`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - UIAutomator dump/screenshot and strict TrainIQ logcat scan
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/release-apk-sha256.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/direct-apk-refresh-checks.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/logcat-actionable-matches.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-direct-apk-artifact-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: owner/manual/live gates or owner-approved defer decisions.
+
+## Previous Loop
+
+- target: post-accessibility readiness audit
+- priority: P1 release decision/documentation integrity
+- result: partial - audit consistency passed; Direct APK Ready remains NO due owner/manual/live gates
+- commands:
+  - parse current `qa-status-2026-05-27.json`
+  - recount and verify evidence-index paths
+  - verify latest accessibility service-state/static UI evidence is linked
+  - generate `post-accessibility-readiness-audit.json`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-post-accessibility-readiness-audit-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-post-accessibility-readiness-audit-loop/post-accessibility-readiness-audit.json`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-post-accessibility-readiness-audit-loop/audit-checks.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-post-accessibility-readiness-audit-loop/missing-evidence.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-post-accessibility-readiness-audit-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: execute owner/manual/live gates or capture owner-approved defer decisions; current automated/evidence packet remains consistent.
+
+## Previous Loop
+
+- target: release accessibility service-state/static UI audit
+- priority: P2 accessibility/manual UX gate evidence
+- result: pass for safe static/service-state slice; Direct APK Ready remains NO
+- commands:
+  - `adb shell settings get secure accessibility_enabled`
+  - `adb shell settings get secure enabled_accessibility_services`
+  - `adb shell settings get secure touch_exploration_enabled`
+  - `adb shell dumpsys accessibility`
+  - `.\gradlew.bat :app:installRelease --console=plain`
+  - release top-level UIAutomator dumps/screenshots
+  - XML heuristic scans for destination content, under-48px nodes, NAF nodes and descendant-aware labels
+  - strict TrainIQ logcat scan
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/accessibility-state-static-summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/effective-label-summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/logcat-actionable-matches.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-accessibility-service-state-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: real TalkBack/Switch Access traversal on an enabled device, or owner-approved defer.
+
+## Previous Loop
+
+- target: post-performance readiness audit
+- priority: P1 release decision/documentation integrity
+- result: partial - audit consistency passed; Direct APK Ready remains NO due owner/manual/live gates
+- commands:
+  - parse current `qa-status-2026-05-27.json`
+  - recount and verify evidence-index paths
+  - verify latest profileable performance, synthetic upgrade and privacy evidence is linked
+  - generate `post-performance-readiness-audit.json`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-post-performance-readiness-audit-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-post-performance-readiness-audit-loop/post-performance-readiness-audit.json`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-post-performance-readiness-audit-loop/audit-checks.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-post-performance-readiness-audit-loop/missing-evidence.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-post-performance-readiness-audit-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: execute owner/manual/live gates or capture owner-approved defer decisions; current automated/evidence packet remains consistent.
+
+## Previous Loop
+
+- target: current profileable performance refresh
+- priority: P1 performance gate evidence
+- result: partial - targeted emulator cold-start benchmark passed; full suite timed out; physical performance signoff remains open
+- commands:
+  - `adb shell getprop ro.kernel.qemu`
+  - `.\gradlew.bat :macrobenchmark:connectedProfileableAndroidTest --console=plain "-Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR"`
+  - post-timeout strict TrainIQ logcat scan
+  - `.\gradlew.bat :macrobenchmark:connectedProfileableAndroidTest --console=plain "-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.macrobenchmark.TrainIqStartupBenchmark#coldStartupWithRequiredBaselineProfile" "-Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR"`
+  - post-targeted strict TrainIQ logcat scan
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/connectedProfileableAndroidTest-emulator-suppressed.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/connectedProfileableAndroidTest-coldStartup-emulator-suppressed.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/additional-com.trainiq.macrobenchmark-benchmarkData.json`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/logcat-coldStartup-actionable-matches.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-profileable-performance-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: physical-device profileable benchmark and owner threshold signoff, or owner-approved defer for performance gate.
+
+## Previous Loop
+
+- target: synthetic lower-version over-install persistence smoke
+- priority: P1 upgrade/persistence gate evidence
+- result: partial - synthetic lower-to-current over-install and simple Settings persistence passed; true archived older-version gate remains open
+- commands:
+  - isolated project copy with `versionCode=1`, `versionName=1.0.0-synthetic-upgrade-seed`
+  - `.\gradlew.bat :app:checkReleaseSigningReadiness :app:assembleRelease --console=plain` in isolated copy
+  - `adb install` synthetic lower APK
+  - UI seed Settings theme `Licht`
+  - `adb install -r` current release APK without data clear
+  - UIAutomator dumps/screenshots and strict TrainIQ logcat scan
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/overinstall-persistence-checks.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/adb-install-current-over-synthetic-lower.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/logcat-actionable-matches-current-after-overinstall.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-synthetic-lower-version-overinstall-persistence-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: archived historical lower-version APK with representative seeded data, or owner-approved defer for the true older-version upgrade/persistence gate.
+
+## Previous Loop
+
+- target: privacy/key-storage contract refresh
+- priority: P1 privacy/security gate evidence
+- result: pass for safe contract/static slice; Direct APK Ready remains NO
+- commands:
+  - `.\gradlew.bat :app:testDebugUnitTest --tests "com.trainiq.core.security.GeminiKeyMigrationTest" --tests "com.trainiq.domain.usecase.ClearAppDataUseCaseTest" --tests "com.trainiq.features.settings.SettingsUiStateTest" --console=plain`
+  - high-risk source/docs/evidence text secret-pattern scan
+  - false-positive classification for every scan hit
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-privacy-key-storage-contract-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-privacy-key-storage-contract-refresh-loop/privacy-key-storage-targeted-tests.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-privacy-key-storage-contract-refresh-loop/privacy-scan-summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-privacy-key-storage-contract-refresh-loop/secret-pattern-classification-summary.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-privacy-key-storage-contract-refresh-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: owner real-key save/readback/delete/signoff or another live/manual gate; safe contract evidence cannot close real-key gate.
+
+## Previous Loop
+
+- target: current readiness completion audit
+- priority: P1 release decision/documentation integrity
+- result: partial - audit consistency passed; Direct APK Ready remains NO due owner/manual/live gates
+- commands:
+  - parse `qa-status-2026-05-27.json`
+  - recount and verify evidence-index paths
+  - verify latest automated/runtime and recent dark/font/accessibility-candidate evidence is ledger-linked
+  - generate `readiness-completion-audit.json`
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-readiness-completion-audit-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-readiness-completion-audit-loop/readiness-completion-audit.json`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-readiness-completion-audit-loop/audit-checks.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-readiness-completion-audit-loop/missing-evidence.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-readiness-completion-audit-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-readiness-completion-audit-loop/readiness-completion-audit.json`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-readiness-completion-audit-loop/audit-checks.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-current-readiness-completion-audit-loop/missing-evidence.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: execute owner/manual/live gates or capture owner-approved defer decisions; automated evidence remains consistent but cannot close those gates alone.
+
+## Previous Loop
+
+- target: release Settings font-scale 1.5 accessibility heuristic candidate review
+- priority: P2 manual deep-runtime UX/accessibility evidence
+- result: pass for candidate classification; Direct APK Ready remains NO
+- commands:
+  - `.\gradlew.bat :app:installRelease --console=plain`
+  - `adb shell settings put system font_scale 1.5`
+  - `adb shell cmd uimode night yes`
+  - `adb shell pm clear com.trainiq`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - Settings/Meer tap, UIAutomator dump/screenshot at edge state
+  - Settings scroll, UIAutomator dump/screenshot with Weergave controls fully visible
+  - XML under-48px clickable/focusable heuristic scan
+  - release logcat actionable pattern scan
+  - restore font scale and night mode
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/settings-scroll-candidate-summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/settings-edge-under-48px.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/settings-weergave-scrolled-under-48px.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/logcat-actionable-matches.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-settings-font15-scroll-candidate-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: owner/manual/live gates remain; XML heuristics do not replace TalkBack/Switch traversal.
+
+## Previous Loop
+
+- target: release dark mode/font-scale 1.5 top-level runtime smoke
+- priority: P2/P3 manual deep-runtime UX evidence
+- result: pass for safe emulator slice; Direct APK Ready remains NO
+- commands:
+  - `.\gradlew.bat :app:installRelease --console=plain`
+  - `adb shell settings put system font_scale 1.5`
+  - `adb shell cmd uimode night yes`
+  - `adb shell pm clear com.trainiq`
+  - `adb shell am start -W -n com.trainiq/.MainActivity`
+  - `adb shell uiautomator dump ...`
+  - `adb shell screencap -p ...`
+  - release logcat actionable pattern scan
+  - restore font scale and night mode
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/xml-content-summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/under-48px-clickable-focusable.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/logcat-actionable-matches.txt`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-release-dark-font15-top-level-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: owner/manual/live gates remain, especially TalkBack/Switch traversal to resolve the heuristic accessibility candidate.
+
+## Previous Loop
+
+- target: owner-gate action packet refresh
+- priority: P0 release gate control
+- result: partial - owner-gated action packet created; Direct APK Ready remains NO
+- commands:
+  - documentation/evidence refresh only
+- evidence:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-owner-gate-action-packet-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-owner-gate-action-packet-loop/owner-gate-action-matrix.json`
+- files_changed:
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-owner-gate-action-packet-loop/summary.txt`
+  - `TrainIQ-Project/docs/qa/evidence/2026-05-29-owner-gate-action-packet-loop/owner-gate-action-matrix.json`
+  - `TrainIQ-Project/docs/qa/release-gate-owner-checklist-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/evidence-index-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/qa-status-summary-2026-05-27.md`
+  - `TrainIQ-Project/docs/qa/full-app-qa-run-2026-05-27.md`
+  - `.codex/qa-loop-state.md`
+- webresearch_used: no
+- next: execute owner/manual/live gates or capture owner-approved defer decisions for each remaining open gate.

@@ -11,6 +11,8 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.trainiq.data.datasource.HealthConnectDataSource
 import com.trainiq.domain.model.HealthConnectState
+import com.trainiq.domain.model.HealthConnectStatus
+import com.trainiq.domain.model.HealthMetricSyncState
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -67,7 +69,7 @@ class HealthConnectBackgroundSyncWorker(
         )
         return try {
             val status = entryPoint.healthConnectDataSource().getStatus()
-            if (shouldRetryHealthConnectBackgroundSync(status.state)) {
+            if (shouldRetryHealthConnectBackgroundSync(status)) {
                 Result.retry()
             } else {
                 Result.success()
@@ -94,8 +96,9 @@ internal const val HealthConnectBackgroundSyncWorkName = "health_connect_backgro
 internal val HealthConnectBackgroundSyncInterval: Duration = Duration.ofHours(6)
 internal val HealthConnectBackgroundBackoff: Duration = Duration.ofMinutes(30)
 
-internal fun shouldRetryHealthConnectBackgroundSync(state: HealthConnectState): Boolean =
-    state == HealthConnectState.ERROR
+internal fun shouldRetryHealthConnectBackgroundSync(status: HealthConnectStatus): Boolean =
+    status.state == HealthConnectState.ERROR ||
+        status.metricStatuses.any { it.state == HealthMetricSyncState.FAILED }
 
 internal fun shouldRetryHealthConnectBackgroundSyncFailure(throwable: Throwable): Boolean =
     when (throwable) {

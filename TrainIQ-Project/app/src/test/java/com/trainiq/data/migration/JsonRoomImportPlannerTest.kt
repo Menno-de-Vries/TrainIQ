@@ -42,6 +42,30 @@ class JsonRoomImportPlannerTest {
     }
 
     @Test
+    fun exportedWrapperJsonMapsInnerDataAndRejectsUnknownFormat() {
+        val source = fixture("valid-representative-trainiq-state.json")
+        val wrapped = """
+            {
+              "format": "trainiq-json-export",
+              "version": 1,
+              "exportedAt": "2026-06-03T10:15:30Z",
+              "data": $source
+            }
+        """.trimIndent()
+
+        val plan = JsonRoomImportPlanner().plan(wrapped)
+
+        assertEquals("Fixture Athlete", plan.profile?.name)
+        assertEquals(1, plan.routines.size)
+        assertEquals(1, plan.sessions.size)
+
+        val rejected = runCatching {
+            JsonRoomImportPlanner().plan("""{"format":"other-app","data":{}}""")
+        }
+        assertTrue(rejected.isFailure)
+    }
+
+    @Test
     fun currentLiveShapeFixtureMapsWithoutSchemaParityGaps() {
         val source = fixture("live-shape-current-trainiq-state.json")
 

@@ -18,8 +18,6 @@ class AnalyticsEngine @Inject constructor() {
 
     fun estimatedOneRepMax(weight: Double, reps: Int): Double = StrengthCalculator.estimateOneRepMax(weight, reps)
 
-    fun fatigueIndex(weeklyVolume: Double, baselineVolume: Double): Double {
-        if (baselineVolume == 0.0) return 1.0
-        return weeklyVolume / baselineVolume
-    }
+    fun weeklyLoadRatio(latestWeeklyVolume: Double, baselineWeeklyVolume: Double): Double =
+        latestWeeklyVolume / baselineWeeklyVolume
 }

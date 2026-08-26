@@ -87,7 +87,7 @@ class MappersTest {
     }
 
     @Test
-    fun healthConnectCacheState_toDomainMetrics_emitsWeightedMetricsViaFlow() = runTest {
+    fun healthConnectCacheState_toDomainMetrics_ignoresRawStepsAndEmitsOtherMetricsViaFlow() = runTest {
         val cacheState = HealthConnectCacheState(
             stepRecords = listOf(
                 CachedStepRecord("steps-1", 0L, 10L, 4000),
@@ -111,14 +111,53 @@ class MappersTest {
             .map { it.toDomainMetrics() }
             .test {
                 val metrics = awaitItem()
-                assertEquals(6500, metrics.stepsToday)
+                assertEquals(0, metrics.stepsToday)
                 assertEquals(73, metrics.averageHeartRateBpm)
                 assertEquals(84, metrics.latestHeartRateBpm)
-                assertEquals(515L, metrics.sleepMinutes)
+                assertEquals(420L, metrics.sleepMinutes)
                 assertEquals(2, metrics.sleepSessionCount)
                 assertEquals(2, metrics.workoutSessionCountToday)
                 assertEquals(90L, metrics.workoutMinutesToday)
                 awaitComplete()
             }
+    }
+
+    @Test
+    fun healthConnectCacheState_toDomainMetrics_usesMainRecentSleepInsteadOfSummingFragments() {
+        val cacheState = HealthConnectCacheState(
+            sleepSessionRecords = listOf(
+                CachedSleepSessionRecord("nap", 12 * 60 * 60 * 1000L, 13 * 60 * 60 * 1000L, 60),
+                CachedSleepSessionRecord("main", 22 * 60 * 60 * 1000L, 26 * 60 * 60 * 1000L, 240),
+                CachedSleepSessionRecord("short-fragment", 24 * 60 * 60 * 1000L, 25 * 60 * 60 * 1000L, 60),
+            ),
+        )
+
+        val metrics = cacheState.toDomainMetrics()
+
+        assertEquals(240L, metrics.sleepMinutes)
+        assertEquals(3, metrics.sleepSessionCount)
+    }
+
+    @Test
+    fun healthConnectCacheState_toDomainMetrics_whenSleepDurationsTieUsesLatestEndTime() {
+        val cacheState = HealthConnectCacheState(
+            sleepSessionRecords = listOf(
+                CachedSleepSessionRecord("older", 0L, 4 * 60 * 60 * 1000L, 240),
+                CachedSleepSessionRecord("newer", 22 * 60 * 60 * 1000L, 26 * 60 * 60 * 1000L, 240),
+            ),
+        )
+
+        val metrics = cacheState.toDomainMetrics()
+
+        assertEquals(240L, metrics.sleepMinutes)
+        assertEquals(2, metrics.sleepSessionCount)
+    }
+
+    @Test
+    fun healthConnectCacheState_toDomainMetrics_whenNoSleepRecordsKeepsSleepEmpty() {
+        val metrics = HealthConnectCacheState(sleepSessionRecords = emptyList()).toDomainMetrics()
+
+        assertEquals(0L, metrics.sleepMinutes)
+        assertEquals(0, metrics.sleepSessionCount)
     }
 }

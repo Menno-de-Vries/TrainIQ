@@ -1,0 +1,7 @@
+json.notRunRows=25
+snapshot.NOT_RUN.rows=25
+postTouchTargetBaselineLinked=True
+assembleDebug=PASS
+testDebugUnitTest=PASS_AFTER_RERUN
+lintDebug=PASS
+connectedDebugAndroidTest=PASS

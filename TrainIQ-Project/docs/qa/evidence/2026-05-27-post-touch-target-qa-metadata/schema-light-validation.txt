@@ -1,0 +1,1 @@
+SCHEMA_LIGHT_OK required status keys present

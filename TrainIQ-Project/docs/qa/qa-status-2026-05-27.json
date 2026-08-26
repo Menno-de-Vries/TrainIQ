@@ -1,0 +1,152 @@
+﻿{
+    "date":  "2026-05-27",
+    "project":  "TrainIQ",
+    "schema":  "docs/qa/qa-status-schema-2026-05-27.json",
+    "status":  "PARTIAL",
+    "releaseReadyByFullDefinitionOfDone":  false,
+    "notRunRows":  16,
+    "notRunSnapshot":  "docs/qa/evidence/2026-05-27-dod-open-gaps-audit/not-run-snapshot.txt",
+    "knownOpenP0P1P2FromExecutedChecks":  0,
+    "fixedFindings":  [
+                          {
+                              "id":  "QA-2026-05-27-001",
+                              "priority":  "P1",
+                              "area":  "Meer/Instellingen - privacy/security - local data clear",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-27-002",
+                              "priority":  "P0",
+                              "area":  "Voeding - recipes - destructive action - runtime ANR",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-27-003",
+                              "priority":  "P1",
+                              "area":  "Database/migration - release marker generation - buildscript drift",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-27-004",
+                              "priority":  "P2",
+                              "area":  "Accessibility - Coach/Settings touch-target hardening",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-27-005",
+                              "priority":  "P2",
+                              "area":  "Meer/Instellingen - accessibility/design - feedback and telemetry switches",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-27-006",
+                              "priority":  "P2",
+                              "area":  "Meer/Instellingen - accessibility/design - touch targets and clipping",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-27-007",
+                              "priority":  "P2",
+                              "area":  "Meer/Instellingen - large font - text clipping",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-27-008",
+                              "priority":  "P1",
+                              "area":  "Training - active workout edit/delete - active-key Room FK crash",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-29-001",
+                              "priority":  "P1",
+                              "area":  "Navigation - scanner savedStateHandle result clear",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-29-002",
+                              "priority":  "P1",
+                              "area":  "AI provider routing - transient fallback",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-29-003",
+                              "priority":  "P2",
+                              "area":  "Settings - Health Connect partial permission copy",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-29-004",
+                              "priority":  "P0",
+                              "area":  "Release lifecycle - main-thread lifecycle side effects ANR",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-29-005",
+                              "priority":  "P0",
+                              "area":  "Health Connect - partial-grant startup provider read ANR",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-29-006",
+                              "priority":  "P1",
+                              "area":  "Profileable Macrobenchmark - active-workout seed/launch ANR",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-29-007",
+                              "priority":  "P0",
+                              "area":  "Release APK - cold-launch early accessibility dump ANR",
+                              "status":  "fixed"
+                          },
+                          {
+                              "id":  "QA-2026-05-29-008",
+                              "priority":  "P0",
+                              "area":  "Release APK - dark mode/font-scale startup ANR",
+                              "status":  "fixed"
+                          }
+                      ],
+    "latestAutomatedBaseline":  {
+                                    "assembleDebug":  {
+                                                          "status":  "PASS",
+                                                          "evidence":  "docs/qa/evidence/2026-05-29-current-automated-baseline-refresh-loop/testDebugUnitTest-lintDebug-assembleDebug.txt"
+                                                      },
+                                    "testDebugUnitTest":  {
+                                                              "status":  "PASS",
+                                                              "evidence":  "docs/qa/evidence/2026-05-29-current-automated-baseline-refresh-loop/testDebugUnitTest-lintDebug-assembleDebug.txt"
+                                                          },
+                                    "lintDebug":  {
+                                                      "status":  "PASS",
+                                                      "evidence":  "docs/qa/evidence/2026-05-29-current-automated-baseline-refresh-loop/testDebugUnitTest-lintDebug-assembleDebug.txt"
+                                                  },
+                                    "connectedDebugAndroidTest":  {
+                                                                      "status":  "PASS",
+                                                                      "evidence":  "docs/qa/evidence/2026-05-29-current-connected-baseline-refresh-loop/connectedDebugAndroidTest.txt"
+                                                                  }
+                                },
+    "latestRuntimeSmoke":  {
+                               "status":  "PASS",
+                               "uiDump":  "docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/trainiq-top-start-return.xml",
+                               "logcat":  "docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/logcat-top-level.txt",
+                               "crashAnrScan":  "docs/qa/evidence/2026-05-29-current-release-top-level-traversal-refresh-loop/logcat-actionable-matches.txt"
+                           },
+    "openReleaseGates":  [
+                             "TalkBack/Switch Access traversal",
+                             "release top-level performance threshold/signoff",
+                             "live Health Connect background data-read proof with seeded provider data",
+                             "privacy/security real-key signoff",
+                             "provider/runtime-gated AI and scanner flows",
+                             "manual deep-runtime UX audits",
+                             "true older-version upgrade/persistence"
+                         ],
+    "handoffDocuments":  {
+                             "qaPacket":  "docs/qa/qa-packet-2026-05-27.md",
+                             "fullLedger":  "docs/qa/full-app-qa-run-2026-05-27.md",
+                             "statusSummary":  "docs/qa/qa-status-summary-2026-05-27.md",
+                             "fixedFindingsIndex":  "docs/qa/fixed-findings-index-2026-05-27.md",
+                             "evidenceIndex":  "docs/qa/evidence-index-2026-05-27.md",
+                             "openGapsSnapshot":  "docs/qa/evidence/2026-05-27-dod-open-gaps-audit/not-run-snapshot.txt",
+                             "ownerChecklist":  "docs/qa/release-gate-owner-checklist-2026-05-27.md",
+                             "ownerApprovedDeferTemplate":  "docs/qa/owner-approved-defer-template-2026-05-27.md",
+                             "nextRunCommandSheet":  "docs/qa/next-run-command-sheet-2026-05-27.md"
+                         }
+}

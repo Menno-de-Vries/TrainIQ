@@ -6,7 +6,9 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.Keep
 import androidx.camera.core.CameraSelector
@@ -74,7 +76,9 @@ import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
+import com.trainiq.BuildConfig
 import com.trainiq.ai.services.AiUsageGate
+import com.trainiq.ai.services.hasAnyReadyProvider
 import com.trainiq.core.datastore.AiPreferences
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.theme.spacing
@@ -83,10 +87,15 @@ import com.trainiq.core.ui.ShimmerCardPlaceholder
 import com.trainiq.domain.model.MealAnalysisResult
 import com.trainiq.domain.model.MealAnalysisSource
 import com.trainiq.domain.model.MealType
+import com.trainiq.domain.model.BodyMeasurementPhotoResult
+import com.trainiq.domain.model.BodyMeasurementPhotoSource
+import com.trainiq.domain.usecase.AnalyzeBodyMeasurementPhotoUseCase
 import com.trainiq.domain.usecase.AnalyzeMealUseCase
 import com.trainiq.domain.usecase.ClearLastScanResultUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -99,7 +108,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 @Keep
-enum class ScannerMode { BARCODE, AI_MEAL }
+enum class ScannerMode { BARCODE, AI_MEAL, AI_SCALE }
 
 sealed interface CameraScannerUiState {
     data class Preview(
@@ -110,6 +119,7 @@ sealed interface CameraScannerUiState {
 
     data object Processing : CameraScannerUiState
     data class Completed(val suggestedMealType: MealType?, val itemCount: Int = 0) : CameraScannerUiState
+    data class CompletedScale(val result: BodyMeasurementPhotoResult) : CameraScannerUiState
     data class Empty(val contextHint: String, val message: String) : CameraScannerUiState
     data class NoConfig(val contextHint: String, val message: String) : CameraScannerUiState
     data class LocalFallback(val contextHint: String, val message: String) : CameraScannerUiState
@@ -149,6 +159,7 @@ class CameraScannerViewModel @Inject constructor(
     preferencesRepository: UserPreferencesRepository,
     aiUsageGate: AiUsageGate,
     private val analyzeMealUseCase: AnalyzeMealUseCase,
+    private val analyzeBodyMeasurementPhotoUseCase: AnalyzeBodyMeasurementPhotoUseCase,
     private val clearLastScanResultUseCase: ClearLastScanResultUseCase,
 ) : ViewModel() {
     private data class ScannerEphemeralState(
@@ -157,9 +168,10 @@ class CameraScannerViewModel @Inject constructor(
         val message: String? = null,
         val suggestedMealType: MealType? = null,
         val itemCount: Int = 0,
+        val bodyMeasurement: BodyMeasurementPhotoResult? = null,
     )
 
-    private enum class Phase { Preview, Processing, Completed, Empty, NoConfig, LocalFallback, Error }
+    private enum class Phase { Preview, Processing, Completed, CompletedScale, Empty, NoConfig, LocalFallback, Error }
 
     private val aiPreferences: StateFlow<AiPreferences> = preferencesRepository.aiPreferences
         .mapResolvedAiPreferences(aiUsageGate)
@@ -174,10 +186,10 @@ class CameraScannerViewModel @Inject constructor(
         when (temp.phase) {
             Phase.Preview -> CameraScannerUiState.Preview(
                 contextHint = temp.contextHint,
-                isEnabled = ai.enabled && ai.apiKey.isNotBlank(),
+                isEnabled = ai.hasAnyReadyProvider(),
                 message = temp.message ?: when {
                     !ai.enabled -> "AI staat uit in Instellingen. Zet AI aan voordat je scant."
-                    ai.apiKey.isBlank() -> "Voeg eerst een Gemini API-sleutel toe in Instellingen."
+                    !ai.hasAnyReadyProvider() -> "Voeg eerst een Gemini of OpenAI API-sleutel toe in Instellingen."
                     else -> null
                 },
             )
@@ -186,13 +198,16 @@ class CameraScannerViewModel @Inject constructor(
                 suggestedMealType = temp.suggestedMealType,
                 itemCount = temp.itemCount,
             )
+            Phase.CompletedScale -> CameraScannerUiState.CompletedScale(
+                result = temp.bodyMeasurement ?: fallbackScaleScannerResult(),
+            )
             Phase.Empty -> CameraScannerUiState.Empty(
                 contextHint = temp.contextHint,
                 message = temp.message ?: "Geen producten gevonden.",
             )
             Phase.NoConfig -> CameraScannerUiState.NoConfig(
                 contextHint = temp.contextHint,
-                message = temp.message ?: "AI-scan niet ingesteld. Zet AI aan en voeg een Gemini API-sleutel toe in Instellingen.",
+                message = temp.message ?: "AI-scan niet ingesteld. Zet AI aan en voeg een Gemini of OpenAI API-sleutel toe in Instellingen.",
             )
             Phase.LocalFallback -> CameraScannerUiState.LocalFallback(
                 contextHint = temp.contextHint,
@@ -209,56 +224,85 @@ class CameraScannerViewModel @Inject constructor(
     }
 
     fun analyze(path: String) {
+        analyze(path = path, scannerMode = ScannerMode.AI_MEAL)
+    }
+
+    fun analyze(path: String, scannerMode: ScannerMode) {
         if (ephemeral.value.phase == Phase.Processing) return
         val capturedAtMillis = System.currentTimeMillis()
         val contextHint = ephemeral.value.contextHint
         val ai = aiPreferences.value
-        if (!ai.enabled || ai.apiKey.isBlank()) {
+        if (!ai.hasAnyReadyProvider()) {
             ephemeral.update {
                 it.copy(
                     phase = Phase.NoConfig,
-                    message = "AI-scan niet ingesteld. Zet AI aan en voeg een Gemini API-sleutel toe in Instellingen.",
+                    message = "AI-scan niet ingesteld. Zet AI aan en voeg een Gemini of OpenAI API-sleutel toe in Instellingen.",
                 )
             }
+            deleteScannerTemporaryImage(path)
             return
         }
         viewModelScope.launch {
             ephemeral.update { it.copy(phase = Phase.Processing, message = null) }
-            runCatching { analyzeMealUseCase(path, contextHint, capturedAtMillis) }
-                .onSuccess { result ->
-                    val resultState = classifyMealScanResultForScanner(result, contextHint)
-                    ephemeral.update {
-                        when (resultState) {
-                            is CameraScannerUiState.Completed -> it.copy(
-                                phase = Phase.Completed,
-                                suggestedMealType = resultState.suggestedMealType,
-                                itemCount = resultState.itemCount,
-                                message = null,
-                            )
-                            is CameraScannerUiState.Empty -> it.copy(
-                                phase = Phase.Empty,
-                                suggestedMealType = result.suggestedMealType,
-                                itemCount = 0,
-                                message = resultState.message,
-                            )
-                            is CameraScannerUiState.LocalFallback -> it.copy(
-                                phase = Phase.LocalFallback,
-                                suggestedMealType = result.suggestedMealType,
-                                itemCount = 0,
-                                message = resultState.message,
-                            )
-                            else -> it
+            if (scannerMode == ScannerMode.AI_SCALE) {
+                try {
+                    runCatching { analyzeBodyMeasurementPhotoUseCase(path, contextHint) }
+                        .onSuccess { result ->
+                            ephemeral.update {
+                                if (result.source == BodyMeasurementPhotoSource.LOCAL_FALLBACK || result.weight <= 0.0) {
+                                    it.copy(phase = Phase.LocalFallback, message = result.notes)
+                                } else {
+                                    it.copy(phase = Phase.CompletedScale, bodyMeasurement = result, message = result.notes)
+                                }
+                            }
+                        }
+                        .onFailure {
+                            ephemeral.update { it.copy(phase = Phase.Error, message = "Weegfoto analyseren mislukt. Probeer opnieuw.") }
+                        }
+                } finally {
+                    deleteScannerTemporaryImage(path)
+                }
+                return@launch
+            }
+            try {
+                runCatching { analyzeMealUseCase(path, contextHint, capturedAtMillis) }
+                    .onSuccess { result ->
+                        val resultState = classifyMealScanResultForScanner(result, contextHint)
+                        ephemeral.update {
+                            when (resultState) {
+                                is CameraScannerUiState.Completed -> it.copy(
+                                    phase = Phase.Completed,
+                                    suggestedMealType = resultState.suggestedMealType,
+                                    itemCount = resultState.itemCount,
+                                    message = null,
+                                )
+                                is CameraScannerUiState.Empty -> it.copy(
+                                    phase = Phase.Empty,
+                                    suggestedMealType = result.suggestedMealType,
+                                    itemCount = 0,
+                                    message = resultState.message,
+                                )
+                                is CameraScannerUiState.LocalFallback -> it.copy(
+                                    phase = Phase.LocalFallback,
+                                    suggestedMealType = result.suggestedMealType,
+                                    itemCount = 0,
+                                    message = resultState.message,
+                                )
+                                else -> it
+                            }
                         }
                     }
-                }
-                .onFailure {
-                    ephemeral.update {
-                        it.copy(
-                            phase = Phase.Error,
-                            message = "Scan mislukt. Probeer opnieuw.",
-                        )
+                    .onFailure {
+                        ephemeral.update {
+                            it.copy(
+                                phase = Phase.Error,
+                                message = "Scan mislukt. Probeer opnieuw.",
+                            )
+                        }
                     }
-                }
+            } finally {
+                deleteScannerTemporaryImage(path)
+            }
         }
     }
 
@@ -297,12 +341,29 @@ internal fun classifyMealScanResultForScanner(
         )
     }
 
+internal fun deleteScannerTemporaryImage(path: String): Boolean {
+    val file = File(path)
+    val isScannerCacheFile = file.name.startsWith("scanner-import-") ||
+        file.name.startsWith("meal-fullscreen-")
+    if (!isScannerCacheFile || !file.name.endsWith(".jpg", ignoreCase = true)) return false
+    return runCatching { file.isFile && file.delete() }.getOrDefault(false)
+}
+
+private fun fallbackScaleScannerResult() = BodyMeasurementPhotoResult(
+    weight = 0.0,
+    bodyFat = 0.0,
+    muscleMass = 0.0,
+    source = BodyMeasurementPhotoSource.LOCAL_FALLBACK,
+    notes = "Geen betrouwbare meting gevonden.",
+)
+
 @Composable
 fun CameraScannerRoute(
     contextHint: String,
     scannerMode: ScannerMode = ScannerMode.AI_MEAL,
     onBack: () -> Unit,
     onBarcodeScanned: (String) -> Unit = {},
+    onScaleMeasurementScanned: (BodyMeasurementPhotoResult) -> Unit = {},
     viewModel: CameraScannerViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -321,10 +382,14 @@ fun CameraScannerRoute(
     CameraScannerScreen(
         uiState = uiState.cameraScannerStateOrPreview(),
         scannerMode = scannerMode,
-        onAnalyze = viewModel::analyze,
+        onAnalyze = { path -> viewModel.analyze(path, scannerMode) },
         onDismissError = { viewModel.resetToPreview(clearScanResult = true) },
         onScanAgain = { viewModel.resetToPreview(clearScanResult = true) },
         onReviewItems = onBack,
+        onReviewScaleMeasurement = { result ->
+            onScaleMeasurementScanned(result)
+            onBack()
+        },
         onBack = {
             viewModel.clearScanResult()
             onBack()
@@ -342,15 +407,18 @@ private fun ScreenUiState<CameraUiContent>.cameraScannerStateOrPreview(): Camera
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CameraScannerScreen(
+internal fun CameraScannerScreen(
     uiState: CameraScannerUiState,
     scannerMode: ScannerMode,
     onAnalyze: (String) -> Unit,
     onDismissError: () -> Unit,
     onScanAgain: () -> Unit,
     onReviewItems: () -> Unit,
+    onReviewScaleMeasurement: (BodyMeasurementPhotoResult) -> Unit,
     onBack: () -> Unit,
     onBarcodeScanned: (String) -> Unit,
+    bindCameraPreview: Boolean = true,
+    initialCameraPermissionGranted: Boolean? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -358,7 +426,7 @@ private fun CameraScannerScreen(
     val hasCameraFeature = remember(context) { isCameraFeatureAvailable(context.packageManager) }
     var hasPermission by rememberSaveable {
         mutableStateOf(
-            isCameraPermissionGranted(
+            initialCameraPermissionGranted ?: isCameraPermissionGranted(
                 ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA),
             ),
         )
@@ -372,20 +440,33 @@ private fun CameraScannerScreen(
         hasPermission = it
         restorableState = restorableState.copy(permissionDenied = !it)
     }
+    val imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        restorableState = restorableState.copy(cameraError = null)
+        copyScannerImageFromUri(context, uri)
+            ?.let(onAnalyze)
+            ?: run {
+                restorableState = restorableState.copy(cameraError = "Foto importeren mislukt. Kies een duidelijke JPG of PNG.")
+            }
+    }
 
-    val controller = remember(context, scannerMode) {
-        LifecycleCameraController(context).apply {
-            setEnabledUseCases(
-                if (scannerMode == ScannerMode.BARCODE) CameraController.IMAGE_ANALYSIS
-                else CameraController.IMAGE_CAPTURE,
-            )
-            cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+    val controller = remember(context, scannerMode, bindCameraPreview) {
+        if (bindCameraPreview) {
+            LifecycleCameraController(context).apply {
+                setEnabledUseCases(
+                    if (scannerMode == ScannerMode.BARCODE) CameraController.IMAGE_ANALYSIS
+                    else CameraController.IMAGE_CAPTURE,
+                )
+                cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+            }
+        } else {
+            null
         }
     }
 
-    DisposableEffect(controller, lifecycleOwner, hasPermission, hasCameraFeature, scannerMode) {
+    DisposableEffect(controller, lifecycleOwner, hasPermission, hasCameraFeature, scannerMode, bindCameraPreview) {
         var scanner: com.google.mlkit.vision.barcode.BarcodeScanner? = null
-        if (hasPermission && hasCameraFeature) {
+        if (hasPermission && hasCameraFeature && controller != null) {
             val bound = runCatching { controller.bindToLifecycle(lifecycleOwner) }
                 .onFailure {
                     restorableState = restorableState.copy(
@@ -411,13 +492,13 @@ private fun CameraScannerScreen(
             }
         }
         onDispose {
-            controller.clearImageAnalysisAnalyzer()
+            controller?.clearImageAnalysisAnalyzer()
             scanner?.close()
         }
     }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val showSheet = hasPermission && scannerMode == ScannerMode.AI_MEAL && uiState !is CameraScannerUiState.Preview
+    val showSheet = scannerMode != ScannerMode.BARCODE && uiState !is CameraScannerUiState.Preview
     val showCameraFallback = shouldShowCameraFallback(
         hasPermission = hasPermission,
         hasCameraFeature = hasCameraFeature,
@@ -432,6 +513,11 @@ private fun CameraScannerScreen(
             PermissionGate(
                 permissionDenied = restorableState.permissionDenied,
                 onGrant = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+                onImportPhoto = if (scannerMode.supportsPhotoImport()) {
+                    { imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                } else {
+                    null
+                },
                 onOpenSettings = {
                     context.startActivity(
                         Intent(
@@ -444,7 +530,7 @@ private fun CameraScannerScreen(
             )
         } else {
             Box(modifier = Modifier.fillMaxSize()) {
-                if (!showCameraFallback) {
+                if (!showCameraFallback && controller != null) {
                     AndroidView(
                         factory = { previewContext ->
                             PreviewView(previewContext).apply {
@@ -465,7 +551,7 @@ private fun CameraScannerScreen(
                     showCameraFallback -> scannerCameraUnavailableMessage(scannerMode)
                     scannerMode == ScannerMode.BARCODE -> "Richt de camera op de barcode van het product."
                     uiState is CameraScannerUiState.Preview -> uiState.contextHint.ifBlank {
-                        "Zet het volledige bord of de verpakking duidelijk in beeld. TrainIQ maakt er bewerkbare producten en macro's van."
+                        "Voeg context toe als je weet wat erin zit. TrainIQ gebruikt je context als waarheid en de foto voor ontbrekende details."
                     }
                     uiState is CameraScannerUiState.Error -> uiState.contextHint.ifBlank { "" }
                     uiState is CameraScannerUiState.Empty -> uiState.contextHint.ifBlank { "" }
@@ -476,7 +562,7 @@ private fun CameraScannerScreen(
                 val topTitle = if (scannerMode == ScannerMode.BARCODE) "Barcodescanner" else "Camerascanner"
                 val helperMessage = when {
                     showCameraFallback -> restorableState.cameraError
-                    scannerMode == ScannerMode.AI_MEAL && uiState is CameraScannerUiState.Preview -> restorableState.cameraError ?: uiState.message
+                    scannerMode != ScannerMode.BARCODE && uiState is CameraScannerUiState.Preview -> restorableState.cameraError ?: uiState.message
                     else -> null
                 }
 
@@ -527,38 +613,60 @@ private fun CameraScannerScreen(
                         }
                     }
                     uiState is CameraScannerUiState.Preview -> {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
                                 .fillMaxWidth()
                                 .windowInsetsPadding(WindowInsets.navigationBars)
                                 .padding(MaterialTheme.spacing.large),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
+                            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
                         ) {
-                            OutlinedButton(onClick = onBack) {
-                                Text(if (showCameraFallback) scannerManualFallbackLabel(scannerMode) else "Terug")
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                OutlinedButton(onClick = onBack) {
+                                    Text(if (showCameraFallback) scannerManualFallbackLabel(scannerMode) else "Terug")
+                                }
+                                Button(
+                                    onClick = {
+                                        if (isCapturing) return@Button
+                                        restorableState = restorableState.copy(cameraError = null)
+                                        isCapturing = true
+                                        val activeController = controller
+                                        if (activeController == null) {
+                                            isCapturing = false
+                                            restorableState = restorableState.copy(
+                                                cameraError = scannerCameraBindFailureMessage(scannerMode),
+                                            )
+                                            return@Button
+                                        }
+                                        takeScannerPhoto(
+                                            context = context,
+                                            controller = activeController,
+                                            onPhotoSaved = {
+                                                isCapturing = false
+                                                onAnalyze(it)
+                                            },
+                                            onError = {
+                                                isCapturing = false
+                                                restorableState = restorableState.copy(cameraError = it)
+                                            },
+                                        )
+                                    },
+                                    enabled = uiState.isEnabled && !isCapturing && !showCameraFallback,
+                                ) { Text(if (isCapturing) "Foto maken..." else "Foto maken") }
                             }
-                            Button(
-                                onClick = {
-                                    if (isCapturing) return@Button
-                                    restorableState = restorableState.copy(cameraError = null)
-                                    isCapturing = true
-                                    takeScannerPhoto(
-                                        context = context,
-                                        controller = controller,
-                                        onPhotoSaved = {
-                                            isCapturing = false
-                                            onAnalyze(it)
-                                        },
-                                        onError = {
-                                            isCapturing = false
-                                            restorableState = restorableState.copy(cameraError = it)
-                                        },
-                                    )
-                                },
-                                enabled = uiState.isEnabled && !isCapturing && !showCameraFallback,
-                            ) { Text(if (isCapturing) "Foto maken..." else "Foto maken") }
+                            if (scannerMode.supportsPhotoImport()) {
+                                OutlinedButton(
+                                    onClick = { imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                                    enabled = uiState.isEnabled,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(photoImportLabel(scannerMode))
+                                }
+                            }
                         }
                     }
                 }
@@ -585,6 +693,11 @@ private fun CameraScannerScreen(
                     suggestedMealType = uiState.suggestedMealType,
                     onScanAgain = onScanAgain,
                     onReviewItems = onReviewItems,
+                )
+                is CameraScannerUiState.CompletedScale -> CompletedScaleSheetContent(
+                    result = uiState.result,
+                    onScanAgain = onScanAgain,
+                    onUseMeasurement = { onReviewScaleMeasurement(uiState.result) },
                 )
                 is CameraScannerUiState.Empty -> EmptySheetContent(
                     message = uiState.message,
@@ -659,19 +772,33 @@ internal fun scannerCameraUnavailableMessage(scannerMode: ScannerMode): String =
     when (scannerMode) {
         ScannerMode.AI_MEAL -> "Camera niet beschikbaar. Je kunt deze maaltijd handmatig toevoegen."
         ScannerMode.BARCODE -> "Camera niet beschikbaar. Voer de barcode handmatig in bij het product."
+        ScannerMode.AI_SCALE -> "Camera niet beschikbaar. Je kunt de meting handmatig invoeren."
     }
 
 internal fun scannerCameraBindFailureMessage(scannerMode: ScannerMode): String =
     when (scannerMode) {
         ScannerMode.AI_MEAL -> "Camera kan nu niet starten. Voeg de maaltijd handmatig toe of probeer later opnieuw."
         ScannerMode.BARCODE -> "Camera kan nu niet starten. Voer de code handmatig in of probeer later opnieuw."
+        ScannerMode.AI_SCALE -> "Camera kan nu niet starten. Vul de meting handmatig in of probeer later opnieuw."
     }
 
 internal fun scannerManualFallbackLabel(scannerMode: ScannerMode): String =
     when (scannerMode) {
         ScannerMode.AI_MEAL -> "Handmatig toevoegen"
         ScannerMode.BARCODE -> "Code handmatig invoeren"
+        ScannerMode.AI_SCALE -> "Handmatig invoeren"
     }
+
+internal fun ScannerMode.supportsPhotoImport(): Boolean =
+    this == ScannerMode.AI_MEAL || this == ScannerMode.AI_SCALE
+
+internal fun photoImportLabel(scannerMode: ScannerMode): String = when (scannerMode) {
+    ScannerMode.AI_MEAL -> "Maaltijdfoto importeren"
+    ScannerMode.AI_SCALE -> "Weegfoto importeren"
+    ScannerMode.BARCODE -> "Foto importeren"
+}
+
+internal fun scalePhotoImportLabel(): String = "Foto importeren"
 
 internal enum class ScannerSheetErrorAction { Dismiss, ScanAgain }
 
@@ -684,6 +811,7 @@ internal fun scannerErrorPrimaryActionLabel(action: ScannerSheetErrorAction): St
 private fun PermissionGate(
     permissionDenied: Boolean,
     onGrant: () -> Unit,
+    onImportPhoto: (() -> Unit)? = null,
     onOpenSettings: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -703,6 +831,9 @@ private fun PermissionGate(
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+                    onImportPhoto?.let {
+                        OutlinedButton(onClick = it, modifier = Modifier.fillMaxWidth()) { Text("Foto importeren") }
+                    }
                     Button(onClick = onGrant, modifier = Modifier.fillMaxWidth()) { Text(scannerPermissionGrantLabel()) }
                     if (permissionDenied) {
                         OutlinedButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) { Text(scannerPermissionSettingsLabel()) }
@@ -778,6 +909,56 @@ private fun CompletedSheetContent(
     }
 }
 
+@Composable
+private fun CompletedScaleSheetContent(
+    result: BodyMeasurementPhotoResult,
+    onScanAgain: () -> Unit,
+    onUseMeasurement: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = MaterialTheme.spacing.large, vertical = MaterialTheme.spacing.medium)
+            .windowInsetsPadding(WindowInsets.navigationBars),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+    ) {
+        Text("Meting gevonden", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(
+            "Gewicht ${scaleKgValue(result.weight)} - Vet ${scalePercentValue(result.bodyFat)} - Spier ${scaleKgValue(result.muscleMass)}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        result.confidence?.let {
+            Text("Zekerheid: ${it.toDutchScannerConfidence()}", style = MaterialTheme.typography.bodyMedium)
+        }
+        result.notes?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+        ) {
+            Button(onClick = onUseMeasurement, modifier = Modifier.fillMaxWidth()) { Text("Controleren in voortgang") }
+            OutlinedButton(onClick = onScanAgain, modifier = Modifier.fillMaxWidth()) { Text(scannerScanAgainLabel()) }
+        }
+    }
+}
+
+private fun oneDecimalScanner(value: Double): String = String.format(java.util.Locale.US, "%.1f", value)
+
+private fun scaleKgValue(value: Double): String =
+    if (value > 0.0) "${oneDecimalScanner(value)} kg" else "niet gevonden"
+
+private fun scalePercentValue(value: Double): String =
+    if (value > 0.0) "${oneDecimalScanner(value)}%" else "niet gevonden"
+
+private fun String.toDutchScannerConfidence(): String = when (trim().lowercase()) {
+    "high" -> "hoog"
+    "medium" -> "gemiddeld"
+    "low" -> "laag"
+    else -> this
+}
+
 internal fun isCameraPermissionGranted(permissionResult: Int): Boolean =
     permissionResult == PackageManager.PERMISSION_GRANTED
 
@@ -790,7 +971,7 @@ internal fun scannerCompletedMessage(itemCount: Int, suggestedMealType: MealType
 internal fun scannerProcessingTitle(): String = "Scannen..."
 
 internal fun scannerProcessingMessage(): String =
-    "Gemini Flash herkent producten, schat porties en berekent macro's."
+    "Gemini Flash of OpenAI herkent producten, schat porties en berekent macro's."
 
 internal fun scannerCompletedTitle(): String = "Scan voltooid"
 
@@ -901,9 +1082,49 @@ private fun takeScannerPhoto(
             }
 
             override fun onError(exception: ImageCaptureException) {
-                android.util.Log.e("TrainIQ", "Camera capture failed", exception)
+                logScannerCaptureFailure(exception)
                 onError("Kan geen foto maken op dit apparaat.")
             }
         },
     )
 }
+
+private fun logScannerCaptureFailure(exception: ImageCaptureException) {
+    if (!BuildConfig.DEBUG) return
+    Log.w(ScannerLogTag, "Camera capture failed (${exception.imageCaptureError})")
+}
+
+internal fun copyScannerImageFromUri(context: Context, uri: Uri): String? =
+    runCatching {
+        val file = File(context.cacheDir, "scanner-import-${System.currentTimeMillis()}.jpg")
+        runCatching {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                file.outputStream().use { output -> input.copyToLimit(output, MaxScannerImportBytes) }
+            } ?: return@runCatching null
+        }.onFailure {
+            file.delete()
+            throw it
+        }
+        file.takeIf { it.exists() && it.length() > 0L }?.absolutePath
+    }.getOrElse {
+        null
+    }
+
+private fun InputStream.copyToLimit(output: OutputStream, maxBytes: Long) {
+    var copied = 0L
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    while (true) {
+        val read = read(buffer)
+        if (read < 0) return
+        copied += read
+        if (copied > maxBytes) {
+            throw ScannerImportTooLargeException()
+        }
+        output.write(buffer, 0, read)
+    }
+}
+
+private class ScannerImportTooLargeException : RuntimeException()
+
+private const val ScannerLogTag = "TrainIQ"
+private const val MaxScannerImportBytes = 6L * 1024L * 1024L

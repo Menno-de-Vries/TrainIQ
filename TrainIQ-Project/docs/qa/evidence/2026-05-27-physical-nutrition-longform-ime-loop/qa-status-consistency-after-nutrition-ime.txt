@@ -1,0 +1,5 @@
+json.notRunRows=25
+snapshot.NOT_RUN.rows=25
+nutritionImeEvidenceLinked=True
+fontScaleRestored=1.0
+crashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES

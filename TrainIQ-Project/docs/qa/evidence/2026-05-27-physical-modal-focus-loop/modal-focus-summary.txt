@@ -1,0 +1,6 @@
+settingsPrivacyAreaCaptured=True
+localDataDialogVisible=False
+dialogHasCancel=False
+dialogHasConfirm=False
+afterCancelSettingsStillVisible=True
+crashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES

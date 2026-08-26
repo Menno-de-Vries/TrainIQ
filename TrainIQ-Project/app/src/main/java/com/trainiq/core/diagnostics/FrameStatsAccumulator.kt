@@ -5,21 +5,28 @@ import kotlin.math.ceil
 class FrameStatsAccumulator(
     private val jankThresholdMs: Double = DefaultJankThresholdMs,
     private val frozenThresholdMs: Double = DefaultFrozenThresholdMs,
+    private val maxStoredFrames: Int = DefaultMaxStoredFrames,
 ) {
-    private val frameDurationsMs = mutableListOf<Double>()
+    init {
+        require(maxStoredFrames > 0) { "maxStoredFrames must be positive" }
+    }
 
-    @Synchronized
+    private val frameDurationsMs = DoubleArray(maxStoredFrames)
+    private var storedFrameCount = 0
+    private var nextFrameIndex = 0
+
     fun recordFrameDurationMs(durationMs: Double) {
         if (durationMs.isFinite() && durationMs >= 0.0) {
-            frameDurationsMs += durationMs
+            frameDurationsMs[nextFrameIndex] = durationMs
+            nextFrameIndex = (nextFrameIndex + 1) % maxStoredFrames
+            storedFrameCount = (storedFrameCount + 1).coerceAtMost(maxStoredFrames)
         }
     }
 
-    @Synchronized
     fun summary(): PerformanceSessionSummary {
-        if (frameDurationsMs.isEmpty()) return PerformanceSessionSummary.Empty
+        if (storedFrameCount == 0) return PerformanceSessionSummary.Empty
 
-        val sorted = frameDurationsMs.sorted()
+        val sorted = frameDurationsMs.copyOf(storedFrameCount).apply { sort() }
         val frameCount = sorted.size
         val jankyFrameCount = sorted.count { it > jankThresholdMs }
         val frozenFrameCount = sorted.count { it > frozenThresholdMs }
@@ -39,12 +46,12 @@ class FrameStatsAccumulator(
         )
     }
 
-    @Synchronized
     fun reset() {
-        frameDurationsMs.clear()
+        storedFrameCount = 0
+        nextFrameIndex = 0
     }
 
-    private fun List<Double>.percentile(percentile: Int): Double {
+    private fun DoubleArray.percentile(percentile: Int): Double {
         val rank = ceil((percentile / 100.0) * size).toInt().coerceIn(1, size)
         return this[rank - 1]
     }
@@ -52,5 +59,6 @@ class FrameStatsAccumulator(
     private companion object {
         const val DefaultJankThresholdMs = 16.67
         const val DefaultFrozenThresholdMs = 700.0
+        const val DefaultMaxStoredFrames = 7_200
     }
 }

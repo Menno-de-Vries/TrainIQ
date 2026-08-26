@@ -1,0 +1,4 @@
+
+file         class             text desc                           width height bounds
+----         -----             ---- ----                           ----- ------ ------
+settings.xml android.view.View      Rusttimer-geluid: ingeschakeld   137     31 [859,2143][996,2174]

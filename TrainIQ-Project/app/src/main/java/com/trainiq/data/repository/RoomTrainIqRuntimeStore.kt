@@ -1,6 +1,7 @@
 package com.trainiq.data.repository
 
 import com.google.gson.Gson
+import androidx.room.withTransaction
 import com.trainiq.core.database.ActiveWorkoutCollapsedExerciseEntity
 import com.trainiq.core.database.ActiveWorkoutDraftEntity
 import com.trainiq.core.database.ActiveWorkoutSessionEntity
@@ -14,6 +15,7 @@ import com.trainiq.core.database.PerformedExerciseEntity
 import com.trainiq.core.database.RecipeEntity
 import com.trainiq.core.database.RecipeIngredientEntity
 import com.trainiq.core.database.RoutineSetEntity
+import com.trainiq.core.database.SavedGoalAdviceEntity
 import com.trainiq.core.database.TrainIqDatabase
 import com.trainiq.core.database.UserProfileEntity
 import com.trainiq.core.database.WorkoutDayEntity
@@ -36,6 +38,7 @@ import com.trainiq.data.local.TrainIqStorageState
 import com.trainiq.data.local.WorkoutLogEventStorage
 import com.trainiq.data.migration.JsonRoomImportPlanner
 import com.trainiq.data.migration.RoomJsonImportSink
+import com.trainiq.data.mapper.toDomain
 import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.model.LoggedMealItemType
 import com.trainiq.domain.model.MealType
@@ -52,6 +55,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -71,7 +75,9 @@ class RoomTrainIqRuntimeStore @Inject constructor(
 
     init {
         scope.launch {
-            seedRoomFromLegacyJsonIfNeeded()
+            runCatching {
+                seedRoomFromLegacyJsonIfNeeded()
+            }
         }
     }
 
@@ -135,6 +141,40 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         )
     }.stateIn(scope, SharingStarted.Eagerly, TrainIqStorageState())
 
+    suspend fun readExportSnapshot(): TrainIqStorageState = mutex.withLock {
+        database.withTransaction {
+            val active = ActiveWorkoutTables(
+                sessions = dao.readActiveWorkoutSessionsForExport(),
+                drafts = dao.readActiveWorkoutDraftsForExport(),
+                collapsed = dao.readActiveWorkoutCollapsedExercisesForExport(),
+                sets = dao.readActiveWorkoutSetsForExport(),
+                events = dao.readWorkoutLogEventsForExport(),
+            )
+            val eventSets = dao.readWorkoutLogEventSetsForExport()
+            TrainIqStorageState(
+                profile = dao.readUserProfileForExport(),
+                routines = dao.readRoutinesForExport(),
+                days = dao.readWorkoutDaysForExport(),
+                exercises = dao.readExercisesForExport(),
+                workoutExercises = dao.readWorkoutExercisesForExport(),
+                routineSets = dao.readRoutineSetsForExport(),
+                foods = dao.readFoodItemsForExport().map { it.toStorage() },
+                recipes = dao.readRecipesForExport().map { it.toStorage() },
+                recipeIngredients = dao.readRecipeIngredientsForExport().map { it.toStorage() },
+                meals = dao.readMealsForExport().map { it.toStorage() },
+                mealItems = dao.readMealItemsForExport().map { it.toStorage() },
+                measurements = dao.readMeasurementsForExport(),
+                sessions = dao.readWorkoutSessionsForExport(),
+                performedExercises = dao.readPerformedExercisesForExport(),
+                workoutSets = dao.readWorkoutSetsForExport(),
+                activeWorkoutSession = active.toStorage(),
+                workoutLogEvents = active.events.map { event ->
+                    event.toStorage(eventSets.filter { set -> set.eventId == event.id })
+                },
+            )
+        }
+    }
+
     suspend fun clearAll() {
         mutex.withLock {
             database.dao().clearMirrorTables()
@@ -143,13 +183,23 @@ class RoomTrainIqRuntimeStore @Inject constructor(
 
     suspend fun clearProfile() {
         mutex.withLock {
-            dao.clearMirrorUserProfile()
+            database.withTransaction {
+                dao.clearSavedGoalAdvice()
+                dao.clearMirrorUserProfile()
+            }
         }
     }
 
-    suspend fun saveProfile(profile: UserProfileEntity) {
+    fun observeSavedGoalAdvice() = dao.observeSavedGoalAdvice().map { it?.toDomain() }
+
+    suspend fun saveProfile(profile: UserProfileEntity, savedGoalAdvice: SavedGoalAdviceEntity? = null) {
         mutex.withLock {
-            dao.upsertUserProfile(profile)
+            database.withTransaction {
+                dao.upsertUserProfile(profile)
+                if (savedGoalAdvice != null) {
+                    dao.upsertSavedGoalAdvice(savedGoalAdvice)
+                }
+            }
         }
     }
 
@@ -531,9 +581,20 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         }
     }
 
-    suspend fun saveFood(food: FoodItemStorage) {
-        mutex.withLock {
-            dao.insertFoodItems(listOf(food.toFoodItemEntity()))
+    suspend fun saveFood(food: FoodItemStorage): FoodItemStorage = mutex.withLock {
+        database.withTransaction {
+            val existing = food.id.takeIf { it > 0L }?.let { dao.getFoodItem(it) }
+            val duplicateBarcode = food.barcode
+                ?.takeIf { it.isNotBlank() }
+                ?.let { dao.getFoodItemByBarcode(it) }
+                ?.takeIf { it.id != food.id }
+            val matched = existing ?: duplicateBarcode
+            val persisted = food.copy(
+                id = matched?.id ?: ((dao.getMaxFoodItemId() ?: 0L) + 1L),
+                createdAt = matched?.createdAt ?: food.createdAt,
+            )
+            dao.insertFoodItems(listOf(persisted.toFoodItemEntity()))
+            persisted
         }
     }
 
@@ -582,7 +643,19 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         }
     }
 
-    suspend fun updateWorkoutSessionDebrief(sessionId: Long, debrief: WorkoutDebrief) {
+    suspend fun getWorkoutDebriefRefreshSnapshot(sessionId: Long): WorkoutDebriefRefreshSnapshot =
+        database.withTransaction {
+            WorkoutDebriefRefreshSnapshot(
+                session = dao.getCompletedWorkoutSession(sessionId),
+                sessions = dao.getWorkoutSessions(),
+                sets = dao.getWorkoutSets(),
+                days = dao.getWorkoutDays(),
+                exercises = dao.getExercises(),
+                workoutExercises = dao.getWorkoutExercises(),
+            )
+        }
+
+    suspend fun updateWorkoutSessionDebrief(sessionId: Long, debrief: WorkoutDebrief): Int =
         mutex.withLock {
             dao.updateWorkoutSessionDebrief(
                 sessionId = sessionId,
@@ -599,7 +672,6 @@ class RoomTrainIqRuntimeStore @Inject constructor(
                 source = debrief.source.name,
             )
         }
-    }
 
     suspend fun addMeasurement(measurement: BodyMeasurementEntity) {
         mutex.withLock {
@@ -622,6 +694,15 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         }
     }
 }
+
+data class WorkoutDebriefRefreshSnapshot(
+    val session: WorkoutSessionEntity?,
+    val sessions: List<WorkoutSessionEntity>,
+    val sets: List<WorkoutSetEntity>,
+    val days: List<WorkoutDayEntity>,
+    val exercises: List<ExerciseEntity>,
+    val workoutExercises: List<WorkoutExerciseEntity>,
+)
 
 private data class CorePlanTables(
     val profile: UserProfileEntity?,
@@ -686,6 +767,7 @@ private fun FoodItemEntity.toStorage() = FoodItemStorage(
     proteinPer100g = proteinPer100g,
     carbsPer100g = carbsPer100g,
     fatPer100g = fatPer100g,
+    defaultServingGrams = defaultServingGrams.normalizedDefaultServingGrams(),
     sourceType = sourceType.toEnum(FoodSourceType.MANUAL),
     createdAt = createdAt,
     updatedAt = updatedAt,
@@ -699,10 +781,14 @@ private fun FoodItemStorage.toFoodItemEntity() = FoodItemEntity(
     proteinPer100g = proteinPer100g,
     carbsPer100g = carbsPer100g,
     fatPer100g = fatPer100g,
+    defaultServingGrams = defaultServingGrams.normalizedDefaultServingGrams(),
     sourceType = sourceType.name,
     createdAt = createdAt,
     updatedAt = updatedAt,
 )
+
+private fun Double.normalizedDefaultServingGrams(): Double =
+    takeIf { it.isFinite() && it > 0.0 } ?: 100.0
 
 private fun RecipeEntity.toStorage() = RecipeStorage(
     id = id,
@@ -752,6 +838,7 @@ private fun MealItemEntity.toStorage() = LoggedMealItemStorage(
     referenceId = referenceId,
     name = name,
     gramsUsed = gramsUsed,
+    servingCount = servingCount.coerceAtLeast(1),
     calories = calories,
     protein = protein,
     carbs = carbs,
@@ -778,6 +865,7 @@ private fun LoggedMealItemStorage.toMealItemEntity(orderIndex: Int) = MealItemEn
     referenceId = referenceId,
     name = name,
     gramsUsed = gramsUsed,
+    servingCount = servingCount.coerceAtLeast(1),
     calories = calories,
     protein = protein,
     carbs = carbs,

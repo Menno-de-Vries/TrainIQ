@@ -1,0 +1,6 @@
+fontScaleDuring=1.5
+nutritionTopVisible=True
+addSheetVisible=True
+contextFieldFocusedOrTextPresent=True
+imeBackKeepsSheetVisible=True
+crashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES

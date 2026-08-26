@@ -1,0 +1,11 @@
+physicalDevice=RFCY60HNHNJ SM-S931B Android 16 SDK 36
+explicitStartTrainIqVisible=True
+settingsPrivacyHasLocalDataButton=False
+localDataDialogVisible=False
+observedScreen=Settings privacy area; AI disabled card, Health Connect access-required card, and partial Gegevens / opslag section visible.
+dialogHasCancel=False
+dialogHasConfirm=False
+afterBackSettingsStillVisible=True
+crashScan=NO_TRAINIQ_CRASH_OR_ANR_MATCHES
+result=PARTIAL_ATTEMPT_ONLY
+notes=The intended local-data destructive confirmation was not reached; no destructive confirmation was executed. This evidence supports safe launch/navigation and clean logcat only, not modal focus containment closure.

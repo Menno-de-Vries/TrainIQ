@@ -1,0 +1,7 @@
+status=PARTIAL
+releaseReadyByFullDefinitionOfDone=False
+jsonNotRunRows=25
+snapshotNotRunRows=25
+ledgerHasLocalClearDialogEvidence=True
+snapshotHasLocalClearDialogEvidence=True
+indexHasLocalClearDialogEvidence=True
