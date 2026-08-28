@@ -647,7 +647,7 @@ class NutritionInputValidationTest {
 
     @Test
     fun savedProductsUseDefaultServingGramsForQuickMealAdd() {
-        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
+        val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText().replace("\r\n", "\n")
         val savedFoodAdd = source.substringAfter("onQuickAdd = { food ->").substringBefore("onDelete = { pendingDelete = PendingNutritionDelete.Food")
         val foodEditor = source.substringAfter("private fun FoodEditorCard(").substringBefore("@Composable\nprivate fun SavedFoodsCard")
         val savedFoodsCard = source.substringAfter("private fun SavedFoodsCard(").substringBefore("@Composable\nprivate fun ProductPickerSheet")

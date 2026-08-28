@@ -253,6 +253,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -385,6 +386,7 @@ data class WorkoutUiContent(
     val message: String?,
     val pendingGeneratedRoutine: GeneratedRoutine?,
     val isSavingGeneratedRoutine: Boolean,
+    val isGeneratingAiRoutine: Boolean,
 )
 
 internal fun workoutScreenUiState(content: WorkoutUiContent): ScreenUiState<WorkoutUiContent> =
@@ -400,6 +402,7 @@ private fun ScreenUiState<WorkoutUiContent>.workoutContentOrDefault(): WorkoutUi
             message = null,
             pendingGeneratedRoutine = null,
             isSavingGeneratedRoutine = false,
+            isGeneratingAiRoutine = false,
         )
         is ScreenUiState.Success -> content
     }
@@ -546,6 +549,8 @@ class WorkoutViewModel @Inject constructor(
     private val pendingGeneratedRoutine: StateFlow<GeneratedRoutine?> = _pendingGeneratedRoutine.asStateFlow()
     private val _isSavingGeneratedRoutine = MutableStateFlow(false)
     private val isSavingGeneratedRoutine: StateFlow<Boolean> = _isSavingGeneratedRoutine.asStateFlow()
+    private val _isGeneratingAiRoutine = MutableStateFlow(false)
+    private val isGeneratingAiRoutine: StateFlow<Boolean> = _isGeneratingAiRoutine.asStateFlow()
 
     private val _events = MutableSharedFlow<WorkoutUiEvent>(extraBufferCapacity = 1)
     val events: SharedFlow<WorkoutUiEvent> = _events.asSharedFlow()
@@ -615,12 +620,17 @@ class WorkoutViewModel @Inject constructor(
                 message = currentMessage,
                 pendingGeneratedRoutine = generatedRoutine,
                 isSavingGeneratedRoutine = false,
+                isGeneratingAiRoutine = false,
             )
         },
         isSavingGeneratedRoutine,
-    ) { content, savingGeneratedRoutine ->
+        isGeneratingAiRoutine,
+    ) { content, savingGeneratedRoutine, generatingAiRoutine ->
         workoutScreenUiState(
-            content.copy(isSavingGeneratedRoutine = savingGeneratedRoutine),
+            content.copy(
+                isSavingGeneratedRoutine = savingGeneratedRoutine,
+                isGeneratingAiRoutine = generatingAiRoutine,
+            ),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScreenUiState.Loading)
 
@@ -935,6 +945,7 @@ class WorkoutViewModel @Inject constructor(
         sessionDurationMinutes: Int,
         includeDeload: Boolean,
     ) {
+        if (_isGeneratingAiRoutine.value) return
         lastGenerationRequest = RoutineGenerationRequest(
             daysPerWeek = daysPerWeek,
             equipment = equipment,
@@ -943,9 +954,10 @@ class WorkoutViewModel @Inject constructor(
             sessionDurationMinutes = sessionDurationMinutes,
             includeDeload = includeDeload,
         )
+        _isGeneratingAiRoutine.value = true
         _message.value = "AI-routine maken..."
         viewModelScope.launch {
-            runCatching {
+            try {
                 generateAiRoutineUseCase(
                     daysPerWeek = daysPerWeek,
                     equipment = equipment,
@@ -953,12 +965,16 @@ class WorkoutViewModel @Inject constructor(
                     experienceLevel = experienceLevel,
                     sessionDurationMinutes = sessionDurationMinutes,
                     includeDeload = includeDeload,
-                )
-            }.onSuccess { generated ->
-                _pendingGeneratedRoutine.value = generated
-                _message.value = "Routine gegenereerd."
-            }.onFailure {
-                _message.value = it.toAiUserMessage("Routine genereren is mislukt.")
+                ).also { generated ->
+                    _pendingGeneratedRoutine.value = generated
+                    _message.value = "Routine gegenereerd."
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                _message.value = throwable.toAiUserMessage("Routine genereren is mislukt.")
+            } finally {
+                _isGeneratingAiRoutine.value = false
             }
         }
     }
@@ -1410,6 +1426,7 @@ fun WorkoutRoute(
         message = content.message,
         pendingGeneratedRoutine = content.pendingGeneratedRoutine,
         isSavingGeneratedRoutine = content.isSavingGeneratedRoutine,
+        isGeneratingAiRoutine = content.isGeneratingAiRoutine,
         onDismissMessage = viewModel::clearMessage,
         onStartWorkout = onStartWorkout,
         onOpenExerciseHistory = onOpenExerciseHistory,
@@ -1446,6 +1463,7 @@ fun WorkoutScreen(
     message: String?,
     pendingGeneratedRoutine: GeneratedRoutine?,
     isSavingGeneratedRoutine: Boolean,
+    isGeneratingAiRoutine: Boolean,
     onDismissMessage: () -> Unit,
     onStartWorkout: (Long) -> Unit,
     onOpenExerciseHistory: (Long) -> Unit,
@@ -1473,9 +1491,8 @@ fun WorkoutScreen(
     onMoveRoutineSet: (Long, List<Long>) -> Unit,
     onDeleteWorkoutSession: (Long) -> Unit,
 ) {
-    var showAiDialog by remember { mutableStateOf(false) }
+    var showAiDialog by rememberSaveable { mutableStateOf(false) }
     var showCreateDialog by remember { mutableStateOf(false) }
-    var isGenerating by remember { mutableStateOf(false) }
     var selectedRoutineId by rememberSaveable { mutableStateOf<Long?>(null) }
     var selectedTrainingTab by rememberSaveable { mutableStateOf(WorkoutOverviewTab.Routines.key) }
     var exerciseLibraryQuery by rememberSaveable { mutableStateOf("") }
@@ -1495,13 +1512,15 @@ fun WorkoutScreen(
     }
     LaunchedEffect(message) {
         if (message == "Routine gegenereerd." || message?.contains("mislukt", ignoreCase = true) == true) {
-            isGenerating = false
             showAiDialog = false
         }
         if (message != null) {
             snackbarHostState.showSnackbar(message)
             onDismissMessage()
         }
+    }
+    LaunchedEffect(isGeneratingAiRoutine) {
+        if (isGeneratingAiRoutine) showAiDialog = true
     }
     val selectedRoutine = remember(selectedRoutineId, overview?.routines) {
         selectedRoutineId?.let { id -> overview?.routines?.firstOrNull { it.id == id } }
@@ -1520,7 +1539,6 @@ fun WorkoutScreen(
             isSaving = isSavingGeneratedRoutine,
             onSave = onSaveGeneratedRoutine,
             onRetry = {
-                isGenerating = true
                 showAiDialog = true
                 onRetryGeneratedRoutine()
             },
@@ -1538,10 +1556,9 @@ fun WorkoutScreen(
     }
     if (showAiDialog) {
         RoutineGeneratorDialog(
-            isLoading = isGenerating,
-            onDismiss = { if (!isGenerating) showAiDialog = false },
+            isLoading = isGeneratingAiRoutine,
+            onDismiss = { if (!isGeneratingAiRoutine) showAiDialog = false },
             onGenerate = { days, equipment, focus, level, duration, includeDeload ->
-                isGenerating = true
                 onGenerateAiRoutine(days, equipment, focus, level, duration, includeDeload)
             },
         )

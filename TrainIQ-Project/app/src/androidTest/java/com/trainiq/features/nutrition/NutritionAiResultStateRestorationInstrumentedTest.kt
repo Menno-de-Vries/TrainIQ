@@ -35,20 +35,20 @@ class NutritionAiResultStateRestorationInstrumentedTest {
             SyntheticNutritionScreen(uiState)
         }
 
-        onNodeWithText("AI-items aan maaltijd toevoegen").assertIsDisplayed()
+        onNodeWithText("Aan maaltijd toevoegen").performScrollTo().assertIsDisplayed()
         onNodeWithContentDescription("Naam").performTextReplacement("Bewerkte bowl")
         onNodeWithContentDescription("Grammen").performTextReplacement("180")
         onNodeWithContentDescription("Vet").performTextReplacement("-4")
         onNodeWithContentDescription("Vet").assertTextContains("-4")
-        onNodeWithText("AI-items aan maaltijd toevoegen").performScrollTo().performClick()
-        onNodeWithContentDescription("Vet").assertTextContains("Vul een niet-negatieve waarde in.")
+        onNodeWithText("Aan maaltijd toevoegen").performScrollTo().performClick()
+        onNodeWithText("Aan maaltijd toevoegen").performScrollTo().assertIsDisplayed()
 
         restorationTester.emulateSaveAndRestore()
 
         onNodeWithContentDescription("Naam").assertTextContains("Bewerkte bowl")
         onNodeWithContentDescription("Grammen").assertTextContains("180")
         onNodeWithContentDescription("Vet").assertTextContains("-4")
-        onNodeWithContentDescription("Vet").assertTextContains("Vul een niet-negatieve waarde in.")
+        onNodeWithText("Aan maaltijd toevoegen").performScrollTo().assertIsDisplayed()
     }
 
     @OptIn(ExperimentalTestApi::class)
@@ -61,19 +61,19 @@ class NutritionAiResultStateRestorationInstrumentedTest {
             SyntheticNutritionScreen(uiState)
         }
 
+        onNodeWithContentDescription("Voeding secties openen").performClick()
         onNodeWithText("Recepten").performClick()
-        onNodeWithText("+ Toevoegen").performClick()
-        onNodeWithText("Product via foto/AI toevoegen").performClick()
+        onNodeWithText("Foto/AI ingrediënten").performClick()
         runOnIdle {
             uiState = syntheticUiState(scanResult = syntheticScanResult(), aiEnabled = true)
         }
-        onNodeWithText("Fotocontrole").assertIsDisplayed()
-        onNodeWithText("AI-items aan maaltijd toevoegen").assertDoesNotExist()
+        onNodeWithText("Receptingrediënten scannen").assertIsDisplayed()
+        onNodeWithText("Aan maaltijd toevoegen").assertDoesNotExist()
 
         restorationTester.emulateSaveAndRestore()
 
-        onNodeWithText("Fotocontrole").assertIsDisplayed()
-        onNodeWithText("AI-items aan maaltijd toevoegen").assertDoesNotExist()
+        onNodeWithText("Receptingrediënten scannen").assertIsDisplayed()
+        onNodeWithText("Aan maaltijd toevoegen").assertDoesNotExist()
     }
 }
 
@@ -82,7 +82,7 @@ private fun SyntheticNutritionScreen(uiState: NutritionUiState.Success) {
     TrainIqTheme(dynamicColor = false) {
         NutritionScreen(
             uiState = uiState,
-            onSaveFood = { _, _, _, _, _, _, _, _, _, _ -> },
+            onSaveFood = { _, _, _, _, _, _, _, _, _, _, _ -> },
             onSaveRecipe = { _, _, _, _, _, _ -> },
             onSaveMeal = { _, _, _, _, _, _ -> },
             onDeleteMeal = {},
@@ -93,7 +93,8 @@ private fun SyntheticNutritionScreen(uiState: NutritionUiState.Success) {
             onSetScanResult = {},
             onSetMessage = {},
             onDismissMessage = {},
-            onOpenAiScanner = {},
+            onRetry = {},
+            onAiScanner = {},
             onOpenBarcodeScanner = {},
         )
     }

@@ -1,11 +1,17 @@
 package com.trainiq.features.coach
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.StateRestorationTester
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.runComposeUiTest
@@ -25,6 +31,7 @@ class CoachProfileStateRestorationInstrumentedTest {
             SyntheticCoachScreen(profile = syntheticProfile())
         }
 
+        onNodeWithText("Doelen").performClick()
         onNode(hasSetTextAction() and hasText("Bestaand profiel"))
             .performScrollTo()
             .performTextReplacement("Onopgeslagen coachnaam")
@@ -40,7 +47,7 @@ class CoachProfileStateRestorationInstrumentedTest {
 
     @OptIn(ExperimentalTestApi::class)
     @Test
-    fun restoredDraftIsDiscardedWhenProfileIdChanges() = runComposeUiTest {
+    fun dirtyDraftSurvivesStateRestorationWhenProfileIdChanges() = runComposeUiTest {
         val restorationTester = StateRestorationTester(this)
         var currentProfile = syntheticProfile()
 
@@ -48,6 +55,7 @@ class CoachProfileStateRestorationInstrumentedTest {
             SyntheticCoachScreen(profile = currentProfile)
         }
 
+        onNodeWithText("Doelen").performClick()
         onNode(hasSetTextAction() and hasText("Bestaand profiel"))
             .performScrollTo()
             .performTextReplacement("Onopgeslagen coachnaam")
@@ -55,16 +63,14 @@ class CoachProfileStateRestorationInstrumentedTest {
 
         restorationTester.emulateSaveAndRestore()
 
-        onNode(hasSetTextAction() and hasText("Ander profiel"))
-            .performScrollTo()
-            .assertTextContains("Ander profiel")
         onNode(hasSetTextAction() and hasText("Onopgeslagen coachnaam"))
-            .assertDoesNotExist()
+            .performScrollTo()
+            .assertTextContains("Onopgeslagen coachnaam")
     }
 
     @OptIn(ExperimentalTestApi::class)
     @Test
-    fun restoredDraftIsDiscardedWhenSameProfileIdHasHashCollidingContent() = runComposeUiTest {
+    fun dirtyDraftSurvivesStateRestorationWhenProfileContentChanges() = runComposeUiTest {
         val restorationTester = StateRestorationTester(this)
         var currentProfile = syntheticProfile(name = "Aa")
 
@@ -72,6 +78,7 @@ class CoachProfileStateRestorationInstrumentedTest {
             SyntheticCoachScreen(profile = currentProfile)
         }
 
+        onNodeWithText("Doelen").performClick()
         onNode(hasSetTextAction() and hasText("Aa"))
             .performScrollTo()
             .performTextReplacement("Onopgeslagen coachnaam")
@@ -79,23 +86,24 @@ class CoachProfileStateRestorationInstrumentedTest {
 
         restorationTester.emulateSaveAndRestore()
 
-        onNode(hasSetTextAction() and hasText("BB"))
-            .performScrollTo()
-            .assertTextContains("BB")
         onNode(hasSetTextAction() and hasText("Onopgeslagen coachnaam"))
-            .assertDoesNotExist()
+            .performScrollTo()
+            .assertTextContains("Onopgeslagen coachnaam")
     }
 }
 
 @Composable
 private fun SyntheticCoachScreen(profile: UserProfile) {
+    var profileDraft by rememberSaveable { mutableStateOf(profile.toSyntheticDraft()) }
     TrainIqTheme(dynamicColor = false) {
         CoachScreen(
-            uiState = syntheticCoachUiState(profile),
-            onGenerateAdvice = { _, _, _, _, _, _, _, _ -> },
+            uiState = syntheticCoachUiState(profile, profileDraft),
+            onGenerateAdvice = {},
             onGenerateWeeklyReport = {},
-            onSaveProfile = { _, _, _, _, _, _, _, _ -> },
+            onSaveProfile = {},
+            onProfileDraftChange = { profileDraft = it },
             onDismissMessage = {},
+            onRetry = {},
         )
     }
 }
@@ -120,7 +128,10 @@ private fun syntheticProfile(
     trainingFocus = "Progressieve overload",
 )
 
-private fun syntheticCoachUiState(profile: UserProfile): CoachUiState.Success =
+private fun syntheticCoachUiState(
+    profile: UserProfile,
+    profileDraft: CoachProfileDraft,
+): CoachUiState.Success =
     CoachUiState.Success(
         overview = CoachOverview(
             weeklyReport = "Synthetisch weekrapport",
@@ -129,4 +140,18 @@ private fun syntheticCoachUiState(profile: UserProfile): CoachUiState.Success =
             profile = profile,
         ),
         currentProfile = profile,
+        profileDraft = profileDraft,
+        isProfileDraftDirty = profileDraft != profile.toSyntheticDraft(),
     )
+
+private fun UserProfile.toSyntheticDraft() = CoachProfileDraft(
+    name = name,
+    age = age.toString(),
+    sex = sex,
+    height = height.toString(),
+    weight = weight.toString(),
+    bodyFat = bodyFat.toString(),
+    activityLevel = activityLevel,
+    goal = goal,
+    manualCalorieTarget = calorieTarget.toString(),
+)

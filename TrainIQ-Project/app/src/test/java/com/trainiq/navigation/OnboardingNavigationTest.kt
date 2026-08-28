@@ -10,7 +10,7 @@ class OnboardingNavigationTest {
     fun navigationDefinesTypeSafeOnboardingRouteAndUsesItForIncompleteFirstRun() {
         val source = File("src/main/java/com/trainiq/navigation/TrainIqNav.kt").readText()
 
-        assertTrue(source.contains("@Serializable\ndata object Onboarding"))
+        assertTrue(Regex("@Serializable\\s+data object Onboarding").containsMatchIn(source))
         assertTrue(source.contains("onboardingPreferences"))
         assertTrue(source.contains("startDestination = if (onboardingPreferences.completed) Home else Onboarding"))
         assertTrue(source.contains("composable<Onboarding>"))
