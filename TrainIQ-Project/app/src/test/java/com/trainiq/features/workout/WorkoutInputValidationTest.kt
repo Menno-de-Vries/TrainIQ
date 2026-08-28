@@ -265,7 +265,7 @@ class WorkoutInputValidationTest {
         assertTrue(dismissPendingBody.contains("_pendingGeneratedRoutine.value = null"))
         assertTrue(previewDialogCall.contains("onSave = onSaveGeneratedRoutine"))
         assertTrue(previewDialogCall.contains("onDismiss = onDismissGeneratedRoutine"))
-        assertTrue(generatorDialogCall.contains("onDismiss = { if (!isGenerating) showAiDialog = false }"))
+        assertTrue(generatorDialogCall.contains("onDismiss = { if (!isGeneratingAiRoutine) showAiDialog = false }"))
         assertTrue(dialogBody.contains("dismissButton = { TextButton(onClick = onDismiss, enabled = !isLoading) { Text(\"Annuleren\") } }"))
     }
 
