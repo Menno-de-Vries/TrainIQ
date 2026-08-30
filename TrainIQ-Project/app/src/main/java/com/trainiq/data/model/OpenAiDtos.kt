@@ -31,8 +31,23 @@ data class OpenAiTextFormat(
 )
 
 data class OpenAiResponse(
+    val status: String? = null,
     val output: List<OpenAiOutput> = emptyList(),
     @SerializedName("output_text") val outputText: String? = null,
+    val error: OpenAiError? = null,
+    @SerializedName("incomplete_details") val incompleteDetails: OpenAiIncompleteDetails? = null,
+)
+
+data class OpenAiError(
+    val code: String? = null,
+)
+
+data class OpenAiErrorEnvelope(
+    val error: OpenAiError? = null,
+)
+
+data class OpenAiIncompleteDetails(
+    val reason: String? = null,
 )
 
 data class OpenAiOutput(
@@ -42,4 +57,5 @@ data class OpenAiOutput(
 data class OpenAiOutputContent(
     val type: String = "",
     val text: String? = null,
+    val refusal: String? = null,
 )

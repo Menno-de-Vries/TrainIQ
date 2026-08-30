@@ -79,6 +79,7 @@ import com.google.mlkit.vision.common.InputImage
 import com.trainiq.BuildConfig
 import com.trainiq.ai.services.AiUsageGate
 import com.trainiq.ai.services.hasAnyReadyProvider
+import com.trainiq.ai.services.toAiUserMessage
 import com.trainiq.core.datastore.AiPreferences
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.theme.spacing
@@ -256,8 +257,13 @@ class CameraScannerViewModel @Inject constructor(
                                 }
                             }
                         }
-                        .onFailure {
-                            ephemeral.update { it.copy(phase = Phase.Error, message = "Weegfoto analyseren mislukt. Probeer opnieuw.") }
+                        .onFailure { error ->
+                            ephemeral.update {
+                                it.copy(
+                                    phase = Phase.Error,
+                                    message = error.toAiUserMessage("Weegfoto analyseren mislukt. Probeer opnieuw."),
+                                )
+                            }
                         }
                 } finally {
                     deleteScannerTemporaryImage(path)
@@ -292,11 +298,11 @@ class CameraScannerViewModel @Inject constructor(
                             }
                         }
                     }
-                    .onFailure {
+                    .onFailure { error ->
                         ephemeral.update {
                             it.copy(
                                 phase = Phase.Error,
-                                message = "Scan mislukt. Probeer opnieuw.",
+                                message = error.toAiUserMessage("Scan mislukt. Probeer opnieuw."),
                             )
                         }
                     }

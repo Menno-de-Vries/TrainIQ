@@ -142,6 +142,43 @@ class AiServicesTest {
     }
 
     @Test
+    fun analyzeMealImage_openAiAuthenticationFailure_isNotMaskedAsLocalFallback() = runTest {
+        val service = MealAnalysisService(
+            aiJsonGenerator = FailingAiJsonGenerator(
+                AiProviderRequestException(
+                    provider = AiProvider.OPENAI,
+                    feature = AiFeature.MEAL_SCAN,
+                    category = AiFailureCategory.AUTHENTICATION,
+                    httpStatus = 401,
+                ),
+            ),
+            isAiReady = { true },
+            imageBytesProvider = { byteArrayOf(1, 2, 3) },
+        )
+
+        val error = runCatching { service.analyzeMealImage(tempImagePath(), "", 43_200_000L) }.exceptionOrNull()
+
+        assertTrue(error is AiProviderRequestException)
+        assertEquals(AiFailureCategory.AUTHENTICATION, (error as AiProviderRequestException).category)
+    }
+
+    @Test
+    fun analyzeMealImage_openAiMalformedOutput_isNotReportedAsOpenAiSuccess() = runTest {
+        val service = MealAnalysisService(
+            aiJsonGenerator = SuccessfulAiJsonGenerator(
+                AiRouteResult(AiProvider.OPENAI, "gpt-5.4-mini", "not json"),
+            ),
+            isAiReady = { true },
+            imageBytesProvider = { byteArrayOf(1, 2, 3) },
+        )
+
+        val error = runCatching { service.analyzeMealImage(tempImagePath(), "", 43_200_000L) }.exceptionOrNull()
+
+        assertTrue(error is AiProviderRequestException)
+        assertEquals(AiFailureCategory.INVALID_RESPONSE, (error as AiProviderRequestException).category)
+    }
+
+    @Test
     fun callGeminiWithBoundedRetry_whenFeatureTimeoutExceeded_throwsTypedTimeoutWithoutRetrying() = runTest {
         var callCount = 0
 
@@ -1081,6 +1118,18 @@ class AiServicesTest {
             lastRequest = request
             return response
         }
+    }
+
+    private class FailingAiJsonGenerator(
+        private val error: Throwable,
+    ) : AiJsonGenerator {
+        override suspend fun generateJson(request: AiRouteRequest): AiRouteResult = throw error
+    }
+
+    private class SuccessfulAiJsonGenerator(
+        private val result: AiRouteResult,
+    ) : AiJsonGenerator {
+        override suspend fun generateJson(request: AiRouteRequest): AiRouteResult = result
     }
 
     private fun mealScanResponse(text: String): GeminiResponse =

@@ -12,6 +12,8 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.trainiq.ai.services.AiFeatureThrottledException
 import com.trainiq.ai.services.AiProviderUnavailableException
+import com.trainiq.ai.services.AiFailureCategory
+import com.trainiq.ai.services.AiProviderRequestException
 import com.trainiq.ai.services.AiRateLimitException
 import com.trainiq.ai.services.AiTimeoutException
 import com.trainiq.domain.repository.WorkoutDebriefRefreshOutcome
@@ -97,6 +99,12 @@ internal val WorkoutDebriefBackoff: Duration = Duration.ofMinutes(15)
 internal fun workoutDebriefWorkName(sessionId: Long) = "workout_debrief_$sessionId"
 
 internal fun shouldRetryWorkoutDebriefFailure(throwable: Throwable): Boolean = when (throwable) {
+    is AiProviderRequestException -> throwable.category in setOf(
+        AiFailureCategory.TEMPORARY_RATE_LIMIT,
+        AiFailureCategory.TIMEOUT,
+        AiFailureCategory.NETWORK,
+        AiFailureCategory.SERVICE_FAILURE,
+    )
     is AiRateLimitException,
     is AiFeatureThrottledException,
     is AiTimeoutException,

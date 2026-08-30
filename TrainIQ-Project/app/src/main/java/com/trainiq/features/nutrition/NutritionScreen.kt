@@ -83,6 +83,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.trainiq.ai.services.AiUsageGate
 import com.trainiq.ai.services.hasAnyReadyProvider
+import com.trainiq.ai.services.toAiUserMessage
 import com.trainiq.core.datastore.AiPreferences
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.theme.spacing
@@ -107,6 +108,7 @@ import com.trainiq.domain.model.LoggedMealItemType
 import com.trainiq.domain.model.MealAnalysisResult
 import com.trainiq.domain.model.MealScanItem
 import com.trainiq.domain.model.MealType
+import com.trainiq.domain.model.MealAnalysisSource
 import com.trainiq.domain.model.NutritionOverview
 import com.trainiq.domain.model.NutritionFacts
 import com.trainiq.domain.model.Recipe
@@ -344,17 +346,24 @@ class NutritionViewModel @Inject constructor(
                     ephemeral.update { state ->
                         state.copy(
                             scanResult = it,
-                            message = if (it.items.isEmpty()) {
-                                "Er kwam geen betrouwbare maaltijdinschatting terug. Probeer opnieuw of voer de maaltijd handmatig in."
-                            } else {
-                                it.notes ?: "Controleer de AI-inschatting voordat je die aan je maaltijd toevoegt."
+                            message = when {
+                                it.source == MealAnalysisSource.LOCAL_FALLBACK ->
+                                    it.notes ?: "AI was tijdelijk niet beschikbaar. Probeer later opnieuw of voer de maaltijd handmatig in."
+                                it.items.isEmpty() ->
+                                    "Er kwam geen betrouwbare maaltijdinschatting terug. Probeer opnieuw of voer de maaltijd handmatig in."
+                                else -> it.notes ?: "Controleer de AI-inschatting voordat je die aan je maaltijd toevoegt."
                             },
                             isAnalyzing = false,
                         )
                     }
                 }
-                .onFailure {
-                    ephemeral.update { it.copy(message = "Maaltijdanalyse mislukt. Probeer opnieuw of ga verder met handmatige invoer.", isAnalyzing = false) }
+                .onFailure { error ->
+                    ephemeral.update {
+                        it.copy(
+                            message = error.toAiUserMessage("Maaltijdanalyse mislukt. Probeer opnieuw of ga verder met handmatige invoer."),
+                            isAnalyzing = false,
+                        )
+                    }
                 }
         }
     }

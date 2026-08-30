@@ -1,13 +1,11 @@
 package com.trainiq.ai.services
 
-import android.util.Log
 import com.google.gson.JsonParser
 import com.trainiq.ai.prompts.AiPrompts
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
-import retrofit2.HttpException
 
 data class GeneratedRoutine(
     val routineName: String,
@@ -86,7 +84,6 @@ class RoutineGeneratorService @Inject constructor(
         )
         return try {
             if (!aiUsageGate.isAiReady()) {
-                Log.d(RoutineGeneratorLogTag, "Routine AI fallback: AI staat uit of configuratie ontbreekt.")
                 return fallback
             }
             val routed = aiJsonGenerator.generateJson(
@@ -108,22 +105,20 @@ class RoutineGeneratorService @Inject constructor(
                 ),
             )
             parseGeneratedRoutine(routed.rawJson, fallback, routed.providerUsed).also { routine ->
-                if (routine.source == GeneratedRoutineSource.LOCAL_FALLBACK) {
-                    Log.d(RoutineGeneratorLogTag, "Routine AI fallback: providerantwoord was leeg, ongeldig of niet Nederlands genoeg.")
+                if (routed.providerUsed == AiProvider.OPENAI && routine.source == GeneratedRoutineSource.LOCAL_FALLBACK) {
+                    throw AiProviderRequestException(AiProvider.OPENAI, AiFeature.ROUTINE_GENERATION, AiFailureCategory.INVALID_RESPONSE)
                 }
             }
         } catch (throwable: Throwable) {
             if (throwable is CancellationException) throw throwable
             val mapped = throwable.asAiRateLimitExceptionIfNeeded()
             if (mapped is AiRateLimitException || mapped is AiFeatureThrottledException) throw mapped
-            val detail = if (throwable is HttpException) "HTTP ${throwable.code()}" else throwable::class.simpleName.orEmpty()
-            Log.d(RoutineGeneratorLogTag, "Routine AI fallback: AI-aanroep mislukt ($detail).")
+            if (!throwable.allowsDeterministicAiFallback()) throw throwable
             fallback
         }
     }
 }
 
-private const val RoutineGeneratorLogTag = "RoutineGenerator"
 private const val MaxGeneratedRoutineRawResponseChars = 64_000
 private const val MaxGeneratedRoutineDays = 7
 private const val MaxGeneratedExercisesPerDay = 12

@@ -188,6 +188,7 @@ import com.trainiq.domain.model.ExerciseRankProgress
 import com.trainiq.domain.model.ExerciseStats
 import com.trainiq.domain.model.Exercise
 import com.trainiq.domain.model.GeneratedRoutine
+import com.trainiq.domain.model.GeneratedRoutineSource
 import com.trainiq.domain.model.LoggedSet
 import com.trainiq.domain.model.ProgressionSuggestion
 import com.trainiq.domain.model.ReadinessLevel
@@ -967,7 +968,11 @@ class WorkoutViewModel @Inject constructor(
                     includeDeload = includeDeload,
                 ).also { generated ->
                     _pendingGeneratedRoutine.value = generated
-                    _message.value = "Routine gegenereerd."
+                    _message.value = if (generated.source == GeneratedRoutineSource.LOCAL_FALLBACK) {
+                        "Lokale routine gemaakt; AI was tijdelijk niet beschikbaar. Probeer later opnieuw."
+                    } else {
+                        "Routine gegenereerd."
+                    }
                 }
             } catch (cancellation: CancellationException) {
                 throw cancellation

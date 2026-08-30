@@ -107,9 +107,22 @@ class MealAnalysisService internal constructor(
             )
         }.getOrElse { error ->
             if (error is CancellationException) throw error
+            if (!error.allowsDeterministicAiFallback()) throw error
             return fallbackMealScan()
         }
-        return parseMealScan(routed.rawJson, suggestedMealType, routed.providerUsed, contextOverrides)
+        return try {
+            parseMealScan(routed.rawJson, suggestedMealType, routed.providerUsed, contextOverrides)
+        } catch (error: MealAnalysisUnavailableException) {
+            if (routed.providerUsed == AiProvider.OPENAI) {
+                throw AiProviderRequestException(
+                    provider = AiProvider.OPENAI,
+                    feature = AiFeature.MEAL_SCAN,
+                    category = AiFailureCategory.INVALID_RESPONSE,
+                    cause = error,
+                )
+            }
+            throw error
+        }
     }
 
     private fun parseMealScan(
@@ -207,6 +220,7 @@ class BodyMeasurementPhotoService @Inject constructor(
             parseBodyMeasurementPhoto(routed.rawJson, routed.providerUsed, contextOverrides)
         }.getOrElse { error ->
             if (error is CancellationException) throw error
+            if (!error.allowsDeterministicAiFallback()) throw error
             fallbackBodyMeasurementPhoto()
         }
     }
@@ -229,6 +243,9 @@ class BodyMeasurementPhotoService @Inject constructor(
             ?: 0.0
         val source = provider.toBodyMeasurementPhotoSource()
         if (weight <= 0.0) {
+            if (provider == AiProvider.OPENAI) {
+                throw AiProviderRequestException(AiProvider.OPENAI, AiFeature.BODY_MEASUREMENT_PHOTO, AiFailureCategory.INVALID_RESPONSE)
+            }
             return fallbackBodyMeasurementPhoto(
                 notes = root.get("notes")?.asString ?: "AI kon het gewicht niet betrouwbaar uitlezen. Voeg het gewicht als context toe of vul het handmatig in.",
                 rawResponse = boundedText,
@@ -613,6 +630,7 @@ class WorkoutDebriefService internal constructor(
             )
         }.getOrElse { error ->
             if (error is CancellationException) throw error
+            if (!error.allowsDeterministicAiFallback()) throw error
             fallbackWorkoutDebriefResult(totalVolume, progression)
         }
 
@@ -642,7 +660,11 @@ class WorkoutDebriefService internal constructor(
                                     ),
                 ),
             )
-        return parseWorkoutDebriefResponse(routed.rawJson, totalVolume, progression, routed.providerUsed)
+        return parseWorkoutDebriefResponse(routed.rawJson, totalVolume, progression, routed.providerUsed).also { debrief ->
+            if (routed.providerUsed == AiProvider.OPENAI && debrief.source == WorkoutDebriefSource.LOCAL_FALLBACK) {
+                throw AiProviderRequestException(AiProvider.OPENAI, AiFeature.WORKOUT_DEBRIEF, AiFailureCategory.INVALID_RESPONSE)
+            }
+        }
     }
 }
 
@@ -709,9 +731,14 @@ class GoalAdvisorService internal constructor(
                                     ),
                 ),
             )
-            parseGoalAdvice(routed.rawJson, baseline, routed.providerUsed)
+            parseGoalAdvice(routed.rawJson, baseline, routed.providerUsed).also { advice ->
+                if (routed.providerUsed == AiProvider.OPENAI && advice.source == GoalAdviceSource.LOCAL_CALCULATION) {
+                    throw AiProviderRequestException(AiProvider.OPENAI, AiFeature.GOAL_ADVICE, AiFailureCategory.INVALID_RESPONSE)
+                }
+            }
         }.getOrElse { error ->
             if (error is CancellationException) throw error
+            if (!error.allowsDeterministicAiFallback()) throw error
             deterministicGoalAdvice(
                 height = height,
                 weight = weight,
@@ -847,9 +874,14 @@ class WeeklyReportService @Inject constructor(
                     thinkingBudget = 1000,
                 ),
             )
-            parseWeeklyReportResponse(routed.rawJson, adherence, routed.providerUsed)
+            parseWeeklyReportResponse(routed.rawJson, adherence, routed.providerUsed).also { report ->
+                if (routed.providerUsed == AiProvider.OPENAI && report.source == WeeklyReportSource.LOCAL_FALLBACK) {
+                    throw AiProviderRequestException(AiProvider.OPENAI, AiFeature.WEEKLY_REPORT, AiFailureCategory.INVALID_RESPONSE)
+                }
+            }
         }.getOrElse { error ->
             if (error is CancellationException) throw error
+            if (!error.allowsDeterministicAiFallback()) throw error
             fallbackWeeklyReport(adherence)
         }
 

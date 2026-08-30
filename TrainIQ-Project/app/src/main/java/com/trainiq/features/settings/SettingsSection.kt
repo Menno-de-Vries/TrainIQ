@@ -1599,12 +1599,12 @@ internal fun AiPreferences.toSettingsAiStatus(): SettingsAiStatus =
 
 internal fun aiProviderStatusLabel(aiStatus: SettingsAiStatus): String = when {
     !aiStatus.enabled -> "Uitgeschakeld"
-    aiStatus.hasGeminiKey || aiStatus.hasOpenAiKey -> buildString {
+    aiStatus.hasGeminiKey && aiStatus.hasOpenAiKey -> buildString {
         append("Klaar: ${aiStatus.preferredProvider.label}")
-        if (aiStatus.hasGeminiKey && aiStatus.hasOpenAiKey) {
-            append(", tweede provider opgeslagen")
-        }
+        append(", tweede provider opgeslagen")
     }
+    aiStatus.hasGeminiKey -> "Klaar: Gemini 2.5 Flash"
+    aiStatus.hasOpenAiKey -> "Klaar: OpenAI"
     else -> "Geen AI-sleutel ingesteld"
 }
 

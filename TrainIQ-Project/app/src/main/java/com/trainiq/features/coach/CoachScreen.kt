@@ -1,5 +1,7 @@
 package com.trainiq.features.coach
 
+import com.trainiq.ai.services.toAiUserMessage
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.horizontalScroll
@@ -252,10 +254,15 @@ class CoachViewModel @Inject constructor(
                 generateGoalAdviceUseCase(input.height, input.weight, input.bodyFat, input.age, input.sex, input.activityLevel, input.goal, input.manualCalorieTarget)
             }
             ephemeral.update {
+                val advice = result.getOrNull()
                 it.copy(
-                    goalAdvice = result.getOrNull(),
+                    goalAdvice = advice,
                     goalAdviceInput = if (result.isSuccess) input else null,
-                    message = if (result.isSuccess) "Advies gemaakt. Controleer het voordat je opslaat." else "Advies maken lukt nu niet.",
+                    message = when {
+                        advice?.source == GoalAdviceSource.LOCAL_CALCULATION -> "Lokale berekening gemaakt; AI was tijdelijk niet beschikbaar. Probeer later opnieuw."
+                        result.isSuccess -> "Advies gemaakt. Controleer het voordat je opslaat."
+                        else -> result.exceptionOrNull()?.toAiUserMessage("Advies maken lukt nu niet.")
+                    },
                     isGeneratingAdvice = false,
                 )
             }
@@ -267,9 +274,14 @@ class CoachViewModel @Inject constructor(
             ephemeral.update { it.copy(isGeneratingReport = true, message = null) }
             val result: Result<WeeklyReportResult> = runCatching { generateWeeklyReportUseCase() }
             ephemeral.update {
+                val report = result.getOrNull()
                 it.copy(
-                    generatedReport = result.getOrNull(),
-                    message = if (result.isSuccess) "Samenvatting bijgewerkt." else "Weekrapport maken lukt nu niet.",
+                    generatedReport = report,
+                    message = when {
+                        report?.source == WeeklyReportSource.LOCAL_FALLBACK -> "Lokale samenvatting gemaakt; AI was tijdelijk niet beschikbaar. Probeer later opnieuw."
+                        result.isSuccess -> "Samenvatting bijgewerkt."
+                        else -> result.exceptionOrNull()?.toAiUserMessage("Weekrapport maken lukt nu niet.")
+                    },
                     isGeneratingReport = false,
                 )
             }

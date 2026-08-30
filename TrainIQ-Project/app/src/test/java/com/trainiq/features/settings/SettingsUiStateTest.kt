@@ -205,6 +205,26 @@ class SettingsUiStateTest {
     }
 
     @Test
+    fun aiProviderStatusLabel_namesTheOnlyConfiguredProviderInsteadOfMissingPreference() {
+        val openAiOnly = SettingsAiStatus(
+            enabled = true,
+            preferredProvider = AiProviderPreference.GEMINI_FIRST,
+            hasGeminiKey = false,
+            hasOpenAiKey = true,
+            maskedGeminiKey = "Niet ingesteld",
+            maskedOpenAiKey = "sk-p****test",
+        )
+        val geminiOnly = openAiOnly.copy(
+            preferredProvider = AiProviderPreference.OPENAI_FIRST,
+            hasGeminiKey = true,
+            hasOpenAiKey = false,
+        )
+
+        assertEquals("Klaar: OpenAI", aiProviderStatusLabel(openAiOnly))
+        assertEquals("Klaar: Gemini 2.5 Flash", aiProviderStatusLabel(geminiOnly))
+    }
+
+    @Test
     fun settingsUiStateDoesNotRetainPlaintextAiKeys() {
         val source = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
         val successBody = source.substringAfter("data class Success(").substringBefore(") : SettingsUiState")

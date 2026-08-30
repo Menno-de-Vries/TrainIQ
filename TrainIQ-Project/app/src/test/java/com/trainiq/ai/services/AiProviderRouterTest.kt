@@ -11,6 +11,7 @@ import org.junit.Test
 import retrofit2.HttpException
 import retrofit2.Response
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class AiProviderRouterTest {
     @Test
     fun openAiStrictSchema_addsAdditionalPropertiesFalseToNestedObjects() {
@@ -78,6 +79,74 @@ class AiProviderRouterTest {
     }
 
     @Test
+    fun openAiStrictSchemas_keepSupportedConstraintsAndExcludeUnsupportedCompositionKeywords() {
+        val schemas = listOf(
+            AiJsonSchemas.mealScan,
+            AiJsonSchemas.bodyMeasurementPhoto,
+            AiJsonSchemas.workoutDebrief,
+            AiJsonSchemas.goalAdvice,
+            AiJsonSchemas.weeklyReport,
+            AiJsonSchemas.routineGenerator,
+        ).map { it.toOpenAiStrictSchema() }
+        val keys = mutableSetOf<String>()
+
+        fun collect(value: Any?) {
+            when (value) {
+                is Map<*, *> -> value.forEach { (key, child) ->
+                    keys += key.toString()
+                    collect(child)
+                }
+                is List<*> -> value.forEach(::collect)
+            }
+        }
+        schemas.forEach(::collect)
+
+        assertTrue("maxLength" in keys)
+        assertTrue("maxItems" in keys)
+        assertTrue(setOf("allOf", "not", "dependentRequired", "dependentSchemas", "if", "then", "else").none(keys::contains))
+    }
+
+    @Test
+    fun routeAiProviderRequest_usesConfiguredOpenAiWhenGeminiIsPreferredButMissing() = runTest {
+        val gemini = FakeAiModelClient(AiProvider.GEMINI)
+        val openAi = FakeAiModelClient(AiProvider.OPENAI)
+
+        val result = routeAiProviderRequest(
+            settings = aiSettings(
+                preferredProvider = AiProviderPreference.GEMINI_FIRST,
+                geminiApiKey = "",
+                openAiApiKey = "openai-key",
+            ),
+            request = weeklyRequest(),
+            clientFor = { provider -> if (provider == AiProvider.GEMINI) gemini else openAi },
+        )
+
+        assertEquals(AiProvider.OPENAI, result.providerUsed)
+        assertTrue(gemini.apiKeys.isEmpty())
+        assertEquals(listOf("openai-key"), openAi.apiKeys)
+    }
+
+    @Test
+    fun routeAiProviderRequest_usesConfiguredGeminiWhenOpenAiIsPreferredButMissing() = runTest {
+        val gemini = FakeAiModelClient(AiProvider.GEMINI)
+        val openAi = FakeAiModelClient(AiProvider.OPENAI)
+
+        val result = routeAiProviderRequest(
+            settings = aiSettings(
+                preferredProvider = AiProviderPreference.OPENAI_FIRST,
+                geminiApiKey = "gemini-key",
+                openAiApiKey = "",
+            ),
+            request = weeklyRequest(),
+            clientFor = { provider -> if (provider == AiProvider.GEMINI) gemini else openAi },
+        )
+
+        assertEquals(AiProvider.GEMINI, result.providerUsed)
+        assertEquals(listOf("gemini-key"), gemini.apiKeys)
+        assertTrue(openAi.apiKeys.isEmpty())
+    }
+
+    @Test
     fun routeAiProviderRequest_fallsBackToSecondProviderOnTransientFailure() = runTest {
         val openAi = FakeAiModelClient(AiProvider.OPENAI, error = rateLimitError())
         val gemini = FakeAiModelClient(AiProvider.GEMINI)
@@ -94,7 +163,7 @@ class AiProviderRouterTest {
         )
 
         assertEquals(AiProvider.GEMINI, result.providerUsed)
-        assertEquals(listOf("OPENAI:AiRateLimitException"), result.fallbackFailures)
+        assertEquals(listOf("OPENAI:AiProviderRequestException"), result.fallbackFailures)
         assertEquals(listOf("openai-key", "openai-key"), openAi.apiKeys)
         assertEquals(listOf("gemini-key"), gemini.apiKeys)
     }
@@ -117,7 +186,7 @@ class AiProviderRouterTest {
         }.exceptionOrNull()
 
         assertTrue(error is AiProviderUnavailableException)
-        assertEquals(listOf("OPENAI:AiRateLimitException"), (error as AiProviderUnavailableException).failures)
+        assertEquals(listOf("OPENAI:AiProviderRequestException"), (error as AiProviderUnavailableException).failures)
         assertEquals(listOf("openai-key", "openai-key"), openAi.apiKeys)
         assertTrue(gemini.apiKeys.isEmpty())
     }
@@ -153,6 +222,152 @@ class AiProviderRouterTest {
 
         assertEquals(listOf("openai-key", "openai-key"), openAi.apiKeys)
         assertEquals(listOf("gemini-key", "gemini-key"), gemini.apiKeys)
+    }
+
+    @Test
+    fun routeAiProviderRequest_openAiTemporary429_respectsRetryAfterThenSucceeds() = runTest {
+        val openAi = SequencedAiModelClient(
+            provider = AiProvider.OPENAI,
+            outcomes = ArrayDeque(
+                listOf(
+                    Result.failure(
+                        AiProviderRequestException(
+                            provider = AiProvider.OPENAI,
+                            feature = AiFeature.WEEKLY_REPORT,
+                            category = AiFailureCategory.TEMPORARY_RATE_LIMIT,
+                            httpStatus = 429,
+                            errorCode = "rate_limit_exceeded",
+                            retryAfterMillis = 3_000L,
+                        ),
+                    ),
+                    Result.success(AiRouteResult(AiProvider.OPENAI, "openai-model", "{}")),
+                ),
+            ),
+        )
+
+        val result = routeAiProviderRequest(
+            settings = aiSettings(AiProviderPreference.OPENAI_FIRST, geminiApiKey = "", openAiApiKey = "openai-key"),
+            request = weeklyRequest(),
+            clientFor = { openAi },
+        )
+
+        assertEquals(AiProvider.OPENAI, result.providerUsed)
+        assertEquals(2, openAi.calls)
+        assertEquals(3_000L, testScheduler.currentTime)
+    }
+
+    @Test
+    fun routeAiProviderRequest_openAiTemporary429_throttlesOnlyAfterRetryBudgetIsExhausted() = runTest {
+        val throttle = AiFeatureThrottle(nowMillis = { testScheduler.currentTime })
+        val diagnostics = mutableListOf<Map<String, String>>()
+        val temporaryRateLimit = AiProviderRequestException(
+            provider = AiProvider.OPENAI,
+            feature = AiFeature.WEEKLY_REPORT,
+            category = AiFailureCategory.TEMPORARY_RATE_LIMIT,
+            httpStatus = 429,
+            errorCode = "rate_limit_exceeded",
+        )
+        val openAi = FakeAiModelClient(AiProvider.OPENAI, error = temporaryRateLimit)
+        val settings = aiSettings(AiProviderPreference.OPENAI_FIRST, geminiApiKey = "", openAiApiKey = "openai-key")
+
+        runCatching {
+            routeAiProviderRequest(
+                settings = settings,
+                request = weeklyRequest(),
+                throttleForProvider = { throttle },
+                clientFor = { openAi },
+                onFailureDiagnostic = { diagnostics += it },
+            )
+        }
+        assertEquals(listOf("openai-key", "openai-key"), openAi.apiKeys)
+
+        runCatching {
+            routeAiProviderRequest(
+                settings = settings,
+                request = weeklyRequest(),
+                throttleForProvider = { throttle },
+                clientFor = { openAi },
+                onFailureDiagnostic = { diagnostics += it },
+            )
+        }
+        assertEquals(listOf("openai-key", "openai-key"), openAi.apiKeys)
+        assertEquals(2, diagnostics.size)
+        assertEquals("temporary_rate_limit", diagnostics.last()["category"])
+        assertTrue(diagnostics.last()["retry_after_ms"]?.toLongOrNull() ?: 0L > 0L)
+    }
+
+    @Test
+    fun routeAiProviderRequest_openAiQuotaAndAuthenticationNeverRetryOrThrottleNextCalculation() = runTest {
+        val terminalFailures = listOf(AiFailureCategory.QUOTA_BILLING, AiFailureCategory.AUTHENTICATION)
+
+        terminalFailures.forEach { category ->
+            val throttle = AiFeatureThrottle(nowMillis = { testScheduler.currentTime })
+            val openAi = FakeAiModelClient(
+                AiProvider.OPENAI,
+                error = AiProviderRequestException(
+                    provider = AiProvider.OPENAI,
+                    feature = AiFeature.WEEKLY_REPORT,
+                    category = category,
+                    httpStatus = if (category == AiFailureCategory.AUTHENTICATION) 401 else 429,
+                ),
+            )
+            val settings = aiSettings(AiProviderPreference.OPENAI_FIRST, geminiApiKey = "", openAiApiKey = "openai-key")
+
+            repeat(2) {
+                runCatching {
+                    routeAiProviderRequest(
+                        settings = settings,
+                        request = weeklyRequest(),
+                        throttleForProvider = { throttle },
+                        clientFor = { openAi },
+                    )
+                }
+            }
+
+            assertEquals("$category must reach OpenAI once per calculation", 2, openAi.apiKeys.size)
+        }
+    }
+
+    @Test
+    fun routeAiProviderRequest_reportsOnlySanitizedFailureMetadata() = runTest {
+        val diagnostics = mutableListOf<Map<String, String>>()
+        val openAi = FakeAiModelClient(
+            AiProvider.OPENAI,
+            error = AiProviderRequestException(
+                provider = AiProvider.OPENAI,
+                feature = AiFeature.WEEKLY_REPORT,
+                category = AiFailureCategory.AUTHENTICATION,
+                httpStatus = 401,
+                errorCode = "invalid_api_key",
+                requestId = "req_safe_123",
+                cause = IllegalArgumentException("openai-key prompt-private image-private"),
+            ),
+        )
+
+        runCatching {
+            routeAiProviderRequest(
+                settings = aiSettings(AiProviderPreference.OPENAI_FIRST, geminiApiKey = "", openAiApiKey = "openai-key"),
+                request = weeklyRequest(),
+                clientFor = { openAi },
+                onFailureDiagnostic = { diagnostic -> diagnostics.add(diagnostic) },
+            )
+        }
+
+        assertEquals(
+            mapOf(
+                "provider" to "openai",
+                "feature" to "weekly_report",
+                "category" to "authentication",
+                "http_status" to "401",
+                "error_code" to "invalid_api_key",
+                "request_id" to "req_safe_123",
+            ),
+            diagnostics.single(),
+        )
+        val recorded = diagnostics.single().toString()
+        assertFalse(recorded.contains("openai-key"))
+        assertFalse(recorded.contains("prompt-private"))
+        assertFalse(recorded.contains("image-private"))
     }
 
     @Test
@@ -258,6 +473,18 @@ class AiProviderRouterTest {
         }
     }
 
+    private class SequencedAiModelClient(
+        override val provider: AiProvider,
+        private val outcomes: ArrayDeque<Result<AiRouteResult>>,
+    ) : AiModelClient {
+        var calls: Int = 0
+
+        override suspend fun generateJson(apiKey: String, request: AiRouteRequest): AiRouteResult {
+            calls += 1
+            return outcomes.removeFirst().getOrThrow()
+        }
+    }
+
     private fun aiSettings(
         preferredProvider: AiProviderPreference,
         geminiApiKey: String,
@@ -282,6 +509,12 @@ class AiProviderRouterTest {
             thinkingBudget = 1000,
         )
 
-    private fun rateLimitError(): HttpException =
-        HttpException(Response.error<Unit>(429, "rate".toResponseBody()))
+    private fun rateLimitError(): AiProviderRequestException =
+        AiProviderRequestException(
+            provider = AiProvider.OPENAI,
+            feature = AiFeature.WEEKLY_REPORT,
+            category = AiFailureCategory.TEMPORARY_RATE_LIMIT,
+            httpStatus = 429,
+            errorCode = "rate_limit_exceeded",
+        )
 }
