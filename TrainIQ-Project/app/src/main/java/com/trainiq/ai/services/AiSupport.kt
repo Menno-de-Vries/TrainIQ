@@ -9,9 +9,11 @@ import retrofit2.HttpException
 
 internal enum class AiFailureCategory {
     AUTHENTICATION,
+    ACCESS,
     REQUEST_CONFIGURATION,
     TEMPORARY_RATE_LIMIT,
     QUOTA_BILLING,
+    UNCLASSIFIED_LIMIT,
     TIMEOUT,
     NETWORK,
     SERVICE_FAILURE,
@@ -27,8 +29,11 @@ internal class AiProviderRequestException(
     val category: AiFailureCategory,
     val httpStatus: Int? = null,
     val errorCode: String? = null,
+    val errorType: String? = null,
     val requestId: String? = null,
     val retryAfterMillis: Long? = null,
+    val attempt: Int? = null,
+    val durationMillis: Long? = null,
     cause: Throwable? = null,
 ) : RuntimeException(category.safeUserMessage(provider), cause)
 
@@ -38,8 +43,11 @@ internal fun AiProviderRequestException.safeDiagnosticAttributes(): Map<String, 
     put("category", category.name.lowercase())
     httpStatus?.let { put("http_status", it.toString()) }
     errorCode?.let { put("error_code", it) }
+    errorType?.let { put("error_type", it) }
     requestId?.let { put("request_id", it) }
     retryAfterMillis?.let { put("retry_after_ms", it.toString()) }
+    attempt?.let { put("attempt", it.toString()) }
+    durationMillis?.let { put("duration_ms", it.toString()) }
 }
 
 internal fun Throwable.allowsDeterministicAiFallback(): Boolean = when (this) {
@@ -49,15 +57,17 @@ internal fun Throwable.allowsDeterministicAiFallback(): Boolean = when (this) {
         AiFailureCategory.NETWORK,
         AiFailureCategory.SERVICE_FAILURE,
     )
-    is AiProviderUnavailableException -> hasRecoverableFailure || failures.isEmpty()
+    is AiProviderUnavailableException -> terminalFailure == null && (hasRecoverableFailure || failures.isEmpty())
     else -> true
 }
 
 private fun AiFailureCategory.safeUserMessage(provider: AiProvider): String = when (this) {
     AiFailureCategory.AUTHENTICATION -> "${provider.displayName} weigert de API-sleutel of projecttoegang. Controleer je AI-instellingen."
+    AiFailureCategory.ACCESS -> "${provider.displayName} staat deze aanvraag niet toe. Controleer de provider- en projectrechten."
     AiFailureCategory.REQUEST_CONFIGURATION -> "TrainIQ kon geen geldige aanvraag naar ${provider.displayName} sturen. Werk de app bij of probeer later opnieuw."
     AiFailureCategory.TEMPORARY_RATE_LIMIT -> "${provider.displayName} is tijdelijk beperkt. Probeer later opnieuw."
     AiFailureCategory.QUOTA_BILLING -> "Het ${provider.displayName}-project heeft geen bruikbaar tegoed of heeft een gebruiks- of bestedingslimiet bereikt. Controleer billing en projectlimieten."
+    AiFailureCategory.UNCLASSIFIED_LIMIT -> "${provider.displayName} wees de aanvraag af vanwege een limiet. Controleer billing en projectlimieten of probeer later opnieuw."
     AiFailureCategory.TIMEOUT -> "${provider.displayName} reageerde te langzaam. Controleer je verbinding en probeer opnieuw."
     AiFailureCategory.NETWORK -> "${provider.displayName} kon niet worden bereikt. Controleer je internetverbinding en probeer opnieuw."
     AiFailureCategory.SERVICE_FAILURE -> "${provider.displayName} is tijdelijk niet beschikbaar. Probeer later opnieuw."
@@ -123,6 +133,13 @@ internal fun Throwable.toAiUserMessage(defaultMessage: String): String = when (v
     else -> mapped.message ?: defaultMessage
 }
 
+internal fun Throwable.toSafeAiFallbackMessage(defaultMessage: String): String = when (this) {
+    is AiProviderRequestException -> message ?: defaultMessage
+    is AiProviderUnavailableException -> primaryFailure?.message ?: defaultMessage
+    is AiRateLimitException, is AiFeatureThrottledException, is AiTimeoutException -> message ?: defaultMessage
+    else -> defaultMessage
+}
+
 internal suspend fun <T> callGeminiWithBoundedRetry(
     feature: AiFeature,
     timeoutMillis: Long = feature.timeoutMillis,
@@ -143,6 +160,7 @@ internal suspend fun <T> callOpenAiWithBoundedRetry(
     jitterMillis: (Long) -> Long = { maximum ->
         if (maximum <= 0L) 0L else Random.nextLong(maximum + 1L)
     },
+    elapsedRealtimeMillis: () -> Long = { System.nanoTime() / 1_000_000L },
     block: suspend () -> T,
 ): T {
     throttle.failureIfThrottled(feature)?.let { throttled ->
@@ -151,32 +169,43 @@ internal suspend fun <T> callOpenAiWithBoundedRetry(
             feature = feature,
             category = AiFailureCategory.TEMPORARY_RATE_LIMIT,
             retryAfterMillis = throttled.retryAfterMillis,
+            attempt = 0,
+            durationMillis = 0L,
             cause = throttled,
         )
     }
+    val startedAtMillis = elapsedRealtimeMillis()
+    val totalAttempts = maxAttempts.coerceAtLeast(1)
+    var currentAttempt = 0
     var lastRateLimit: AiProviderRequestException? = null
     return try {
         withTimeout(timeoutMillis) {
-            repeat(maxAttempts.coerceAtLeast(1)) { attempt ->
+            repeat(totalAttempts) { attemptIndex ->
+                currentAttempt = attemptIndex + 1
                 try {
                     return@withTimeout block()
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: AiProviderRequestException) {
-                    if (error.category != AiFailureCategory.TEMPORARY_RATE_LIMIT) throw error
-                    lastRateLimit = error
-                    if (attempt == maxAttempts.coerceAtLeast(1) - 1) {
-                        throttle.recordRateLimit(feature, error.retryAfterMillis)
-                        throw error
+                    val enriched = error.withExecutionMetadata(
+                        attempt = currentAttempt,
+                        durationMillis = elapsedSince(startedAtMillis, elapsedRealtimeMillis),
+                    )
+                    if (enriched.category != AiFailureCategory.TEMPORARY_RATE_LIMIT) throw enriched
+                    lastRateLimit = enriched
+                    if (attemptIndex == totalAttempts - 1) {
+                        throttle.recordRateLimit(feature, enriched.retryAfterMillis)
+                        throw enriched
                     }
-                    val retryDelay = error.retryAfterMillis ?: boundedOpenAiBackoffMillis(
-                        attempt = attempt,
+                    val retryDelay = enriched.retryAfterMillis ?: boundedOpenAiBackoffMillis(
+                        attempt = attemptIndex,
                         initialBackoffMillis = initialBackoffMillis,
                         jitterMillis = jitterMillis,
                     )
-                    if (retryDelay >= timeoutMillis) {
-                        throttle.recordRateLimit(feature, error.retryAfterMillis)
-                        throw error
+                    val remainingBudgetMillis = timeoutMillis - elapsedSince(startedAtMillis, elapsedRealtimeMillis)
+                    if (remainingBudgetMillis <= 0L || retryDelay >= remainingBudgetMillis) {
+                        throttle.recordRateLimit(feature, enriched.retryAfterMillis)
+                        throw enriched
                     }
                     delay(retryDelay)
                 }
@@ -190,16 +219,41 @@ internal suspend fun <T> callOpenAiWithBoundedRetry(
     } catch (error: TimeoutCancellationException) {
         lastRateLimit?.let {
             throttle.recordRateLimit(feature, it.retryAfterMillis)
-            throw it
+            throw it.withExecutionMetadata(
+                attempt = currentAttempt,
+                durationMillis = elapsedSince(startedAtMillis, elapsedRealtimeMillis),
+            )
         }
         throw AiProviderRequestException(
             provider = AiProvider.OPENAI,
             feature = feature,
             category = AiFailureCategory.TIMEOUT,
+            attempt = currentAttempt.coerceAtLeast(1),
+            durationMillis = elapsedSince(startedAtMillis, elapsedRealtimeMillis),
             cause = error,
         )
     }
 }
+
+private fun AiProviderRequestException.withExecutionMetadata(
+    attempt: Int,
+    durationMillis: Long,
+): AiProviderRequestException = AiProviderRequestException(
+    provider = provider,
+    feature = feature,
+    category = category,
+    httpStatus = httpStatus,
+    errorCode = errorCode,
+    errorType = errorType,
+    requestId = requestId,
+    retryAfterMillis = retryAfterMillis,
+    attempt = attempt,
+    durationMillis = durationMillis.coerceAtLeast(0L),
+    cause = cause,
+)
+
+private fun elapsedSince(startedAtMillis: Long, elapsedRealtimeMillis: () -> Long): Long =
+    (elapsedRealtimeMillis() - startedAtMillis).coerceAtLeast(0L)
 
 private fun boundedOpenAiBackoffMillis(
     attempt: Int,

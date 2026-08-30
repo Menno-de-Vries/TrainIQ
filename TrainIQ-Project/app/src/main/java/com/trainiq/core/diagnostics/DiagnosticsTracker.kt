@@ -42,6 +42,9 @@ class DiagnosticsTracker @Inject constructor(
                 safeAttributes["category"],
                 safeAttributes["http_status"],
                 safeAttributes["error_code"],
+                safeAttributes["error_type"],
+                safeAttributes["attempt"],
+                safeAttributes["duration_ms"],
             ).joinToString(":"),
             category = "ai",
             timestampMillis = System.currentTimeMillis(),
@@ -56,8 +59,11 @@ private val AiFailureAttributeKeys = setOf(
     "category",
     "http_status",
     "error_code",
+    "error_type",
     "request_id",
     "retry_after_ms",
+    "attempt",
+    "duration_ms",
 )
 
 private fun String.toSafeDiagnosticValue(): String =

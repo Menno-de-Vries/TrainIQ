@@ -163,6 +163,63 @@ class AiServicesTest {
     }
 
     @Test
+    fun analyzeMealImage_openAiTimeoutFallbackKeepsSpecificSafeCause() = runTest {
+        val primary = AiProviderRequestException(
+            provider = AiProvider.OPENAI,
+            feature = AiFeature.MEAL_SCAN,
+            category = AiFailureCategory.TIMEOUT,
+            requestId = "req_safe_timeout",
+        )
+        val service = MealAnalysisService(
+            aiJsonGenerator = FailingAiJsonGenerator(
+                AiProviderUnavailableException(
+                    failures = listOf("OPENAI:AiProviderRequestException"),
+                    hasRecoverableFailure = true,
+                    primaryFailure = primary,
+                ),
+            ),
+            isAiReady = { true },
+            imageBytesProvider = { byteArrayOf(1, 2, 3) },
+        )
+
+        val result = service.analyzeMealImage(tempImagePath(), "", 43_200_000L)
+
+        assertEquals(MealAnalysisSource.LOCAL_FALLBACK, result.source)
+        assertTrue(result.notes.orEmpty().contains("reageerde te langzaam"))
+        assertFalse(result.notes.orEmpty().contains("req_safe_timeout"))
+    }
+
+    @Test
+    fun generateWorkoutDebrief_openAiServiceFallbackKeepsSpecificSafeCause() = runTest {
+        val primary = AiProviderRequestException(
+            provider = AiProvider.OPENAI,
+            feature = AiFeature.WORKOUT_DEBRIEF,
+            category = AiFailureCategory.SERVICE_FAILURE,
+        )
+        val service = WorkoutDebriefService(
+            FailingAiJsonGenerator(
+                AiProviderUnavailableException(
+                    failures = listOf("OPENAI:AiProviderRequestException"),
+                    hasRecoverableFailure = true,
+                    primaryFailure = primary,
+                ),
+            ),
+        )
+
+        val result = service.generateWorkoutDebrief(
+            totalVolume = 5_000.0,
+            progression = 1.0,
+            distribution = "Full body",
+            avgRpe = 7.0f,
+            topExercises = "Squat",
+            weeklyFrequency = 3,
+        )
+
+        assertEquals(com.trainiq.domain.model.WorkoutDebriefSource.LOCAL_FALLBACK, result.source)
+        assertTrue(result.summary.contains("tijdelijk niet beschikbaar"))
+    }
+
+    @Test
     fun analyzeMealImage_openAiMalformedOutput_isNotReportedAsOpenAiSuccess() = runTest {
         val service = MealAnalysisService(
             aiJsonGenerator = SuccessfulAiJsonGenerator(

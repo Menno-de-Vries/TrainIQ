@@ -186,9 +186,78 @@ class AiProviderRouterTest {
         }.exceptionOrNull()
 
         assertTrue(error is AiProviderUnavailableException)
-        assertEquals(listOf("OPENAI:AiProviderRequestException"), (error as AiProviderUnavailableException).failures)
+        val unavailable = error as AiProviderUnavailableException
+        assertEquals(listOf("OPENAI:AiProviderRequestException"), unavailable.failures)
+        val primaryFailure = unavailable.javaClass.getDeclaredField("primaryFailure")
+            .apply { isAccessible = true }
+            .get(unavailable) as AiProviderRequestException
+        assertEquals(AiProvider.OPENAI, primaryFailure.provider)
+        assertEquals(AiFailureCategory.TEMPORARY_RATE_LIMIT, primaryFailure.category)
         assertEquals(listOf("openai-key", "openai-key"), openAi.apiKeys)
         assertTrue(gemini.apiKeys.isEmpty())
+    }
+
+    @Test
+    fun routeAiProviderRequest_preservesPreferredFailureWhenFallbackProviderFailsTerminally() = runTest {
+        val openAiFailure = AiProviderRequestException(
+            provider = AiProvider.OPENAI,
+            feature = AiFeature.WEEKLY_REPORT,
+            category = AiFailureCategory.SERVICE_FAILURE,
+        )
+        val geminiFailure = IllegalArgumentException("private terminal detail")
+        val openAi = FakeAiModelClient(AiProvider.OPENAI, error = openAiFailure)
+        val gemini = FakeAiModelClient(AiProvider.GEMINI, error = geminiFailure)
+
+        val error = runCatching {
+            routeAiProviderRequest(
+                settings = aiSettings(
+                    preferredProvider = AiProviderPreference.OPENAI_FIRST,
+                    geminiApiKey = "gemini-key",
+                    openAiApiKey = "openai-key",
+                    allowCrossProviderFallback = true,
+                ),
+                request = weeklyRequest(),
+                clientFor = { provider -> if (provider == AiProvider.GEMINI) gemini else openAi },
+            )
+        }.exceptionOrNull() as AiProviderUnavailableException
+
+        assertEquals(AiProvider.OPENAI, error.primaryFailure?.provider)
+        assertEquals(AiFailureCategory.SERVICE_FAILURE, error.primaryFailure?.category)
+        assertEquals(AiProvider.GEMINI, error.terminalFailure?.provider)
+        assertEquals(AiFailureCategory.UNKNOWN, error.terminalFailure?.category)
+        assertFalse(error.allowsDeterministicAiFallback())
+        assertFalse(error.message.orEmpty().contains("private terminal detail"))
+    }
+
+    @Test
+    fun routeAiProviderRequest_keepsProviderOrderForGeminiFirstThenTerminalOpenAiFailure() = runTest {
+        val geminiFailure = HttpException(Response.error<Unit>(429, "rate".toResponseBody()))
+        val openAiFailure = AiProviderRequestException(
+            provider = AiProvider.OPENAI,
+            feature = AiFeature.WEEKLY_REPORT,
+            category = AiFailureCategory.ACCESS,
+        )
+        val gemini = FakeAiModelClient(AiProvider.GEMINI, error = geminiFailure)
+        val openAi = FakeAiModelClient(AiProvider.OPENAI, error = openAiFailure)
+
+        val error = runCatching {
+            routeAiProviderRequest(
+                settings = aiSettings(
+                    preferredProvider = AiProviderPreference.GEMINI_FIRST,
+                    geminiApiKey = "gemini-key",
+                    openAiApiKey = "openai-key",
+                    allowCrossProviderFallback = true,
+                ),
+                request = weeklyRequest(),
+                clientFor = { provider -> if (provider == AiProvider.GEMINI) gemini else openAi },
+            )
+        }.exceptionOrNull() as AiProviderUnavailableException
+
+        assertEquals(AiProvider.GEMINI, error.primaryFailure?.provider)
+        assertEquals(AiFailureCategory.TEMPORARY_RATE_LIMIT, error.primaryFailure?.category)
+        assertEquals(AiProvider.OPENAI, error.terminalFailure?.provider)
+        assertEquals(AiFailureCategory.ACCESS, error.terminalFailure?.category)
+        assertFalse(error.allowsDeterministicAiFallback())
     }
 
     @Test
@@ -353,17 +422,15 @@ class AiProviderRouterTest {
             )
         }
 
-        assertEquals(
-            mapOf(
-                "provider" to "openai",
-                "feature" to "weekly_report",
-                "category" to "authentication",
-                "http_status" to "401",
-                "error_code" to "invalid_api_key",
-                "request_id" to "req_safe_123",
-            ),
-            diagnostics.single(),
-        )
+        val diagnostic = diagnostics.single()
+        assertEquals("openai", diagnostic["provider"])
+        assertEquals("weekly_report", diagnostic["feature"])
+        assertEquals("authentication", diagnostic["category"])
+        assertEquals("401", diagnostic["http_status"])
+        assertEquals("invalid_api_key", diagnostic["error_code"])
+        assertEquals("req_safe_123", diagnostic["request_id"])
+        assertEquals("1", diagnostic["attempt"])
+        assertTrue(diagnostic["duration_ms"]?.toLongOrNull() ?: -1L >= 0L)
         val recorded = diagnostics.single().toString()
         assertFalse(recorded.contains("openai-key"))
         assertFalse(recorded.contains("prompt-private"))

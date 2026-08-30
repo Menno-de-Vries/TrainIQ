@@ -7,6 +7,7 @@ import com.trainiq.domain.model.GoalAdvice
 import com.trainiq.domain.model.SavedGoalAdvice
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WeeklyReportResult
+import com.trainiq.domain.model.WeeklyReportSource
 import com.trainiq.domain.repository.CoachRepository
 import com.trainiq.domain.usecase.GenerateGoalAdviceUseCase
 import com.trainiq.domain.usecase.GenerateWeeklyReportUseCase
@@ -109,6 +110,55 @@ class CoachDraftStateTest {
         assertTrue(viewModel.success().isProfileDraftDirty)
     }
 
+    @Test
+    fun weeklyReportLocalFallbackShowsSpecificCauseAndClearsLoadingState() = runTest {
+        val safeCause = "OpenAI reageerde te langzaam. Controleer je verbinding en probeer opnieuw."
+        val repository = FakeCoachRepository(profile = profile(name = "Opgeslagen")).apply {
+            weeklyReportResult = WeeklyReportResult(
+                summary = "$safeCause Lokale samenvatting: consistentie blijft leidend.",
+                wins = emptyList(),
+                risks = emptyList(),
+                nextWeekFocus = "Herstel bewaken.",
+                source = WeeklyReportSource.LOCAL_FALLBACK,
+            )
+        }
+        val viewModel = coachViewModel(repository, SavedStateHandle())
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.generateWeeklyReport()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.success().isGeneratingReport)
+        assertEquals(safeCause, viewModel.success().message)
+        assertEquals(WeeklyReportSource.LOCAL_FALLBACK, viewModel.success().generatedReport?.source)
+    }
+
+    @Test
+    fun weeklyReportGenericLocalFallbackKeepsConciseExistingMessage() = runTest {
+        val repository = FakeCoachRepository(profile = profile(name = "Opgeslagen")).apply {
+            weeklyReportResult = WeeklyReportResult(
+                summary = "Lokale samenvatting: consistentie blijft leidend.",
+                wins = emptyList(),
+                risks = emptyList(),
+                nextWeekFocus = "Herstel bewaken.",
+                source = WeeklyReportSource.LOCAL_FALLBACK,
+            )
+        }
+        val viewModel = coachViewModel(repository, SavedStateHandle())
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.generateWeeklyReport()
+        advanceUntilIdle()
+
+        assertEquals(
+            "Lokale samenvatting gemaakt; AI was tijdelijk niet beschikbaar. Probeer later opnieuw.",
+            viewModel.success().message,
+        )
+        assertFalse(viewModel.success().isGeneratingReport)
+    }
+
     private fun coachViewModel(repository: CoachRepository, savedStateHandle: SavedStateHandle) = CoachViewModel(
         savedStateHandle = savedStateHandle,
         observeCoachUseCase = ObserveCoachUseCase(repository),
@@ -142,6 +192,7 @@ class CoachDraftStateTest {
         val profile = MutableStateFlow(profile)
         val saveStarted = CompletableDeferred<Unit>()
         var saveGate: CompletableDeferred<Unit>? = null
+        var weeklyReportResult: WeeklyReportResult? = null
         private val savedAdvice = MutableStateFlow<SavedGoalAdvice?>(null)
         private val overview = MutableStateFlow(
             CoachOverview(
@@ -165,7 +216,8 @@ class CoachDraftStateTest {
             manualCalorieTarget: Int?,
         ): GoalAdvice = error("Not used")
 
-        override suspend fun generateWeeklyReport(): WeeklyReportResult = error("Not used")
+        override suspend fun generateWeeklyReport(): WeeklyReportResult =
+            weeklyReportResult ?: error("Not used")
 
         override fun observeUserProfile(): Flow<UserProfile?> = profile
 

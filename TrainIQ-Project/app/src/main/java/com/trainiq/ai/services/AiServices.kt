@@ -108,7 +108,9 @@ class MealAnalysisService internal constructor(
         }.getOrElse { error ->
             if (error is CancellationException) throw error
             if (!error.allowsDeterministicAiFallback()) throw error
-            return fallbackMealScan()
+            return fallbackMealScan(
+                notes = error.toSafeAiFallbackMessage("AI-maaltijdanalyse is nu niet beschikbaar. Je kunt de maaltijd handmatig toevoegen."),
+            )
         }
         return try {
             parseMealScan(routed.rawJson, suggestedMealType, routed.providerUsed, contextOverrides)
@@ -187,9 +189,11 @@ class MealAnalysisService internal constructor(
         }
     }
 
-    private fun fallbackMealScan(): MealAnalysisResult = MealAnalysisResult(
+    private fun fallbackMealScan(
+        notes: String = "AI-maaltijdanalyse is nu niet beschikbaar. Je kunt de maaltijd handmatig toevoegen.",
+    ): MealAnalysisResult = MealAnalysisResult(
         items = emptyList(),
-        notes = "AI-maaltijdanalyse is nu niet beschikbaar. Je kunt de maaltijd handmatig toevoegen.",
+        notes = notes,
         source = MealAnalysisSource.LOCAL_FALLBACK,
     )
 }
@@ -221,7 +225,9 @@ class BodyMeasurementPhotoService @Inject constructor(
         }.getOrElse { error ->
             if (error is CancellationException) throw error
             if (!error.allowsDeterministicAiFallback()) throw error
-            fallbackBodyMeasurementPhoto()
+            fallbackBodyMeasurementPhoto(
+                notes = error.toSafeAiFallbackMessage("AI-weegfotoanalyse is nu niet beschikbaar. Vul de meting handmatig in."),
+            )
         }
     }
 
@@ -631,7 +637,11 @@ class WorkoutDebriefService internal constructor(
         }.getOrElse { error ->
             if (error is CancellationException) throw error
             if (!error.allowsDeterministicAiFallback()) throw error
-            fallbackWorkoutDebriefResult(totalVolume, progression)
+            fallbackWorkoutDebriefResult(
+                totalVolume = totalVolume,
+                progression = progression,
+                failureMessage = error.toSafeAiFallbackMessage("AI-workoutanalyse is nu niet beschikbaar."),
+            )
         }
 
     suspend fun generateWorkoutDebriefOrThrow(
@@ -739,7 +749,7 @@ class GoalAdvisorService internal constructor(
         }.getOrElse { error ->
             if (error is CancellationException) throw error
             if (!error.allowsDeterministicAiFallback()) throw error
-            deterministicGoalAdvice(
+            val fallback = deterministicGoalAdvice(
                 height = height,
                 weight = weight,
                 bodyFat = bodyFat,
@@ -748,6 +758,9 @@ class GoalAdvisorService internal constructor(
                 activityLevel = activityLevel,
                 goal = goal,
                 manualCalorieTarget = manualCalorieTarget,
+            )
+            fallback.copy(
+                summary = "${error.toSafeAiFallbackMessage("AI-doeladvies is nu niet beschikbaar.")} ${fallback.summary}",
             )
         }
 
@@ -882,7 +895,10 @@ class WeeklyReportService @Inject constructor(
         }.getOrElse { error ->
             if (error is CancellationException) throw error
             if (!error.allowsDeterministicAiFallback()) throw error
-            fallbackWeeklyReport(adherence)
+            fallbackWeeklyReport(
+                adherence = adherence,
+                failureMessage = error.toSafeAiFallbackMessage("AI-weekrapport is nu niet beschikbaar."),
+            )
         }
 
 }
@@ -917,9 +933,15 @@ internal fun parseWeeklyReportResponse(text: String, adherence: Int, provider: A
         )
     }.getOrElse { fallbackWeeklyReport(adherence) }
 
-internal fun fallbackWeeklyReport(adherence: Int): WeeklyReportResult =
+internal fun fallbackWeeklyReport(
+    adherence: Int,
+    failureMessage: String? = null,
+): WeeklyReportResult =
     WeeklyReportResult(
-        summary = "Lokale samenvatting: er is nog te weinig betrouwbare context voor een AI-weekrapport. Consistentie staat nu op $adherence%.",
+        summary = listOfNotNull(
+            failureMessage,
+            "Lokale samenvatting: er is nog te weinig betrouwbare context voor een AI-weekrapport. Consistentie staat nu op $adherence%.",
+        ).joinToString(" "),
         wins = listOf("Training en voeding blijven lokaal beschikbaar."),
         risks = listOf("Zonder compleet profiel en recente logs kan TrainIQ geen betrouwbaar weekadvies geven."),
         nextWeekFocus = "Vul je profiel aan en log een paar trainingen of maaltijden voordat je het volume verhoogt.",
@@ -1015,8 +1037,15 @@ private class GeminiOnlyJsonGenerator(
     }
 }
 
-internal fun fallbackWorkoutDebriefResult(totalVolume: Double, progression: Double?) = WorkoutDebrief(
-    summary = "Lokale samenvatting: volume ${totalVolume.toInt()} kg.",
+internal fun fallbackWorkoutDebriefResult(
+    totalVolume: Double,
+    progression: Double?,
+    failureMessage: String? = null,
+) = WorkoutDebrief(
+    summary = listOfNotNull(
+        failureMessage,
+        "Lokale samenvatting: volume ${totalVolume.toInt()} kg.",
+    ).joinToString(" "),
     progressionFeedback = progression?.let {
         "Volume veranderde met ${formatAiPercentNl(it)}% ten opzichte van de vorige sessie."
     } ?: "Nog geen eerdere vergelijkbare training gevonden.",

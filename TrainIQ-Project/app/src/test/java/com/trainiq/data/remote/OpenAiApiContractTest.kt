@@ -37,7 +37,7 @@ class OpenAiApiContractTest {
         val response = Gson().fromJson(
             """{
                 "status":"failed",
-                "error":{"code":"project_spend_limit_exceeded"},
+                "error":{"code":"project_spend_limit_exceeded","type":"insufficient_quota"},
                 "incomplete_details":{"reason":"max_output_tokens"},
                 "output":[{"content":[{"type":"refusal","refusal":"safe refusal"}]}]
             }""".trimIndent(),
@@ -46,7 +46,9 @@ class OpenAiApiContractTest {
         val responseClass = response.javaClass
 
         assertEquals("failed", responseClass.getDeclaredField("status").apply { isAccessible = true }.get(response))
-        assertNotNull(responseClass.getDeclaredField("error").apply { isAccessible = true }.get(response))
+        val error = responseClass.getDeclaredField("error").apply { isAccessible = true }.get(response)
+        assertNotNull(error)
+        assertEquals("insufficient_quota", error!!.javaClass.getDeclaredField("type").apply { isAccessible = true }.get(error))
         assertNotNull(responseClass.getDeclaredField("incompleteDetails").apply { isAccessible = true }.get(response))
         val output = responseClass.getDeclaredField("output").apply { isAccessible = true }.get(response) as List<*>
         val content = output.first()!!.javaClass.getDeclaredField("content").apply { isAccessible = true }.get(output.first()) as List<*>

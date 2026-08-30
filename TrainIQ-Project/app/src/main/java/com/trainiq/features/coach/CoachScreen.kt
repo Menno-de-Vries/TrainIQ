@@ -278,7 +278,9 @@ class CoachViewModel @Inject constructor(
                 it.copy(
                     generatedReport = report,
                     message = when {
-                        report?.source == WeeklyReportSource.LOCAL_FALLBACK -> "Lokale samenvatting gemaakt; AI was tijdelijk niet beschikbaar. Probeer later opnieuw."
+                        report?.source == WeeklyReportSource.LOCAL_FALLBACK -> report.summary
+                            .substringBefore(" Lokale samenvatting:", missingDelimiterValue = "")
+                            .ifBlank { "Lokale samenvatting gemaakt; AI was tijdelijk niet beschikbaar. Probeer later opnieuw." }
                         result.isSuccess -> "Samenvatting bijgewerkt."
                         else -> result.exceptionOrNull()?.toAiUserMessage("Weekrapport maken lukt nu niet.")
                     },

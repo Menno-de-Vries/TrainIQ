@@ -117,7 +117,7 @@ class OpenAiModelClient @Inject constructor(
                 add(
                     com.trainiq.data.model.OpenAiInputContent(
                         type = "input_image",
-                        imageUrl = "data:image/jpeg;base64,${android.util.Base64.encodeToString(imageBytes, android.util.Base64.NO_WRAP)}",
+                        imageUrl = "data:image/jpeg;base64,${java.util.Base64.getEncoder().encodeToString(imageBytes)}",
                     ),
                 )
             }
@@ -145,39 +145,69 @@ class OpenAiModelClient @Inject constructor(
         }
         val requestId = sanitizeOpenAiMetadata(httpResponse.headers()["x-request-id"])
         if (!httpResponse.isSuccessful) {
-            val errorCode = parseOpenAiErrorCode(httpResponse.errorBody()?.readBoundedText())
+            val parsedError = parseOpenAiError(httpResponse.errorBody()?.readBoundedText())
+            val retryAfterMillis = parseRetryAfterMillis(httpResponse.headers()["Retry-After"])
             throw openAiFailure(
                 request = request,
-                category = classifyOpenAiFailure(httpResponse.code(), errorCode),
+                category = classifyOpenAiFailure(
+                    httpStatus = httpResponse.code(),
+                    errorCode = parsedError.code,
+                    errorType = parsedError.type,
+                    retryAfterMillis = retryAfterMillis,
+                ),
                 httpStatus = httpResponse.code(),
-                errorCode = errorCode,
+                errorCode = parsedError.code,
+                errorType = parsedError.type,
                 requestId = requestId,
-                retryAfterMillis = parseRetryAfterMillis(httpResponse.headers()["Retry-After"]),
+                retryAfterMillis = retryAfterMillis,
             )
         }
         val response = httpResponse.body()
             ?: throw openAiFailure(request, AiFailureCategory.INVALID_RESPONSE, httpStatus = httpResponse.code(), requestId = requestId)
         val status = response.status?.lowercase()
         val responseErrorCode = sanitizeOpenAiMetadata(response.error?.code)
+        val responseErrorType = sanitizeOpenAiMetadata(response.error?.type)
         if (status == "failed") {
             throw openAiFailure(
                 request = request,
-                category = classifyOpenAiFailure(httpResponse.code(), responseErrorCode)
+                category = classifyOpenAiFailure(httpResponse.code(), responseErrorCode, responseErrorType)
                     .takeUnless { it == AiFailureCategory.UNKNOWN }
                     ?: AiFailureCategory.SERVICE_FAILURE,
                 httpStatus = httpResponse.code(),
                 errorCode = responseErrorCode,
+                errorType = responseErrorType,
                 requestId = requestId,
             )
         }
         if (status == "incomplete" || response.incompleteDetails != null) {
-            throw openAiFailure(request, AiFailureCategory.INCOMPLETE_RESPONSE, httpResponse.code(), responseErrorCode, requestId)
+            throw openAiFailure(
+                request = request,
+                category = AiFailureCategory.INCOMPLETE_RESPONSE,
+                httpStatus = httpResponse.code(),
+                errorCode = responseErrorCode,
+                errorType = responseErrorType,
+                requestId = requestId,
+            )
         }
         if (status != "completed") {
-            throw openAiFailure(request, AiFailureCategory.INVALID_RESPONSE, httpResponse.code(), responseErrorCode, requestId)
+            throw openAiFailure(
+                request = request,
+                category = AiFailureCategory.INVALID_RESPONSE,
+                httpStatus = httpResponse.code(),
+                errorCode = responseErrorCode,
+                errorType = responseErrorType,
+                requestId = requestId,
+            )
         }
         if (response.output.flatMap { it.content }.any { it.type == "refusal" || !it.refusal.isNullOrBlank() }) {
-            throw openAiFailure(request, AiFailureCategory.REFUSAL, httpResponse.code(), responseErrorCode, requestId)
+            throw openAiFailure(
+                request = request,
+                category = AiFailureCategory.REFUSAL,
+                httpStatus = httpResponse.code(),
+                errorCode = responseErrorCode,
+                errorType = responseErrorType,
+                requestId = requestId,
+            )
         }
         val output = response.output
             .flatMap { it.content }
@@ -187,7 +217,14 @@ class OpenAiModelClient @Inject constructor(
             .trim()
             .ifBlank { response.outputText?.trim().orEmpty() }
         if (output.isBlank() || runCatching { JsonParser.parseString(output).asJsonObject }.isFailure) {
-            throw openAiFailure(request, AiFailureCategory.INVALID_RESPONSE, httpResponse.code(), responseErrorCode, requestId)
+            throw openAiFailure(
+                request = request,
+                category = AiFailureCategory.INVALID_RESPONSE,
+                httpStatus = httpResponse.code(),
+                errorCode = responseErrorCode,
+                errorType = responseErrorType,
+                requestId = requestId,
+            )
         }
         return AiRouteResult(
             providerUsed = provider,
@@ -205,21 +242,40 @@ private val OpenAiQuotaCodes = setOf(
     "project_spend_limit_exceeded",
 )
 
-private fun classifyOpenAiFailure(httpStatus: Int, errorCode: String?): AiFailureCategory = when {
-    httpStatus in listOf(401, 403) || errorCode in setOf("invalid_api_key", "invalid_authentication") -> AiFailureCategory.AUTHENTICATION
-    errorCode in OpenAiQuotaCodes -> AiFailureCategory.QUOTA_BILLING
-    httpStatus == 429 || errorCode == "rate_limit_exceeded" -> AiFailureCategory.TEMPORARY_RATE_LIMIT
+private val OpenAiAuthenticationCodes = setOf("invalid_api_key", "invalid_authentication")
+private val OpenAiAccessCodes = setOf("permission_denied", "model_not_found", "project_not_found")
+private val OpenAiRateLimitCodes = setOf("rate_limit_exceeded")
+private val OpenAiRequestErrorCodes = setOf("invalid_json_schema", "invalid_request", "invalid_request_error")
+
+private fun classifyOpenAiFailure(
+    httpStatus: Int,
+    errorCode: String?,
+    errorType: String? = null,
+    retryAfterMillis: Long? = null,
+): AiFailureCategory = when {
+    httpStatus == 401 || errorCode in OpenAiAuthenticationCodes || errorType in OpenAiAuthenticationCodes -> AiFailureCategory.AUTHENTICATION
+    httpStatus == 403 || errorCode in OpenAiAccessCodes || errorType in OpenAiAccessCodes -> AiFailureCategory.ACCESS
+    errorCode in OpenAiQuotaCodes || errorType in OpenAiQuotaCodes -> AiFailureCategory.QUOTA_BILLING
+    errorCode in OpenAiRateLimitCodes || errorType in OpenAiRateLimitCodes || (httpStatus == 429 && retryAfterMillis != null) -> AiFailureCategory.TEMPORARY_RATE_LIMIT
+    httpStatus == 429 -> AiFailureCategory.UNCLASSIFIED_LIMIT
+    errorCode in OpenAiRequestErrorCodes || errorType in OpenAiRequestErrorCodes -> AiFailureCategory.REQUEST_CONFIGURATION
     httpStatus == 408 -> AiFailureCategory.TIMEOUT
     httpStatus in listOf(400, 404, 409, 422) -> AiFailureCategory.REQUEST_CONFIGURATION
-    httpStatus in 500..599 || errorCode in setOf("server_error", "service_unavailable") -> AiFailureCategory.SERVICE_FAILURE
+    httpStatus in 500..599 || errorCode in setOf("server_error", "service_unavailable") || errorType in setOf("server_error", "service_unavailable") -> AiFailureCategory.SERVICE_FAILURE
     else -> AiFailureCategory.UNKNOWN
 }
 
-private fun parseOpenAiErrorCode(rawBody: String?): String? {
-    val boundedBody = rawBody ?: return null
-    return runCatching {
-        Gson().fromJson(boundedBody, OpenAiErrorEnvelope::class.java).error?.code
-    }.getOrNull().let(::sanitizeOpenAiMetadata)
+private data class ParsedOpenAiError(val code: String? = null, val type: String? = null)
+
+private fun parseOpenAiError(rawBody: String?): ParsedOpenAiError {
+    val boundedBody = rawBody ?: return ParsedOpenAiError()
+    val error = runCatching {
+        Gson().fromJson(boundedBody, OpenAiErrorEnvelope::class.java).error
+    }.getOrNull()
+    return ParsedOpenAiError(
+        code = sanitizeOpenAiMetadata(error?.code),
+        type = sanitizeOpenAiMetadata(error?.type),
+    )
 }
 
 private fun ResponseBody.readBoundedText(): String? = runCatching {
@@ -257,6 +313,7 @@ private fun openAiFailure(
     category: AiFailureCategory,
     httpStatus: Int? = null,
     errorCode: String? = null,
+    errorType: String? = null,
     requestId: String? = null,
     retryAfterMillis: Long? = null,
     cause: Throwable? = null,
@@ -266,6 +323,7 @@ private fun openAiFailure(
     category = category,
     httpStatus = httpStatus,
     errorCode = sanitizeOpenAiMetadata(errorCode),
+    errorType = sanitizeOpenAiMetadata(errorType),
     requestId = sanitizeOpenAiMetadata(requestId),
     retryAfterMillis = retryAfterMillis,
     cause = cause,
@@ -299,7 +357,12 @@ class AiProviderRouter @Inject constructor(
 internal class AiProviderUnavailableException(
     val failures: List<String>,
     val hasRecoverableFailure: Boolean = false,
-) : RuntimeException("Geen AI-provider beschikbaar.")
+    val primaryFailure: AiProviderRequestException? = null,
+    val terminalFailure: AiProviderRequestException? = null,
+) : RuntimeException(
+    terminalFailure?.message ?: primaryFailure?.message ?: "Geen AI-provider beschikbaar.",
+    primaryFailure ?: terminalFailure,
+)
 
 internal const val GEMINI_FLASH_MODEL = "gemini-2.5-flash"
 internal val OPENAI_DEFAULT_MODEL: String = BuildConfig.OPENAI_MODEL
@@ -327,6 +390,32 @@ private fun Throwable.isTransientAiProviderFailure(): Boolean {
     return this is HttpException && code() in listOf(408, 409, 425, 429, 500, 502, 503, 504)
 }
 
+private fun Throwable.toSafeProviderFailure(
+    provider: AiProvider,
+    feature: AiFeature,
+): AiProviderRequestException {
+    if (this is AiProviderRequestException) return this
+    val category = when {
+        this is AiRateLimitException || this is AiFeatureThrottledException -> AiFailureCategory.TEMPORARY_RATE_LIMIT
+        this is AiTimeoutException -> AiFailureCategory.TIMEOUT
+        this is HttpException && code() == 401 -> AiFailureCategory.AUTHENTICATION
+        this is HttpException && code() == 403 -> AiFailureCategory.ACCESS
+        this is HttpException && code() in setOf(400, 404, 422) -> AiFailureCategory.REQUEST_CONFIGURATION
+        this is HttpException && code() == 408 -> AiFailureCategory.TIMEOUT
+        this is HttpException && code() == 429 -> AiFailureCategory.TEMPORARY_RATE_LIMIT
+        this is HttpException && code() in 500..599 -> AiFailureCategory.SERVICE_FAILURE
+        this is IOException -> AiFailureCategory.NETWORK
+        else -> AiFailureCategory.UNKNOWN
+    }
+    return AiProviderRequestException(
+        provider = provider,
+        feature = feature,
+        category = category,
+        httpStatus = (this as? HttpException)?.code(),
+        retryAfterMillis = (this as? AiFeatureThrottledException)?.retryAfterMillis,
+    )
+}
+
 internal suspend fun routeAiProviderRequest(
     settings: AiPreferences,
     request: AiRouteRequest,
@@ -336,6 +425,7 @@ internal suspend fun routeAiProviderRequest(
 ): AiRouteResult {
     val failures = mutableListOf<String>()
     var hasRecoverableFailure = false
+    var primaryFailure: AiProviderRequestException? = null
     val configuredProviders = settings.preferredProvider.orderedProviders()
         .mapNotNull { provider -> settings.apiKeyFor(provider)?.let { apiKey -> provider to apiKey } }
     val providers = if (settings.allowCrossProviderFallback) configuredProviders else configuredProviders.take(1)
@@ -354,15 +444,27 @@ internal suspend fun routeAiProviderRequest(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
+            val safeFailure = error.toSafeProviderFailure(provider, request.feature)
+            if (primaryFailure == null) primaryFailure = safeFailure
             if (error is AiProviderRequestException) {
                 onFailureDiagnostic(error.safeDiagnosticAttributes())
             }
             failures += "${provider.name}:${error::class.simpleName.orEmpty()}"
-            if (!error.isTransientAiProviderFailure()) throw error
+            if (!error.isTransientAiProviderFailure()) {
+                if (hasRecoverableFailure) {
+                    throw AiProviderUnavailableException(
+                        failures = failures,
+                        hasRecoverableFailure = true,
+                        primaryFailure = primaryFailure,
+                        terminalFailure = safeFailure,
+                    )
+                }
+                throw error
+            }
             hasRecoverableFailure = true
         }
     }
-    throw AiProviderUnavailableException(failures, hasRecoverableFailure)
+    throw AiProviderUnavailableException(failures, hasRecoverableFailure, primaryFailure)
 }
 
 @Suppress("UNCHECKED_CAST")

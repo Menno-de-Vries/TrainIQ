@@ -18,18 +18,28 @@ class DiagnosticsTrackerTest {
             "category" to "authentication",
             "http_status" to "401",
             "error_code" to "invalid_api_key",
+            "error_type" to "invalid_request_error",
             "request_id" to "req_safe_123",
+            "attempt" to "1",
+            "duration_ms" to "725",
+            "Authorization" to "Bearer synthetic-secret",
+            "prompt" to "private prompt",
         )
 
         tracker.aiFailure(attributes)
 
         val event = telemetry.recordedEvents().single()
         assertEquals("ai.remote.failure", event.name)
-        assertEquals(attributes, event.attributes)
+        assertEquals(
+            attributes.filterKeys { it !in setOf("Authorization", "prompt") },
+            event.attributes,
+        )
         assertTrue(breadcrumbs.snapshot().single().message.contains("req_safe_123"))
         val recorded = event.toString() + breadcrumbs.snapshot().single().message
         assertFalse(recorded.contains("Authorization"))
+        assertFalse(recorded.contains("synthetic-secret"))
         assertFalse(recorded.contains("prompt"))
+        assertFalse(recorded.contains("private prompt"))
         assertFalse(recorded.contains("image"))
     }
 

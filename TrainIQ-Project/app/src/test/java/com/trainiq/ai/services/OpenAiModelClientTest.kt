@@ -1,5 +1,7 @@
 package com.trainiq.ai.services
 
+import com.google.gson.Gson
+import com.google.gson.JsonParser
 import com.trainiq.data.model.OpenAiError
 import com.trainiq.data.model.OpenAiIncompleteDetails
 import com.trainiq.data.model.OpenAiOutput
@@ -94,6 +96,109 @@ class OpenAiModelClientTest {
     }
 
     @Test
+    fun generateJson_typeOnlyInsufficientQuota429_isBillingFailureWithoutRateThrottleClassification() = runTest {
+        val error = runCatching {
+            OpenAiModelClient(
+                FakeOpenAiApi(
+                    errorResponse(
+                        status = 429,
+                        code = null,
+                        type = "insufficient_quota",
+                        requestId = "req_type_quota",
+                    ),
+                ),
+            ).generateJson("synthetic-secret", weeklyRequest())
+        }.exceptionOrNull()
+
+        assertFailure(error, category = "QUOTA_BILLING", status = 429, code = null, requestId = "req_type_quota")
+        assertEquals("insufficient_quota", failureField(error!!, "errorType"))
+    }
+
+    @Test
+    fun generateJson_access403_isNotReportedAsInvalidApiKey() = runTest {
+        val error = runCatching {
+            OpenAiModelClient(
+                FakeOpenAiApi(errorResponse(403, "permission_denied", "req_access")),
+            ).generateJson("synthetic-secret", weeklyRequest())
+        }.exceptionOrNull()
+
+        assertFailure(error, category = "ACCESS", status = 403, code = "permission_denied", requestId = "req_access")
+        assertTrue(error?.message.orEmpty().contains("projectrechten"))
+        assertFalse(error?.message.orEmpty().contains("API-sleutel"))
+    }
+
+    @Test
+    fun generateJson_unknown429WithoutRetryEvidence_isNonRetryableLimitFailure() = runTest {
+        val error = runCatching {
+            OpenAiModelClient(
+                FakeOpenAiApi(errorResponse(429, null, "req_unknown_limit")),
+            ).generateJson("synthetic-secret", weeklyRequest())
+        }.exceptionOrNull()
+
+        assertFailure(error, category = "UNCLASSIFIED_LIMIT", status = 429, code = null, requestId = "req_unknown_limit")
+    }
+
+    @Test
+    fun generateJson_failedResponseUsesErrorTypeClassification() = runTest {
+        val body = Gson().fromJson(
+            """{"status":"failed","error":{"type":"insufficient_quota"}}""",
+            OpenAiResponse::class.java,
+        )
+        val error = runCatching {
+            OpenAiModelClient(FakeOpenAiApi(Response.success(body)))
+                .generateJson("synthetic-secret", weeklyRequest())
+        }.exceptionOrNull()
+
+        assertFailure(error, category = "QUOTA_BILLING", status = 200, code = null, requestId = null)
+        assertEquals("insufficient_quota", failureField(error!!, "errorType"))
+    }
+
+    @Test
+    fun generateJson_failedResponseRequestErrorIsNotRecoverableServiceFailure() = runTest {
+        val body = OpenAiResponse(
+            status = "failed",
+            error = OpenAiError(code = "invalid_json_schema", type = "invalid_request_error"),
+        )
+        val error = runCatching {
+            OpenAiModelClient(FakeOpenAiApi(Response.success(body)))
+                .generateJson("synthetic-secret", weeklyRequest())
+        }.exceptionOrNull()
+
+        assertFailure(error, category = "REQUEST_CONFIGURATION", status = 200, code = "invalid_json_schema", requestId = null)
+        assertEquals("invalid_request_error", failureField(error!!, "errorType"))
+        assertFalse(error.allowsDeterministicAiFallback())
+    }
+
+    @Test
+    fun generateJson_serializesTheActualResponsesRequestContract() = runTest {
+        val api = FakeOpenAiApi(
+            Response.success(
+                OpenAiResponse(status = "completed", outputText = "{\"summary\":\"ok\"}"),
+            ),
+        )
+        val request = weeklyRequest().copy(imageJpegBytes = byteArrayOf(1, 2, 3))
+
+        OpenAiModelClient(api).generateJson("synthetic-secret", request)
+
+        assertEquals("Bearer synthetic-secret", api.lastAuthorization)
+        val json = JsonParser.parseString(Gson().toJson(api.lastRequest)).asJsonObject
+        assertEquals(OPENAI_DEFAULT_MODEL, json["model"].asString)
+        val input = json["input"].asJsonArray.single().asJsonObject
+        assertEquals("user", input["role"].asString)
+        val content = input["content"].asJsonArray
+        assertEquals("input_text", content[0].asJsonObject["type"].asString)
+        assertEquals("Geef JSON", content[0].asJsonObject["text"].asString)
+        assertEquals("input_image", content[1].asJsonObject["type"].asString)
+        assertTrue(content[1].asJsonObject["image_url"].asString.startsWith("data:image/jpeg;base64,"))
+        val format = json["text"].asJsonObject["format"].asJsonObject
+        assertEquals("json_schema", format["type"].asString)
+        assertEquals("weekly_report", format["name"].asString)
+        assertTrue(format["strict"].asBoolean)
+        assertFalse(json.has("response_format"))
+        assertEquals(false, format["schema"].asJsonObject["additionalProperties"].asBoolean)
+    }
+
+    @Test
     fun generateJson_failedIncompleteRefusalAndNoOutput_areNotSuccessfulResponses() = runTest {
         val cases = listOf(
             OpenAiResponse(status = "failed", error = OpenAiError(code = "server_error")) to "SERVICE_FAILURE",
@@ -163,12 +268,16 @@ class OpenAiModelClientTest {
         private val response: Response<OpenAiResponse>,
     ) : OpenAiApi {
         var calls: Int = 0
+        var lastAuthorization: String? = null
+        var lastRequest: OpenAiResponseRequest? = null
 
         override suspend fun createResponse(
             authorization: String,
             request: OpenAiResponseRequest,
         ): Response<OpenAiResponse> {
             calls += 1
+            lastAuthorization = authorization
+            lastRequest = request
             return response
         }
     }
@@ -184,10 +293,11 @@ class OpenAiModelClientTest {
 
     private fun errorResponse(
         status: Int,
-        code: String,
+        code: String?,
         requestId: String,
         rawMessage: String = "safe",
         retryAfter: String? = null,
+        type: String? = null,
     ): Response<OpenAiResponse> {
         val headers = buildMap {
             put("x-request-id", requestId)
@@ -200,7 +310,9 @@ class OpenAiModelClientTest {
             .message("OpenAI error")
             .headers(headers)
             .build()
-        val body = """{"error":{"code":"$code","message":"$rawMessage"}}"""
+        val codeJson = code?.let { Gson().toJson(it) } ?: "null"
+        val typeJson = type?.let { Gson().toJson(it) } ?: "null"
+        val body = """{"error":{"code":$codeJson,"type":$typeJson,"message":${Gson().toJson(rawMessage)}}}"""
             .toResponseBody("application/json".toMediaType())
         return Response.error(body, rawResponse)
     }

@@ -114,7 +114,9 @@ class RoutineGeneratorService @Inject constructor(
             val mapped = throwable.asAiRateLimitExceptionIfNeeded()
             if (mapped is AiRateLimitException || mapped is AiFeatureThrottledException) throw mapped
             if (!throwable.allowsDeterministicAiFallback()) throw throwable
-            fallback
+            fallback.copy(
+                routineDescription = "${throwable.toSafeAiFallbackMessage("AI-routinegeneratie is nu niet beschikbaar.")} ${fallback.routineDescription}",
+            )
         }
     }
 }
