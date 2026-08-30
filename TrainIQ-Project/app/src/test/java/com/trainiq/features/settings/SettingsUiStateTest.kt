@@ -1,8 +1,13 @@
 package com.trainiq.features.settings
 
+import com.trainiq.BuildConfig
 import com.trainiq.core.datastore.ReminderPreferences
 import com.trainiq.core.datastore.WorkoutFeedbackPreferences
 import com.trainiq.ai.services.AiProviderPreference
+import com.trainiq.ai.services.AiFailureCategory
+import com.trainiq.ai.services.AiFeature
+import com.trainiq.ai.services.OpenAiVerificationOutcome
+import com.trainiq.ai.services.OpenAiVerificationSnapshot
 import com.trainiq.core.theme.ThemeMode
 import com.trainiq.core.ui.UiMessage
 import com.trainiq.domain.model.HealthConnectState
@@ -220,8 +225,84 @@ class SettingsUiStateTest {
             hasOpenAiKey = false,
         )
 
-        assertEquals("Klaar: OpenAI", aiProviderStatusLabel(openAiOnly))
+        assertEquals("Veilig opgeslagen, nog niet geverifieerd: OpenAI", aiProviderStatusLabel(openAiOnly))
         assertEquals("Klaar: Gemini 2.5 Flash", aiProviderStatusLabel(geminiOnly))
+    }
+
+    @Test
+    fun openAiProviderStatusSeparatesStoredVerifiedAndLatestFailure() {
+        val base = SettingsAiStatus(
+            enabled = true,
+            preferredProvider = AiProviderPreference.OPENAI_FIRST,
+            hasGeminiKey = false,
+            hasOpenAiKey = true,
+            maskedGeminiKey = "Niet ingesteld",
+            maskedOpenAiKey = "sk-p****test",
+        )
+        val verified = base.copy(
+            openAiVerification = OpenAiVerificationSnapshot(
+                outcome = OpenAiVerificationOutcome.VERIFIED,
+                contractFingerprint = "contract-v1",
+                feature = AiFeature.GOAL_ADVICE,
+                checkedAtMillis = 100L,
+                lastVerifiedAtMillis = 100L,
+            ),
+        )
+        val failed = verified.copy(
+            openAiVerification = OpenAiVerificationSnapshot(
+                outcome = OpenAiVerificationOutcome.FAILED,
+                contractFingerprint = "contract-v1",
+                feature = AiFeature.WEEKLY_REPORT,
+                checkedAtMillis = 200L,
+                lastVerifiedAtMillis = 100L,
+                failureCategory = AiFailureCategory.MODEL_ACCESS,
+                httpStatus = 403,
+                errorCode = "model_not_found",
+                errorType = "invalid_request_error",
+                requestId = "req_safe_123",
+            ),
+        )
+
+        assertEquals("Veilig opgeslagen, nog niet remote geverifieerd", openAiProviderStatusLabel(base))
+        assertTrue(openAiProviderStatusLabel(verified).contains("Geverifieerd voor gpt-5.4-mini"))
+        assertTrue(openAiProviderStatusLabel(failed).contains("eerder geverifieerd"))
+        assertTrue(openAiProviderStatusLabel(failed).contains("Model Usage"))
+        assertEquals(
+            listOf(
+                "HTTP-status: 403",
+                "Code: model_not_found",
+                "Type: invalid_request_error",
+                "Request-id: req_safe_123",
+            ),
+            openAiVerificationTechnicalDetails(failed),
+        )
+    }
+
+    @Test
+    fun openAiSetupCopyDoesNotClaimConnectivityAndExplainsProjectRequirements() {
+        assertEquals(
+            "OpenAI API-sleutel versleuteld opgeslagen en lokaal teruggelezen. Remote toegang is nog niet geverifieerd.",
+            openAiKeySavedMessage(),
+        )
+        val help = openAiApiKeySetupHelpText()
+        assertTrue(help.contains("API-billing"))
+        assertTrue(help.contains("Model Usage"))
+        assertTrue(help.contains("/v1/responses"))
+        assertTrue(help.contains("request/write"))
+    }
+
+    @Test
+    fun debugBuildProvenanceShowsBranchShortShaAndDirtyIndicator() {
+        assertTrue(BuildConfig.GIT_BRANCH.isNotBlank())
+        assertTrue(BuildConfig.GIT_SHORT_SHA.matches(Regex("[0-9a-f]{7,12}|unknown")))
+        assertEquals(
+            "Build: codex/openai-byok-reliability @ 56d4d51 (dirty)",
+            debugBuildProvenanceLabel(
+                branch = "codex/openai-byok-reliability",
+                shortSha = "56d4d51",
+                dirty = true,
+            ),
+        )
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.trainiq.ai.services
 
 import com.google.gson.JsonParser
 import com.trainiq.ai.prompts.AiPrompts
+import com.trainiq.domain.model.AiFallbackContext
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -13,6 +14,7 @@ data class GeneratedRoutine(
     val periodizationNote: String = "",
     val estimatedDurationMinutes: Int = 0,
     val source: GeneratedRoutineSource = GeneratedRoutineSource.GEMINI_2_5_FLASH,
+    val fallbackContext: AiFallbackContext? = null,
     val days: List<GeneratedDay>,
 )
 
@@ -40,10 +42,19 @@ data class GeneratedExercise(
 )
 
 @Singleton
-class RoutineGeneratorService @Inject constructor(
+class RoutineGeneratorService internal constructor(
     private val aiJsonGenerator: AiJsonGenerator,
-    private val aiUsageGate: AiUsageGate,
+    private val readinessProvider: suspend () -> AiReadiness,
 ) {
+    @Inject
+    constructor(
+        aiProviderRouter: AiProviderRouter,
+        aiUsageGate: AiUsageGate,
+    ) : this(
+        aiJsonGenerator = aiProviderRouter,
+        readinessProvider = aiUsageGate::currentReadiness,
+    )
+
     // Provider routing replaces the old direct Gemini-only boundary while preserving bounded AI retry semantics.
     suspend fun generateRoutine(
         goal: String,
@@ -83,8 +94,16 @@ class RoutineGeneratorService @Inject constructor(
             includeDeload = includeDeload,
         )
         return try {
-            if (!aiUsageGate.isAiReady()) {
-                return fallback
+            val readiness = readinessProvider()
+            if (readiness != AiReadiness.CONFIGURED) {
+                val fallbackContext = readiness.toAiFallbackContext()
+                return fallback.copy(
+                    routineDescription = listOfNotNull(
+                        fallbackContext?.safeUserMessage(),
+                        fallback.routineDescription,
+                    ).joinToString(" "),
+                    fallbackContext = fallbackContext,
+                )
             }
             val routed = aiJsonGenerator.generateJson(
                 AiRouteRequest(
@@ -116,6 +135,7 @@ class RoutineGeneratorService @Inject constructor(
             if (!throwable.allowsDeterministicAiFallback()) throw throwable
             fallback.copy(
                 routineDescription = "${throwable.toSafeAiFallbackMessage("AI-routinegeneratie is nu niet beschikbaar.")} ${fallback.routineDescription}",
+                fallbackContext = throwable.toAiFallbackContext(),
             )
         }
     }
@@ -198,6 +218,7 @@ internal fun fallbackGeneratedRoutine(
     experienceLevel: String,
     sessionDurationMinutes: Int,
     includeDeload: Boolean,
+    fallbackContext: AiFallbackContext? = null,
 ): GeneratedRoutine {
     val safeDays = daysPerWeek.coerceIn(1, 7)
     val duration = sessionDurationMinutes.coerceIn(30, 90)
@@ -263,6 +284,7 @@ internal fun fallbackGeneratedRoutine(
         periodizationNote = periodizationNote,
         estimatedDurationMinutes = duration,
         source = GeneratedRoutineSource.LOCAL_FALLBACK,
+        fallbackContext = fallbackContext,
         days = days,
     )
 }

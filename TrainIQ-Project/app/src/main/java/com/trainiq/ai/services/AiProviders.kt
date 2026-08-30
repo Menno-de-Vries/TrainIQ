@@ -154,6 +154,7 @@ class OpenAiModelClient @Inject constructor(
                     errorCode = parsedError.code,
                     errorType = parsedError.type,
                     retryAfterMillis = retryAfterMillis,
+                    accessHint = parsedError.accessHint,
                 ),
                 httpStatus = httpResponse.code(),
                 errorCode = parsedError.code,
@@ -170,7 +171,12 @@ class OpenAiModelClient @Inject constructor(
         if (status == "failed") {
             throw openAiFailure(
                 request = request,
-                category = classifyOpenAiFailure(httpResponse.code(), responseErrorCode, responseErrorType)
+                category = classifyOpenAiFailure(
+                    httpResponse.code(),
+                    responseErrorCode,
+                    responseErrorType,
+                    accessHint = classifyOpenAiAccessHint(response.error?.message),
+                )
                     .takeUnless { it == AiFailureCategory.UNKNOWN }
                     ?: AiFailureCategory.SERVICE_FAILURE,
                 httpStatus = httpResponse.code(),
@@ -243,7 +249,9 @@ private val OpenAiQuotaCodes = setOf(
 )
 
 private val OpenAiAuthenticationCodes = setOf("invalid_api_key", "invalid_authentication")
-private val OpenAiAccessCodes = setOf("permission_denied", "model_not_found", "project_not_found")
+private val OpenAiProjectAccessCodes = setOf("project_not_found", "organization_not_found")
+private val OpenAiModelAccessCodes = setOf("model_not_found")
+private val OpenAiEndpointPermissionCodes = setOf("missing_scope", "insufficient_permissions")
 private val OpenAiRateLimitCodes = setOf("rate_limit_exceeded")
 private val OpenAiRequestErrorCodes = setOf("invalid_json_schema", "invalid_request", "invalid_request_error")
 
@@ -252,10 +260,14 @@ private fun classifyOpenAiFailure(
     errorCode: String?,
     errorType: String? = null,
     retryAfterMillis: Long? = null,
+    accessHint: AiFailureCategory? = null,
 ): AiFailureCategory = when {
     httpStatus == 401 || errorCode in OpenAiAuthenticationCodes || errorType in OpenAiAuthenticationCodes -> AiFailureCategory.AUTHENTICATION
-    httpStatus == 403 || errorCode in OpenAiAccessCodes || errorType in OpenAiAccessCodes -> AiFailureCategory.ACCESS
     errorCode in OpenAiQuotaCodes || errorType in OpenAiQuotaCodes -> AiFailureCategory.QUOTA_BILLING
+    errorCode in OpenAiProjectAccessCodes || errorType in OpenAiProjectAccessCodes -> AiFailureCategory.PROJECT_ACCESS
+    errorCode in OpenAiModelAccessCodes || errorType in OpenAiModelAccessCodes -> AiFailureCategory.MODEL_ACCESS
+    errorCode in OpenAiEndpointPermissionCodes || errorType in OpenAiEndpointPermissionCodes -> accessHint ?: AiFailureCategory.ENDPOINT_PERMISSION
+    httpStatus == 403 -> accessHint ?: AiFailureCategory.ACCESS
     errorCode in OpenAiRateLimitCodes || errorType in OpenAiRateLimitCodes || (httpStatus == 429 && retryAfterMillis != null) -> AiFailureCategory.TEMPORARY_RATE_LIMIT
     httpStatus == 429 -> AiFailureCategory.UNCLASSIFIED_LIMIT
     errorCode in OpenAiRequestErrorCodes || errorType in OpenAiRequestErrorCodes -> AiFailureCategory.REQUEST_CONFIGURATION
@@ -265,7 +277,11 @@ private fun classifyOpenAiFailure(
     else -> AiFailureCategory.UNKNOWN
 }
 
-private data class ParsedOpenAiError(val code: String? = null, val type: String? = null)
+private data class ParsedOpenAiError(
+    val code: String? = null,
+    val type: String? = null,
+    val accessHint: AiFailureCategory? = null,
+)
 
 private fun parseOpenAiError(rawBody: String?): ParsedOpenAiError {
     val boundedBody = rawBody ?: return ParsedOpenAiError()
@@ -275,7 +291,23 @@ private fun parseOpenAiError(rawBody: String?): ParsedOpenAiError {
     return ParsedOpenAiError(
         code = sanitizeOpenAiMetadata(error?.code),
         type = sanitizeOpenAiMetadata(error?.type),
+        accessHint = classifyOpenAiAccessHint(error?.message),
     )
+}
+
+private fun classifyOpenAiAccessHint(rawMessage: String?): AiFailureCategory? {
+    val message = rawMessage?.lowercase()?.take(MaxOpenAiErrorHintChars) ?: return null
+    return when {
+        ("response" in message || "/v1/responses" in message) &&
+            listOf("permission", "scope", "write", "read-only", "restricted").any(message::contains) ->
+            AiFailureCategory.ENDPOINT_PERMISSION
+        "model" in message && listOf("access", "allow", "enable", "permission", "not found").any(message::contains) ->
+            AiFailureCategory.MODEL_ACCESS
+        ("project" in message || "organization" in message) &&
+            listOf("access", "membership", "member", "permission", "not found").any(message::contains) ->
+            AiFailureCategory.PROJECT_ACCESS
+        else -> null
+    }
 }
 
 private fun ResponseBody.readBoundedText(): String? = runCatching {
@@ -331,6 +363,7 @@ private fun openAiFailure(
 
 private const val MaxOpenAiErrorBodyChars = 64_000
 private const val MaxOpenAiMetadataChars = 128
+private const val MaxOpenAiErrorHintChars = 1_024
 private const val MaxRetryAfterMillis = 86_400_000L
 
 @Singleton
@@ -350,6 +383,8 @@ class AiProviderRouter @Inject constructor(
             throttleForProvider = providerThrottles::getValue,
             clientFor = { provider -> if (provider == AiProvider.GEMINI) geminiClient else openAiClient },
             onFailureDiagnostic = diagnosticsTracker::aiFailure,
+            onOpenAiSuccess = aiUsageGate::recordOpenAiVerificationSuccess,
+            onOpenAiFailure = aiUsageGate::recordOpenAiVerificationFailure,
         )
     }
 }
@@ -359,6 +394,7 @@ internal class AiProviderUnavailableException(
     val hasRecoverableFailure: Boolean = false,
     val primaryFailure: AiProviderRequestException? = null,
     val terminalFailure: AiProviderRequestException? = null,
+    val readiness: AiReadiness? = null,
 ) : RuntimeException(
     terminalFailure?.message ?: primaryFailure?.message ?: "Geen AI-provider beschikbaar.",
     primaryFailure ?: terminalFailure,
@@ -422,6 +458,8 @@ internal suspend fun routeAiProviderRequest(
     throttleForProvider: (AiProvider) -> AiFeatureThrottle = { AiFeatureThrottle() },
     clientFor: (AiProvider) -> AiModelClient,
     onFailureDiagnostic: (Map<String, String>) -> Unit = {},
+    onOpenAiSuccess: suspend (AiFeature) -> Unit = {},
+    onOpenAiFailure: suspend (AiProviderRequestException) -> Unit = {},
 ): AiRouteResult {
     val failures = mutableListOf<String>()
     var hasRecoverableFailure = false
@@ -440,14 +478,20 @@ internal suspend fun routeAiProviderRequest(
                     client.generateJson(apiKey, request)
                 }
             }
+            if (provider == AiProvider.OPENAI) {
+                runNonMaskingOpenAiVerificationUpdate { onOpenAiSuccess(request.feature) }
+            }
             return result.copy(fallbackFailures = failures.toList())
         } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
             val safeFailure = error.toSafeProviderFailure(provider, request.feature)
             if (primaryFailure == null) primaryFailure = safeFailure
-            if (error is AiProviderRequestException) {
-                onFailureDiagnostic(error.safeDiagnosticAttributes())
+            if (provider == AiProvider.OPENAI) {
+                runNonMaskingOpenAiVerificationUpdate { onOpenAiFailure(safeFailure) }
+            }
+            if (provider == AiProvider.OPENAI || error is AiProviderRequestException) {
+                onFailureDiagnostic(safeFailure.safeDiagnosticAttributes())
             }
             failures += "${provider.name}:${error::class.simpleName.orEmpty()}"
             if (!error.isTransientAiProviderFailure()) {
@@ -457,6 +501,7 @@ internal suspend fun routeAiProviderRequest(
                         hasRecoverableFailure = true,
                         primaryFailure = primaryFailure,
                         terminalFailure = safeFailure,
+                        readiness = settings.readiness(),
                     )
                 }
                 throw error
@@ -464,7 +509,24 @@ internal suspend fun routeAiProviderRequest(
             hasRecoverableFailure = true
         }
     }
-    throw AiProviderUnavailableException(failures, hasRecoverableFailure, primaryFailure)
+    throw AiProviderUnavailableException(
+        failures = failures,
+        hasRecoverableFailure = hasRecoverableFailure,
+        primaryFailure = primaryFailure,
+        readiness = settings.readiness(),
+    )
+}
+
+private suspend fun runNonMaskingOpenAiVerificationUpdate(
+    update: suspend () -> Unit,
+) {
+    try {
+        update()
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (_: Throwable) {
+        // Verification metadata is diagnostic state and must never replace the actual provider outcome.
+    }
 }
 
 @Suppress("UNCHECKED_CAST")

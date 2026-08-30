@@ -79,6 +79,74 @@ class AiProviderRouterTest {
     }
 
     @Test
+    fun routeAiProviderRequest_recordsOnlyOpenAiVerificationOutcomes() = runTest {
+        val openAiSuccesses = mutableListOf<AiFeature>()
+        val openAiFailures = mutableListOf<AiProviderRequestException>()
+        val openAi = FakeAiModelClient(AiProvider.OPENAI)
+
+        routeAiProviderRequest(
+            settings = aiSettings(AiProviderPreference.OPENAI_FIRST, geminiApiKey = "", openAiApiKey = "openai-key"),
+            request = weeklyRequest(),
+            clientFor = { openAi },
+            onOpenAiSuccess = { openAiSuccesses += it },
+            onOpenAiFailure = { openAiFailures += it },
+        )
+
+        assertEquals(listOf(AiFeature.WEEKLY_REPORT), openAiSuccesses)
+        assertTrue(openAiFailures.isEmpty())
+
+        val authentication = AiProviderRequestException(
+            provider = AiProvider.OPENAI,
+            feature = AiFeature.WEEKLY_REPORT,
+            category = AiFailureCategory.AUTHENTICATION,
+            httpStatus = 401,
+            errorCode = "invalid_api_key",
+        )
+        runCatching {
+            routeAiProviderRequest(
+                settings = aiSettings(AiProviderPreference.OPENAI_FIRST, geminiApiKey = "", openAiApiKey = "openai-key"),
+                request = weeklyRequest(),
+                clientFor = { FakeAiModelClient(AiProvider.OPENAI, error = authentication) },
+                onOpenAiSuccess = { openAiSuccesses += it },
+                onOpenAiFailure = { openAiFailures += it },
+            )
+        }
+
+        assertEquals(1, openAiSuccesses.size)
+        assertEquals(AiFailureCategory.AUTHENTICATION, openAiFailures.single().category)
+    }
+
+    @Test
+    fun routeAiProviderRequest_verificationStorageFailureNeverMasksOpenAiOutcome() = runTest {
+        val success = routeAiProviderRequest(
+            settings = aiSettings(AiProviderPreference.OPENAI_FIRST, geminiApiKey = "", openAiApiKey = "openai-key"),
+            request = weeklyRequest(),
+            clientFor = { FakeAiModelClient(AiProvider.OPENAI) },
+            onOpenAiSuccess = { error("verification store unavailable") },
+        )
+
+        assertEquals(AiProvider.OPENAI, success.providerUsed)
+
+        val authentication = AiProviderRequestException(
+            provider = AiProvider.OPENAI,
+            feature = AiFeature.WEEKLY_REPORT,
+            category = AiFailureCategory.AUTHENTICATION,
+            httpStatus = 401,
+        )
+        val failure = runCatching {
+            routeAiProviderRequest(
+                settings = aiSettings(AiProviderPreference.OPENAI_FIRST, geminiApiKey = "", openAiApiKey = "openai-key"),
+                request = weeklyRequest(),
+                clientFor = { FakeAiModelClient(AiProvider.OPENAI, error = authentication) },
+                onOpenAiFailure = { error("verification store unavailable") },
+            )
+        }.exceptionOrNull()
+
+        assertTrue(failure is AiProviderRequestException)
+        assertEquals(AiFailureCategory.AUTHENTICATION, (failure as AiProviderRequestException).category)
+    }
+
+    @Test
     fun openAiStrictSchemas_keepSupportedConstraintsAndExcludeUnsupportedCompositionKeywords() {
         val schemas = listOf(
             AiJsonSchemas.mealScan,

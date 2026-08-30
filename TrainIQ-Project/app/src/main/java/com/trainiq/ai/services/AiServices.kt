@@ -7,6 +7,7 @@ import com.google.gson.JsonParser
 import com.trainiq.ai.prompts.AiPrompts
 import com.trainiq.data.remote.GeminiApi
 import com.trainiq.domain.model.BiologicalSex
+import com.trainiq.domain.model.AiFallbackContext
 import com.trainiq.domain.model.BodyMeasurementPhotoResult
 import com.trainiq.domain.model.BodyMeasurementPhotoSource
 import com.trainiq.domain.model.GoalAdvice
@@ -45,6 +46,9 @@ class MealAnalysisService internal constructor(
     private val aiJsonGenerator: AiJsonGenerator,
     private val isAiReady: suspend () -> Boolean,
     private val imageBytesProvider: suspend (File) -> ByteArray?,
+    private val readinessProvider: suspend () -> AiReadiness = {
+        if (isAiReady()) AiReadiness.CONFIGURED else AiReadiness.NO_DECRYPTABLE_KEY
+    },
 ) {
     internal constructor(
         api: GeminiApi,
@@ -74,13 +78,22 @@ class MealAnalysisService internal constructor(
         aiJsonGenerator = aiProviderRouter,
         isAiReady = { aiUsageGate.isAiReady() },
         imageBytesProvider = ::prepareMealScanImageBytes,
+        readinessProvider = aiUsageGate::currentReadiness,
     )
 
     private val gson = Gson()
     private val captureTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
     suspend fun analyzeMealImage(path: String, userContext: String, capturedAtMillis: Long): MealAnalysisResult {
-        if (!isAiReady()) return fallbackMealScan()
+        val readiness = readinessProvider()
+        if (readiness != AiReadiness.CONFIGURED) {
+            val fallbackContext = readiness.toAiFallbackContext()
+            return fallbackMealScan(
+                notes = fallbackContext?.safeUserMessage()
+                    ?: "AI-maaltijdanalyse is nu niet beschikbaar. Je kunt de maaltijd handmatig toevoegen.",
+                fallbackContext = fallbackContext,
+            )
+        }
         val file = File(path)
         val suggestedMealType = suggestMealType(capturedAtMillis)
         val captureTime = Instant.ofEpochMilli(capturedAtMillis)
@@ -110,6 +123,7 @@ class MealAnalysisService internal constructor(
             if (!error.allowsDeterministicAiFallback()) throw error
             return fallbackMealScan(
                 notes = error.toSafeAiFallbackMessage("AI-maaltijdanalyse is nu niet beschikbaar. Je kunt de maaltijd handmatig toevoegen."),
+                fallbackContext = error.toAiFallbackContext(),
             )
         }
         return try {
@@ -191,23 +205,44 @@ class MealAnalysisService internal constructor(
 
     private fun fallbackMealScan(
         notes: String = "AI-maaltijdanalyse is nu niet beschikbaar. Je kunt de maaltijd handmatig toevoegen.",
+        fallbackContext: AiFallbackContext? = null,
     ): MealAnalysisResult = MealAnalysisResult(
         items = emptyList(),
         notes = notes,
         source = MealAnalysisSource.LOCAL_FALLBACK,
+        fallbackContext = fallbackContext,
     )
 }
 
 @Singleton
-class BodyMeasurementPhotoService @Inject constructor(
+class BodyMeasurementPhotoService internal constructor(
     private val aiJsonGenerator: AiJsonGenerator,
-    private val aiUsageGate: AiUsageGate,
+    private val readinessProvider: suspend () -> AiReadiness,
+    private val imageBytesProvider: suspend (File) -> ByteArray?,
 ) {
+    @Inject
+    constructor(
+        aiProviderRouter: AiProviderRouter,
+        aiUsageGate: AiUsageGate,
+    ) : this(
+        aiJsonGenerator = aiProviderRouter,
+        readinessProvider = aiUsageGate::currentReadiness,
+        imageBytesProvider = ::prepareMealScanImageBytes,
+    )
+
     suspend fun analyzeScaleImage(path: String, userContext: String): BodyMeasurementPhotoResult {
-        if (!aiUsageGate.isAiReady()) return fallbackBodyMeasurementPhoto()
+        val readiness = readinessProvider()
+        if (readiness != AiReadiness.CONFIGURED) {
+            val fallbackContext = readiness.toAiFallbackContext()
+            return fallbackBodyMeasurementPhoto(
+                notes = fallbackContext?.safeUserMessage()
+                    ?: "AI-weegfotoanalyse is nu niet beschikbaar. Vul de meting handmatig in.",
+                fallbackContext = fallbackContext,
+            )
+        }
         val sanitizedContext = userContext.trim().take(MaxBodyMeasurementContextChars)
         val contextOverrides = parseBodyMeasurementContextOverrides(sanitizedContext)
-        val imageBytes = prepareMealScanImageBytes(File(path)) ?: return fallbackBodyMeasurementPhoto(
+        val imageBytes = imageBytesProvider(File(path)) ?: return fallbackBodyMeasurementPhoto(
             notes = "Foto kon niet worden gelezen. Vul de meting handmatig in.",
         )
         return runCatching {
@@ -227,6 +262,7 @@ class BodyMeasurementPhotoService @Inject constructor(
             if (!error.allowsDeterministicAiFallback()) throw error
             fallbackBodyMeasurementPhoto(
                 notes = error.toSafeAiFallbackMessage("AI-weegfotoanalyse is nu niet beschikbaar. Vul de meting handmatig in."),
+                fallbackContext = error.toAiFallbackContext(),
             )
         }
     }
@@ -475,6 +511,7 @@ private fun fallbackBodyMeasurementPhoto(
     notes: String = "AI-weegfotoanalyse is nu niet beschikbaar. Vul de meting handmatig in.",
     rawResponse: String? = null,
     source: BodyMeasurementPhotoSource = BodyMeasurementPhotoSource.LOCAL_FALLBACK,
+    fallbackContext: AiFallbackContext? = null,
 ) = BodyMeasurementPhotoResult(
     weight = 0.0,
     bodyFat = 0.0,
@@ -482,6 +519,7 @@ private fun fallbackBodyMeasurementPhoto(
     notes = notes,
     rawResponse = rawResponse,
     source = source,
+    fallbackContext = fallbackContext,
 )
 
 private fun MealType.promptLabel(): String = when (this) {
@@ -641,6 +679,7 @@ class WorkoutDebriefService internal constructor(
                 totalVolume = totalVolume,
                 progression = progression,
                 failureMessage = error.toSafeAiFallbackMessage("AI-workoutanalyse is nu niet beschikbaar."),
+                fallbackContext = error.toAiFallbackContext(),
             )
         }
 
@@ -681,7 +720,7 @@ class WorkoutDebriefService internal constructor(
 @Singleton
 class GoalAdvisorService internal constructor(
     private val aiJsonGenerator: AiJsonGenerator,
-    private val isAiReady: suspend () -> Boolean,
+    private val readinessProvider: suspend () -> AiReadiness,
 ) {
     internal constructor(
         api: GeminiApi,
@@ -689,7 +728,9 @@ class GoalAdvisorService internal constructor(
         apiKeyProvider: suspend () -> String?,
     ) : this(
         aiJsonGenerator = GeminiOnlyJsonGenerator(api, apiKeyProvider),
-        isAiReady = isAiReady,
+        readinessProvider = {
+            if (isAiReady()) AiReadiness.CONFIGURED else AiReadiness.NO_DECRYPTABLE_KEY
+        },
     )
 
     @Inject
@@ -698,7 +739,7 @@ class GoalAdvisorService internal constructor(
         aiUsageGate: AiUsageGate,
     ) : this(
         aiJsonGenerator = aiProviderRouter,
-        isAiReady = { aiUsageGate.isAiReady() },
+        readinessProvider = aiUsageGate::currentReadiness,
     )
     suspend fun generateGoalAdvice(
         height: Double,
@@ -721,7 +762,14 @@ class GoalAdvisorService internal constructor(
                 goal = goal,
                 manualCalorieTarget = manualCalorieTarget,
             )
-            if (!isAiReady()) return baseline
+            val readiness = readinessProvider()
+            if (readiness != AiReadiness.CONFIGURED) {
+                val fallbackContext = readiness.toAiFallbackContext()
+                return baseline.copy(
+                    summary = listOfNotNull(fallbackContext?.safeUserMessage(), baseline.summary).joinToString(" "),
+                    fallbackContext = fallbackContext,
+                )
+            }
             val routed = aiJsonGenerator.generateJson(
                 AiRouteRequest(
                     feature = AiFeature.GOAL_ADVICE,
@@ -761,6 +809,7 @@ class GoalAdvisorService internal constructor(
             )
             fallback.copy(
                 summary = "${error.toSafeAiFallbackMessage("AI-doeladvies is nu niet beschikbaar.")} ${fallback.summary}",
+                fallbackContext = error.toAiFallbackContext(),
             )
         }
 
@@ -871,13 +920,30 @@ class GoalAdvisorService internal constructor(
 }
 
 @Singleton
-class WeeklyReportService @Inject constructor(
+class WeeklyReportService internal constructor(
     private val aiJsonGenerator: AiJsonGenerator,
-    private val aiUsageGate: AiUsageGate,
+    private val readinessProvider: suspend () -> AiReadiness,
 ) {
+    @Inject
+    constructor(
+        aiProviderRouter: AiProviderRouter,
+        aiUsageGate: AiUsageGate,
+    ) : this(
+        aiJsonGenerator = aiProviderRouter,
+        readinessProvider = aiUsageGate::currentReadiness,
+    )
+
     suspend fun generateWeeklyReport(volume: Double, weightTrend: Double, adherence: Int): WeeklyReportResult =
         runCatching {
-            if (!aiUsageGate.isAiReady()) return fallbackWeeklyReport(adherence)
+            val readiness = readinessProvider()
+            if (readiness != AiReadiness.CONFIGURED) {
+                val fallbackContext = readiness.toAiFallbackContext()
+                return fallbackWeeklyReport(
+                    adherence = adherence,
+                    failureMessage = fallbackContext?.safeUserMessage(),
+                    fallbackContext = fallbackContext,
+                )
+            }
             val routed = aiJsonGenerator.generateJson(
                 AiRouteRequest(
                     feature = AiFeature.WEEKLY_REPORT,
@@ -898,6 +964,7 @@ class WeeklyReportService @Inject constructor(
             fallbackWeeklyReport(
                 adherence = adherence,
                 failureMessage = error.toSafeAiFallbackMessage("AI-weekrapport is nu niet beschikbaar."),
+                fallbackContext = error.toAiFallbackContext(),
             )
         }
 
@@ -936,6 +1003,7 @@ internal fun parseWeeklyReportResponse(text: String, adherence: Int, provider: A
 internal fun fallbackWeeklyReport(
     adherence: Int,
     failureMessage: String? = null,
+    fallbackContext: AiFallbackContext? = null,
 ): WeeklyReportResult =
     WeeklyReportResult(
         summary = listOfNotNull(
@@ -946,6 +1014,7 @@ internal fun fallbackWeeklyReport(
         risks = listOf("Zonder compleet profiel en recente logs kan TrainIQ geen betrouwbaar weekadvies geven."),
         nextWeekFocus = "Vul je profiel aan en log een paar trainingen of maaltijden voordat je het volume verhoogt.",
         source = WeeklyReportSource.LOCAL_FALLBACK,
+        fallbackContext = fallbackContext,
     )
 
 private val LegacyWeeklyReportReasoningKey = "thinking" + "Process"
@@ -1041,6 +1110,7 @@ internal fun fallbackWorkoutDebriefResult(
     totalVolume: Double,
     progression: Double?,
     failureMessage: String? = null,
+    fallbackContext: AiFallbackContext? = null,
 ) = WorkoutDebrief(
     summary = listOfNotNull(
         failureMessage,
@@ -1058,6 +1128,7 @@ internal fun fallbackWorkoutDebriefResult(
     nextLoadTarget = "Herhaal de huidige werkgewichten en voeg alleen herhalingen toe als RPE onder 8 blijft.",
     recoveryAdvice = "Gebruik slaap, stappen en spierpijn om te bepalen of je verhoogt of vasthoudt.",
     source = WorkoutDebriefSource.LOCAL_FALLBACK,
+    fallbackContext = fallbackContext,
 )
 
 internal fun formatAiPercentNl(value: Double): String =

@@ -9,6 +9,7 @@ import com.trainiq.data.model.OpenAiOutputContent
 import com.trainiq.data.model.OpenAiResponse
 import com.trainiq.data.model.OpenAiResponseRequest
 import com.trainiq.data.remote.OpenAiApi
+import com.trainiq.core.datastore.AiPreferences
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import java.net.SocketTimeoutException
@@ -25,6 +26,67 @@ import org.junit.Test
 import retrofit2.Response
 
 class OpenAiModelClientTest {
+    @Test
+    fun allSixFeaturesRouteTheActualResponsesContractWithImagesOnlyForPhotoFeatures() = runTest {
+        featureContracts().forEach { contract ->
+            val api = FakeOpenAiApi(
+                Response.success(OpenAiResponse(status = "completed", outputText = "{\"ok\":true}")),
+            )
+            val client = OpenAiModelClient(api)
+
+            val result = routeAiProviderRequest(
+                settings = openAiOnlySettings(),
+                request = contract.request,
+                clientFor = { client },
+            )
+
+            assertEquals(AiProvider.OPENAI, result.providerUsed)
+            assertEquals("Bearer synthetic-secret", api.lastAuthorization)
+            val json = JsonParser.parseString(Gson().toJson(api.lastRequest)).asJsonObject
+            assertEquals(OPENAI_DEFAULT_MODEL, json["model"].asString)
+            val content = json["input"].asJsonArray.single().asJsonObject["content"].asJsonArray
+            assertEquals("input_text", content[0].asJsonObject["type"].asString)
+            assertEquals("prompt-${contract.request.feature.name}", content[0].asJsonObject["text"].asString)
+            assertEquals(contract.hasImage, content.any { it.asJsonObject["type"].asString == "input_image" })
+            val format = json["text"].asJsonObject["format"].asJsonObject
+            assertEquals("json_schema", format["type"].asString)
+            assertEquals(contract.request.schemaName, format["name"].asString)
+            assertTrue(format["strict"].asBoolean)
+            assertFalse(json.has("response_format"))
+        }
+    }
+
+    @Test
+    fun allSixFeaturesPropagateTypedOpenAiBoundaryFailuresThroughRouter() = runTest {
+        featureContracts().forEach { contract ->
+            val api = FakeOpenAiApi(
+                errorResponse(
+                    status = 403,
+                    code = "model_not_found",
+                    requestId = "req_${contract.request.feature.name.lowercase()}",
+                    rawMessage = "The requested model is not enabled",
+                ),
+            )
+
+            val error = runCatching {
+                routeAiProviderRequest(
+                    settings = openAiOnlySettings(),
+                    request = contract.request,
+                    clientFor = { OpenAiModelClient(api) },
+                )
+            }.exceptionOrNull()
+
+            assertFailure(
+                error = error,
+                category = "MODEL_ACCESS",
+                status = 403,
+                code = "model_not_found",
+                requestId = "req_${contract.request.feature.name.lowercase()}",
+            )
+            assertEquals(1, api.calls)
+        }
+    }
+
     @Test
     fun generateJson_completedStructuredOutput_returnsOpenAiResult() = runTest {
         val api = FakeOpenAiApi(
@@ -125,6 +187,26 @@ class OpenAiModelClientTest {
         assertFailure(error, category = "ACCESS", status = 403, code = "permission_denied", requestId = "req_access")
         assertTrue(error?.message.orEmpty().contains("projectrechten"))
         assertFalse(error?.message.orEmpty().contains("API-sleutel"))
+    }
+
+    @Test
+    fun generateJson_accessFailuresDistinguishProjectModelAndResponsesPermission() = runTest {
+        val cases = listOf(
+            Triple("project_not_found", "Project membership is required", "PROJECT_ACCESS"),
+            Triple("model_not_found", "The requested model is not enabled", "MODEL_ACCESS"),
+            Triple("permission_denied", "Missing write permission for /v1/responses", "ENDPOINT_PERMISSION"),
+        )
+
+        cases.forEach { (code, rawMessage, expectedCategory) ->
+            val error = runCatching {
+                OpenAiModelClient(
+                    FakeOpenAiApi(errorResponse(403, code, "req_access", rawMessage = rawMessage)),
+                ).generateJson("synthetic-secret", weeklyRequest())
+            }.exceptionOrNull()
+
+            assertFailure(error, category = expectedCategory, status = 403, code = code, requestId = "req_access")
+            assertFalse(error.toString().contains(rawMessage))
+        }
     }
 
     @Test
@@ -324,4 +406,43 @@ class OpenAiModelClientTest {
         responseJsonSchema = AiJsonSchemas.weeklyReport,
         thinkingBudget = 1000,
     )
+
+    private fun openAiOnlySettings() = AiPreferences(
+        enabled = true,
+        apiKey = "",
+        preferredProvider = AiProviderPreference.OPENAI_FIRST,
+        geminiApiKey = "",
+        openAiApiKey = "synthetic-secret",
+    )
+
+    private fun featureContracts(): List<FeatureContract> = listOf(
+        FeatureContract(AiFeature.MEAL_SCAN, "meal_scan", AiJsonSchemas.mealScan, hasImage = true),
+        FeatureContract(AiFeature.BODY_MEASUREMENT_PHOTO, "body_measurement_photo", AiJsonSchemas.bodyMeasurementPhoto, hasImage = true),
+        FeatureContract(AiFeature.WORKOUT_DEBRIEF, "workout_debrief", AiJsonSchemas.workoutDebrief),
+        FeatureContract(AiFeature.GOAL_ADVICE, "goal_advice", AiJsonSchemas.goalAdvice),
+        FeatureContract(AiFeature.WEEKLY_REPORT, "weekly_report", AiJsonSchemas.weeklyReport),
+        FeatureContract(AiFeature.ROUTINE_GENERATION, "routine_generator", AiJsonSchemas.routineGenerator),
+    )
+
+    private data class FeatureContract(
+        val request: AiRouteRequest,
+        val hasImage: Boolean,
+    ) {
+        constructor(
+            feature: AiFeature,
+            schemaName: String,
+            schema: Map<String, Any?>,
+            hasImage: Boolean = false,
+        ) : this(
+            request = AiRouteRequest(
+                feature = feature,
+                prompt = "prompt-${feature.name}",
+                schemaName = schemaName,
+                responseJsonSchema = schema,
+                thinkingBudget = if (hasImage) 0 else 1_000,
+                imageJpegBytes = if (hasImage) byteArrayOf(1, 2, 3) else null,
+            ),
+            hasImage = hasImage,
+        )
+    }
 }

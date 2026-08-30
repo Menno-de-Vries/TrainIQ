@@ -6,6 +6,7 @@ import com.trainiq.data.model.GeminiRequest
 import com.trainiq.data.model.GeminiResponse
 import com.trainiq.data.remote.GeminiApi
 import com.trainiq.domain.model.BiologicalSex
+import com.trainiq.domain.model.AiFallbackContext
 import com.trainiq.domain.model.GoalAdviceSource
 import com.trainiq.domain.model.MealAnalysisSource
 import com.trainiq.domain.model.WeeklyReportSource
@@ -185,6 +186,7 @@ class AiServicesTest {
         val result = service.analyzeMealImage(tempImagePath(), "", 43_200_000L)
 
         assertEquals(MealAnalysisSource.LOCAL_FALLBACK, result.source)
+        assertEquals(AiFallbackContext.TIMEOUT, result.fallbackContext)
         assertTrue(result.notes.orEmpty().contains("reageerde te langzaam"))
         assertFalse(result.notes.orEmpty().contains("req_safe_timeout"))
     }
@@ -216,7 +218,32 @@ class AiServicesTest {
         )
 
         assertEquals(com.trainiq.domain.model.WorkoutDebriefSource.LOCAL_FALLBACK, result.source)
+        assertEquals(AiFallbackContext.SERVICE_FAILURE, result.fallbackContext)
         assertTrue(result.summary.contains("tijdelijk niet beschikbaar"))
+    }
+
+    @Test
+    fun generateGoalAdvice_disabledAiCarriesExplicitLocalFallbackContext() = runTest {
+        val service = GoalAdvisorService(
+            aiJsonGenerator = SuccessfulAiJsonGenerator(
+                AiRouteResult(AiProvider.OPENAI, "gpt-5.4-mini", "{}"),
+            ),
+            readinessProvider = { AiReadiness.DISABLED },
+        )
+
+        val result = service.generateGoalAdvice(
+            height = 180.0,
+            weight = 80.0,
+            bodyFat = 15.0,
+            age = 34,
+            sex = BiologicalSex.MALE,
+            activityLevel = "Gemiddeld actief",
+            goal = "Sterker worden",
+        )
+
+        assertEquals(GoalAdviceSource.LOCAL_CALCULATION, result.source)
+        assertEquals(AiFallbackContext.AI_DISABLED, result.fallbackContext)
+        assertTrue(result.summary.contains("AI staat uit"))
     }
 
     @Test
@@ -701,7 +728,8 @@ class AiServicesTest {
         assertFalse(api.called)
         assertEquals(MealAnalysisSource.LOCAL_FALLBACK, result.source)
         assertTrue(result.items.isEmpty())
-        assertEquals("AI-maaltijdanalyse is nu niet beschikbaar. Je kunt de maaltijd handmatig toevoegen.", result.notes)
+        assertEquals(AiFallbackContext.NO_DECRYPTABLE_KEY, result.fallbackContext)
+        assertEquals("Geen bruikbare AI-sleutel gevonden. Sla een provider-sleutel op via Instellingen.", result.notes)
     }
 
     @Test

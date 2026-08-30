@@ -1,6 +1,10 @@
 package com.trainiq.features.workout
 
 import com.trainiq.domain.model.Exercise
+import com.trainiq.domain.model.AiFallbackContext
+import com.trainiq.domain.model.GeneratedRoutine
+import com.trainiq.domain.model.GeneratedRoutineSource
+import com.trainiq.domain.model.WorkoutDebrief
 import com.trainiq.domain.model.LoggedSet
 import com.trainiq.domain.model.RoutineSet
 import com.trainiq.domain.model.SetType
@@ -653,6 +657,41 @@ class WorkoutInputValidationTest {
     fun `completion source chip distinguishes local fallback from gemini`() {
         assertEquals("Gemini 2.5 Flash", workoutDebriefSourceChipLabel(WorkoutDebriefSource.GEMINI_2_5_FLASH))
         assertEquals("Lokale fallback", workoutDebriefSourceChipLabel(WorkoutDebriefSource.LOCAL_FALLBACK))
+    }
+
+    @Test
+    fun `local routine message uses typed cause instead of assuming temporary failure`() {
+        val disabled = GeneratedRoutine(
+            routineName = "Lokale routine",
+            routineDescription = "Lokaal plan",
+            source = GeneratedRoutineSource.LOCAL_FALLBACK,
+            fallbackContext = AiFallbackContext.AI_DISABLED,
+            days = emptyList(),
+        )
+        val untyped = disabled.copy(fallbackContext = null)
+
+        assertTrue(generatedRoutineResultMessage(disabled).contains("Instellingen"))
+        assertEquals("Lokale routine gemaakt.", generatedRoutineResultMessage(untyped))
+        assertFalse(generatedRoutineResultMessage(untyped).contains("tijdelijk"))
+    }
+
+    @Test
+    fun `local debrief message does not promise remote refresh for disabled ai`() {
+        val debrief = WorkoutDebrief(
+            summary = "Lokale samenvatting",
+            progressionFeedback = "Stabiel",
+            recommendation = "Herhaal",
+            nextSessionFocus = "Techniek",
+            recoveryScore = 75,
+            intensitySignal = "MAINTAIN",
+            source = WorkoutDebriefSource.LOCAL_FALLBACK,
+            fallbackContext = AiFallbackContext.AI_DISABLED,
+        )
+
+        val message = workoutDebriefFallbackStatusMessage(debrief)
+
+        assertTrue(message.contains("Instellingen"))
+        assertFalse(message.contains("automatisch bijgewerkt"))
     }
 
     @Test

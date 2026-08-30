@@ -282,6 +282,7 @@ data class GeneratedRoutine(
     val periodizationNote: String = "",
     val estimatedDurationMinutes: Int = 0,
     val source: GeneratedRoutineSource = GeneratedRoutineSource.GEMINI_2_5_FLASH,
+    val fallbackContext: AiFallbackContext? = null,
     val days: List<GeneratedDay>,
 )
 
@@ -289,6 +290,15 @@ enum class GeneratedRoutineSource {
     GEMINI_2_5_FLASH,
     OPENAI,
     LOCAL_FALLBACK,
+}
+
+enum class AiFallbackContext {
+    AI_DISABLED,
+    NO_DECRYPTABLE_KEY,
+    RATE_LIMIT,
+    TIMEOUT,
+    NETWORK,
+    SERVICE_FAILURE,
 }
 
 data class GeneratedDay(
@@ -431,6 +441,7 @@ data class MealAnalysisResult(
     val notes: String? = null,
     val rawResponse: String? = null,
     val source: MealAnalysisSource = MealAnalysisSource.API,
+    val fallbackContext: AiFallbackContext? = null,
 )
 
 data class WeeklyReportResult(
@@ -441,6 +452,7 @@ data class WeeklyReportResult(
     val rationaleBullets: List<String> = emptyList(),
     val source: WeeklyReportSource = WeeklyReportSource.GEMINI_2_5_FLASH,
     val rawResponse: String? = null,
+    val fallbackContext: AiFallbackContext? = null,
 )
 
 enum class WeeklyReportSource {
@@ -481,6 +493,7 @@ data class BodyMeasurementPhotoResult(
     val notes: String? = null,
     val rawResponse: String? = null,
     val source: BodyMeasurementPhotoSource = BodyMeasurementPhotoSource.GEMINI_2_5_FLASH,
+    val fallbackContext: AiFallbackContext? = null,
 )
 
 enum class BodyMeasurementPhotoSource {
@@ -543,6 +556,7 @@ data class GoalAdvice(
     val dataQuality: String = "",
     val source: GoalAdviceSource = GoalAdviceSource.GEMINI_2_5_FLASH,
     val rawResponse: String? = null,
+    val fallbackContext: AiFallbackContext? = null,
 )
 
 data class SavedGoalAdvice(
@@ -585,6 +599,7 @@ data class WorkoutDebrief(
     val nextLoadTarget: String = "",
     val recoveryAdvice: String = "",
     val source: WorkoutDebriefSource = WorkoutDebriefSource.GEMINI_2_5_FLASH,
+    val fallbackContext: AiFallbackContext? = null,
 )
 
 enum class WorkoutDebriefSource {

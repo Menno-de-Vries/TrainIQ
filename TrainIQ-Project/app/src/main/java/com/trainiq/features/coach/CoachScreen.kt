@@ -75,6 +75,7 @@ import com.trainiq.domain.model.GoalAdviceSource
 import com.trainiq.domain.model.SavedGoalAdvice
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WeeklyReportResult
+import com.trainiq.ai.services.safeUserMessage
 import com.trainiq.domain.model.WeeklyReportSource
 import com.trainiq.domain.model.buildGoalBaseline
 import com.trainiq.domain.model.goalAdviceProfileFingerprint
@@ -259,7 +260,8 @@ class CoachViewModel @Inject constructor(
                     goalAdvice = advice,
                     goalAdviceInput = if (result.isSuccess) input else null,
                     message = when {
-                        advice?.source == GoalAdviceSource.LOCAL_CALCULATION -> "Lokale berekening gemaakt; AI was tijdelijk niet beschikbaar. Probeer later opnieuw."
+                        advice?.source == GoalAdviceSource.LOCAL_CALCULATION ->
+                            advice.fallbackContext?.safeUserMessage() ?: "Lokale berekening gemaakt."
                         result.isSuccess -> "Advies gemaakt. Controleer het voordat je opslaat."
                         else -> result.exceptionOrNull()?.toAiUserMessage("Advies maken lukt nu niet.")
                     },
@@ -278,9 +280,7 @@ class CoachViewModel @Inject constructor(
                 it.copy(
                     generatedReport = report,
                     message = when {
-                        report?.source == WeeklyReportSource.LOCAL_FALLBACK -> report.summary
-                            .substringBefore(" Lokale samenvatting:", missingDelimiterValue = "")
-                            .ifBlank { "Lokale samenvatting gemaakt; AI was tijdelijk niet beschikbaar. Probeer later opnieuw." }
+                        report?.source == WeeklyReportSource.LOCAL_FALLBACK -> report.localFallbackMessage()
                         result.isSuccess -> "Samenvatting bijgewerkt."
                         else -> result.exceptionOrNull()?.toAiUserMessage("Weekrapport maken lukt nu niet.")
                     },
@@ -475,6 +475,13 @@ private fun BulletText(point: String) {
         Text("•", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
         Text(cleanAdviceBulletText(point), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
     }
+}
+
+private fun WeeklyReportResult.localFallbackMessage(): String {
+    val fallbackContext = fallbackContext ?: return "Lokale samenvatting gemaakt."
+    return summary
+        .substringBefore(" Lokale samenvatting:", missingDelimiterValue = "")
+        .ifBlank { fallbackContext.safeUserMessage() }
 }
 
 private fun WeeklyReportSource.label(): String = when (this) {

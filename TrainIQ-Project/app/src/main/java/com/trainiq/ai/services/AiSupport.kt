@@ -1,5 +1,6 @@
 package com.trainiq.ai.services
 
+import com.trainiq.domain.model.AiFallbackContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
@@ -7,8 +8,11 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlin.random.Random
 import retrofit2.HttpException
 
-internal enum class AiFailureCategory {
+enum class AiFailureCategory {
     AUTHENTICATION,
+    PROJECT_ACCESS,
+    MODEL_ACCESS,
+    ENDPOINT_PERMISSION,
     ACCESS,
     REQUEST_CONFIGURATION,
     TEMPORARY_RATE_LIMIT,
@@ -63,6 +67,9 @@ internal fun Throwable.allowsDeterministicAiFallback(): Boolean = when (this) {
 
 private fun AiFailureCategory.safeUserMessage(provider: AiProvider): String = when (this) {
     AiFailureCategory.AUTHENTICATION -> "${provider.displayName} weigert de API-sleutel of projecttoegang. Controleer je AI-instellingen."
+    AiFailureCategory.PROJECT_ACCESS -> "${provider.displayName} staat dit project niet toe. Controleer je project en lidmaatschap."
+    AiFailureCategory.MODEL_ACCESS -> "${provider.displayName} staat dit model niet toe. Controleer Model Usage voor je API-project."
+    AiFailureCategory.ENDPOINT_PERMISSION -> "${provider.displayName} staat Responses-aanvragen niet toe. Geef de API-sleutel request/write-toegang tot Responses."
     AiFailureCategory.ACCESS -> "${provider.displayName} staat deze aanvraag niet toe. Controleer de provider- en projectrechten."
     AiFailureCategory.REQUEST_CONFIGURATION -> "TrainIQ kon geen geldige aanvraag naar ${provider.displayName} sturen. Werk de app bij of probeer later opnieuw."
     AiFailureCategory.TEMPORARY_RATE_LIMIT -> "${provider.displayName} is tijdelijk beperkt. Probeer later opnieuw."
@@ -138,6 +145,36 @@ internal fun Throwable.toSafeAiFallbackMessage(defaultMessage: String): String =
     is AiProviderUnavailableException -> primaryFailure?.message ?: defaultMessage
     is AiRateLimitException, is AiFeatureThrottledException, is AiTimeoutException -> message ?: defaultMessage
     else -> defaultMessage
+}
+
+internal fun AiReadiness.toAiFallbackContext(): AiFallbackContext? = when (this) {
+    AiReadiness.DISABLED -> AiFallbackContext.AI_DISABLED
+    AiReadiness.NO_DECRYPTABLE_KEY -> AiFallbackContext.NO_DECRYPTABLE_KEY
+    AiReadiness.CONFIGURED -> null
+}
+
+internal fun Throwable.toAiFallbackContext(): AiFallbackContext? = when (this) {
+    is AiProviderRequestException -> when (category) {
+        AiFailureCategory.TEMPORARY_RATE_LIMIT -> AiFallbackContext.RATE_LIMIT
+        AiFailureCategory.TIMEOUT -> AiFallbackContext.TIMEOUT
+        AiFailureCategory.NETWORK -> AiFallbackContext.NETWORK
+        AiFailureCategory.SERVICE_FAILURE -> AiFallbackContext.SERVICE_FAILURE
+        else -> null
+    }
+    is AiProviderUnavailableException ->
+        primaryFailure?.toAiFallbackContext() ?: readiness?.toAiFallbackContext()
+    is AiRateLimitException, is AiFeatureThrottledException -> AiFallbackContext.RATE_LIMIT
+    is AiTimeoutException -> AiFallbackContext.TIMEOUT
+    else -> null
+}
+
+internal fun AiFallbackContext.safeUserMessage(): String = when (this) {
+    AiFallbackContext.AI_DISABLED -> "AI staat uit. Schakel AI in via Instellingen om een provider te gebruiken."
+    AiFallbackContext.NO_DECRYPTABLE_KEY -> "Geen bruikbare AI-sleutel gevonden. Sla een provider-sleutel op via Instellingen."
+    AiFallbackContext.RATE_LIMIT -> "AI is tijdelijk beperkt. Probeer later opnieuw."
+    AiFallbackContext.TIMEOUT -> "AI reageerde te langzaam. Controleer je verbinding en probeer opnieuw."
+    AiFallbackContext.NETWORK -> "AI kon niet worden bereikt. Controleer je internetverbinding en probeer opnieuw."
+    AiFallbackContext.SERVICE_FAILURE -> "AI is tijdelijk niet beschikbaar. Probeer later opnieuw."
 }
 
 internal suspend fun <T> callGeminiWithBoundedRetry(

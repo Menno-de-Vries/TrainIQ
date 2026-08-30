@@ -41,6 +41,7 @@ data class OpenAiResponse(
 data class OpenAiError(
     val code: String? = null,
     val type: String? = null,
+    val message: String? = null,
 )
 
 data class OpenAiErrorEnvelope(

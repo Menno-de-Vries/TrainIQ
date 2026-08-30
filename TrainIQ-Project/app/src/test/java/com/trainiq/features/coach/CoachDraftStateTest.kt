@@ -2,6 +2,7 @@ package com.trainiq.features.coach
 
 import androidx.lifecycle.SavedStateHandle
 import com.trainiq.domain.model.BiologicalSex
+import com.trainiq.domain.model.AiFallbackContext
 import com.trainiq.domain.model.CoachOverview
 import com.trainiq.domain.model.GoalAdvice
 import com.trainiq.domain.model.SavedGoalAdvice
@@ -120,6 +121,7 @@ class CoachDraftStateTest {
                 risks = emptyList(),
                 nextWeekFocus = "Herstel bewaken.",
                 source = WeeklyReportSource.LOCAL_FALLBACK,
+                fallbackContext = AiFallbackContext.TIMEOUT,
             )
         }
         val viewModel = coachViewModel(repository, SavedStateHandle())
@@ -153,10 +155,30 @@ class CoachDraftStateTest {
         advanceUntilIdle()
 
         assertEquals(
-            "Lokale samenvatting gemaakt; AI was tijdelijk niet beschikbaar. Probeer later opnieuw.",
+            "Lokale samenvatting gemaakt.",
             viewModel.success().message,
         )
         assertFalse(viewModel.success().isGeneratingReport)
+    }
+
+    @Test
+    fun goalAdviceDisabledAiDoesNotClaimTemporaryProviderFailure() = runTest {
+        val disabledMessage = "AI staat uit. Schakel AI in via Instellingen om een provider te gebruiken."
+        val repository = FakeCoachRepository(profile = profile(name = "Opgeslagen")).apply {
+            goalAdviceResult = goalAdvice(
+                summary = "$disabledMessage Lokale berekening blijft beschikbaar.",
+                fallbackContext = AiFallbackContext.AI_DISABLED,
+            )
+        }
+        val viewModel = coachViewModel(repository, SavedStateHandle())
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        viewModel.generateGoalAdvice()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.success().isGeneratingAdvice)
+        assertEquals(disabledMessage, viewModel.success().message)
     }
 
     private fun coachViewModel(repository: CoachRepository, savedStateHandle: SavedStateHandle) = CoachViewModel(
@@ -188,10 +210,25 @@ class CoachDraftStateTest {
         trainingFocus = "Kracht",
     )
 
+    private fun goalAdvice(summary: String, fallbackContext: AiFallbackContext? = null) = GoalAdvice(
+        bmr = 1_800,
+        maintenanceCalories = 2_500,
+        activityMultiplier = 1.4,
+        calorieTarget = 2_500,
+        proteinTarget = 160,
+        carbsTarget = 300,
+        fatTarget = 70,
+        trainingFocus = "Kracht",
+        summary = summary,
+        source = com.trainiq.domain.model.GoalAdviceSource.LOCAL_CALCULATION,
+        fallbackContext = fallbackContext,
+    )
+
     private class FakeCoachRepository(profile: UserProfile?) : CoachRepository {
         val profile = MutableStateFlow(profile)
         val saveStarted = CompletableDeferred<Unit>()
         var saveGate: CompletableDeferred<Unit>? = null
+        var goalAdviceResult: GoalAdvice? = null
         var weeklyReportResult: WeeklyReportResult? = null
         private val savedAdvice = MutableStateFlow<SavedGoalAdvice?>(null)
         private val overview = MutableStateFlow(
@@ -214,7 +251,7 @@ class CoachDraftStateTest {
             activityLevel: String,
             goal: String,
             manualCalorieTarget: Int?,
-        ): GoalAdvice = error("Not used")
+        ): GoalAdvice = goalAdviceResult ?: error("Not used")
 
         override suspend fun generateWeeklyReport(): WeeklyReportResult =
             weeklyReportResult ?: error("Not used")
