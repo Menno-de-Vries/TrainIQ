@@ -186,10 +186,10 @@ internal suspend fun routeAiProviderRequest(
     clientFor: (AiProvider) -> AiModelClient,
 ): AiRouteResult {
     val failures = mutableListOf<String>()
-    val providers = settings.preferredProvider.orderedProviders()
-        .let { ordered -> if (settings.allowCrossProviderFallback) ordered else ordered.take(1) }
-    for (provider in providers) {
-        val apiKey = settings.apiKeyFor(provider) ?: continue
+    val configuredProviders = settings.preferredProvider.orderedProviders()
+        .mapNotNull { provider -> settings.apiKeyFor(provider)?.let { apiKey -> provider to apiKey } }
+        .let { providers -> if (settings.allowCrossProviderFallback) providers else providers.take(1) }
+    for ((provider, apiKey) in configuredProviders) {
         val client = clientFor(provider)
         try {
             return callAiWithBoundedRetry(feature = request.feature, throttle = throttleForProvider(provider)) {

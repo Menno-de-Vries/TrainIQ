@@ -72,6 +72,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.trainiq.BuildConfig
+import com.trainiq.ai.services.AiProvider
 import com.trainiq.ai.services.AiProviderPreference
 import com.trainiq.ai.services.AiUsageGate
 import com.trainiq.ai.services.GoalAdvisorService
@@ -1599,12 +1600,12 @@ internal fun AiPreferences.toSettingsAiStatus(): SettingsAiStatus =
 
 internal fun aiProviderStatusLabel(aiStatus: SettingsAiStatus): String = when {
     !aiStatus.enabled -> "Uitgeschakeld"
-    aiStatus.hasGeminiKey || aiStatus.hasOpenAiKey -> buildString {
+    aiStatus.hasGeminiKey && aiStatus.hasOpenAiKey -> buildString {
         append("Klaar: ${aiStatus.preferredProvider.label}")
-        if (aiStatus.hasGeminiKey && aiStatus.hasOpenAiKey) {
-            append(", tweede provider opgeslagen")
-        }
+        append(", tweede provider opgeslagen")
     }
+    aiStatus.hasGeminiKey -> "Klaar: ${AiProvider.GEMINI.displayName}"
+    aiStatus.hasOpenAiKey -> "Klaar: ${AiProvider.OPENAI.displayName}"
     else -> "Geen AI-sleutel ingesteld"
 }
 

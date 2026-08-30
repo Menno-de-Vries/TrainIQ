@@ -78,6 +78,46 @@ class AiProviderRouterTest {
     }
 
     @Test
+    fun routeAiProviderRequest_usesOpenAiWhenGeminiIsPreferredButOnlyOpenAiIsConfigured() = runTest {
+        val gemini = FakeAiModelClient(AiProvider.GEMINI)
+        val openAi = FakeAiModelClient(AiProvider.OPENAI)
+
+        val result = routeAiProviderRequest(
+            settings = aiSettings(
+                preferredProvider = AiProviderPreference.GEMINI_FIRST,
+                geminiApiKey = "",
+                openAiApiKey = "openai-key",
+            ),
+            request = weeklyRequest(),
+            clientFor = { provider -> if (provider == AiProvider.GEMINI) gemini else openAi },
+        )
+
+        assertEquals(AiProvider.OPENAI, result.providerUsed)
+        assertTrue(gemini.apiKeys.isEmpty())
+        assertEquals(listOf("openai-key"), openAi.apiKeys)
+    }
+
+    @Test
+    fun routeAiProviderRequest_usesGeminiWhenOpenAiIsPreferredButOnlyGeminiIsConfigured() = runTest {
+        val gemini = FakeAiModelClient(AiProvider.GEMINI)
+        val openAi = FakeAiModelClient(AiProvider.OPENAI)
+
+        val result = routeAiProviderRequest(
+            settings = aiSettings(
+                preferredProvider = AiProviderPreference.OPENAI_FIRST,
+                geminiApiKey = "gemini-key",
+                openAiApiKey = "",
+            ),
+            request = weeklyRequest(),
+            clientFor = { provider -> if (provider == AiProvider.GEMINI) gemini else openAi },
+        )
+
+        assertEquals(AiProvider.GEMINI, result.providerUsed)
+        assertEquals(listOf("gemini-key"), gemini.apiKeys)
+        assertTrue(openAi.apiKeys.isEmpty())
+    }
+
+    @Test
     fun routeAiProviderRequest_fallsBackToSecondProviderOnTransientFailure() = runTest {
         val openAi = FakeAiModelClient(AiProvider.OPENAI, error = rateLimitError())
         val gemini = FakeAiModelClient(AiProvider.GEMINI)
