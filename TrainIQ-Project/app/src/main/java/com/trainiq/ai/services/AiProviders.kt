@@ -2,7 +2,6 @@ package com.trainiq.ai.services
 
 import com.google.gson.Gson
 import com.google.gson.JsonParser
-import com.trainiq.BuildConfig
 import com.trainiq.core.datastore.AiPreferences
 import com.trainiq.core.diagnostics.DiagnosticsTracker
 import com.trainiq.data.model.OpenAiErrorEnvelope
@@ -107,7 +106,10 @@ class GeminiModelClient @Inject constructor(
 @Singleton
 class OpenAiModelClient @Inject constructor(
     private val openAiApi: com.trainiq.data.remote.OpenAiApi,
+    private val modelCatalog: OpenAiModelCatalog,
 ) : AiModelClient {
+    constructor(openAiApi: com.trainiq.data.remote.OpenAiApi) : this(openAiApi, OpenAiModelCatalog(openAiApi))
+
     override val provider: AiProvider = AiProvider.OPENAI
 
     override suspend fun generateJson(apiKey: String, request: AiRouteRequest): AiRouteResult {
@@ -122,11 +124,51 @@ class OpenAiModelClient @Inject constructor(
                 )
             }
         }
+        val selectedModel = selectModel(apiKey, request)
+        return try {
+            generateJsonForModel(apiKey, request, inputContent, selectedModel)
+        } catch (error: AiProviderRequestException) {
+            if (error.category != AiFailureCategory.MODEL_ACCESS) throw error
+            modelCatalog.invalidate(apiKey)
+            val fallbackModel = try {
+                selectModel(apiKey, request, excluded = setOf(selectedModel))
+            } catch (fallbackError: AiProviderRequestException) {
+                if (fallbackError.category == AiFailureCategory.MODEL_ACCESS) throw error
+                throw fallbackError
+            }
+            generateJsonForModel(apiKey, request, inputContent, fallbackModel)
+        }
+    }
+
+    private suspend fun selectModel(
+        apiKey: String,
+        request: AiRouteRequest,
+        excluded: Set<String> = emptySet(),
+    ): String = try {
+        modelCatalog.select(apiKey, excluded)
+    } catch (error: OpenAiModelDiscoveryException) {
+        throw openAiHttpFailure(request, error.response)
+    } catch (error: OpenAiNoUsableModelException) {
+        throw openAiFailure(request, AiFailureCategory.MODEL_ACCESS, cause = error)
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: SocketTimeoutException) {
+        throw openAiFailure(request, AiFailureCategory.TIMEOUT, cause = error)
+    } catch (error: IOException) {
+        throw openAiFailure(request, AiFailureCategory.NETWORK, cause = error)
+    }
+
+    private suspend fun generateJsonForModel(
+        apiKey: String,
+        request: AiRouteRequest,
+        inputContent: List<com.trainiq.data.model.OpenAiInputContent>,
+        model: String,
+    ): AiRouteResult {
         val httpResponse = try {
             openAiApi.createResponse(
                 authorization = "Bearer $apiKey",
                 request = com.trainiq.data.model.OpenAiResponseRequest(
-                    model = OPENAI_DEFAULT_MODEL,
+                    model = model,
                     input = listOf(com.trainiq.data.model.OpenAiInputMessage(role = "user", content = inputContent)),
                     text = com.trainiq.data.model.OpenAiTextConfig(
                         format = com.trainiq.data.model.OpenAiTextFormat(
@@ -145,23 +187,7 @@ class OpenAiModelClient @Inject constructor(
         }
         val requestId = sanitizeOpenAiMetadata(httpResponse.headers()["x-request-id"])
         if (!httpResponse.isSuccessful) {
-            val parsedError = parseOpenAiError(httpResponse.errorBody()?.readBoundedText())
-            val retryAfterMillis = parseRetryAfterMillis(httpResponse.headers()["Retry-After"])
-            throw openAiFailure(
-                request = request,
-                category = classifyOpenAiFailure(
-                    httpStatus = httpResponse.code(),
-                    errorCode = parsedError.code,
-                    errorType = parsedError.type,
-                    retryAfterMillis = retryAfterMillis,
-                    accessHint = parsedError.accessHint,
-                ),
-                httpStatus = httpResponse.code(),
-                errorCode = parsedError.code,
-                errorType = parsedError.type,
-                requestId = requestId,
-                retryAfterMillis = retryAfterMillis,
-            )
+            throw openAiHttpFailure(request, httpResponse)
         }
         val response = httpResponse.body()
             ?: throw openAiFailure(request, AiFailureCategory.INVALID_RESPONSE, httpStatus = httpResponse.code(), requestId = requestId)
@@ -234,10 +260,33 @@ class OpenAiModelClient @Inject constructor(
         }
         return AiRouteResult(
             providerUsed = provider,
-            model = OPENAI_DEFAULT_MODEL,
+            model = model,
             rawJson = output,
         )
     }
+}
+
+private fun openAiHttpFailure(
+    request: AiRouteRequest,
+    httpResponse: retrofit2.Response<*>,
+): AiProviderRequestException {
+    val parsedError = parseOpenAiError(httpResponse.errorBody()?.readBoundedText())
+    val retryAfterMillis = parseRetryAfterMillis(httpResponse.headers()["Retry-After"])
+    return openAiFailure(
+        request = request,
+        category = classifyOpenAiFailure(
+            httpStatus = httpResponse.code(),
+            errorCode = parsedError.code,
+            errorType = parsedError.type,
+            retryAfterMillis = retryAfterMillis,
+            accessHint = parsedError.accessHint,
+        ),
+        httpStatus = httpResponse.code(),
+        errorCode = parsedError.code,
+        errorType = parsedError.type,
+        requestId = sanitizeOpenAiMetadata(httpResponse.headers()["x-request-id"]),
+        retryAfterMillis = retryAfterMillis,
+    )
 }
 
 private val OpenAiQuotaCodes = setOf(
@@ -377,7 +426,7 @@ class AiProviderRouter @Inject constructor(
 
     override suspend fun generateJson(request: AiRouteRequest): AiRouteResult {
         val settings = aiUsageGate.currentSettings()
-        return routeAiProviderRequest(
+        val result = routeAiProviderRequest(
             settings = settings,
             request = request,
             throttleForProvider = providerThrottles::getValue,
@@ -386,6 +435,14 @@ class AiProviderRouter @Inject constructor(
             onOpenAiSuccess = aiUsageGate::recordOpenAiVerificationSuccess,
             onOpenAiFailure = aiUsageGate::recordOpenAiVerificationFailure,
         )
+        if (result.providerUsed == AiProvider.OPENAI) {
+            diagnosticsTracker.aiModelSelection(
+                provider = result.providerUsed.name.lowercase(),
+                feature = request.feature.name.lowercase(),
+                model = result.model,
+            )
+        }
+        return result
     }
 }
 
@@ -401,8 +458,6 @@ internal class AiProviderUnavailableException(
 )
 
 internal const val GEMINI_FLASH_MODEL = "gemini-2.5-flash"
-internal val OPENAI_DEFAULT_MODEL: String = BuildConfig.OPENAI_MODEL
-
 internal fun AiPreferences.apiKeyFor(provider: AiProvider): String? =
     when (provider) {
         AiProvider.GEMINI -> geminiApiKey

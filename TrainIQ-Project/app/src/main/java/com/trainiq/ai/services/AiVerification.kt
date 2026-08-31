@@ -82,7 +82,7 @@ internal val OpenAiContractFingerprint: String by lazy {
     val contract = listOf(
         BuildConfig.OPENAI_BASE_URL,
         "v1/responses",
-        BuildConfig.OPENAI_MODEL,
+        OpenAiModelSelectionPolicy.fingerprint,
         "responses-json-schema-v1",
     ).joinToString("|")
     MessageDigest.getInstance("SHA-256")

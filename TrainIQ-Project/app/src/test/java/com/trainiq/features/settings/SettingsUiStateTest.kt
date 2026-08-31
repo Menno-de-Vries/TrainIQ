@@ -264,7 +264,7 @@ class SettingsUiStateTest {
         )
 
         assertEquals("Veilig opgeslagen, nog niet remote geverifieerd", openAiProviderStatusLabel(base))
-        assertTrue(openAiProviderStatusLabel(verified).contains("Geverifieerd voor gpt-5.4-mini"))
+        assertTrue(openAiProviderStatusLabel(verified).contains("Geverifieerd met runtime-modelselectie"))
         assertTrue(openAiProviderStatusLabel(failed).contains("eerder geverifieerd"))
         assertTrue(openAiProviderStatusLabel(failed).contains("Model Usage"))
         assertEquals(

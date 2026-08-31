@@ -52,7 +52,6 @@ android {
             "\"https://generativelanguage.googleapis.com/\""
         )
         buildConfigField("String", "OPENAI_BASE_URL", "\"https://api.openai.com/\"")
-        buildConfigField("String", "OPENAI_MODEL", "\"gpt-5.4-mini\"")
         buildConfigField("String", "GIT_BRANCH", trainIqGitBranch.asBuildConfigString())
         buildConfigField("String", "GIT_SHORT_SHA", trainIqGitShortSha.asBuildConfigString())
         buildConfigField("Boolean", "GIT_DIRTY", trainIqGitDirty.toString())

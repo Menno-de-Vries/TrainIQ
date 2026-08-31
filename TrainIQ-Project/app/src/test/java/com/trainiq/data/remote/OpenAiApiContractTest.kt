@@ -12,9 +12,26 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import retrofit2.http.Header
+import retrofit2.http.GET
 import retrofit2.http.Query
 
 class OpenAiApiContractTest {
+    @Test
+    fun listModelsUsesBearerHeaderAndExposesOnlyMinimalModelDiscoveryFields() {
+        val method = OpenAiApi::class.java.methods.single { it.name == "listModels" }
+        val parameterAnnotations = method.parameterAnnotations.flatten()
+
+        assertTrue(method.annotations.any { it is GET && it.value == "v1/models" })
+        assertTrue(parameterAnnotations.any { it is Header && it.value == "Authorization" })
+        assertFalse(parameterAnnotations.any { it is Query })
+        val descriptor = Gson().fromJson(
+            """{"id":"gpt-5.6-luna","shutdown_date":"2030-01-01","ignored":"secret"}""",
+            Class.forName("com.trainiq.data.model.OpenAiModelDescriptor"),
+        )
+        assertEquals("gpt-5.6-luna", descriptor.javaClass.getDeclaredField("id").apply { isAccessible = true }.get(descriptor))
+        assertEquals("2030-01-01", descriptor.javaClass.getDeclaredField("shutdownDate").apply { isAccessible = true }.get(descriptor))
+    }
+
     @Test
     fun createResponseUsesBearerHeaderInsteadOfQueryAuth() {
         val method = OpenAiApi::class.java.methods.single { it.name == "createResponse" }

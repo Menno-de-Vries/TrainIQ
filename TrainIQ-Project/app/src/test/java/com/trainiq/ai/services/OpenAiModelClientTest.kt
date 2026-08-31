@@ -4,6 +4,8 @@ import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.trainiq.data.model.OpenAiError
 import com.trainiq.data.model.OpenAiIncompleteDetails
+import com.trainiq.data.model.OpenAiModelDescriptor
+import com.trainiq.data.model.OpenAiModelsResponse
 import com.trainiq.data.model.OpenAiOutput
 import com.trainiq.data.model.OpenAiOutputContent
 import com.trainiq.data.model.OpenAiResponse
@@ -27,6 +29,45 @@ import retrofit2.Response
 
 class OpenAiModelClientTest {
     @Test
+    fun generateJson_modelAccessFailureRefreshesDiscoveryAndRetriesOneDifferentAllowedModel() = runTest {
+        val api = FakeOpenAiApi(
+            response = errorResponse(403, "model_not_found", "req_model"),
+            responseSequence = listOf(
+                errorResponse(403, "model_not_found", "req_model"),
+                Response.success(OpenAiResponse(status = "completed", outputText = "{\"ok\":true}")),
+            ),
+            modelResponses = listOf(
+                Response.success(OpenAiModelsResponse(data = listOf(OpenAiModelDescriptor(id = "gpt-5.6-luna")))),
+                Response.success(OpenAiModelsResponse(data = listOf(OpenAiModelDescriptor(id = "gpt-5.4-mini")))),
+            ),
+        )
+
+        val result = OpenAiModelClient(api).generateJson("synthetic-secret", weeklyRequest())
+
+        assertEquals("gpt-5.4-mini", result.model)
+        assertEquals(2, api.calls)
+        assertEquals(2, api.modelCalls)
+        assertEquals(listOf("gpt-5.6-luna", "gpt-5.4-mini"), api.requestedModels)
+    }
+
+    @Test
+    fun generateJson_terminalFailuresDoNotSwitchModelsOrRefreshDiscovery() = runTest {
+        listOf(
+            errorResponse(401, "invalid_api_key", "req_auth"),
+            errorResponse(429, "insufficient_quota", "req_quota"),
+            errorResponse(400, "invalid_json_schema", "req_schema"),
+        ).forEach { response ->
+            val api = FakeOpenAiApi(response)
+
+            runCatching { OpenAiModelClient(api).generateJson("synthetic-secret", weeklyRequest()) }
+
+            assertEquals(1, api.calls)
+            assertEquals(1, api.modelCalls)
+            assertEquals(listOf("gpt-5.6-luna"), api.requestedModels)
+        }
+    }
+
+    @Test
     fun allSixFeaturesRouteTheActualResponsesContractWithImagesOnlyForPhotoFeatures() = runTest {
         featureContracts().forEach { contract ->
             val api = FakeOpenAiApi(
@@ -43,7 +84,7 @@ class OpenAiModelClientTest {
             assertEquals(AiProvider.OPENAI, result.providerUsed)
             assertEquals("Bearer synthetic-secret", api.lastAuthorization)
             val json = JsonParser.parseString(Gson().toJson(api.lastRequest)).asJsonObject
-            assertEquals(OPENAI_DEFAULT_MODEL, json["model"].asString)
+            assertEquals("gpt-5.6-luna", json["model"].asString)
             val content = json["input"].asJsonArray.single().asJsonObject["content"].asJsonArray
             assertEquals("input_text", content[0].asJsonObject["type"].asString)
             assertEquals("prompt-${contract.request.feature.name}", content[0].asJsonObject["text"].asString)
@@ -264,7 +305,7 @@ class OpenAiModelClientTest {
 
         assertEquals("Bearer synthetic-secret", api.lastAuthorization)
         val json = JsonParser.parseString(Gson().toJson(api.lastRequest)).asJsonObject
-        assertEquals(OPENAI_DEFAULT_MODEL, json["model"].asString)
+        assertEquals("gpt-5.6-luna", json["model"].asString)
         val input = json["input"].asJsonArray.single().asJsonObject
         assertEquals("user", input["role"].asString)
         val content = input["content"].asJsonArray
@@ -348,10 +389,16 @@ class OpenAiModelClientTest {
 
     private class FakeOpenAiApi(
         private val response: Response<OpenAiResponse>,
+        private val responseSequence: List<Response<OpenAiResponse>> = listOf(response),
+        private val modelResponses: List<Response<OpenAiModelsResponse>> = listOf(
+            Response.success(OpenAiModelsResponse(data = listOf(OpenAiModelDescriptor(id = "gpt-5.6-luna")))),
+        ),
     ) : OpenAiApi {
         var calls: Int = 0
+        var modelCalls: Int = 0
         var lastAuthorization: String? = null
         var lastRequest: OpenAiResponseRequest? = null
+        val requestedModels = mutableListOf<String>()
 
         override suspend fun createResponse(
             authorization: String,
@@ -360,13 +407,23 @@ class OpenAiModelClientTest {
             calls += 1
             lastAuthorization = authorization
             lastRequest = request
-            return response
+            requestedModels += request.model
+            return responseSequence[(calls - 1).coerceAtMost(responseSequence.lastIndex)]
+        }
+
+        override suspend fun listModels(authorization: String): Response<OpenAiModelsResponse> {
+            val responseIndex = modelCalls.coerceAtMost(modelResponses.lastIndex)
+            modelCalls += 1
+            return modelResponses[responseIndex]
         }
     }
 
     private class ThrowingOpenAiApi(
         private val error: IOException,
     ) : OpenAiApi {
+        override suspend fun listModels(authorization: String): Response<OpenAiModelsResponse> =
+            Response.success(OpenAiModelsResponse(data = listOf(OpenAiModelDescriptor(id = "gpt-5.6-luna"))))
+
         override suspend fun createResponse(
             authorization: String,
             request: OpenAiResponseRequest,

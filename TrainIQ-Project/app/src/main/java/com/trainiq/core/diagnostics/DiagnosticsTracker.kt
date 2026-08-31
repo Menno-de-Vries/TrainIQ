@@ -51,6 +51,22 @@ class DiagnosticsTracker @Inject constructor(
         )
         telemetry.event("ai.remote.failure", safeAttributes)
     }
+
+    fun aiModelSelection(provider: String, feature: String, model: String) {
+        val safeAttributes = mapOf(
+            "provider" to provider,
+            "feature" to feature,
+            "model" to model,
+        ).filter { (key, value) -> key in AiModelSelectionAttributeKeys && value.isNotBlank() }
+            .mapValues { (_, value) -> value.toSafeDiagnosticValue() }
+        if (safeAttributes.size != AiModelSelectionAttributeKeys.size) return
+        breadcrumbs.add(
+            message = "AI model:${safeAttributes["provider"]}:${safeAttributes["feature"]}:${safeAttributes["model"]}",
+            category = "ai",
+            timestampMillis = System.currentTimeMillis(),
+        )
+        telemetry.event("ai.remote.model_selection", safeAttributes)
+    }
 }
 
 private val AiFailureAttributeKeys = setOf(
@@ -65,6 +81,8 @@ private val AiFailureAttributeKeys = setOf(
     "attempt",
     "duration_ms",
 )
+
+private val AiModelSelectionAttributeKeys = setOf("provider", "feature", "model")
 
 private fun String.toSafeDiagnosticValue(): String =
     trim()

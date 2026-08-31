@@ -1638,7 +1638,7 @@ internal fun aiProviderStatusLabel(aiStatus: SettingsAiStatus): String = when {
     }
     aiStatus.hasGeminiKey -> "Klaar: Gemini 2.5 Flash"
     aiStatus.hasOpenAiKey -> when (aiStatus.openAiVerification?.outcome) {
-        OpenAiVerificationOutcome.VERIFIED -> "Klaar: OpenAI geverifieerd voor ${BuildConfig.OPENAI_MODEL}"
+        OpenAiVerificationOutcome.VERIFIED -> "Klaar: OpenAI geverifieerd met runtime-modelselectie"
         OpenAiVerificationOutcome.FAILED -> "OpenAI opgeslagen; laatste call mislukt"
         null -> "Veilig opgeslagen, nog niet geverifieerd: OpenAI"
     }
@@ -1655,7 +1655,7 @@ internal fun openAiProviderStatusLabel(aiStatus: SettingsAiStatus): String {
     val verification = aiStatus.openAiVerification
         ?: return "Veilig opgeslagen, nog niet remote geverifieerd"
     return when (verification.outcome) {
-        OpenAiVerificationOutcome.VERIFIED -> "Geverifieerd voor ${BuildConfig.OPENAI_MODEL}"
+        OpenAiVerificationOutcome.VERIFIED -> "Geverifieerd met runtime-modelselectie"
         OpenAiVerificationOutcome.FAILED -> buildString {
             append("Laatste call mislukt")
             if (verification.lastVerifiedAtMillis != null) append("; eerder geverifieerd")

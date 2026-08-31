@@ -2,6 +2,15 @@ package com.trainiq.data.model
 
 import com.google.gson.annotations.SerializedName
 
+data class OpenAiModelsResponse(
+    val data: List<OpenAiModelDescriptor> = emptyList(),
+)
+
+data class OpenAiModelDescriptor(
+    val id: String = "",
+    @SerializedName("shutdown_date") val shutdownDate: String? = null,
+)
+
 data class OpenAiResponseRequest(
     val model: String,
     val input: List<OpenAiInputMessage>,
