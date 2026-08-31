@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.StateRestorationTester
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -83,11 +84,15 @@ class WorkoutAiRoutineGenerationStateRestorationInstrumentedTest {
         onNodeWithText("Gevorderd").performClick()
         onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo(60f, 30f..90f, 3)))
             .performSemanticsAction(SemanticsActions.SetProgress) { setProgress -> setProgress(75f) }
-        onNodeWithContentDescription("Deload-richtlijn opnemen").performClick()
+        onNodeWithContentDescription("Deload-richtlijn opnemen")
+            .performScrollTo()
+            .performClick()
+        onNodeWithContentDescription("Deload-richtlijn opnemen").assertIsOff()
 
         restorationTester.emulateSaveAndRestore()
 
         onNodeWithText("AI-routine genereren").assertIsDisplayed()
+        onNodeWithContentDescription("Deload-richtlijn opnemen").assertIsOff()
         onNodeWithText("Genereren").performClick()
 
         assertEquals(
