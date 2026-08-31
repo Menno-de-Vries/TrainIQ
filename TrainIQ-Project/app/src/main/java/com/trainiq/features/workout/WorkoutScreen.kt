@@ -1494,7 +1494,7 @@ fun WorkoutScreen(
     onDeleteWorkoutSession: (Long) -> Unit,
 ) {
     var showAiDialog by rememberSaveable { mutableStateOf(false) }
-    var showCreateDialog by remember { mutableStateOf(false) }
+    var showCreateDialog by rememberSaveable { mutableStateOf(false) }
     var selectedRoutineId by rememberSaveable { mutableStateOf<Long?>(null) }
     var selectedTrainingTab by rememberSaveable { mutableStateOf(WorkoutOverviewTab.Routines.key) }
     var exerciseLibraryQuery by rememberSaveable { mutableStateOf("") }
@@ -1817,7 +1817,7 @@ class WorkoutProcessingViewModel @Inject constructor(
 
 @Composable
 private fun CreateRoutineDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    var name by remember { mutableStateOf("") }
+    var name by rememberSaveable { mutableStateOf("") }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     fun closeInput() {
@@ -2168,12 +2168,12 @@ private fun RoutineGeneratorDialog(
     onDismiss: () -> Unit,
     onGenerate: (Int, String, String, String, Int, Boolean) -> Unit,
 ) {
-    var focus by remember { mutableStateOf("") }
-    var daysPerWeek by remember { mutableStateOf("3") }
-    var equipment by remember { mutableStateOf("") }
-    var experienceLevel by remember { mutableStateOf("intermediate") }
-    var sessionDuration by remember { mutableFloatStateOf(60f) }
-    var includeDeload by remember { mutableStateOf(true) }
+    var focus by rememberSaveable { mutableStateOf("") }
+    var daysPerWeek by rememberSaveable { mutableStateOf("3") }
+    var equipment by rememberSaveable { mutableStateOf("") }
+    var experienceLevel by rememberSaveable { mutableStateOf("intermediate") }
+    var sessionDuration by rememberSaveable { mutableFloatStateOf(60f) }
+    var includeDeload by rememberSaveable { mutableStateOf(true) }
     val focusSuggestions = remember { listOf("Push/pull/legs", "Upper/lower", "Volledig lichaam", "Onderlichaam", "Kracht") }
 
     AlertDialog(
