@@ -1,13 +1,12 @@
 package com.trainiq.ai.services
 
-import android.util.Log
 import com.google.gson.JsonParser
 import com.trainiq.ai.prompts.AiPrompts
+import com.trainiq.domain.model.AiFallbackContext
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
-import retrofit2.HttpException
 
 data class GeneratedRoutine(
     val routineName: String,
@@ -15,6 +14,7 @@ data class GeneratedRoutine(
     val periodizationNote: String = "",
     val estimatedDurationMinutes: Int = 0,
     val source: GeneratedRoutineSource = GeneratedRoutineSource.GEMINI_2_5_FLASH,
+    val fallbackContext: AiFallbackContext? = null,
     val days: List<GeneratedDay>,
 )
 
@@ -42,10 +42,19 @@ data class GeneratedExercise(
 )
 
 @Singleton
-class RoutineGeneratorService @Inject constructor(
+class RoutineGeneratorService internal constructor(
     private val aiJsonGenerator: AiJsonGenerator,
-    private val aiUsageGate: AiUsageGate,
+    private val readinessProvider: suspend () -> AiReadiness,
 ) {
+    @Inject
+    constructor(
+        aiProviderRouter: AiProviderRouter,
+        aiUsageGate: AiUsageGate,
+    ) : this(
+        aiJsonGenerator = aiProviderRouter,
+        readinessProvider = aiUsageGate::currentReadiness,
+    )
+
     // Provider routing replaces the old direct Gemini-only boundary while preserving bounded AI retry semantics.
     suspend fun generateRoutine(
         goal: String,
@@ -85,9 +94,16 @@ class RoutineGeneratorService @Inject constructor(
             includeDeload = includeDeload,
         )
         return try {
-            if (!aiUsageGate.isAiReady()) {
-                Log.d(RoutineGeneratorLogTag, "Routine AI fallback: AI staat uit of configuratie ontbreekt.")
-                return fallback
+            val readiness = readinessProvider()
+            if (readiness != AiReadiness.CONFIGURED) {
+                val fallbackContext = readiness.toAiFallbackContext()
+                return fallback.copy(
+                    routineDescription = listOfNotNull(
+                        fallbackContext?.safeUserMessage(),
+                        fallback.routineDescription,
+                    ).joinToString(" "),
+                    fallbackContext = fallbackContext,
+                )
             }
             val routed = aiJsonGenerator.generateJson(
                 AiRouteRequest(
@@ -108,22 +124,23 @@ class RoutineGeneratorService @Inject constructor(
                 ),
             )
             parseGeneratedRoutine(routed.rawJson, fallback, routed.providerUsed).also { routine ->
-                if (routine.source == GeneratedRoutineSource.LOCAL_FALLBACK) {
-                    Log.d(RoutineGeneratorLogTag, "Routine AI fallback: providerantwoord was leeg, ongeldig of niet Nederlands genoeg.")
+                if (routed.providerUsed == AiProvider.OPENAI && routine.source == GeneratedRoutineSource.LOCAL_FALLBACK) {
+                    throw AiProviderRequestException(AiProvider.OPENAI, AiFeature.ROUTINE_GENERATION, AiFailureCategory.INVALID_RESPONSE)
                 }
             }
         } catch (throwable: Throwable) {
             if (throwable is CancellationException) throw throwable
             val mapped = throwable.asAiRateLimitExceptionIfNeeded()
             if (mapped is AiRateLimitException || mapped is AiFeatureThrottledException) throw mapped
-            val detail = if (throwable is HttpException) "HTTP ${throwable.code()}" else throwable::class.simpleName.orEmpty()
-            Log.d(RoutineGeneratorLogTag, "Routine AI fallback: AI-aanroep mislukt ($detail).")
-            fallback
+            if (!throwable.allowsDeterministicAiFallback()) throw throwable
+            fallback.copy(
+                routineDescription = "${throwable.toSafeAiFallbackMessage("AI-routinegeneratie is nu niet beschikbaar.")} ${fallback.routineDescription}",
+                fallbackContext = throwable.toAiFallbackContext(),
+            )
         }
     }
 }
 
-private const val RoutineGeneratorLogTag = "RoutineGenerator"
 private const val MaxGeneratedRoutineRawResponseChars = 64_000
 private const val MaxGeneratedRoutineDays = 7
 private const val MaxGeneratedExercisesPerDay = 12
@@ -201,6 +218,7 @@ internal fun fallbackGeneratedRoutine(
     experienceLevel: String,
     sessionDurationMinutes: Int,
     includeDeload: Boolean,
+    fallbackContext: AiFallbackContext? = null,
 ): GeneratedRoutine {
     val safeDays = daysPerWeek.coerceIn(1, 7)
     val duration = sessionDurationMinutes.coerceIn(30, 90)
@@ -266,6 +284,7 @@ internal fun fallbackGeneratedRoutine(
         periodizationNote = periodizationNote,
         estimatedDurationMinutes = duration,
         source = GeneratedRoutineSource.LOCAL_FALLBACK,
+        fallbackContext = fallbackContext,
         days = days,
     )
 }

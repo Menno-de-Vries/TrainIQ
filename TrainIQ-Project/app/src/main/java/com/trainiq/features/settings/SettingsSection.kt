@@ -72,8 +72,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.trainiq.BuildConfig
-import com.trainiq.ai.services.AiProvider
 import com.trainiq.ai.services.AiProviderPreference
+import com.trainiq.ai.services.AiFailureCategory
+import com.trainiq.ai.services.OpenAiVerificationOutcome
+import com.trainiq.ai.services.OpenAiVerificationSnapshot
 import com.trainiq.ai.services.AiUsageGate
 import com.trainiq.ai.services.GoalAdvisorService
 import com.trainiq.core.datastore.AiPreferences
@@ -165,6 +167,7 @@ data class SettingsAiStatus(
     val hasOpenAiKey: Boolean,
     val maskedGeminiKey: String,
     val maskedOpenAiKey: String,
+    val openAiVerification: OpenAiVerificationSnapshot? = null,
 )
 
 private data class SettingsUiInputs(
@@ -209,17 +212,21 @@ class SettingsViewModel @Inject constructor(
     private val reloads = MutableStateFlow(0)
     private val apiKeyRefreshes = MutableStateFlow(0)
     private val externalInputs = reloadableObservation(reloads) {
-        val aiPreferences = combine(preferencesRepository.aiPreferences, apiKeyRefreshes) { legacySettings, _ ->
-            aiUsageGate.resolveSettings(legacySettings)
+        val aiStatus = combine(
+            preferencesRepository.aiPreferences,
+            apiKeyRefreshes,
+            aiUsageGate.openAiVerificationSnapshots,
+        ) { legacySettings, _, verification ->
+            aiUsageGate.resolveSettings(legacySettings).toSettingsAiStatus(verification)
         }
         val preferenceInputs = combine(
             preferencesRepository.themeMode,
-            aiPreferences,
+            aiStatus,
             preferencesRepository.telemetryOptIn,
             preferencesRepository.workoutFeedbackPreferences,
             preferencesRepository.reminderPreferences,
         ) { theme, ai, telemetry, feedback, reminders ->
-            SettingsPreferenceInputs(theme, ai.toSettingsAiStatus(), telemetry, feedback, reminders, OnboardingPreferences())
+            SettingsPreferenceInputs(theme, ai, telemetry, feedback, reminders, OnboardingPreferences())
         }
         combine(preferenceInputs, preferencesRepository.onboardingPreferences, observeUserProfileUseCase()) { preferences, onboarding, profile ->
             SettingsUiInputs(
@@ -324,7 +331,7 @@ class SettingsViewModel @Inject constructor(
             val encrypted = aiUsageGate.saveOpenAiApiKey(apiKey)
             emitMessage(if (encrypted) {
                 apiKeyRefreshes.update { it + 1 }
-                "OpenAI API-sleutel versleuteld opgeslagen."
+                openAiKeySavedMessage()
             } else {
                 "OpenAI API-sleutel opslaan mislukt. Bestaande sleutel blijft behouden."
             })
@@ -854,6 +861,7 @@ fun SettingsScreen(
     var openAiKeyInput by remember { mutableStateOf("") }
     var pendingDestructiveAction by rememberSaveable { mutableStateOf<PendingDestructiveSettingsAction?>(null) }
     var showHealthTechnicalDetails by rememberSaveable { mutableStateOf(false) }
+    var showOpenAiTechnicalDetails by rememberSaveable { mutableStateOf(false) }
     DisposableEffect(Unit) {
         onDispose {
             geminiKeyInput = ""
@@ -896,7 +904,7 @@ fun SettingsScreen(
         SectionCard(title = settingsOverflowSectionTitle()) {
                 Text(settingsOverflowSectionBody())
                 Text("Thema: ${themeMode.displayLabel()}")
-                Text("AI: ${if (aiStatus.enabled && (aiStatus.hasGeminiKey || aiStatus.hasOpenAiKey)) "Klaar voor expliciet gebruik" else "Alleen handmatig"}")
+                Text("AI: ${if (aiStatus.enabled && (aiStatus.hasGeminiKey || aiStatus.hasOpenAiKey)) "Geconfigureerd voor expliciet gebruik" else "Alleen handmatig"}")
                 Text("Health Connect: ${healthStatusLabel(healthStatus)}")
                 Button(
                     onClick = onOpenProgress,
@@ -1107,6 +1115,23 @@ fun SettingsScreen(
                 Text("Gemini en OpenAI kunnen API-kosten veroorzaken. Laat AI uitgeschakeld tenzij je het wilt gebruiken.")
                 Text("Gebruikt door: maaltijdanalyse, workoutterugblik, wekelijks AI-rapport en doeladviseur.")
                 Text("Status: ${aiProviderStatusLabel(aiStatus)}")
+                Text("Gemini-status: ${geminiProviderStatusLabel(aiStatus)}")
+                Text("OpenAI-status: ${openAiProviderStatusLabel(aiStatus)}")
+                val openAiDetails = openAiVerificationTechnicalDetails(aiStatus)
+                if (openAiDetails.isNotEmpty()) {
+                    TextButton(onClick = { showOpenAiTechnicalDetails = !showOpenAiTechnicalDetails }) {
+                        Text(if (showOpenAiTechnicalDetails) "OpenAI-details verbergen" else "OpenAI-details tonen")
+                    }
+                    if (showOpenAiTechnicalDetails) {
+                        openAiDetails.forEach { detail ->
+                            Text(
+                                detail,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
         }
         SectionCard(title = "Health Connect") {
                 Text("Status: ${healthStatusLabel(healthStatus)}")
@@ -1220,6 +1245,7 @@ fun SettingsScreen(
         }
         SectionCard(title = "Over") {
                 Text("Appversie: ${BuildConfig.VERSION_NAME}")
+                Text(debugBuildProvenanceLabel(BuildConfig.GIT_BRANCH, BuildConfig.GIT_SHORT_SHA, BuildConfig.GIT_DIRTY))
                 Text("AI ingeschakeld: ${if (aiStatus.enabled) "Ja" else "Nee"}")
                 Text("Health Connect: ${healthStatusLabel(healthStatus)}")
                 Text("Ontworpen als handmatige training- en voedings-MVP.")
@@ -1586,9 +1612,14 @@ internal fun openAiApiKeySourceLabel(): String = "OpenAI API Keys"
 internal fun openAiApiKeySourceUrl(): String = "https://platform.openai.com/api-keys"
 
 internal fun openAiApiKeySetupHelpText(): String =
-    "Maak of bekijk je sleutel in het OpenAI Platform, plak hem hier en zet AI aan. Deel je sleutel niet en commit hem nooit."
+    "Maak of bekijk je sleutel in het OpenAI Platform, plak hem hier en zet AI aan. Controleer API-billing, Project Model Usage voor gpt-5.4-mini en geef een Restricted key request/write-toegang tot /v1/responses. Deel je sleutel niet en commit hem nooit."
 
-internal fun AiPreferences.toSettingsAiStatus(): SettingsAiStatus =
+internal fun openAiKeySavedMessage(): String =
+    "OpenAI API-sleutel versleuteld opgeslagen en lokaal teruggelezen. Remote toegang is nog niet geverifieerd."
+
+internal fun AiPreferences.toSettingsAiStatus(
+    openAiVerification: OpenAiVerificationSnapshot? = null,
+): SettingsAiStatus =
     SettingsAiStatus(
         enabled = enabled,
         preferredProvider = preferredProvider,
@@ -1596,20 +1627,80 @@ internal fun AiPreferences.toSettingsAiStatus(): SettingsAiStatus =
         hasOpenAiKey = openAiApiKey.isNotBlank(),
         maskedGeminiKey = maskedSettingsApiKey(geminiApiKey),
         maskedOpenAiKey = maskedSettingsApiKey(openAiApiKey),
+        openAiVerification = openAiVerification.takeIf { openAiApiKey.isNotBlank() },
     )
 
 internal fun aiProviderStatusLabel(aiStatus: SettingsAiStatus): String = when {
     !aiStatus.enabled -> "Uitgeschakeld"
     aiStatus.hasGeminiKey && aiStatus.hasOpenAiKey -> buildString {
-        append("Klaar: ${aiStatus.preferredProvider.label}")
+        append("Geconfigureerd: ${aiStatus.preferredProvider.label}")
         append(", tweede provider opgeslagen")
     }
-    aiStatus.hasGeminiKey -> "Klaar: ${AiProvider.GEMINI.displayName}"
-    aiStatus.hasOpenAiKey -> "Klaar: ${AiProvider.OPENAI.displayName}"
+    aiStatus.hasGeminiKey -> "Klaar: Gemini 2.5 Flash"
+    aiStatus.hasOpenAiKey -> when (aiStatus.openAiVerification?.outcome) {
+        OpenAiVerificationOutcome.VERIFIED -> "Klaar: OpenAI geverifieerd met runtime-modelselectie"
+        OpenAiVerificationOutcome.FAILED -> "OpenAI opgeslagen; laatste call mislukt"
+        null -> "Veilig opgeslagen, nog niet geverifieerd: OpenAI"
+    }
     else -> "Geen AI-sleutel ingesteld"
 }
 
+internal fun geminiProviderStatusLabel(aiStatus: SettingsAiStatus): String = when {
+    !aiStatus.hasGeminiKey -> "Geen bruikbare sleutel opgeslagen"
+    else -> "Veilig opgeslagen voor Gemini 2.5 Flash"
+}
+
+internal fun openAiProviderStatusLabel(aiStatus: SettingsAiStatus): String {
+    if (!aiStatus.hasOpenAiKey) return "Geen bruikbare sleutel opgeslagen"
+    val verification = aiStatus.openAiVerification
+        ?: return "Veilig opgeslagen, nog niet remote geverifieerd"
+    return when (verification.outcome) {
+        OpenAiVerificationOutcome.VERIFIED -> "Geverifieerd met runtime-modelselectie"
+        OpenAiVerificationOutcome.FAILED -> buildString {
+            append("Laatste call mislukt")
+            if (verification.lastVerifiedAtMillis != null) append("; eerder geverifieerd")
+            append(": ")
+            append(verification.failureCategory.openAiSettingsFailureLabel())
+        }
+    }
+}
+
+internal fun openAiVerificationTechnicalDetails(aiStatus: SettingsAiStatus): List<String> {
+    val verification = aiStatus.openAiVerification ?: return emptyList()
+    return listOfNotNull(
+        verification.httpStatus?.let { "HTTP-status: $it" },
+        verification.errorCode?.let { "Code: $it" },
+        verification.errorType?.let { "Type: $it" },
+        verification.requestId?.let { "Request-id: $it" },
+    )
+}
+
+private fun AiFailureCategory?.openAiSettingsFailureLabel(): String = when (this) {
+    AiFailureCategory.AUTHENTICATION -> "controleer je API-sleutel"
+    AiFailureCategory.PROJECT_ACCESS -> "controleer project en membership"
+    AiFailureCategory.MODEL_ACCESS -> "controleer Project Model Usage"
+    AiFailureCategory.ENDPOINT_PERMISSION -> "geef request/write-toegang tot Responses"
+    AiFailureCategory.ACCESS -> "controleer provider- en projectrechten"
+    AiFailureCategory.QUOTA_BILLING -> "controleer API-billing en projectlimieten"
+    AiFailureCategory.TEMPORARY_RATE_LIMIT -> "tijdelijke rate limit; probeer later opnieuw"
+    AiFailureCategory.UNCLASSIFIED_LIMIT -> "controleer billing en limieten"
+    AiFailureCategory.REQUEST_CONFIGURATION -> "werk de app bij of rapporteer dit defect"
+    AiFailureCategory.TIMEOUT -> "timeout; probeer opnieuw"
+    AiFailureCategory.NETWORK -> "controleer je verbinding"
+    AiFailureCategory.SERVICE_FAILURE -> "provider tijdelijk niet beschikbaar"
+    AiFailureCategory.INCOMPLETE_RESPONSE -> "onvolledig providerantwoord"
+    AiFailureCategory.REFUSAL -> "provider kon de invoer niet beantwoorden"
+    AiFailureCategory.INVALID_RESPONSE -> "onbruikbaar providerantwoord"
+    AiFailureCategory.UNKNOWN, null -> "onbekende providerfout"
+}
+
 internal fun settingsOverflowSectionTitle(): String = "Meer"
+
+internal fun debugBuildProvenanceLabel(
+    branch: String,
+    shortSha: String,
+    dirty: Boolean,
+): String = "Build: $branch @ $shortSha${if (dirty) " (dirty)" else ""}"
 
 internal fun settingsOverflowSectionBody(): String =
     "Compacte navigatie: instellingen, voorkeuren en appbeheer staan hier. Trends en grafieken open je via Voortgang hieronder."

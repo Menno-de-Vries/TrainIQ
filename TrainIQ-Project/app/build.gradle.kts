@@ -15,6 +15,21 @@ plugins {
     alias(libs.plugins.hilt.android)
 }
 
+fun trainIqGitOutput(vararg arguments: String): String = runCatching {
+    providers.exec {
+        workingDir(rootDir.parentFile)
+        commandLine("git", *arguments)
+    }.standardOutput.asText.get().trim()
+}.getOrDefault("unknown")
+
+fun String.asBuildConfigString(): String =
+    "\"${replace("\\", "\\\\").replace("\"", "\\\"")}\""
+
+val trainIqGitBranch = trainIqGitOutput("branch", "--show-current").ifBlank { "detached" }
+val trainIqGitShortSha = trainIqGitOutput("rev-parse", "--short=7", "HEAD")
+val trainIqGitStatus = trainIqGitOutput("status", "--porcelain")
+val trainIqGitDirty = trainIqGitStatus.isNotEmpty() && trainIqGitStatus != "unknown"
+
 android {
     namespace = "com.trainiq"
     compileSdk {
@@ -37,7 +52,9 @@ android {
             "\"https://generativelanguage.googleapis.com/\""
         )
         buildConfigField("String", "OPENAI_BASE_URL", "\"https://api.openai.com/\"")
-        buildConfigField("String", "OPENAI_MODEL", "\"gpt-5.4-mini\"")
+        buildConfigField("String", "GIT_BRANCH", trainIqGitBranch.asBuildConfigString())
+        buildConfigField("String", "GIT_SHORT_SHA", trainIqGitShortSha.asBuildConfigString())
+        buildConfigField("Boolean", "GIT_DIRTY", trainIqGitDirty.toString())
         buildConfigField("Boolean", "TELEMETRY_ENABLED", "false")
         buildConfigField("String", "TELEMETRY_ENDPOINT_URL", "\"\"")
         buildConfigField("Double", "TELEMETRY_SAMPLE_RATE", "0.0")

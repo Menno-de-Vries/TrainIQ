@@ -2770,6 +2770,7 @@ private fun com.trainiq.ai.services.GeneratedRoutine.toDomainGeneratedRoutine() 
         com.trainiq.ai.services.GeneratedRoutineSource.OPENAI -> com.trainiq.domain.model.GeneratedRoutineSource.OPENAI
         com.trainiq.ai.services.GeneratedRoutineSource.LOCAL_FALLBACK -> com.trainiq.domain.model.GeneratedRoutineSource.LOCAL_FALLBACK
     },
+    fallbackContext = fallbackContext,
     days = days.map { day ->
         GeneratedDay(
             dayName = day.dayName,

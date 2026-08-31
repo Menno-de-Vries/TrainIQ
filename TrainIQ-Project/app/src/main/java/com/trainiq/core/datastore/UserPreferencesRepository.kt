@@ -8,6 +8,8 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.trainiq.ai.services.AiProviderPreference
+import com.trainiq.ai.services.OpenAiVerificationSnapshot
+import com.trainiq.ai.services.OpenAiVerificationSnapshotCodec
 import com.trainiq.core.theme.ThemeMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -73,6 +75,7 @@ class UserPreferencesRepository @Inject constructor(
     private val aiEnabledKey = booleanPreferencesKey("ai_enabled")
     private val aiProviderPreferenceKey = stringPreferencesKey("ai_provider_preference")
     private val geminiApiKey = stringPreferencesKey("gemini_api_key")
+    private val openAiVerificationSnapshotKey = stringPreferencesKey("openai_verification_snapshot")
     private val telemetryOptInKey = booleanPreferencesKey("telemetry_opt_in")
     private val restTimerSoundEnabledKey = booleanPreferencesKey("rest_timer_sound_enabled")
     private val workoutHapticsEnabledKey = booleanPreferencesKey("workout_haptics_enabled")
@@ -112,6 +115,9 @@ class UserPreferencesRepository @Inject constructor(
                 ?.let(AiProviderPreference::fromStorageValue)
                 ?: AiProviderPreference.GEMINI_FIRST,
         )
+    }
+    val openAiVerificationSnapshot: Flow<OpenAiVerificationSnapshot?> = context.dataStore.data.map { preferences ->
+        OpenAiVerificationSnapshotCodec.decode(preferences[openAiVerificationSnapshotKey])
     }
     val telemetryOptIn: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[telemetryOptInKey] ?: false
@@ -168,6 +174,16 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun clearGeminiApiKey() {
         context.dataStore.edit { preferences -> preferences.remove(geminiApiKey) }
+    }
+
+    suspend fun saveOpenAiVerificationSnapshot(snapshot: OpenAiVerificationSnapshot) {
+        context.dataStore.edit { preferences ->
+            preferences[openAiVerificationSnapshotKey] = OpenAiVerificationSnapshotCodec.encode(snapshot)
+        }
+    }
+
+    suspend fun clearOpenAiVerificationSnapshot() {
+        context.dataStore.edit { preferences -> preferences.remove(openAiVerificationSnapshotKey) }
     }
 
     suspend fun setTelemetryOptIn(enabled: Boolean) {

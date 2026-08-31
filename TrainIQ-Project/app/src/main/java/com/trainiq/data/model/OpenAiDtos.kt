@@ -2,6 +2,15 @@ package com.trainiq.data.model
 
 import com.google.gson.annotations.SerializedName
 
+data class OpenAiModelsResponse(
+    val data: List<OpenAiModelDescriptor> = emptyList(),
+)
+
+data class OpenAiModelDescriptor(
+    val id: String = "",
+    @SerializedName("shutdown_date") val shutdownDate: String? = null,
+)
+
 data class OpenAiResponseRequest(
     val model: String,
     val input: List<OpenAiInputMessage>,
@@ -31,8 +40,25 @@ data class OpenAiTextFormat(
 )
 
 data class OpenAiResponse(
+    val status: String? = null,
     val output: List<OpenAiOutput> = emptyList(),
     @SerializedName("output_text") val outputText: String? = null,
+    val error: OpenAiError? = null,
+    @SerializedName("incomplete_details") val incompleteDetails: OpenAiIncompleteDetails? = null,
+)
+
+data class OpenAiError(
+    val code: String? = null,
+    val type: String? = null,
+    val message: String? = null,
+)
+
+data class OpenAiErrorEnvelope(
+    val error: OpenAiError? = null,
+)
+
+data class OpenAiIncompleteDetails(
+    val reason: String? = null,
 )
 
 data class OpenAiOutput(
@@ -42,4 +68,5 @@ data class OpenAiOutput(
 data class OpenAiOutputContent(
     val type: String = "",
     val text: String? = null,
+    val refusal: String? = null,
 )

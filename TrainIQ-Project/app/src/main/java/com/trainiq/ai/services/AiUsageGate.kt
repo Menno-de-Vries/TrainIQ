@@ -13,7 +13,10 @@ class AiUsageGate @Inject constructor(
     private val preferencesRepository: UserPreferencesRepository,
     private val geminiKeyMigration: GeminiKeyMigration,
     private val openAiKeyStore: OpenAiKeyStore,
+    private val openAiVerificationRecorder: OpenAiVerificationRecorder,
 ) {
+    val openAiVerificationSnapshots = openAiVerificationRecorder.snapshots
+
     suspend fun currentSettings(): AiPreferences {
         val legacySettings = preferencesRepository.aiPreferences.first()
         return resolveSettings(legacySettings)
@@ -33,9 +36,10 @@ class AiUsageGate @Inject constructor(
         }
 
     suspend fun isAiReady(): Boolean {
-        val settings = currentSettings()
-        return settings.hasAnyReadyProvider()
+        return currentReadiness() == AiReadiness.CONFIGURED
     }
+
+    suspend fun currentReadiness(): AiReadiness = currentSettings().readiness()
 
     suspend fun currentApiKeyOrNull(): String? {
         val settings = currentSettings()
@@ -48,8 +52,11 @@ class AiUsageGate @Inject constructor(
         return saved
     }
 
-    suspend fun saveOpenAiApiKey(apiKey: String): Boolean =
-        openAiKeyStore.saveKey(apiKey)
+    suspend fun saveOpenAiApiKey(apiKey: String): Boolean {
+        val saved = openAiKeyStore.saveKey(apiKey)
+        if (saved) openAiVerificationRecorder.clear()
+        return saved
+    }
 
     suspend fun setProviderPreference(preference: AiProviderPreference) {
         preferencesRepository.setAiProviderPreference(preference)
@@ -62,11 +69,21 @@ class AiUsageGate @Inject constructor(
 
     suspend fun clearOpenAiApiKey() {
         openAiKeyStore.clearEncryptedKey()
+        openAiVerificationRecorder.clear()
     }
 
     suspend fun clearAllAiKeys() {
         geminiKeyMigration.clearEncryptedKey()
         openAiKeyStore.clearEncryptedKey()
+        openAiVerificationRecorder.clear()
         preferencesRepository.clearGeminiApiKey()
+    }
+
+    suspend fun recordOpenAiVerificationSuccess(feature: AiFeature) {
+        openAiVerificationRecorder.recordSuccess(feature)
+    }
+
+    internal suspend fun recordOpenAiVerificationFailure(failure: AiProviderRequestException) {
+        openAiVerificationRecorder.recordFailure(failure)
     }
 }

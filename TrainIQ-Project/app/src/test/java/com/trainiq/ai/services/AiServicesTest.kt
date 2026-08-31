@@ -6,6 +6,7 @@ import com.trainiq.data.model.GeminiRequest
 import com.trainiq.data.model.GeminiResponse
 import com.trainiq.data.remote.GeminiApi
 import com.trainiq.domain.model.BiologicalSex
+import com.trainiq.domain.model.AiFallbackContext
 import com.trainiq.domain.model.GoalAdviceSource
 import com.trainiq.domain.model.MealAnalysisSource
 import com.trainiq.domain.model.WeeklyReportSource
@@ -139,6 +140,126 @@ class AiServicesTest {
 
         assertEquals(MealAnalysisSource.API, result.source)
         assertEquals(2, api.callCount)
+    }
+
+    @Test
+    fun analyzeMealImage_openAiAuthenticationFailure_isNotMaskedAsLocalFallback() = runTest {
+        val service = MealAnalysisService(
+            aiJsonGenerator = FailingAiJsonGenerator(
+                AiProviderRequestException(
+                    provider = AiProvider.OPENAI,
+                    feature = AiFeature.MEAL_SCAN,
+                    category = AiFailureCategory.AUTHENTICATION,
+                    httpStatus = 401,
+                ),
+            ),
+            isAiReady = { true },
+            imageBytesProvider = { byteArrayOf(1, 2, 3) },
+        )
+
+        val error = runCatching { service.analyzeMealImage(tempImagePath(), "", 43_200_000L) }.exceptionOrNull()
+
+        assertTrue(error is AiProviderRequestException)
+        assertEquals(AiFailureCategory.AUTHENTICATION, (error as AiProviderRequestException).category)
+    }
+
+    @Test
+    fun analyzeMealImage_openAiTimeoutFallbackKeepsSpecificSafeCause() = runTest {
+        val primary = AiProviderRequestException(
+            provider = AiProvider.OPENAI,
+            feature = AiFeature.MEAL_SCAN,
+            category = AiFailureCategory.TIMEOUT,
+            requestId = "req_safe_timeout",
+        )
+        val service = MealAnalysisService(
+            aiJsonGenerator = FailingAiJsonGenerator(
+                AiProviderUnavailableException(
+                    failures = listOf("OPENAI:AiProviderRequestException"),
+                    hasRecoverableFailure = true,
+                    primaryFailure = primary,
+                ),
+            ),
+            isAiReady = { true },
+            imageBytesProvider = { byteArrayOf(1, 2, 3) },
+        )
+
+        val result = service.analyzeMealImage(tempImagePath(), "", 43_200_000L)
+
+        assertEquals(MealAnalysisSource.LOCAL_FALLBACK, result.source)
+        assertEquals(AiFallbackContext.TIMEOUT, result.fallbackContext)
+        assertTrue(result.notes.orEmpty().contains("reageerde te langzaam"))
+        assertFalse(result.notes.orEmpty().contains("req_safe_timeout"))
+    }
+
+    @Test
+    fun generateWorkoutDebrief_openAiServiceFallbackKeepsSpecificSafeCause() = runTest {
+        val primary = AiProviderRequestException(
+            provider = AiProvider.OPENAI,
+            feature = AiFeature.WORKOUT_DEBRIEF,
+            category = AiFailureCategory.SERVICE_FAILURE,
+        )
+        val service = WorkoutDebriefService(
+            FailingAiJsonGenerator(
+                AiProviderUnavailableException(
+                    failures = listOf("OPENAI:AiProviderRequestException"),
+                    hasRecoverableFailure = true,
+                    primaryFailure = primary,
+                ),
+            ),
+        )
+
+        val result = service.generateWorkoutDebrief(
+            totalVolume = 5_000.0,
+            progression = 1.0,
+            distribution = "Full body",
+            avgRpe = 7.0f,
+            topExercises = "Squat",
+            weeklyFrequency = 3,
+        )
+
+        assertEquals(com.trainiq.domain.model.WorkoutDebriefSource.LOCAL_FALLBACK, result.source)
+        assertEquals(AiFallbackContext.SERVICE_FAILURE, result.fallbackContext)
+        assertTrue(result.summary.contains("tijdelijk niet beschikbaar"))
+    }
+
+    @Test
+    fun generateGoalAdvice_disabledAiCarriesExplicitLocalFallbackContext() = runTest {
+        val service = GoalAdvisorService(
+            aiJsonGenerator = SuccessfulAiJsonGenerator(
+                AiRouteResult(AiProvider.OPENAI, "gpt-5.4-mini", "{}"),
+            ),
+            readinessProvider = { AiReadiness.DISABLED },
+        )
+
+        val result = service.generateGoalAdvice(
+            height = 180.0,
+            weight = 80.0,
+            bodyFat = 15.0,
+            age = 34,
+            sex = BiologicalSex.MALE,
+            activityLevel = "Gemiddeld actief",
+            goal = "Sterker worden",
+        )
+
+        assertEquals(GoalAdviceSource.LOCAL_CALCULATION, result.source)
+        assertEquals(AiFallbackContext.AI_DISABLED, result.fallbackContext)
+        assertTrue(result.summary.contains("AI staat uit"))
+    }
+
+    @Test
+    fun analyzeMealImage_openAiMalformedOutput_isNotReportedAsOpenAiSuccess() = runTest {
+        val service = MealAnalysisService(
+            aiJsonGenerator = SuccessfulAiJsonGenerator(
+                AiRouteResult(AiProvider.OPENAI, "gpt-5.4-mini", "not json"),
+            ),
+            isAiReady = { true },
+            imageBytesProvider = { byteArrayOf(1, 2, 3) },
+        )
+
+        val error = runCatching { service.analyzeMealImage(tempImagePath(), "", 43_200_000L) }.exceptionOrNull()
+
+        assertTrue(error is AiProviderRequestException)
+        assertEquals(AiFailureCategory.INVALID_RESPONSE, (error as AiProviderRequestException).category)
     }
 
     @Test
@@ -607,7 +728,8 @@ class AiServicesTest {
         assertFalse(api.called)
         assertEquals(MealAnalysisSource.LOCAL_FALLBACK, result.source)
         assertTrue(result.items.isEmpty())
-        assertEquals("AI-maaltijdanalyse is nu niet beschikbaar. Je kunt de maaltijd handmatig toevoegen.", result.notes)
+        assertEquals(AiFallbackContext.NO_DECRYPTABLE_KEY, result.fallbackContext)
+        assertEquals("Geen bruikbare AI-sleutel gevonden. Sla een provider-sleutel op via Instellingen.", result.notes)
     }
 
     @Test
@@ -1081,6 +1203,18 @@ class AiServicesTest {
             lastRequest = request
             return response
         }
+    }
+
+    private class FailingAiJsonGenerator(
+        private val error: Throwable,
+    ) : AiJsonGenerator {
+        override suspend fun generateJson(request: AiRouteRequest): AiRouteResult = throw error
+    }
+
+    private class SuccessfulAiJsonGenerator(
+        private val result: AiRouteResult,
+    ) : AiJsonGenerator {
+        override suspend fun generateJson(request: AiRouteRequest): AiRouteResult = result
     }
 
     private fun mealScanResponse(text: String): GeminiResponse =

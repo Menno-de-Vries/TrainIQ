@@ -1,5 +1,6 @@
 package com.trainiq.ai.services
 
+import com.trainiq.domain.model.AiFallbackContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNotNull
@@ -315,6 +316,22 @@ class RoutineGeneratorServiceTest {
         assertEquals("Gevorderd blok: golvende belasting op RPE 7-9 met elke vierde week een deload.", routine.periodizationNote)
         assertEquals(2, routine.days.size)
         assertEquals("Bankdrukken", routine.days.first().exercises[1].exerciseName)
+    }
+
+    @Test
+    fun fallbackGeneratedRoutine_keepsTypedLocalReason() {
+        val routine = fallbackGeneratedRoutine(
+            goal = "Kracht",
+            targetFocus = "Full body",
+            daysPerWeek = 3,
+            equipment = "Barbell",
+            experienceLevel = "intermediate",
+            sessionDurationMinutes = 60,
+            includeDeload = false,
+            fallbackContext = AiFallbackContext.NO_DECRYPTABLE_KEY,
+        )
+
+        assertEquals(AiFallbackContext.NO_DECRYPTABLE_KEY, routine.fallbackContext)
     }
 
     @Test

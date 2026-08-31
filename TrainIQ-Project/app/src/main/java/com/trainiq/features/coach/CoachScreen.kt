@@ -1,5 +1,7 @@
 package com.trainiq.features.coach
 
+import com.trainiq.ai.services.toAiUserMessage
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.horizontalScroll
@@ -73,6 +75,7 @@ import com.trainiq.domain.model.GoalAdviceSource
 import com.trainiq.domain.model.SavedGoalAdvice
 import com.trainiq.domain.model.UserProfile
 import com.trainiq.domain.model.WeeklyReportResult
+import com.trainiq.ai.services.safeUserMessage
 import com.trainiq.domain.model.WeeklyReportSource
 import com.trainiq.domain.model.buildGoalBaseline
 import com.trainiq.domain.model.goalAdviceProfileFingerprint
@@ -252,10 +255,16 @@ class CoachViewModel @Inject constructor(
                 generateGoalAdviceUseCase(input.height, input.weight, input.bodyFat, input.age, input.sex, input.activityLevel, input.goal, input.manualCalorieTarget)
             }
             ephemeral.update {
+                val advice = result.getOrNull()
                 it.copy(
-                    goalAdvice = result.getOrNull(),
+                    goalAdvice = advice,
                     goalAdviceInput = if (result.isSuccess) input else null,
-                    message = if (result.isSuccess) "Advies gemaakt. Controleer het voordat je opslaat." else "Advies maken lukt nu niet.",
+                    message = when {
+                        advice?.source == GoalAdviceSource.LOCAL_CALCULATION ->
+                            advice.fallbackContext?.safeUserMessage() ?: "Lokale berekening gemaakt."
+                        result.isSuccess -> "Advies gemaakt. Controleer het voordat je opslaat."
+                        else -> result.exceptionOrNull()?.toAiUserMessage("Advies maken lukt nu niet.")
+                    },
                     isGeneratingAdvice = false,
                 )
             }
@@ -267,9 +276,14 @@ class CoachViewModel @Inject constructor(
             ephemeral.update { it.copy(isGeneratingReport = true, message = null) }
             val result: Result<WeeklyReportResult> = runCatching { generateWeeklyReportUseCase() }
             ephemeral.update {
+                val report = result.getOrNull()
                 it.copy(
-                    generatedReport = result.getOrNull(),
-                    message = if (result.isSuccess) "Samenvatting bijgewerkt." else "Weekrapport maken lukt nu niet.",
+                    generatedReport = report,
+                    message = when {
+                        report?.source == WeeklyReportSource.LOCAL_FALLBACK -> report.localFallbackMessage()
+                        result.isSuccess -> "Samenvatting bijgewerkt."
+                        else -> result.exceptionOrNull()?.toAiUserMessage("Weekrapport maken lukt nu niet.")
+                    },
                     isGeneratingReport = false,
                 )
             }
@@ -461,6 +475,13 @@ private fun BulletText(point: String) {
         Text("•", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
         Text(cleanAdviceBulletText(point), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
     }
+}
+
+private fun WeeklyReportResult.localFallbackMessage(): String {
+    val fallbackContext = fallbackContext ?: return "Lokale samenvatting gemaakt."
+    return summary
+        .substringBefore(" Lokale samenvatting:", missingDelimiterValue = "")
+        .ifBlank { fallbackContext.safeUserMessage() }
 }
 
 private fun WeeklyReportSource.label(): String = when (this) {

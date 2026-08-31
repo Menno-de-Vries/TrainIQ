@@ -188,6 +188,7 @@ import com.trainiq.domain.model.ExerciseRankProgress
 import com.trainiq.domain.model.ExerciseStats
 import com.trainiq.domain.model.Exercise
 import com.trainiq.domain.model.GeneratedRoutine
+import com.trainiq.domain.model.GeneratedRoutineSource
 import com.trainiq.domain.model.LoggedSet
 import com.trainiq.domain.model.ProgressionSuggestion
 import com.trainiq.domain.model.ReadinessLevel
@@ -247,6 +248,7 @@ import com.trainiq.domain.usecase.UpdateRoutineUseCase
 import com.trainiq.domain.usecase.UpdateWorkoutExercisePlanUseCase
 import com.trainiq.navigation.TrainIqWindowWidthClass
 import com.trainiq.ai.services.toAiUserMessage
+import com.trainiq.ai.services.safeUserMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Instant
 import java.time.ZoneId
@@ -967,7 +969,7 @@ class WorkoutViewModel @Inject constructor(
                     includeDeload = includeDeload,
                 ).also { generated ->
                     _pendingGeneratedRoutine.value = generated
-                    _message.value = "Routine gegenereerd."
+                    _message.value = generatedRoutineResultMessage(generated)
                 }
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -5033,7 +5035,7 @@ private fun CompletionSmartSummary(summary: WorkoutCompletionSummary) {
         AiSummaryLead(text = debrief.summary)
         if (debrief.source == WorkoutDebriefSource.LOCAL_FALLBACK) {
             Text(
-                "AI-feedback wordt opgehaald. Deze samenvatting wordt automatisch bijgewerkt zodra Gemini of OpenAI klaar is.",
+                workoutDebriefFallbackStatusMessage(debrief),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -5062,6 +5064,16 @@ internal fun workoutDebriefSourceChipLabel(source: WorkoutDebriefSource): String
     WorkoutDebriefSource.OPENAI -> source.shortLabel()
     WorkoutDebriefSource.LOCAL_FALLBACK -> "Lokale fallback"
 }
+
+internal fun generatedRoutineResultMessage(routine: GeneratedRoutine): String = when (routine.source) {
+    GeneratedRoutineSource.LOCAL_FALLBACK ->
+        routine.fallbackContext?.safeUserMessage() ?: "Lokale routine gemaakt."
+    else -> "Routine gegenereerd."
+}
+
+internal fun workoutDebriefFallbackStatusMessage(debrief: WorkoutDebrief): String =
+    debrief.fallbackContext?.safeUserMessage()
+        ?: "Lokale workoutanalyse gebruikt. Probeer de AI-actie opnieuw als je remote feedback wilt."
 
 @Composable
 private fun AiSummaryLead(text: String) {
