@@ -1,6 +1,7 @@
 package com.trainiq.ai.services
 
 import com.trainiq.domain.model.AiFallbackContext
+import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
@@ -134,10 +135,35 @@ internal fun Throwable.asAiRateLimitExceptionIfNeeded(): Throwable =
     if (this is HttpException && code() == 429) AiRateLimitException() else this
 
 internal fun Throwable.toAiUserMessage(defaultMessage: String): String = when (val mapped = asAiRateLimitExceptionIfNeeded()) {
+    is AiProviderRequestException -> mapped.message ?: defaultMessage
+    is AiProviderUnavailableException -> mapped.toUserMessage()
     is AiRateLimitException -> mapped.message ?: defaultMessage
     is AiFeatureThrottledException -> mapped.message ?: defaultMessage
     is AiTimeoutException -> mapped.message ?: defaultMessage
-    else -> mapped.message ?: defaultMessage
+    is IOException -> "De AI-provider kan niet worden bereikt. Controleer je internetverbinding en probeer opnieuw."
+    is HttpException -> when (mapped.code()) {
+        401 -> "De API-sleutel is ongeldig of niet geautoriseerd. Controleer de AI-instellingen."
+        403 -> "De AI-provider heeft geen toestemming voor dit verzoek. Controleer de providerrechten."
+        408, 504 -> "De AI-provider reageert te langzaam. Controleer je verbinding en probeer opnieuw."
+        in 500..599 -> "De AI-provider is tijdelijk niet beschikbaar. Probeer later opnieuw."
+        else -> defaultMessage
+    }
+    else -> defaultMessage
+}
+
+private fun AiProviderUnavailableException.toUserMessage(): String {
+    if (failures.isEmpty()) {
+        return "Er is geen AI-provider ingesteld. Voeg een Gemini- of OpenAI-sleutel toe in Instellingen."
+    }
+    val provider = failures.first().substringBefore(':')
+        .let { name -> AiProvider.entries.firstOrNull { it.name == name } }
+        ?.displayName
+        ?: "De AI-provider"
+    return when {
+        failures.any { it.endsWith(":AiRateLimitException") } -> "$provider heeft de AI-limiet bereikt. Probeer later opnieuw."
+        failures.any { it.endsWith(":AiTimeoutException") } -> "$provider reageert te langzaam. Controleer je verbinding en probeer opnieuw."
+        else -> "$provider is tijdelijk niet beschikbaar. Probeer later opnieuw."
+    }
 }
 
 internal fun Throwable.toSafeAiFallbackMessage(defaultMessage: String): String = when (this) {

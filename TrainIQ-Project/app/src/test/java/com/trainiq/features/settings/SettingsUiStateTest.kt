@@ -325,6 +325,23 @@ class SettingsUiStateTest {
     }
 
     @Test
+    fun aiProviderStatusLabel_reportsOnlyStoredOpenAiAsUnverified() {
+        assertEquals(
+            "Veilig opgeslagen, nog niet geverifieerd: OpenAI",
+            aiProviderStatusLabel(
+                SettingsAiStatus(
+                    enabled = true,
+                    preferredProvider = AiProviderPreference.GEMINI_FIRST,
+                    hasGeminiKey = false,
+                    hasOpenAiKey = true,
+                    maskedGeminiKey = "Niet ingesteld",
+                    maskedOpenAiKey = "abcd****wxyz",
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun geminiApiKeyInput_isAlwaysMaskedWhileTyping() {
         assertEquals(true, shouldMaskGeminiApiKeyInput())
     }
