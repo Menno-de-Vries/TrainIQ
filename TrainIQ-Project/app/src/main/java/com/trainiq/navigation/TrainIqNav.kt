@@ -25,6 +25,7 @@ import androidx.compose.foundation.background
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsRun
@@ -55,6 +56,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -180,13 +182,14 @@ fun TrainIqApp(
     }
     var navVisible by remember { mutableStateOf(true) }
     var trainDetailMode by remember { mutableStateOf(false) }
-    var guidedTourIndex by remember(
+    var guidedTourIndex by rememberSaveable(
         onboardingPreferences.completed,
         onboardingPreferences.guidedTourCompleted,
         onboardingPreferences.guidedTourSkipped,
     ) { mutableStateOf(0) }
     val guidedTourSteps = remember(items) { guidedTourSteps(items) }
-    val showGuidedTour = shouldShowGuidedTour(onboardingPreferences) && !isOnboardingDestination
+    val showGuidedTour = shouldShowGuidedTour(onboardingPreferences) &&
+        currentDestination != null && !isOnboardingDestination
     val navOffset by animateDpAsState(
         targetValue = if (navVisible) 0.dp else 28.dp,
         animationSpec = tween(durationMillis = 420),
@@ -540,6 +543,7 @@ private fun GuidedTourOverlay(
 ) {
     Surface(
         modifier = modifier
+            .testTag("guided-tour")
             .widthIn(max = 520.dp)
             .fillMaxWidth()
             .heightIn(min = 0.dp),

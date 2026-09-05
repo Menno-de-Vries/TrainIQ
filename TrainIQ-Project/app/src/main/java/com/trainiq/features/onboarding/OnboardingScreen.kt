@@ -60,6 +60,10 @@ import com.trainiq.domain.usecase.SaveOnboardingPreferencesUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -229,13 +233,23 @@ fun shouldShowGuidedTour(preferences: OnboardingPreferences): Boolean =
     preferences.completed && !preferences.guidedTourCompleted && !preferences.guidedTourSkipped
 
 @HiltViewModel
-class OnboardingViewModel @Inject constructor(
-    private val observeOnboardingPreferencesUseCase: ObserveOnboardingPreferencesUseCase,
-    private val saveOnboardingPreferencesUseCase: SaveOnboardingPreferencesUseCase,
-    private val completeOnboardingUseCase: CompleteOnboardingUseCase,
+class OnboardingViewModel internal constructor(
+    private val observeOnboardingPreferencesUseCase: () -> Flow<OnboardingPreferences>,
+    private val saveOnboardingPreferencesUseCase: suspend (OnboardingPreferences) -> Unit,
+    private val completeOnboardingUseCase: suspend (OnboardingPreferences) -> Unit,
+    private val persistenceDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
+    @Inject
+    constructor(
+        observe: ObserveOnboardingPreferencesUseCase,
+        save: SaveOnboardingPreferencesUseCase,
+        complete: CompleteOnboardingUseCase,
+    ) : this(observe::invoke, save::invoke, complete::invoke, Dispatchers.IO)
+
     private val _uiState = MutableStateFlow<OnboardingUiState>(OnboardingUiState.Loading)
     val uiState: StateFlow<OnboardingUiState> = _uiState.asStateFlow()
+    private var pendingSave: Job? = null
+    private var completing = false
 
     init {
         viewModelScope.launch {
@@ -248,21 +262,38 @@ class OnboardingViewModel @Inject constructor(
     }
 
     fun dispatch(event: OnboardingEvent) {
+        if (completing) return
         val current = (_uiState.value as? OnboardingUiState.Success)?.content ?: return
         val updated = reduceOnboardingState(current, event)
         _uiState.value = OnboardingUiState.Success(updated)
-        viewModelScope.launch(Dispatchers.IO) {
-            saveOnboardingPreferencesUseCase(updated.toPreferences(completed = false))
+        val previousSave = pendingSave
+        pendingSave = viewModelScope.launch {
+            previousSave?.join()
+            withContext(persistenceDispatcher) {
+                saveOnboardingPreferencesUseCase(updated.toPreferences())
+            }
         }
     }
 
     fun complete(onComplete: () -> Unit) {
+        if (completing) return
         val current = (_uiState.value as? OnboardingUiState.Success)?.content ?: return
+        completing = true
         val completed = current.copy(draft = current.draft.copy(privacyAcknowledged = true))
         _uiState.value = OnboardingUiState.Success(completed)
-        viewModelScope.launch(Dispatchers.IO) {
-            completeOnboardingUseCase(completed.toPreferences(completed = true))
-            launch(Dispatchers.Main) { onComplete() }
+        viewModelScope.launch {
+            // SkipAll and the final privacy action can still have an outstanding draft write.
+            // Finish last, so a delayed draft cannot make onboarding incomplete again.
+            pendingSave?.join()
+            try {
+                withContext(persistenceDispatcher) {
+                    completeOnboardingUseCase(completed.toPreferences(completed = true))
+                }
+                onComplete()
+            } catch (failure: Exception) {
+                completing = false
+                throw failure
+            }
         }
     }
 }
