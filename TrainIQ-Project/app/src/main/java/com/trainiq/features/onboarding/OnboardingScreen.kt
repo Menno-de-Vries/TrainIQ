@@ -69,6 +69,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 
 enum class OnboardingStep(val title: String, val subtitle: String) {
     WELCOME("Welkom bij TrainIQ", "Een rustige coachlaag boven je Health Connect-, training- en voedingsdata."),
@@ -108,7 +109,12 @@ data class OnboardingContentState(
 
 sealed interface OnboardingUiState {
     data object Loading : OnboardingUiState
-    data class Success(val content: OnboardingContentState) : OnboardingUiState
+    data class Success(
+        val content: OnboardingContentState,
+        val saveError: String? = null,
+        val isCompleting: Boolean = false,
+        val completionFailed: Boolean = false,
+    ) : OnboardingUiState
     data class Error(val message: String) : OnboardingUiState
 }
 
@@ -252,11 +258,23 @@ class OnboardingViewModel internal constructor(
     private var completing = false
 
     init {
+        retry()
+    }
+
+    fun retry() {
+        val current = _uiState.value as? OnboardingUiState.Success
+        if (current != null) {
+            if (!completing) saveDraft(current.content)
+            return
+        }
+        _uiState.value = OnboardingUiState.Loading
         viewModelScope.launch {
-            _uiState.value = runCatching {
+            _uiState.value = try {
                 OnboardingUiState.Success(observeOnboardingPreferencesUseCase().first().toOnboardingContentState())
-            }.getOrElse { throwable ->
-                OnboardingUiState.Error(throwable.message ?: "Onboarding kan nu niet worden geladen.")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                OnboardingUiState.Error("Onboarding kan nu niet worden geladen. Probeer opnieuw.")
             }
         }
     }
@@ -266,11 +284,28 @@ class OnboardingViewModel internal constructor(
         val current = (_uiState.value as? OnboardingUiState.Success)?.content ?: return
         val updated = reduceOnboardingState(current, event)
         _uiState.value = OnboardingUiState.Success(updated)
+        saveDraft(updated)
+    }
+
+    private fun saveDraft(updated: OnboardingContentState) {
         val previousSave = pendingSave
         pendingSave = viewModelScope.launch {
             previousSave?.join()
-            withContext(persistenceDispatcher) {
-                saveOnboardingPreferencesUseCase(updated.toPreferences())
+            try {
+                withContext(persistenceDispatcher) {
+                    saveOnboardingPreferencesUseCase(updated.toPreferences())
+                }
+                val current = _uiState.value as? OnboardingUiState.Success
+                if (current?.content == updated && !completing) {
+                    _uiState.value = current.copy(saveError = null)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                val current = _uiState.value as? OnboardingUiState.Success
+                if (current?.content == updated && !completing) {
+                    _uiState.value = current.copy(saveError = "Je keuzes zijn nog niet opgeslagen. Probeer opnieuw.")
+                }
             }
         }
     }
@@ -280,7 +315,7 @@ class OnboardingViewModel internal constructor(
         val current = (_uiState.value as? OnboardingUiState.Success)?.content ?: return
         completing = true
         val completed = current.copy(draft = current.draft.copy(privacyAcknowledged = true))
-        _uiState.value = OnboardingUiState.Success(completed)
+        _uiState.value = OnboardingUiState.Success(completed, isCompleting = true)
         viewModelScope.launch {
             // SkipAll and the final privacy action can still have an outstanding draft write.
             // Finish last, so a delayed draft cannot make onboarding incomplete again.
@@ -290,9 +325,15 @@ class OnboardingViewModel internal constructor(
                     completeOnboardingUseCase(completed.toPreferences(completed = true))
                 }
                 onComplete()
-            } catch (failure: Exception) {
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
                 completing = false
-                throw failure
+                _uiState.value = OnboardingUiState.Success(
+                    completed,
+                    saveError = "Setup afronden mislukt. Je keuzes blijven staan; probeer afronden opnieuw.",
+                    completionFailed = true,
+                )
             }
         }
     }
@@ -316,6 +357,7 @@ fun OnboardingRoute(
             requestHealthPermission()
         },
         onFinish = { viewModel.complete(onFinished) },
+        onRetry = viewModel::retry,
     )
 }
 
@@ -325,6 +367,7 @@ fun OnboardingScreen(
     onEvent: (OnboardingEvent) -> Unit,
     onRequestHealthConnect: () -> Unit,
     onFinish: () -> Unit,
+    onRetry: () -> Unit = {},
 ) {
     when (uiState) {
         OnboardingUiState.Loading -> {
@@ -343,6 +386,7 @@ fun OnboardingScreen(
             ) {
                 item { ScreenHeader(title = "TrainIQ", subtitle = "Onboarding") }
                 item { AppCard(accent = MaterialTheme.colorScheme.error) { Text(uiState.message) } }
+                item { OutlinedButton(onClick = onRetry) { Text("Opnieuw proberen") } }
             }
         }
         is OnboardingUiState.Success -> {
@@ -351,6 +395,9 @@ fun OnboardingScreen(
                 onEvent = onEvent,
                 onRequestHealthConnect = onRequestHealthConnect,
                 onFinish = onFinish,
+                saveError = uiState.saveError,
+                isCompleting = uiState.isCompleting,
+                onRetry = if (uiState.completionFailed) onFinish else onRetry,
             )
         }
     }
@@ -363,6 +410,9 @@ private fun OnboardingContent(
     onEvent: (OnboardingEvent) -> Unit,
     onRequestHealthConnect: () -> Unit,
     onFinish: () -> Unit,
+    saveError: String?,
+    isCompleting: Boolean,
+    onRetry: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier
@@ -379,6 +429,14 @@ private fun OnboardingContent(
     ) {
         item {
             ScreenHeader(title = "TrainIQ", subtitle = "Eerste setup")
+        }
+        saveError?.let { error ->
+            item {
+                AppCard(accent = MaterialTheme.colorScheme.error) {
+                    Text(error)
+                    OutlinedButton(onClick = onRetry) { Text("Opnieuw proberen") }
+                }
+            }
         }
         item {
             LinearProgressIndicator(
@@ -409,6 +467,7 @@ private fun OnboardingContent(
                 state = state,
                 onEvent = onEvent,
                 onFinish = onFinish,
+                isCompleting = isCompleting,
             )
         }
     }
@@ -621,6 +680,7 @@ private fun OnboardingActions(
     state: OnboardingContentState,
     onEvent: (OnboardingEvent) -> Unit,
     onFinish: () -> Unit,
+    isCompleting: Boolean,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
         PrimaryActionButton(
@@ -632,19 +692,20 @@ private fun OnboardingActions(
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            enabled = state.step != OnboardingStep.REMINDERS || state.canComplete,
+            enabled = !isCompleting && (state.step != OnboardingStep.REMINDERS || state.canComplete),
         ) {
-            Text(if (state.step == OnboardingStep.REMINDERS) "Setup afronden" else "Verder")
+            Text(if (isCompleting) "Setup opslaan..." else if (state.step == OnboardingStep.REMINDERS) "Setup afronden" else "Verder")
         }
         Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
             OutlinedButton(
                 onClick = { onEvent(OnboardingEvent.Back) },
-                enabled = state.canGoBack,
+                enabled = state.canGoBack && !isCompleting,
                 modifier = Modifier.weight(1f),
             ) {
                 Text("Terug")
             }
             TextButton(
+                enabled = !isCompleting,
                 onClick = {
                     onEvent(OnboardingEvent.SkipAll)
                     onFinish()

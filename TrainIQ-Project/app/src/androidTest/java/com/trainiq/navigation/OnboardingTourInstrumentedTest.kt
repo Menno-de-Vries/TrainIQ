@@ -71,7 +71,7 @@ class OnboardingTourInstrumentedTest {
             compose.onNodeWithText("Later afronden").performClick()
             compose.waitUntil(15_000) { runBlocking { preferences.getOnboardingPreferences().guidedTourSkipped } }
             activity.recreate()
-            waitForText("Meer")
+            waitForText("TrainIQ")
             compose.waitForIdle()
             compose.onNodeWithText("Stap 1 van 6").assertDoesNotExist()
             assertFalse(shouldShowGuidedTour(runBlocking { preferences.getOnboardingPreferences() }))

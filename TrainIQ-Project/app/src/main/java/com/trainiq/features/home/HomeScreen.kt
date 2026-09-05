@@ -64,6 +64,7 @@ import com.trainiq.core.ui.AppChip
 import com.trainiq.core.ui.PrimaryActionButton
 import com.trainiq.core.ui.SecondaryActionButton
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
+import com.trainiq.core.ui.reloadableObservation
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.core.util.EnergyBalanceCard
 import com.trainiq.core.util.MacroBreakdownCard
@@ -85,6 +86,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -111,7 +113,8 @@ class HomeViewModel @Inject constructor(
     private val healthConnectRefreshGate = HomeRefreshGate()
     private val healthRefreshUiState = MutableStateFlow(HomeHealthRefreshUiState())
 
-    private val dashboard = observeHomeDashboardUseCase()
+    private val reloads = MutableStateFlow(0)
+    private val dashboard = reloadableObservation(reloads) { observeHomeDashboardUseCase() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val healthConnectStatus = MutableStateFlow(
@@ -124,8 +127,9 @@ class HomeViewModel @Inject constructor(
     val uiState: StateFlow<HomeUiState> = combine(dashboard, healthConnectStatus, healthRefreshUiState) { home, health, refresh ->
         when {
             home == null -> HomeUiState.Loading
+            home.isFailure -> HomeUiState.Error("Dashboardgegevens konden niet worden geladen. Probeer opnieuw.")
             else -> HomeUiState.Success(
-                buildHomeDashboardUseCase.mergeHealthStatus(home, health),
+                buildHomeDashboardUseCase.mergeHealthStatus(home.getOrThrow(), health),
                 health,
                 isRefreshingHealth = refresh.isRefreshing,
                 refreshMessage = refresh.message,
@@ -140,6 +144,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun refreshDashboardAndHealthStatus() {
+        if (dashboard.value?.isFailure == true) reloads.update { it + 1 }
         if (!healthConnectRefreshGate.tryStart()) return
         healthRefreshUiState.value = HomeHealthRefreshUiState(isRefreshing = true)
         viewModelScope.launch(Dispatchers.IO) {
