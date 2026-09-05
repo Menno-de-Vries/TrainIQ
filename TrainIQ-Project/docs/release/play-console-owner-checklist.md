@@ -1,5 +1,7 @@
 # Play Console Owner Checklist
 
+> Release scope update (2026-09-06): [itch.io release policy](itch-release-policy.md) governs current delivery. The formal owner gates below are retired for itch.io; Play submission checklists are future reference material. Preserve accurate privacy and security descriptions.
+
 Last updated: 2026-05-12
 
 This checklist must be completed by the app owner or release manager with Play Console access.
