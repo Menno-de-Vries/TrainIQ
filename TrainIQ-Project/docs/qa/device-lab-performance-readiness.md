@@ -1,5 +1,7 @@
 # Device-Lab Performance Readiness
 
+> Release scope update (2026-09-06): [itch.io release policy](../release/itch-release-policy.md) supersedes the owner-approval and mandatory certification release gates below. LEGAL-001, PERF-001, A11Y-001, and AI-001 are retired for this personal itch.io project. Older BLOCKED/OPEN statements are historical or refer to optional certification/future Play submission, not current itch.io delivery. Preserve actual test results and technical findings; do not claim missing evidence passed.
+
 Last updated: 2026-05-11
 
 Status: partial physical-device evidence exists. Certification remains blocked until thresholds, device matrix, broader flow memory evidence, and owner approval exist.
