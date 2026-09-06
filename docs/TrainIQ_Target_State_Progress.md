@@ -1,5 +1,9 @@
 # TrainIQ Target-State Progress
 
+## 2026-09-06 Twenty further findings after PR #20
+
+NEXT20-01 through NEXT20-20 implement the [new audit selection](qa/TrainIQ_Twenty_Next_Findings_2026-09-06.md) on `codex/twenty-next-audit-fixes` from `8526478b34674e4035d6e014fc919bfdeb5b7022`. The batch addresses existing persistence, editing and recovery behavior. The linked record and new PR carry local verification and remaining device limits. No schema/dependency upgrade, release, new-PR merge or unrelated worktree cleanup.
+
 ## 2026-09-06 Twenty-finding rerun
 
 Exactly TWENTY-01 through TWENTY-20 address existing nutrition portions/imports, Coach save state, workout recovery/timers/progression and transactional food/recipe/meal consistency. See the [selection and local verification evidence](qa/TrainIQ_Twenty_New_Findings_2026-09-06.md). Base: 2ea47df763d21930d6975bbe7ee269048261c606; task branch: codex/twenty-new-audit-fixes. No release, merge, dependency/schema change or unrelated cleanup; alignment score not reassessed.

@@ -390,26 +390,30 @@ class NutritionViewModel @Inject constructor(
             ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits + NutritionSubmitKey.Food, message = null) }
         }
         viewModelScope.launch {
-            try {
-                val item = saveFoodItemUseCase(id, name.trim(), barcode?.trim()?.ifBlank { null }, parsedCalories, parsedProtein, parsedCarbs, parsedFat, parsedDefaultServingGrams, sourceType)
-                ephemeral.update { it.copy(message = "${item.name} opgeslagen.") }
-                onSaved(item)
-            } catch (error: Throwable) {
-                ephemeral.update {
-                    it.copy(
-                        message = if (sourceType == FoodSourceType.AI) {
-                            "Opslaan mislukt. Probeer het opnieuw."
-                        } else {
-                            "Product opslaan mislukt. Controleer je invoer en probeer opnieuw."
-                        },
-                    )
-                }
-                onFailure(error)
-            } finally {
-                if (usesFoodGuard) {
-                    ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits - NutritionSubmitKey.Food) }
-                }
-            }
+            performNutritionWrite(
+                save = { saveFoodItemUseCase(id, name.trim(), barcode?.trim()?.ifBlank { null }, parsedCalories, parsedProtein, parsedCarbs, parsedFat, parsedDefaultServingGrams, sourceType) },
+                onSaved = { item ->
+                    ephemeral.update { it.copy(message = "${item.name} opgeslagen.") }
+                    onSaved(item)
+                },
+                onFailure = { error ->
+                    ephemeral.update {
+                        it.copy(
+                            message = if (sourceType == FoodSourceType.AI) {
+                                "Opslaan mislukt. Probeer het opnieuw."
+                            } else {
+                                "Product opslaan mislukt. Controleer je invoer en probeer opnieuw."
+                            },
+                        )
+                    }
+                    onFailure(error)
+                },
+                onFinished = {
+                    if (usesFoodGuard) {
+                        ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits - NutritionSubmitKey.Food) }
+                    }
+                },
+            )
         }
     }
 
@@ -423,15 +427,19 @@ class NutritionViewModel @Inject constructor(
         }
         ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits + NutritionSubmitKey.Recipe, message = null) }
         viewModelScope.launch {
-            try {
-                saveRecipeUseCase(id, name.trim(), notes.trim(), parsedCookedGrams, ingredients)
-                ephemeral.update { it.copy(message = "Recept opgeslagen.") }
-                onSaved()
-            } catch (_: Throwable) {
-                ephemeral.update { it.copy(message = "Recept opslaan mislukt. Controleer je invoer en probeer opnieuw.") }
-            } finally {
-                ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits - NutritionSubmitKey.Recipe) }
-            }
+            performNutritionWrite(
+                save = { saveRecipeUseCase(id, name.trim(), notes.trim(), parsedCookedGrams, ingredients) },
+                onSaved = {
+                    ephemeral.update { it.copy(message = "Recept opgeslagen.") }
+                    onSaved()
+                },
+                onFailure = {
+                    ephemeral.update { it.copy(message = "Recept opslaan mislukt. Controleer je invoer en probeer opnieuw.") }
+                },
+                onFinished = {
+                    ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits - NutritionSubmitKey.Recipe) }
+                },
+            )
         }
     }
 
@@ -456,14 +464,13 @@ class NutritionViewModel @Inject constructor(
         if (NutritionSubmitKey.Delete in ephemeral.value.pendingSubmits) return
         ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits + NutritionSubmitKey.Delete, message = null) }
         viewModelScope.launch {
-            try {
-                deleteMealUseCase(mealId)
+            performNutritionWrite(save = { deleteMealUseCase(mealId) }, onSaved = {
                 ephemeral.update { it.copy(message = "Maaltijd verwijderd.") }
-            } catch (_: Throwable) {
+            }, onFailure = {
                 ephemeral.update { it.copy(message = "Maaltijd verwijderen mislukt. Probeer opnieuw.") }
-            } finally {
+            }, onFinished = {
                 ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits - NutritionSubmitKey.Delete) }
-            }
+            })
         }
     }
 
@@ -475,14 +482,13 @@ class NutritionViewModel @Inject constructor(
         if (NutritionSubmitKey.Delete in ephemeral.value.pendingSubmits) return
         ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits + NutritionSubmitKey.Delete, message = null) }
         viewModelScope.launch {
-            try {
-                deleteFoodUseCase(foodId)
+            performNutritionWrite(save = { deleteFoodUseCase(foodId) }, onSaved = {
                 ephemeral.update { it.copy(message = "Product verwijderd.") }
-            } catch (_: Exception) {
+            }, onFailure = {
                 ephemeral.update { it.copy(message = "Product verwijderen mislukt. Probeer opnieuw.") }
-            } finally {
+            }, onFinished = {
                 ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits - NutritionSubmitKey.Delete) }
-            }
+            })
         }
     }
 
@@ -490,14 +496,13 @@ class NutritionViewModel @Inject constructor(
         if (NutritionSubmitKey.Delete in ephemeral.value.pendingSubmits) return
         ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits + NutritionSubmitKey.Delete, message = null) }
         viewModelScope.launch {
-            try {
-                deleteRecipeUseCase(recipeId)
+            performNutritionWrite(save = { deleteRecipeUseCase(recipeId) }, onSaved = {
                 ephemeral.update { it.copy(message = "Recept verwijderd.") }
-            } catch (_: Throwable) {
+            }, onFailure = {
                 ephemeral.update { it.copy(message = "Recept verwijderen mislukt. Probeer opnieuw.") }
-            } finally {
+            }, onFinished = {
                 ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits - NutritionSubmitKey.Delete) }
-            }
+            })
         }
     }
 

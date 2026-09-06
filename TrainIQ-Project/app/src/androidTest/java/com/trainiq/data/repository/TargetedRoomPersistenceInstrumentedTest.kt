@@ -94,6 +94,141 @@ class TargetedRoomPersistenceInstrumentedTest {
         assertEquals(200.0, savedItems.single { it.mealId == first }.calories, 0.0)
     }
 
+    @Test fun missingActiveRoutineSelectionPreservesCurrentSelection() = runTest {
+        val store = runtimeStore()
+        store.createRoutine("First", "")
+        assertTrue(runCatching { store.setActiveRoutine(999L) }.isFailure)
+        assertTrue(database.dao().getRoutinesSnapshot().single().active)
+    }
+
+    private suspend fun seedNextPlan() {
+        database.dao().insertRoutines(listOf(WorkoutRoutineEntity(1L, "Plan", "", true)))
+        database.dao().insertWorkoutDays(listOf(WorkoutDayEntity(2L, 1L, "Day", 0)))
+        database.dao().insertExercises(listOf(ExerciseEntity(3L, "Bench", "Chest", "Barbell"), ExerciseEntity(6L, "Press", "Shoulders", "Dumbbell")))
+        database.dao().insertWorkoutExercises(listOf(com.trainiq.core.database.WorkoutExerciseEntity(4L, 2L, 3L, 1, "5", 60)))
+        database.dao().insertRoutineSets(listOf(RoutineSetEntity(9L, 4L, 0, targetReps = 5)))
+    }
+
+    @Test fun removingPlanUsesStoredActiveStateWhenObservationHasNotArrived() = runTest {
+        val store = runtimeStore()
+        storeJobs.forEach { it.cancelAndJoin() }
+        seedNextPlan()
+        val dao = database.dao()
+        dao.insertWorkoutExercises(listOf(com.trainiq.core.database.WorkoutExerciseEntity(5L, 2L, 6L, 1, "5", 60)))
+        dao.insertActiveWorkoutSessions(listOf(ActiveWorkoutSessionEntity(7L, 2L, 1L, 100L, 200L, 9999L, 60)))
+        dao.insertActiveWorkoutDrafts(listOf(
+            ActiveWorkoutDraftEntity(7L, 4L, "20", "5", "7", "NORMAL"),
+            ActiveWorkoutDraftEntity(7L, 5L, "30", "6", "8", "NORMAL"),
+        ))
+        dao.insertActiveWorkoutSets(listOf(
+            ActiveWorkoutSetEntity(sessionId = 7L, id = 1L, exerciseId = 3L, performedExerciseId = 0L, sourceWorkoutExerciseId = 4L, weight = 20.0, reps = 5, rpe = 7.0,
+                setType = "NORMAL", restSeconds = 60, orderIndex = 0, completed = true, loggedAt = 200L),
+            ActiveWorkoutSetEntity(sessionId = 7L, id = 2L, exerciseId = 6L, performedExerciseId = 0L, sourceWorkoutExerciseId = 5L, weight = 30.0, reps = 6, rpe = 8.0,
+                setType = "NORMAL", restSeconds = 60, orderIndex = 0, completed = true, loggedAt = 201L),
+        ))
+        store.removeWorkoutExerciseFromDay(4L)
+        closeDatabase()
+        database = openDatabase()
+        assertEquals(listOf(2L), database.dao().readActiveWorkoutSetsForExport().map { it.id })
+        assertEquals(listOf(5L), database.dao().readActiveWorkoutDraftsForExport().map { it.exerciseId })
+        assertEquals(9999L, database.dao().readActiveWorkoutSessionsForExport().single().restTimerEndsAt)
+    }
+
+    @Test fun deletingActiveDayOrRoutineRequiresExplicitWorkoutDiscard() = runTest {
+        val store = runtimeStore()
+        seedNextPlan()
+        database.dao().insertActiveWorkoutSessions(listOf(ActiveWorkoutSessionEntity(7L, 2L, 1L, 100L, 100L)))
+        assertTrue(runCatching { store.removeWorkoutDay(2L) }.isFailure)
+        assertTrue(runCatching { store.deleteRoutine(1L) }.isFailure)
+        assertEquals(7L, database.dao().readActiveWorkoutSessionsForExport().single().sessionId)
+        store.createRoutine("Unrelated", "")
+        store.deleteRoutine(database.dao().getRoutinesSnapshot().single { it.name == "Unrelated" }.id)
+        assertEquals(1L, database.dao().getRoutinesSnapshot().single().id)
+    }
+
+    @Test fun currentSetEditsPreserveIndependentFieldsAfterReopen() = runTest {
+        val store = runtimeStore()
+        seedNextPlan()
+        store.updateRoutineSet(9L) { it.copy(targetReps = 12) }
+        store.updateRoutineSet(9L) { it.copy(targetWeightKg = 45.0) }
+        closeDatabase()
+        database = openDatabase()
+        val set = database.dao().readRoutineSetsForExport().single()
+        assertEquals(12, set.targetReps)
+        assertEquals(45.0, set.targetWeightKg, 0.0)
+    }
+
+    @Test fun currentSetCollectionDoesNotLoseAdditionsOrResurrectDeletedSets() = runTest {
+        val store = runtimeStore()
+        seedNextPlan()
+        store.replaceRoutineSetsForExercise(4L) { it.withRoutineSetAdded(4L) }
+        store.replaceRoutineSetsForExercise(4L) { it.withRoutineSetAdded(4L) }
+        store.replaceRoutineSetsForExercise(4L) { state ->
+            state.copy(routineSets = state.routineSets.filterNot { it.id == 9L }).renumberRoutineSets(4L).withWorkoutExerciseTargetsSynced(4L)
+        }
+        closeDatabase()
+        database = openDatabase()
+        assertEquals(listOf(10L, 11L), database.dao().readRoutineSetsForExport().map { it.id })
+        assertEquals(listOf(0, 1), database.dao().readRoutineSetsForExport().map { it.orderIndex })
+    }
+
+    @Test fun replacingExercisePreservesMostRecentTargetsAndOrder() = runTest {
+        val store = runtimeStore()
+        seedNextPlan()
+        store.updateRoutineSet(9L) { it.copy(targetWeightKg = 55.0) }
+        store.saveWorkoutExercise(4L, 6L)
+        val plan = database.dao().getWorkoutExercisesForDay(2L).single()
+        assertEquals(6L, plan.exerciseId)
+        assertEquals(55.0, plan.targetWeightKg, 0.0)
+        assertTrue(runCatching { store.saveWorkoutExercise(4L, 999L) }.isFailure)
+        assertEquals(6L, database.dao().getWorkoutExercisesForDay(2L).single().exerciseId)
+    }
+
+    @Test fun consecutiveDayAddsRetainBothAndAppendBeyondOrderGaps() = runTest {
+        val store = runtimeStore()
+        seedNextPlan()
+        database.dao().insertWorkoutDays(listOf(WorkoutDayEntity(8L, 1L, "Last", 5)))
+        store.addWorkoutDay(1L, "A")
+        store.addWorkoutDay(1L, "B")
+        assertEquals(listOf(0, 5, 6, 7), database.dao().observeWorkoutDaysSnapshot(1L).sortedBy { it.orderIndex }.map { it.orderIndex })
+        assertEquals(4, database.dao().observeWorkoutDaysSnapshot(1L).map { it.id }.toSet().size)
+    }
+
+    @Test fun consecutiveExerciseAddsRetainDistinctPlansAndSets() = runTest {
+        val store = runtimeStore()
+        // No observation delivery: writes must query their own authoritative inputs.
+        storeJobs.forEach { it.cancelAndJoin() }
+        seedNextPlan()
+        repeat(2) {
+            store.addWorkoutExerciseToDay { state -> state.withExerciseAddedToDay(2L, "Bench", "Chest", "Barbell", 2, "8", 90) }
+        }
+        closeDatabase()
+        database = openDatabase()
+        assertEquals(3, database.dao().getWorkoutExercisesForDay(2L).size)
+        assertEquals(5, database.dao().readRoutineSetsForExport().map { it.id }.toSet().size)
+        assertEquals(2, database.dao().getExercises().size)
+    }
+
+    @Test fun routineNamesRemainUniqueAcrossImmediateCreateAndRename() = runTest {
+        val store = runtimeStore()
+        store.createRoutine("Upper", "")
+        assertTrue(runCatching { store.createRoutine(" upper ", "") }.isFailure)
+        store.createRoutine("Lower", "")
+        val lower = database.dao().getRoutinesSnapshot().single { it.name == "Lower" }
+        assertTrue(runCatching { store.updateRoutine(lower.id, "UPPER", "changed") }.isFailure)
+        assertEquals(setOf("Upper", "Lower"), database.dao().getRoutinesSnapshot().map { it.name }.toSet())
+    }
+
+    @Test fun staleFoodEditCannotOverwriteAnotherBarcodeProduct() = runTest {
+        val store = runtimeStore()
+        val deleted = store.saveFood(FoodItemStorage(name = "Deleted", barcode = "old"))
+        val survivor = store.saveFood(FoodItemStorage(name = "Survivor", barcode = "new"))
+        store.deleteFood(deleted.id)
+        assertTrue(runCatching { store.saveFood(deleted.copy(barcode = "new")) }.isFailure)
+        assertEquals(listOf("Survivor"), database.dao().observeFoodItems().first().map { it.name })
+        assertEquals(survivor.id, store.saveFood(FoodItemStorage(name = "Rescan", barcode = "new")).id)
+    }
+
     @Test
     fun sequentialRecipesAllocateDistinctIdsAndInvalidEditRollsBackAfterReopen() = runTest {
         val store = runtimeStore()

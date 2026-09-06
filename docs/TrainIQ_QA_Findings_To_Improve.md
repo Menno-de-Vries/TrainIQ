@@ -1,5 +1,9 @@
 # TrainIQ QA Findings To Improve
 
+## 2026-09-06 Twenty further findings after PR #20
+
+NEXT20-01 through NEXT20-20 cover current Room mutation inputs, plan editing, safe active-plan deletion, stale food edits, exercise-history recovery, editor restoration, nutrition cancellation, latest import selection, Home's next workout and AI-routine retry context. See the [before-edit selection and verification record](qa/TrainIQ_Twenty_Next_Findings_2026-09-06.md). Base: `8526478b34674e4035d6e014fc919bfdeb5b7022`; branch: `codex/twenty-next-audit-fixes`. PR #20 was merged separately at the user's request; this new batch is PR-only. No schema/dependency/remote-service change or unrelated cleanup. Alignment score not reassessed.
+
 ## 2026-09-06 Twenty new findings
 
 Exactly TWENTY-01 through TWENTY-20 address existing nutrition portions/imports, Coach save state, workout recovery/timers/progression and transactional food/recipe/meal consistency. See the [selection and local verification evidence](qa/TrainIQ_Twenty_New_Findings_2026-09-06.md). Base: 2ea47df763d21930d6975bbe7ee269048261c606; task branch: codex/twenty-new-audit-fixes. No release, merge, dependency/schema change or unrelated cleanup; alignment score not reassessed.

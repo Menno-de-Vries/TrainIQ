@@ -13,7 +13,7 @@ class ScreenUiStateArchitectureTest {
     fun workoutViewModelExposesOnlyOnePublicStateFlowNamedUiState() {
         val source = File(root, "features/workout/WorkoutScreen.kt").readText()
         val viewModelBody = source.substringAfter("class WorkoutViewModel @Inject constructor(")
-            .substringBefore("    fun observeExerciseHistory")
+            .substringBefore("fun WorkoutRoute(")
         val publicStateFlows = Regex("""(?m)^\s*val\s+\w+:\s*StateFlow<""")
             .findAll(viewModelBody)
             .map { it.value.trim() }

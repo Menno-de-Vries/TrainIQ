@@ -33,6 +33,66 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class TrainIqRepositoryTest {
+    @Test fun changingOnlySetCountPreservesIndividuallyConfiguredExistingSets() {
+        val sets = listOf(
+            RoutineSetEntity(9L, 4L, 0, "WARM_UP", 10, 20.0, 60, 5.0),
+            RoutineSetEntity(10L, 4L, 1, "NORMAL", 5, 50.0, 120, 8.0),
+        )
+        val state = TrainIqStorageState(
+            workoutExercises = listOf(WorkoutExerciseEntity(4L, 2L, 3L, 2, "10", 60, 20.0, 5.0, "WARM_UP")),
+            routineSets = sets,
+        )
+        val expanded = state.withRoutineSetCountSynced(4L, 3, "10", 60, 20.0, 5.0, SetType.WARM_UP)
+        assertEquals(sets, expanded.routineSets.take(2))
+        val reduced = expanded.withRoutineSetCountSynced(4L, 1, "10", 60, 20.0, 5.0, SetType.WARM_UP)
+        assertEquals(listOf(sets.first()), reduced.routineSets)
+    }
+
+    @Test fun removingPlanCannotClearAnotherPlansDraftWhoseIdMatchesLegacyExerciseKey() {
+        val state = TrainIqStorageState(
+            workoutExercises = listOf(WorkoutExerciseEntity(4L, 2L, 3L, 1, "5", 60), WorkoutExerciseEntity(3L, 2L, 8L, 1, "5", 60)),
+            activeWorkoutSession = ActiveWorkoutSessionStorage(dayId = 2L, startedAt = 0L,
+                drafts = mapOf(4L to ActiveWorkoutDraftStorage(), 3L to ActiveWorkoutDraftStorage()),
+                collapsedExerciseIds = setOf(4L, 3L)),
+        )
+        val active = state.withExerciseRemovedFromDay(4L, 100L).activeWorkoutSession!!
+        assertEquals(setOf(3L), active.drafts.keys)
+        assertEquals(setOf(3L), active.collapsedExerciseIds)
+    }
+    @Test fun planEditorAppliesValuesWithoutChangingSetIdentity() {
+        val state = TrainIqStorageState(
+            workoutExercises = listOf(WorkoutExerciseEntity(4L, 2L, 3L, 1, "5", 60)),
+            routineSets = listOf(RoutineSetEntity(9L, 4L, 0, targetReps = 5, targetWeightKg = 20.0)),
+        )
+        for (count in listOf(1, 2)) {
+            val updated = state.withRoutineSetCountSynced(4L, count, "8-12", 120, 40.0, 8.0, SetType.BACK_OFF)
+            assertEquals(count, updated.routineSets.size)
+            assertEquals(9L, updated.routineSets.first().id)
+            updated.routineSets.forEach {
+                assertEquals(12, it.targetReps)
+                assertEquals(120, it.restSeconds)
+                assertEquals(40.0, it.targetWeightKg, 0.0)
+                assertEquals(8.0, it.targetRpe, 0.0)
+                assertEquals("BACK_OFF", it.setType)
+            }
+        }
+    }
+
+    @Test fun removingDuplicatePlanClearsOnlyItsPlanKeyDraftAndCollapseState() {
+        val state = TrainIqStorageState(
+            workoutExercises = listOf(
+                WorkoutExerciseEntity(4L, 2L, 3L, 1, "5", 60),
+                WorkoutExerciseEntity(5L, 2L, 3L, 1, "5", 60),
+            ),
+            activeWorkoutSession = ActiveWorkoutSessionStorage(dayId = 2L, startedAt = 0L,
+                drafts = mapOf(4L to ActiveWorkoutDraftStorage(), 5L to ActiveWorkoutDraftStorage()),
+                collapsedExerciseIds = setOf(4L, 5L)),
+        )
+        val active = state.withExerciseRemovedFromDay(4L, 100L).activeWorkoutSession!!
+        assertEquals(setOf(5L), active.drafts.keys)
+        assertEquals(setOf(5L), active.collapsedExerciseIds)
+    }
+
     @Test fun missingFoodAndRecipeUseTypedRecoverableFailure() {
         listOf(MealEntryType.FOOD, MealEntryType.RECIPE).forEach { type ->
             assertThrows(com.trainiq.domain.repository.UnavailableMealItemException::class.java) {
