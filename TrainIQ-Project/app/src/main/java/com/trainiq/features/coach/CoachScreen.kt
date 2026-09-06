@@ -284,20 +284,30 @@ class CoachViewModel @Inject constructor(
     }
 
     fun generateWeeklyReport() {
+        if (ephemeral.value.isGeneratingReport) return
+        ephemeral.update { it.copy(isGeneratingReport = true, message = null) }
         viewModelScope.launch {
-            ephemeral.update { it.copy(isGeneratingReport = true, message = null) }
-            val result: Result<WeeklyReportResult> = runCatching { generateWeeklyReportUseCase() }
-            ephemeral.update {
-                val report = result.getOrNull()
-                it.copy(
-                    generatedReport = report,
-                    message = when {
-                        report?.source == WeeklyReportSource.LOCAL_FALLBACK -> report.localFallbackMessage()
-                        result.isSuccess -> "Samenvatting bijgewerkt."
-                        else -> result.exceptionOrNull()?.toAiUserMessage("Weekrapport maken lukt nu niet.")
-                    },
-                    isGeneratingReport = false,
-                )
+            try {
+                val result: Result<WeeklyReportResult> = try {
+                    Result.success(generateWeeklyReportUseCase())
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Result.failure(error)
+                }
+                ephemeral.update {
+                    val report = result.getOrNull()
+                    it.copy(
+                        generatedReport = report ?: it.generatedReport,
+                        message = when {
+                            report?.source == WeeklyReportSource.LOCAL_FALLBACK -> report.localFallbackMessage()
+                            result.isSuccess -> "Samenvatting bijgewerkt."
+                            else -> result.exceptionOrNull()?.toAiUserMessage("Weekrapport maken lukt nu niet.")
+                        },
+                    )
+                }
+            } finally {
+                ephemeral.update { it.copy(isGeneratingReport = false) }
             }
         }
     }

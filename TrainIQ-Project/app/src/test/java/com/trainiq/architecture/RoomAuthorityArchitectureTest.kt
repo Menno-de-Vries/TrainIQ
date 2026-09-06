@@ -576,7 +576,7 @@ class RoomAuthorityArchitectureTest {
         assertTrue(nutritionBody.contains("runtimeStore.deleteRecipe(recipeId)"))
         assertFalse(nutritionBody.contains("runtimeStore.update {"))
         assertTrue(runtimeStore.contains("suspend fun saveFood(food: FoodItemStorage)"))
-        assertTrue(runtimeStore.contains("suspend fun saveRecipe(recipe: RecipeStorage"))
+        assertTrue(Regex("suspend fun saveRecipe\\(\\s*recipe: RecipeStorage").containsMatchIn(runtimeStore))
         assertTrue(dao.contains("suspend fun deleteFoodItem(foodId: Long)"))
         assertTrue(dao.contains("suspend fun saveRecipe(recipe: RecipeEntity"))
         assertTrue(dao.contains("suspend fun deleteRecipeWithIngredients(recipeId: Long)"))

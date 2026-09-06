@@ -23,7 +23,10 @@ class CameraScannerPrivacySourceTest {
         val analyzeBody = source.substringAfter("fun analyze(path: String, scannerMode: ScannerMode)").substringBefore("fun resetToPreview")
 
         assertTrue(analyzeBody.contains("deleteScannerTemporaryImage(path)"))
-        assertTrue(analyzeBody.contains("finally"))
+        assertTrue(source.contains("LatestScanRequest(viewModelScope) { deleteScannerTemporaryImage(it) }"))
+        assertTrue(analyzeBody.contains("scanRequest.start("))
+        val request = Files.readString(Paths.get("src/main/java/com/trainiq/features/nutrition/LatestScanRequest.kt"))
+        assertTrue(request.substringAfter("finally").contains("releaseImage(path)"))
     }
 
     @Test

@@ -305,6 +305,18 @@ interface TrainIqDao {
         deleteMeal(mealId)
     }
 
+    @Query("SELECT MAX(id) FROM meals")
+    suspend fun getMaxMealId(): Long?
+
+    @Query("SELECT MAX(id) FROM meal_items")
+    suspend fun getMaxMealItemId(): Long?
+
+    @Query("SELECT MAX(id) FROM recipes")
+    suspend fun getMaxRecipeId(): Long?
+
+    @Query("SELECT MAX(id) FROM recipe_ingredients")
+    suspend fun getMaxRecipeIngredientId(): Long?
+
     @Query("DELETE FROM food_items WHERE id = :foodId")
     suspend fun deleteFoodItem(foodId: Long)
 

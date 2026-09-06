@@ -1,5 +1,26 @@
 # TrainIQ QA Findings To Improve
 
+## 2026-09-06 Next five-finding rerun after PRs #16–#18
+
+Base: `6848533628bef711ded34271327ecb7b535459d6`; branch: `codex/five-next-audit-fixes`.
+Reviewed onboarding/tour/navigation, Home refresh, workout routines/logger/history, nutrition products/recipes/meals/scanning, Progress, Coach, profile/settings and their state, analytics, repository and Room paths. The emulator walkthrough covered setup and all six top-level destinations. Exactly five new, bounded findings were selected before editing:
+
+| Finding | Observed problem → implemented behavior | Smallest regression evidence |
+| --- | --- | --- |
+| NEXT-001 | Coach called the latest historical volume bucket “this week”, including when no workout occurred this week. Both local and AI report input now use completed progression work from the current local Monday through today. Historical Progress charts retain their existing semantics. | Week/year boundary; old/future days; empty week; session status and normal/back-off filtering. |
+| NEXT-002 | Exercise history, best-set selection and rank used Epley at every rep count, disagreeing with the shared training estimator. They now use the existing Brzycki/Epley calculator. | 1/5/10/11 reps, empty/invalid sets and best-set aggregate. No persisted set changes. |
+| NEXT-003 | Reset/context changes left scans running; late completion could reopen dismissed state or publish a stale shared meal result. Requests are now owned and cancelled on reset/exit, guarded against stale completion, marked pending before launch and release temporary images on every terminal path. | Deterministic cancellation-ignoring provider, immediate cancellation, failure/retry and image cleanup; production scanner error-to-preview UI; shared publication checks cancellation. |
+| NEXT-004 | A failed week-report refresh erased the last report; queued duplicate requests were possible. The previous report remains, pending is guarded before dispatch, and cancellation clears pending without a failure message. | Actual ViewModel success/failure/retry, queued duplicate and cancellation tests; production Coach report readability, disabled refresh and retry UI. |
+| NEXT-005 | Meal/recipe and child IDs were allocated from asynchronously observed state outside the write lock. Back-to-back saves could overwrite earlier records. IDs now come from Room inside the serialized write transaction; explicit edits retain identity and recipe results return persisted ingredient IDs. | Real Room sequential saves without Flow waits, independent child IDs, edit preservation, foreign-key rollback and database reopen. |
+
+Supporting test repair: the targeted Room fixture now owns and joins store observation jobs before database closure through an internal constructor seam. The injected production constructor keeps its existing application-lifetime scope. Schema, migrations, dependencies, permissions and remote contracts are unchanged.
+
+Local verification: the clean-main debug build/unit/lint baseline passed. The changed debug build, all 854 JVM tests and lint passed during implementation; the targeted Android suite passed 37/37 on the agent-owned API 36 emulator (`emulator-5582`). Exact final-commit commands and results are recorded in the PR. No hosted tests were dispatched.
+
+Baseline limitation reproduced on unchanged `6848533`: `CoachInsightsInstrumentedTest`, `ExerciseHistoryInstrumentedTest`, both `AiCameraScannerModesInstrumentedTest` cases and `CameraPermissionScannerInstrumentedTest` fail their existing navigation/visibility assertions (5/5), identically to the task branch. These tests remain intact and are not claimed passing. Targeted new state/recovery tests and the manual top-level walkthrough provide bounded evidence, not a full device certification. Live AI, physical-device performance and TalkBack were not run; no performance or alignment score is claimed. Evidence files stay in ignored `artifacts/next-audit/` and Gradle report directories.
+
+All five findings are implemented; unrelated worktrees/branches are preserved. Delivery is a task-branch PR only, without merge or release.
+
 ## 2026-09-06 Fresh five-finding audit after PRs #16 and #17
 
 Base: `acaf79086d2a9aaa26688b3d313b114ce032a245`; branch: `codex/five-fresh-flow-fixes`.

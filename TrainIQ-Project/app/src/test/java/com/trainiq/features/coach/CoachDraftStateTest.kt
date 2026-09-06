@@ -228,6 +228,52 @@ class CoachDraftStateTest {
         assertEquals("Recovered", vm.success().goalAdvice?.summary)
     }
 
+    @Test
+    fun reportRefreshKeepsLastSuccessOnFailureAndCanRetry() = runTest {
+        val report = WeeklyReportResult(
+            summary = "Saved report", wins = emptyList(), risks = emptyList(),
+            nextWeekFocus = "Rest", source = WeeklyReportSource.LOCAL_FALLBACK,
+        )
+        val repository = FakeCoachRepository(profile("Tester")).apply { weeklyReportResult = report }
+        val vm = coachViewModel(repository, SavedStateHandle())
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
+        runCurrent()
+        vm.generateWeeklyReport()
+        runCurrent()
+        repository.weeklyReportFailure = IllegalStateException("offline")
+        vm.generateWeeklyReport()
+        runCurrent()
+        assertEquals(report, vm.success().generatedReport)
+        assertFalse(vm.success().isGeneratingReport)
+        assertTrue(vm.success().message != null)
+        repository.weeklyReportFailure = null
+        repository.weeklyReportResult = report.copy(summary = "Updated")
+        vm.generateWeeklyReport()
+        runCurrent()
+        assertEquals("Updated", vm.success().generatedReport?.summary)
+    }
+
+    @Test
+    fun reportRequestIsGuardedBeforeDispatchAndCancellationClearsPending() = runTest {
+        Dispatchers.setMain(kotlinx.coroutines.test.StandardTestDispatcher(testScheduler))
+        val repository = FakeCoachRepository(profile("Tester")).apply {
+            weeklyReportGate = CompletableDeferred()
+            weeklyReportFailure = kotlinx.coroutines.CancellationException("cancelled")
+        }
+        val vm = coachViewModel(repository, SavedStateHandle())
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
+        runCurrent()
+        vm.generateWeeklyReport()
+        vm.generateWeeklyReport()
+        runCurrent()
+        assertEquals(1, repository.weeklyReportCalls)
+        assertTrue(vm.success().isGeneratingReport)
+        repository.weeklyReportGate!!.complete(Unit)
+        runCurrent()
+        assertFalse(vm.success().isGeneratingReport)
+        assertEquals(null, vm.success().message)
+    }
+
     private fun coachViewModel(repository: CoachRepository, savedStateHandle: SavedStateHandle) = CoachViewModel(
         savedStateHandle = savedStateHandle,
         observeCoachUseCase = ObserveCoachUseCase(repository),
@@ -279,6 +325,9 @@ class CoachDraftStateTest {
         var adviceCalls = 0
         var adviceForWeight: (suspend (Double) -> GoalAdvice)? = null
         var weeklyReportResult: WeeklyReportResult? = null
+        var weeklyReportGate: CompletableDeferred<Unit>? = null
+        var weeklyReportFailure: Throwable? = null
+        var weeklyReportCalls = 0
         private val savedAdvice = MutableStateFlow<SavedGoalAdvice?>(null)
         private val overview = MutableStateFlow(
             CoachOverview(
@@ -305,8 +354,12 @@ class CoachDraftStateTest {
             return adviceForWeight?.invoke(weight) ?: goalAdviceResult ?: error("Not used")
         }
 
-        override suspend fun generateWeeklyReport(): WeeklyReportResult =
-            weeklyReportResult ?: error("Not used")
+        override suspend fun generateWeeklyReport(): WeeklyReportResult {
+            weeklyReportCalls++
+            weeklyReportGate?.await()
+            weeklyReportFailure?.let { throw it }
+            return weeklyReportResult ?: error("Not used")
+        }
 
         override fun observeUserProfile(): Flow<UserProfile?> = profile
 

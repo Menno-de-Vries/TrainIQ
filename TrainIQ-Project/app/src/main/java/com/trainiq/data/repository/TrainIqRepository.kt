@@ -110,6 +110,9 @@ import com.trainiq.domain.repository.WorkoutDebriefRefreshOutcome
 import javax.inject.Inject
 import javax.inject.Singleton
 import java.util.Locale
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -1107,9 +1110,13 @@ class TrainIqDataCoordinator @Inject constructor(
                 userContext = context,
                 capturedAtMillis = capturedAtMillis,
             )
+            currentCoroutineContext().ensureActive()
             scannedMealResult.value = result
             result
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Throwable) {
+            currentCoroutineContext().ensureActive()
             scannedMealResult.value = null
             throw error
         }
@@ -1171,7 +1178,7 @@ class TrainIqDataCoordinator @Inject constructor(
         ingredients: List<Pair<Long, Double>>,
     ): Recipe {
         val current = runtimeStore.state.value
-        val recipeId = id ?: ((current.recipes.maxOfOrNull { it.id } ?: 0L) + 1L)
+        val recipeId = id ?: 0L
         val now = System.currentTimeMillis()
         val recipe = RecipeStorage(
             id = recipeId,
@@ -1181,20 +1188,17 @@ class TrainIqDataCoordinator @Inject constructor(
             createdAt = current.recipes.firstOrNull { it.id == recipeId }?.createdAt ?: now,
             updatedAt = now,
         )
-        val ingredientStartId = current.recipeIngredients.maxOfOrNull { it.id } ?: 0L
         val ingredientStorage = ingredients.mapIndexed { index, (foodId, gramsUsed) ->
             RecipeIngredientStorage(
-                id = ingredientStartId + index + 1L,
+                id = index + 1L,
                 recipeId = recipeId,
                 foodItemId = foodId,
                 gramsUsed = gramsUsed,
             )
         }
-        runtimeStore.saveRecipe(recipe, ingredientStorage)
-        val nextRecipes = current.recipes.filterNot { it.id == recipeId } + recipe
-        val nextIngredients = current.recipeIngredients.filterNot { it.recipeId == recipeId } + ingredientStorage
-        return buildRecipes(current.foods, nextRecipes, nextIngredients)
-            .first { it.id == recipeId }
+        val (persisted, persistedIngredients) = runtimeStore.saveRecipe(recipe, ingredientStorage)
+        return buildRecipes(current.foods, listOf(persisted), persistedIngredients)
+            .single()
     }
 
     suspend fun saveMeal(
@@ -1205,8 +1209,7 @@ class TrainIqDataCoordinator @Inject constructor(
         items: List<MealEntryRequest>,
     ): Long {
         val snapshot = snapshotState.value
-        val current = runtimeStore.state.value
-        val mealId = id ?: ((current.meals.maxOfOrNull { it.id } ?: 0L) + 1L)
+        val mealId = id ?: 0L
         val timestamp = snapshot.meals.firstOrNull { it.id == mealId }?.timestamp ?: System.currentTimeMillis()
         val mealStorage = LoggedMealStorage(
             id = mealId,
@@ -1215,18 +1218,17 @@ class TrainIqDataCoordinator @Inject constructor(
             name = name.trim().ifBlank { mealType.label },
             notes = notes?.trim()?.takeIf { it.isNotBlank() },
         )
-        val startItemId = current.mealItems.maxOfOrNull { it.id } ?: 0L
         val mealItems = buildMealItemSnapshots(
             mealId = mealId,
-            startItemId = startItemId,
+            startItemId = 0L,
             requests = items,
             foods = snapshot.foods,
             recipes = snapshot.recipes,
         )
         if (mealItems.isEmpty()) throw InvalidMealItemException()
-        runtimeStore.saveMeal(meal = mealStorage, items = mealItems)
+        val persistedId = runtimeStore.saveMeal(meal = mealStorage, items = mealItems)
         scannedMealResult.value = null
-        return mealId
+        return persistedId
     }
 
     suspend fun deleteMeal(mealId: Long) {
@@ -1311,7 +1313,7 @@ class TrainIqDataCoordinator @Inject constructor(
             )
         } else {
             weeklyReportService.generateWeeklyReport(
-                volume = progress.currentWeekVolume(),
+                volume = currentWeekTrainingVolume(snapshot.sessions, snapshot.sets),
                 weightTrend = progress.weightTrend.lastOrNull()?.value ?: snapshot.profile?.weight ?: 0.0,
                 adherence = calculateAdherence(snapshot),
             )
@@ -1348,7 +1350,7 @@ class TrainIqDataCoordinator @Inject constructor(
         if (snapshot.sessions.isEmpty() && snapshot.meals.isEmpty()) {
             return "Log je eerste training of maaltijd om je wekelijkse samenvatting te ontgrendelen."
         }
-        val volume = progress.currentWeekVolume().toInt()
+        val volume = currentWeekTrainingVolume(snapshot.sessions, snapshot.sets).toInt()
         val adherence = calculateAdherence(snapshot)
         return "Deze week: $volume kg trainingsvolume, beste geschatte 1RM ${formatSummaryWeight(progress.estimatedOneRepMax)} kg en $adherence% consistentie."
     }
@@ -1520,7 +1522,7 @@ class TrainIqDataCoordinator @Inject constructor(
                     }
                 val totalVolume = performedSets.sumOf { it.weightKg * it.reps }
                 val bestWeight = performedSets.maxOfOrNull { it.weightKg } ?: 0.0
-                val bestE1rm = performedSets.maxOfOrNull { estimateSimpleOneRepMax(it.weightKg, it.reps) } ?: 0.0
+                val bestE1rm = historyEstimatedOneRepMax(performedSets)
                 val avgRpe = performedSets.map { it.rpe }.filter { it > 0.0 }.average().takeIf { !it.isNaN() }
                 ExerciseHistorySession(
                     sessionId = sessionId,
@@ -1539,8 +1541,8 @@ class TrainIqDataCoordinator @Inject constructor(
         val allSets = historySessions.flatMap { it.sets }
         val highestWeight = allSets.maxOfOrNull { it.weightKg } ?: 0.0
         val mostReps = allSets.maxOfOrNull { it.reps } ?: 0
-        val bestE1rm = allSets.maxOfOrNull { estimateSimpleOneRepMax(it.weightKg, it.reps) } ?: 0.0
-        val bestSet = allSets.maxByOrNull { estimateSimpleOneRepMax(it.weightKg, it.reps) }
+        val bestE1rm = historyEstimatedOneRepMax(allSets)
+        val bestSet = allSets.maxByOrNull { com.trainiq.domain.model.StrengthCalculator.estimateOneRepMax(it.weightKg, it.reps) }
         val latest = historySessions.firstOrNull()
         val previous = historySessions.drop(1).firstOrNull()
         val progressPercent = latest?.totalVolume?.let { latestVolume ->
@@ -1663,9 +1665,6 @@ class TrainIqDataCoordinator @Inject constructor(
 
     private fun formatWeight(weight: Double): String =
         if (weight % 1.0 == 0.0) weight.toInt().toString() else "%.1f".format(weight)
-
-    private fun estimateSimpleOneRepMax(weight: Double, reps: Int): Double =
-        if (reps <= 0 || weight < 0.0) 0.0 else weight * (1.0 + reps / 30.0)
 
     private fun buildExerciseRank(stats: ExerciseStats): ExerciseRankProgress {
         val score = stats.bestEstimatedOneRepMax + kotlin.math.ln(stats.totalVolume + 1.0) + (stats.completedSessions * 2.0)
@@ -2741,8 +2740,22 @@ internal fun buildProgressOverviewFromHistory(
     )
 }
 
-private fun ProgressOverview.currentWeekVolume(): Double =
-    volumeTrend.lastOrNull()?.value ?: 0.0
+internal fun currentWeekTrainingVolume(
+    sessions: List<WorkoutSessionEntity>,
+    sets: List<WorkoutSetEntity>,
+    today: java.time.LocalDate = java.time.LocalDate.now(),
+    zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
+): Double {
+    val monday = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+    val sessionIds = sessions.filter { session ->
+        val date = java.time.Instant.ofEpochMilli(session.date).atZone(zone).toLocalDate()
+        session.completed && session.status == "COMPLETED" && date in monday..today
+    }.map { it.id }.toSet()
+    return sets.filter { it.sessionId in sessionIds && isProgressionSet(it) }.sumOf { it.weight * it.reps }
+}
+
+internal fun historyEstimatedOneRepMax(sets: List<ExerciseHistorySet>): Double =
+    sets.maxOfOrNull { com.trainiq.domain.model.StrengthCalculator.estimateOneRepMax(it.weightKg, it.reps) } ?: 0.0
 
 private fun Long.weekStartMillis(): Long =
     java.time.Instant.ofEpochMilli(this)

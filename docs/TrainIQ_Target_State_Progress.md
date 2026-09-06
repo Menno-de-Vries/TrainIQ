@@ -1,5 +1,11 @@
 # TrainIQ Target-State Progress
 
+## 2026-09-06 Next five-finding rerun
+
+- NEXT-001–005: current-week Coach volume, consistent historical 1RM, cancelled/stale scan containment, recoverable report refresh and transactional meal/recipe identities are implemented. See the [audit evidence](TrainIQ_QA_Findings_To_Improve.md).
+- Verification: clean-main baseline and implementation debug/unit/lint gates passed; 37 targeted Android tests passed on API 36. Five older UI cases also fail on unchanged main and remain explicitly recorded. Final-commit evidence belongs to the PR.
+- No new product feature, schema, dependency or remote-service change; no merge, release or unrelated cleanup. Alignment score unchanged/not reassessed. Physical performance and live-provider acceptance are not claimed.
+
 > Release scope update (2026-09-06): [itch.io release policy](../TrainIQ-Project/docs/release/itch-release-policy.md) supersedes the owner-approval and mandatory certification release gates below. LEGAL-001, PERF-001, A11Y-001, and AI-001 are retired for this personal itch.io project. Older BLOCKED/OPEN statements are historical or refer to optional certification/future Play submission, not current itch.io delivery. Preserve actual test results and technical findings; do not claim missing evidence passed.
 
 Updated date: 2026-07-12

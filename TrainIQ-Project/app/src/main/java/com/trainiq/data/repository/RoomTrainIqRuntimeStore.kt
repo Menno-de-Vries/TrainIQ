@@ -62,16 +62,20 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 @Singleton
-class RoomTrainIqRuntimeStore @Inject constructor(
+class RoomTrainIqRuntimeStore internal constructor(
     private val database: TrainIqDatabase,
     private val legacyStore: TrainIqLocalStore,
+    private val scope: CoroutineScope,
 ) {
+    @Inject
+    constructor(database: TrainIqDatabase, legacyStore: TrainIqLocalStore) :
+        this(database, legacyStore, CoroutineScope(SupervisorJob() + Dispatchers.IO))
+
     private val dao = database.dao()
     private val gson = Gson()
     private val planner = JsonRoomImportPlanner(gson)
     private val sink = RoomJsonImportSink(database)
     private val mutex = Mutex()
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
         scope.launch {
@@ -566,12 +570,18 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         }
     }
 
-    suspend fun saveMeal(meal: LoggedMealStorage, items: List<LoggedMealItemStorage>) {
-        mutex.withLock {
+    suspend fun saveMeal(meal: LoggedMealStorage, items: List<LoggedMealItemStorage>): Long = mutex.withLock {
+        database.withTransaction {
+            val mealId = meal.id.takeIf { it > 0L } ?: ((dao.getMaxMealId() ?: 0L) + 1L)
+            val firstItemId = (dao.getMaxMealItemId() ?: 0L) + 1L
+            val persistedItems = items.mapIndexed { index, item ->
+                item.copy(id = firstItemId + index, mealId = mealId)
+            }
             dao.saveMeal(
-                meal = meal.toMealEntity(items),
-                items = items.mapIndexed { index, item -> item.toMealItemEntity(orderIndex = index) },
+                meal = meal.copy(id = mealId).toMealEntity(persistedItems),
+                items = persistedItems.mapIndexed { index, item -> item.toMealItemEntity(orderIndex = index) },
             )
+            mealId
         }
     }
 
@@ -604,14 +614,23 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         }
     }
 
-    suspend fun saveRecipe(recipe: RecipeStorage, ingredients: List<RecipeIngredientStorage>) {
-        mutex.withLock {
+    suspend fun saveRecipe(
+        recipe: RecipeStorage,
+        ingredients: List<RecipeIngredientStorage>,
+    ): Pair<RecipeStorage, List<RecipeIngredientStorage>> = mutex.withLock {
+        database.withTransaction {
+            val persisted = recipe.copy(id = recipe.id.takeIf { it > 0L } ?: ((dao.getMaxRecipeId() ?: 0L) + 1L))
+            val firstIngredientId = (dao.getMaxRecipeIngredientId() ?: 0L) + 1L
+            val persistedIngredients = ingredients.mapIndexed { index, ingredient ->
+                ingredient.copy(id = firstIngredientId + index, recipeId = persisted.id)
+            }
             dao.saveRecipe(
-                recipe = recipe.toRecipeEntity(),
-                ingredients = ingredients.mapIndexed { index, ingredient ->
+                recipe = persisted.toRecipeEntity(),
+                ingredients = persistedIngredients.mapIndexed { index, ingredient ->
                     ingredient.toRecipeIngredientEntity(orderIndex = index)
                 },
             )
+            persisted to persistedIngredients
         }
     }
 
