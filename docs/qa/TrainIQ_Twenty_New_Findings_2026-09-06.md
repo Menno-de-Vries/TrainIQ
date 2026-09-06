@@ -104,3 +104,11 @@ A final timer rollback review also restores its completion flags with the confir
 
 No hosted workflow is manually dispatched; GitHub checks are reported separately from local test evidence. The final commit SHA and exact check snapshot are recorded in the PR to avoid a self-referential documentation commit.
 Final-code subset: **16/16 PASS** for `com.trainiq.core.database.TrainIqDatabaseMigrationTest,com.trainiq.features.workout.ActiveWorkoutSetActionsInstrumentedTest,com.trainiq.features.workout.WorkoutCompletionRecoveryInstrumentedTest`. The separate `:app:generateDebugRoomMigrationChainVerificationMarker` invocation with that filter **PASS** (40 seconds). Batching that existing marker task with lint first failed Gradle's implicit-output-dependency validation; running the documented separate task resolved it without code/config changes. Generated evidence remains untracked.
+## Requested follow-up: resolve both existing restoration-test failures
+
+The owner explicitly requested resolving both failures before further work. No product change was necessary:
+
+- Active workout test now initializes its own completed onboarding/tour preferences, finds the accessible Training navigation action on both compact and labelled layouts, opens the actual active workout, and verifies the logged-set correction action before and after activity recreation. The former test depended on previous test state and stopped at a hidden text label; it never tested the active workout itself.
+- AI routine test now scrolls the advanced-level chip into view before a real click and asserts selection both before and after saved-state restoration. Diagnostic RED evidence placed an assertion immediately after the old click: `Selected=false` already before restoration. Thus the old test never selected the off-screen option; the app's saved state was correct.
+
+Focused verification: both complete test classes PASS, 4/4, on the same API 36 read-only emulator at 720x1280 / font 1.3. No expectation, valid assertion or test was removed to conceal a failure. The full 67-case affected matrix and local baseline are rerun for the follow-up commit, with exact final results in PR #20. The earlier failure sections above remain historical evidence, superseded by this follow-up.
