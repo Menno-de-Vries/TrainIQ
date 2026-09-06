@@ -1,5 +1,10 @@
 # TrainIQ QA Findings To Improve
 
+## 2026-09-06 Twenty new findings
+
+Exactly TWENTY-01 through TWENTY-20 address existing nutrition portions/imports, Coach save state, workout recovery/timers/progression and transactional food/recipe/meal consistency. See the [selection and local verification evidence](qa/TrainIQ_Twenty_New_Findings_2026-09-06.md). Base: 2ea47df763d21930d6975bbe7ee269048261c606; task branch: codex/twenty-new-audit-fixes. No release, merge, dependency/schema change or unrelated cleanup; alignment score not reassessed.
+
+
 ## 2026-09-06 Next five-finding rerun after PRs #16–#18
 
 Base: `6848533628bef711ded34271327ecb7b535459d6`; branch: `codex/five-next-audit-fixes`.

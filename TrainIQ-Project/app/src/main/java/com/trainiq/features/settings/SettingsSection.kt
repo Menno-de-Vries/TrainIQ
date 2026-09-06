@@ -68,6 +68,8 @@ import androidx.core.content.ContextCompat
 import com.trainiq.core.theme.spacing
 import androidx.health.connect.client.HealthConnectClient
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.trainiq.core.ui.runUserActionCatching
+import com.trainiq.core.ui.launchUserAction
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -284,11 +286,11 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setThemeMode(mode: ThemeMode) {
-        viewModelScope.launch { preferencesRepository.setThemeMode(mode) }
+        launchAction { preferencesRepository.setThemeMode(mode) }
     }
 
     fun setAiEnabled(enabled: Boolean) {
-        viewModelScope.launch {
+        launchAction {
             preferencesRepository.setAiEnabled(enabled)
             apiKeyRefreshes.update { it + 1 }
             emitMessage(if (enabled) {
@@ -300,7 +302,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setTelemetryOptIn(enabled: Boolean) {
-        viewModelScope.launch {
+        launchAction {
             preferencesRepository.setTelemetryOptIn(enabled)
             emitMessage(if (enabled) {
                 "Privacyveilige technische telemetrie ingeschakeld."
@@ -311,10 +313,10 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun saveGeminiKey(apiKey: String) {
-        viewModelScope.launch {
+        launchAction {
             if (apiKey.isBlank()) {
                 emitMessage("Voer eerst een Gemini API-sleutel in.")
-                return@launch
+                return@launchAction
             }
             val encrypted = aiUsageGate.saveApiKey(apiKey)
             emitMessage(if (encrypted) {
@@ -327,10 +329,10 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun saveOpenAiKey(apiKey: String) {
-        viewModelScope.launch {
+        launchAction {
             if (apiKey.isBlank()) {
                 emitMessage("Voer eerst een OpenAI API-sleutel in.")
-                return@launch
+                return@launchAction
             }
             val encrypted = aiUsageGate.saveOpenAiApiKey(apiKey)
             emitMessage(if (encrypted) {
@@ -343,7 +345,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setAiProviderPreference(preference: AiProviderPreference) {
-        viewModelScope.launch {
+        launchAction {
             aiUsageGate.setProviderPreference(preference)
             apiKeyRefreshes.update { it + 1 }
             emitMessage("${preference.label} ingesteld voor AI-acties.")
@@ -351,7 +353,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun clearGeminiKey() {
-        viewModelScope.launch {
+        launchAction {
             aiUsageGate.clearEncryptedApiKey()
             preferencesRepository.clearGeminiApiKey()
             preferencesRepository.setAiEnabled(false)
@@ -361,7 +363,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun clearAllAiKeys() {
-        viewModelScope.launch {
+        launchAction {
             aiUsageGate.clearAllAiKeys()
             preferencesRepository.clearGeminiApiKey()
             preferencesRepository.setAiEnabled(false)
@@ -371,21 +373,21 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setRestTimerSoundEnabled(enabled: Boolean) {
-        viewModelScope.launch {
+        launchAction {
             preferencesRepository.setRestTimerSoundEnabled(enabled)
             emitMessage(if (enabled) "Rusttimer-geluid ingeschakeld." else "Rusttimer-geluid uitgeschakeld.")
         }
     }
 
     fun setWorkoutHapticsEnabled(enabled: Boolean) {
-        viewModelScope.launch {
+        launchAction {
             preferencesRepository.setWorkoutHapticsEnabled(enabled)
             emitMessage(if (enabled) "Workouttrillingen ingeschakeld." else "Workouttrillingen uitgeschakeld.")
         }
     }
 
     fun setRemindersEnabled(enabled: Boolean) {
-        viewModelScope.launch {
+        launchAction {
             preferencesRepository.setRemindersEnabled(enabled)
             if (enabled) {
                 reminderScheduler.schedule()
@@ -398,7 +400,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun onReminderPermissionDenied() {
-        viewModelScope.launch {
+        launchAction {
             preferencesRepository.setRemindersEnabled(false)
             reminderScheduler.cancel()
             emitMessage("Notificatietoestemming ontbreekt. Reminders blijven uit.")
@@ -406,7 +408,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun refreshHealthConnectStatus() {
-        viewModelScope.launch {
+        launchAction {
             refreshHealthConnectStatusAndReconcile(
                 loadStatus = { getHealthConnectStatusUseCase() },
                 fallbackStatus = {
@@ -454,8 +456,8 @@ class SettingsViewModel @Inject constructor(
             activityLevel = input.activityLevel,
             goal = input.goal,
         )
-        viewModelScope.launch {
-            runCatching {
+        launchAction {
+            runUserActionCatching {
                 saveUserProfileUseCase(
                     UserProfile(
                         id = 1L,
@@ -483,16 +485,16 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun resetProfile() {
-        viewModelScope.launch {
-            runCatching { resetProfileUseCase() }
+        launchAction {
+            runUserActionCatching { resetProfileUseCase() }
                 .onSuccess { emitMessage("Profiel verwijderd.") }
                 .onFailure { emitMessage("Profiel verwijderen mislukt. Probeer opnieuw.") }
         }
     }
 
     fun clearAllData() {
-        viewModelScope.launch {
-            runCatching {
+        launchAction {
+            runUserActionCatching {
                 clearAppDataUseCase()
             }.onSuccess {
                 _healthStatus.value = HealthConnectStatus(
@@ -518,13 +520,13 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun requestSamsungHealthStepPermission(activity: Activity) {
-        viewModelScope.launch {
-            val samsungStatus = runCatching {
+        launchAction {
+            val samsungStatus = runUserActionCatching {
                 samsungHealthDirectStepsDataSource.requestTodayStepPermission(activity).status
             }.getOrElse { throwable ->
                 "Samsung Health-stappentoegang kon niet worden geopend: ${throwable.message ?: throwable.javaClass.simpleName}"
             }
-            _healthStatus.value = runCatching { getHealthConnectStatusUseCase() }
+            _healthStatus.value = runUserActionCatching { getHealthConnectStatusUseCase() }
                 .getOrElse { _healthStatus.value }
             emitMessage(samsungStatus)
         }
@@ -539,7 +541,7 @@ class SettingsViewModel @Inject constructor(
     fun dismissImportPreview() = importController.dismiss()
 
     fun reopenOnboarding() {
-        viewModelScope.launch {
+        launchAction {
             reopenOnboardingUseCase()
             emitMessage("Onboarding opnieuw geopend.")
         }
@@ -561,6 +563,8 @@ class SettingsViewModel @Inject constructor(
         })
     }
 
+    private fun launchAction(action: suspend kotlinx.coroutines.CoroutineScope.() -> Unit) =
+        viewModelScope.launchUserAction({ emitMessage("Instelling kon niet worden bijgewerkt. Probeer opnieuw.") }) { action() }
 }
 
 internal suspend fun refreshHealthConnectStatusAndReconcile(

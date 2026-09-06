@@ -98,6 +98,13 @@ class StartWorkoutSessionUseCaseTest {
         assertEquals(activeSession, result.session)
         assertEquals(listOf(3L), result.progressionSuggestions.map { it.exerciseId })
         assertEquals(ActiveWorkoutSetDraft(weight = "80", reps = "8", rpe = "7.5"), repository.startedDrafts.getValue(4L))
+
+        val duplicateDay = day.copy(exercises = day.exercises + day.exercises.single().copy(id = 5L, setType = SetType.BACK_OFF))
+        val duplicates = FakeWorkoutRepository(duplicateDay, result.progressionSuggestions, activeSession)
+        StartWorkoutSessionUseCase(duplicates)(7L)
+        assertEquals(repository.startedDrafts.getValue(4L), duplicates.startedDrafts.getValue(4L))
+        assertEquals(ActiveWorkoutSetDraft(weight = "80", reps = "8", rpe = "7.5", setType = SetType.BACK_OFF),
+            duplicates.startedDrafts.getValue(5L))
     }
 
     @Test

@@ -117,6 +117,7 @@ sealed interface CoachUiState {
         val message: String? = null,
         val isGeneratingAdvice: Boolean = false,
         val isGeneratingReport: Boolean = false,
+        val isSavingProfile: Boolean = false,
         val profileDraft: CoachProfileDraft,
         val isProfileDraftDirty: Boolean,
     ) : CoachUiState
@@ -162,6 +163,7 @@ class CoachViewModel @Inject constructor(
         val message: String? = null,
         val isGeneratingAdvice: Boolean = false,
         val isGeneratingReport: Boolean = false,
+        val isSavingProfile: Boolean = false,
     )
 
     private val reloads = MutableStateFlow(0)
@@ -210,6 +212,7 @@ class CoachViewModel @Inject constructor(
                 message = temp.message,
                 isGeneratingAdvice = temp.isGeneratingAdvice,
                 isGeneratingReport = temp.isGeneratingReport,
+                isSavingProfile = temp.isSavingProfile,
                 profileDraft = draftState.draft,
                 isProfileDraftDirty = draftState.isDirty,
             )
@@ -313,6 +316,7 @@ class CoachViewModel @Inject constructor(
     }
 
     fun saveProfile() {
+        if (ephemeral.value.isSavingProfile) return
         val draft = profileDraft.value
         val input = when (
             val result = validateGoalAdviceInput(
@@ -362,22 +366,21 @@ class CoachViewModel @Inject constructor(
                     savedAt = System.currentTimeMillis(),
                 )
             }
+        ephemeral.update { it.copy(isSavingProfile = true) }
         viewModelScope.launch {
-            runCatching {
+            try {
                 saveUserProfileUseCase(profile, savedAdvice)
-            }.onSuccess {
                 if (profileDraft.value == draft) {
                     hydrateProfileDraft(profile)
+                    ephemeral.update { it.copy(goalAdvice = advice, goalAdviceInput = input) }
                 }
-                ephemeral.update {
-                    it.copy(
-                        goalAdvice = advice,
-                        goalAdviceInput = input,
-                        message = "Profiel en doelen opgeslagen.",
-                    )
-                }
-            }.onFailure {
+                ephemeral.update { it.copy(message = "Profiel en doelen opgeslagen.") }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
                 ephemeral.update { it.copy(message = "Profiel opslaan mislukt. Probeer opnieuw.") }
+            } finally {
+                ephemeral.update { it.copy(isSavingProfile = false) }
             }
         }
     }
@@ -925,8 +928,9 @@ fun CoachScreen(
                                             }
                                         },
                                         modifier = Modifier.fillMaxWidth(),
+                                        enabled = !state.isSavingProfile,
                                     ) {
-                                        Text("Profiel en doelen opslaan")
+                                        Text(if (state.isSavingProfile) "Profiel opslaan..." else "Profiel en doelen opslaan")
                                     }
                                 }
                         }

@@ -308,6 +308,15 @@ interface TrainIqDao {
     @Query("SELECT MAX(id) FROM meals")
     suspend fun getMaxMealId(): Long?
 
+    @Query("SELECT * FROM meals WHERE id = :mealId LIMIT 1")
+    suspend fun getMeal(mealId: Long): MealEntity?
+
+    @Query("SELECT * FROM recipes WHERE id = :recipeId LIMIT 1")
+    suspend fun getRecipe(recipeId: Long): RecipeEntity?
+
+    @Query("SELECT * FROM food_items WHERE id IN (:foodIds)")
+    suspend fun getFoodsByIds(foodIds: List<Long>): List<FoodItemEntity>
+
     @Query("SELECT MAX(id) FROM meal_items")
     suspend fun getMaxMealItemId(): Long?
 

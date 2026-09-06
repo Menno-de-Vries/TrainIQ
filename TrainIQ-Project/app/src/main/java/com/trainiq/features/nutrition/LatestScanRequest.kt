@@ -41,4 +41,9 @@ internal class LatestScanRequest(
         job?.cancel()
         job = null
     }
+
+    fun discard(path: String) {
+        cancel()
+        releaseImage(path)
+    }
 }

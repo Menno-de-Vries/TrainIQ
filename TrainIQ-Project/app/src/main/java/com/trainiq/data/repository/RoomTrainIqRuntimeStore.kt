@@ -61,6 +61,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+data class SavedRecipeSnapshot(
+    val recipe: RecipeStorage,
+    val ingredients: List<RecipeIngredientStorage>,
+    val foods: List<FoodItemStorage>,
+)
+
 @Singleton
 class RoomTrainIqRuntimeStore internal constructor(
     private val database: TrainIqDatabase,
@@ -578,7 +584,7 @@ class RoomTrainIqRuntimeStore internal constructor(
                 item.copy(id = firstItemId + index, mealId = mealId)
             }
             dao.saveMeal(
-                meal = meal.copy(id = mealId).toMealEntity(persistedItems),
+                meal = meal.copy(id = mealId, timestamp = dao.getMeal(mealId)?.date ?: meal.timestamp).toMealEntity(persistedItems),
                 items = persistedItems.mapIndexed { index, item -> item.toMealItemEntity(orderIndex = index) },
             )
             mealId
@@ -599,6 +605,9 @@ class RoomTrainIqRuntimeStore internal constructor(
                 ?.let { dao.getFoodItemByBarcode(it) }
                 ?.takeIf { it.id != food.id }
             val matched = existing ?: duplicateBarcode
+            require(existing == null || duplicateBarcode == null) {
+                "Deze barcode hoort al bij een ander product. Pas de barcode aan."
+            }
             val persisted = food.copy(
                 id = matched?.id ?: ((dao.getMaxFoodItemId() ?: 0L) + 1L),
                 createdAt = matched?.createdAt ?: food.createdAt,
@@ -617,9 +626,12 @@ class RoomTrainIqRuntimeStore internal constructor(
     suspend fun saveRecipe(
         recipe: RecipeStorage,
         ingredients: List<RecipeIngredientStorage>,
-    ): Pair<RecipeStorage, List<RecipeIngredientStorage>> = mutex.withLock {
+    ): SavedRecipeSnapshot = mutex.withLock {
         database.withTransaction {
-            val persisted = recipe.copy(id = recipe.id.takeIf { it > 0L } ?: ((dao.getMaxRecipeId() ?: 0L) + 1L))
+            val persisted = recipe.copy(
+                id = recipe.id.takeIf { it > 0L } ?: ((dao.getMaxRecipeId() ?: 0L) + 1L),
+                createdAt = dao.getRecipe(recipe.id)?.createdAt ?: recipe.createdAt,
+            )
             val firstIngredientId = (dao.getMaxRecipeIngredientId() ?: 0L) + 1L
             val persistedIngredients = ingredients.mapIndexed { index, ingredient ->
                 ingredient.copy(id = firstIngredientId + index, recipeId = persisted.id)
@@ -630,7 +642,11 @@ class RoomTrainIqRuntimeStore internal constructor(
                     ingredient.toRecipeIngredientEntity(orderIndex = index)
                 },
             )
-            persisted to persistedIngredients
+            SavedRecipeSnapshot(
+                recipe = persisted,
+                ingredients = persistedIngredients,
+                foods = dao.getFoodsByIds(persistedIngredients.map { it.foodItemId }.distinct()).map { it.toStorage() },
+            )
         }
     }
 
