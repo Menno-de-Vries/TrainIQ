@@ -149,6 +149,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.trainiq.core.ui.runUserActionCatching
+import com.trainiq.core.ui.launchUserAction
+import com.trainiq.core.ui.launchSingleSubmission
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -331,9 +336,7 @@ internal fun activeWorkoutClockUiState(
     restTimerTotalSeconds: Int,
     now: Long,
 ): ActiveWorkoutClockUiState {
-    val remaining = restTimerEndsAt
-        ?.let { ((it - now) / 1_000L).toInt().coerceAtLeast(0) }
-        ?: 0
+    val remaining = remainingRestSeconds(restTimerEndsAt, now)
     return ActiveWorkoutClockUiState(
         elapsedSeconds = activeWorkoutElapsedSeconds(startedAt = startedAt, now = now),
         restTimerSeconds = remaining,
@@ -515,10 +518,14 @@ class WorkoutViewModel @Inject constructor(
     private val moveRoutineSetUseCase: MoveRoutineSetUseCase,
     private val diagnosticsTracker: DiagnosticsTracker,
 ) : ViewModel() {
-    private val overview: StateFlow<WorkoutOverview?> = observeWorkoutOverviewUseCase()
+    private val observations = WorkoutObservations(viewModelScope, observeWorkoutOverviewUseCase::invoke,
+        { preferencesRepository.workoutFeedbackPreferences })
+    private val overview: StateFlow<WorkoutOverview?> = observations.overview.map { it?.getOrNull() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
-    private val workoutFeedbackPreferences: StateFlow<WorkoutFeedbackPreferences> = preferencesRepository.workoutFeedbackPreferences
+    private val workoutFeedbackPreferences: StateFlow<WorkoutFeedbackPreferences> = observations.preferences.map { it?.getOrNull() ?: WorkoutFeedbackPreferences() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WorkoutFeedbackPreferences())
+
+    fun retry() = observations.retry()
 
     private val _activeWorkout = MutableStateFlow<WorkoutDay?>(null)
     private val activeWorkout: StateFlow<WorkoutDay?> = _activeWorkout.asStateFlow()
@@ -634,12 +641,28 @@ class WorkoutViewModel @Inject constructor(
                 isGeneratingAiRoutine = generatingAiRoutine,
             ),
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScreenUiState.Loading)
+    }.combine(observations.error) { content, error -> error ?: content }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ScreenUiState.Loading)
 
     private var restTimerJob: Job? = null
     private var loggingSummaryJob: Job? = null
     private var lastGenerationRequest: RoutineGenerationRequest? = null
     private var observedRestTimerEndsAt: Long? = null
+    private val restTimerWrites = RestTimerWrites(
+        scope = viewModelScope,
+        persist = { timer -> updateActiveWorkoutRestTimerUseCase(timer.endsAt, timer.seconds) },
+        publish = { timer ->
+            _activeSession.value = _activeSession.value?.copy(
+                restTimerEndsAt = timer.endsAt,
+                restTimerTotalSeconds = timer.seconds,
+            )
+            observedRestTimerEndsAt = timer.endsAt
+            restTimerSeconds = remainingRestSeconds(timer.endsAt, System.currentTimeMillis())
+            restTimerFinishHandled = restTimerSeconds == 0
+            restTimerClearRequested = restTimerSeconds == 0
+        },
+        onFailure = { _message.value = "Rusttimer kon niet worden bijgewerkt. Probeer opnieuw." },
+    )
     private var restTimerFinishHandled = true
     private var restTimerClearRequested = false
     private var eventId = 0L
@@ -650,11 +673,11 @@ class WorkoutViewModel @Inject constructor(
 
     fun loadWorkout(dayId: Long) {
         diagnosticsTracker.state("Workout:Start")
-        viewModelScope.launch {
+        launchAction {
             _debrief.value = null
             _message.value = null
             _pendingStartConflict.value = null
-            val started = runCatching { startWorkoutSessionUseCase(dayId) }
+            val started = runUserActionCatching { startWorkoutSessionUseCase(dayId) }
                 .getOrElse {
                     val currentActive = getCurrentActiveWorkoutSessionUseCase()
                     if (currentActive != null && currentActive.dayId != dayId) {
@@ -667,7 +690,7 @@ class WorkoutViewModel @Inject constructor(
                     } else {
                         _message.value = it.message ?: ActiveWorkoutStartBlockedMessage
                     }
-                    return@launch
+                    return@launchAction
                 }
             val workout = started.workout
             if (workout.exercises.isEmpty()) {
@@ -678,7 +701,7 @@ class WorkoutViewModel @Inject constructor(
                 _draftErrors.value = emptyMap()
                 _exerciseRestOverrides.value = emptyMap()
                 _message.value = "Voeg eerst oefeningen toe aan deze sessie voordat je start."
-                return@launch
+                return@launchAction
             }
             val suggestions = started.progressionSuggestions
             _activeWorkout.value = workout
@@ -698,7 +721,7 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun replaceConflictingActiveWorkout(conflict: ActiveWorkoutStartConflict) {
-        viewModelScope.launch {
+        launchAction {
             discardActiveWorkoutSessionUseCase(conflict.activeSessionId)
             _pendingStartConflict.value = null
             loadWorkout(conflict.requestedDayId)
@@ -708,13 +731,13 @@ class WorkoutViewModel @Inject constructor(
     fun updateSetDraft(exerciseId: Long, draft: SetInputDraft) {
         _drafts.value = _drafts.value.toMutableMap().apply { put(exerciseId, draft) }
         clearSetInputError(exerciseId)
-        viewModelScope.launch {
+        launchAction {
             updateActiveWorkoutDraftUseCase(exerciseId, draft.toDomainDraft())
         }
     }
 
     fun updateLoggedSetType(setId: Long, setType: SetType) {
-        viewModelScope.launch {
+        launchAction {
             updateActiveWorkoutSetTypeUseCase(setId, setType)?.let(::applyActiveSession)
         }
     }
@@ -726,7 +749,7 @@ class WorkoutViewModel @Inject constructor(
         _drafts.value = _drafts.value.toMutableMap().apply { put(exerciseId, draft) }
         _pendingCorrectionSetIds.value = _pendingCorrectionSetIds.value.toMutableMap().apply { put(exerciseId, setId) }
         clearSetInputError(exerciseId)
-        viewModelScope.launch {
+        launchAction {
             updateActiveWorkoutDraftUseCase(exerciseId, draft.toDomainDraft())
         }
         _message.value = "Set staat klaar voor correctie. Pas de invoer aan en kies Wijzig loggen."
@@ -734,7 +757,7 @@ class WorkoutViewModel @Inject constructor(
 
     fun deleteLoggedSet(setId: Long, showMessage: Boolean = true) {
         _pendingCorrectionSetIds.value = _pendingCorrectionSetIds.value.filterValues { it != setId }
-        viewModelScope.launch {
+        launchAction {
             deleteActiveWorkoutSetUseCase(setId)?.let(::applyActiveSession)
             if (showMessage) _message.value = "Set verwijderd."
         }
@@ -745,7 +768,7 @@ class WorkoutViewModel @Inject constructor(
         _drafts.value = _drafts.value.toMutableMap().apply { put(exerciseId, set.toDraft()) }
         _pendingCorrectionSetIds.value = _pendingCorrectionSetIds.value - exerciseId
         clearSetInputError(exerciseId)
-        viewModelScope.launch {
+        launchAction {
             deleteActiveWorkoutSetUseCase(setId)?.let(::applyActiveSession)
             _message.value = "Set teruggezet. Pas aan en log opnieuw."
         }
@@ -808,7 +831,7 @@ class WorkoutViewModel @Inject constructor(
             restSeconds = validInput.restSeconds,
             orderIndex = correctionSet?.orderIndex ?: 0,
         )
-        viewModelScope.launch {
+        launchAction {
             val nextDraftIndex = if (correctionSet != null) loggedCount else loggedCount + 1
             val nextDraft = plan.nextPlannedDraft(nextDraftIndex).takeIf {
                 it.weight.isNotBlank() || it.reps.isNotBlank() || it.rpe.isNotBlank()
@@ -821,7 +844,7 @@ class WorkoutViewModel @Inject constructor(
                         set = loggedSet,
                         draft = nextDraft.toDomainDraft(),
                         restSeconds = restSeconds,
-                    ) ?: return@launch
+                    ) ?: return@launchAction
                 } else {
                     logActiveWorkoutSetUseCase(
                         dayId = dayId,
@@ -860,6 +883,8 @@ class WorkoutViewModel @Inject constructor(
                     ),
                 )
                 diagnosticsTracker.state("Workout:SetLogged")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 _message.value = "Set loggen is mislukt. Probeer opnieuw."
             } finally {
@@ -870,7 +895,7 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun undoWorkoutLogEvent(eventId: Long) {
-        viewModelScope.launch {
+        launchAction {
             undoWorkoutLogEventUseCase(eventId)?.let(::applyActiveSession)
             _activeFocusTarget.value = null
             _message.value = "Laatste set hersteld."
@@ -887,7 +912,7 @@ class WorkoutViewModel @Inject constructor(
 
     fun finishWorkout(dayId: Long) {
         diagnosticsTracker.state("Workout:Finished")
-        viewModelScope.launch {
+        launchAction {
             stopRestTimer(persist = true)
             val result = finishActiveWorkoutUseCase(dayId)
             _debrief.value = result.debrief
@@ -904,7 +929,7 @@ class WorkoutViewModel @Inject constructor(
 
     fun discardWorkout(dayId: Long) {
         diagnosticsTracker.state("Workout:Discarded")
-        viewModelScope.launch {
+        launchAction {
             stopRestTimer(persist = false)
             discardActiveWorkoutUseCase(dayId)
             _activeSession.value = null
@@ -933,7 +958,7 @@ class WorkoutViewModel @Inject constructor(
             _message.value = "Een routine met deze naam bestaat al."
             return
         }
-        viewModelScope.launch {
+        launchAction {
             createRoutineUseCase(name.trim(), description.trim())
             _message.value = "Routine aangemaakt."
         }
@@ -958,7 +983,7 @@ class WorkoutViewModel @Inject constructor(
         )
         _isGeneratingAiRoutine.value = true
         _message.value = "AI-routine maken..."
-        viewModelScope.launch {
+        launchAction {
             try {
                 generateAiRoutineUseCase(
                     daysPerWeek = daysPerWeek,
@@ -995,20 +1020,14 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun savePendingGeneratedRoutine() {
-        if (_isSavingGeneratedRoutine.value) return
         val routine = _pendingGeneratedRoutine.value ?: return
-        viewModelScope.launch {
-            _isSavingGeneratedRoutine.value = true
-            runCatching {
-                saveGeneratedRoutineUseCase(routine)
-            }.onSuccess {
-                _pendingGeneratedRoutine.value = null
-                _message.value = "Routine opgeslagen."
-            }.onFailure {
-                _message.value = it.toAiUserMessage("Routine opslaan is mislukt.")
-            }.also {
-                _isSavingGeneratedRoutine.value = false
-            }
+        viewModelScope.launchSingleSubmission(
+            pending = _isSavingGeneratedRoutine,
+            onFailure = { _message.value = it.toAiUserMessage("Routine opslaan is mislukt.") },
+        ) {
+            saveGeneratedRoutineUseCase(routine)
+            if (_pendingGeneratedRoutine.value == routine) _pendingGeneratedRoutine.value = null
+            _message.value = "Routine opgeslagen."
         }
     }
 
@@ -1028,7 +1047,7 @@ class WorkoutViewModel @Inject constructor(
             _message.value = "Een routine met deze naam bestaat al."
             return false
         }
-        viewModelScope.launch {
+        launchAction {
             updateRoutineUseCase(routineId, name.trim(), description.trim())
             _message.value = "Routine bijgewerkt."
         }
@@ -1036,28 +1055,28 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun deleteRoutine(routineId: Long) {
-        viewModelScope.launch {
+        launchAction {
             deleteRoutineUseCase(routineId)
             _message.value = "Routine verwijderd."
         }
     }
 
     fun setActiveRoutine(routineId: Long) {
-        viewModelScope.launch {
+        launchAction {
             setActiveRoutineUseCase(routineId)
             _message.value = "Actieve routine bijgewerkt."
         }
     }
 
     fun addDay(routineId: Long, name: String) {
-        viewModelScope.launch {
+        launchAction {
             addWorkoutDayUseCase(routineId, name.trim().ifBlank { defaultWorkoutDayName() })
             _message.value = "Sessie toegevoegd."
         }
     }
 
     fun removeDay(dayId: Long) {
-        viewModelScope.launch {
+        launchAction {
             removeWorkoutDayUseCase(dayId)
             _message.value = "Sessie verwijderd."
         }
@@ -1083,7 +1102,7 @@ class WorkoutViewModel @Inject constructor(
                 _message.value = PlanValidationMessage
                 return
             }
-        viewModelScope.launch {
+        launchAction {
             addExerciseToDayUseCase(
                 dayId = dayId,
                 name = name.trim(),
@@ -1119,7 +1138,7 @@ class WorkoutViewModel @Inject constructor(
                 _message.value = PlanValidationMessage
                 return
             }
-        viewModelScope.launch {
+        launchAction {
             addExerciseToRoutineUseCase(
                 routineId = routineId,
                 name = name.trim(),
@@ -1136,37 +1155,37 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun removeExercise(workoutExerciseId: Long) {
-        viewModelScope.launch {
+        launchAction {
             removeExerciseFromDayUseCase(workoutExerciseId)
             _message.value = "Oefening verwijderd."
         }
     }
 
     fun reorderExercises(dayId: Long, orderedIds: List<Long>) {
-        viewModelScope.launch {
+        launchAction {
             reorderExercisesUseCase(dayId, orderedIds)
             _message.value = "Oefenvolgorde bijgewerkt."
         }
     }
 
     fun setSupersetGroup(workoutExerciseIds: List<Long>, groupId: Long?) {
-        viewModelScope.launch {
+        launchAction {
             setSupersetGroupUseCase(workoutExerciseIds, groupId)
             _message.value = if (groupId == null) "Superset losgekoppeld." else "Superset gekoppeld."
         }
     }
 
     fun replaceExerciseInPlan(workoutExerciseId: Long, exercise: Exercise) {
-        viewModelScope.launch {
+        launchAction {
             replaceExerciseInPlanUseCase(workoutExerciseId, exercise.id)
             _message.value = "Oefening vervangen door ${exercise.name}."
         }
     }
 
     fun replaceExerciseInActiveWorkout(workoutExerciseId: Long, exercise: Exercise) {
-        viewModelScope.launch {
+        launchAction {
             replaceExerciseInActiveWorkoutUseCase(workoutExerciseId, exercise.id)?.let(::applyActiveSession)
-            _activeWorkout.value = getWorkoutDayUseCase(_activeWorkout.value?.id ?: return@launch)
+            _activeWorkout.value = getWorkoutDayUseCase(_activeWorkout.value?.id ?: return@launchAction)
             _message.value = "Oefening vervangen door ${exercise.name}."
         }
     }
@@ -1179,7 +1198,7 @@ class WorkoutViewModel @Inject constructor(
     ) {
         val workout = _activeWorkout.value ?: return
         val plan = workout.exercises.firstOrNull { it.id == workoutExerciseId } ?: return
-        viewModelScope.launch {
+        launchAction {
             addExerciseToDayUseCase(
                 dayId = workout.id,
                 name = name,
@@ -1222,7 +1241,7 @@ class WorkoutViewModel @Inject constructor(
                 _message.value = PlanValidationMessage
                 return
             }
-        viewModelScope.launch {
+        launchAction {
             updateWorkoutExercisePlanUseCase(
                 workoutExerciseId = workoutExerciseId,
                 targetSets = input.targetSets,
@@ -1237,7 +1256,7 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun addSetToExercise(workoutExerciseId: Long) {
-        viewModelScope.launch {
+        launchAction {
             addSetToExerciseUseCase(workoutExerciseId)
             _message.value = "Set toegevoegd."
         }
@@ -1248,20 +1267,20 @@ class WorkoutViewModel @Inject constructor(
             _message.value = RoutineSetValidationMessage
             return
         }
-        viewModelScope.launch {
+        launchAction {
             updateRoutineSetUseCase(set)
         }
     }
 
     fun deleteRoutineSet(setId: Long) {
-        viewModelScope.launch {
+        launchAction {
             deleteRoutineSetUseCase(setId)
             _message.value = "Set verwijderd."
         }
     }
 
     fun moveRoutineSet(workoutExerciseId: Long, orderedSetIds: List<Long>) {
-        viewModelScope.launch {
+        launchAction {
             moveRoutineSetUseCase(workoutExerciseId, orderedSetIds)
             _message.value = "Set volgorde bijgewerkt."
         }
@@ -1272,7 +1291,7 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun deleteWorkoutSession(sessionId: Long) {
-        viewModelScope.launch {
+        launchAction {
             deleteWorkoutSessionUseCase(sessionId)
             _message.value = "Workoutsessie verwijderd."
         }
@@ -1280,7 +1299,7 @@ class WorkoutViewModel @Inject constructor(
 
     private fun startSessionTicker() {
         restTimerJob?.cancel()
-        restTimerJob = viewModelScope.launch {
+        restTimerJob = launchAction {
             while (true) {
                 updateRestTimerFromSession()
                 delay(1_000)
@@ -1290,7 +1309,7 @@ class WorkoutViewModel @Inject constructor(
 
     private fun observeLoggingSummary(dayId: Long) {
         loggingSummaryJob?.cancel()
-        loggingSummaryJob = viewModelScope.launch {
+        loggingSummaryJob = launchAction {
             observeWorkoutLoggingSummaryUseCase(dayId).collect { summary ->
                 _loggingSummary.value = summary.copy(activeFocusTarget = _activeFocusTarget.value)
             }
@@ -1304,9 +1323,7 @@ class WorkoutViewModel @Inject constructor(
         observedRestTimerEndsAt = endsAt
         restTimerFinishHandled = false
         restTimerClearRequested = false
-        viewModelScope.launch {
-            updateActiveWorkoutRestTimerUseCase(endsAt, restSeconds)?.let(::applyActiveSession)
-        }
+        persistRestTimer(endsAt, restSeconds)
     }
 
     private fun stopRestTimer(persist: Boolean = false) {
@@ -1315,27 +1332,31 @@ class WorkoutViewModel @Inject constructor(
         restTimerFinishHandled = true
         restTimerClearRequested = true
         if (persist) {
-            viewModelScope.launch {
-                updateActiveWorkoutRestTimerUseCase(null, 0)?.let(::applyActiveSession)
-            }
+            persistRestTimer(null, 0)
         }
     }
 
     fun adjustRestTimer(deltaSeconds: Int) {
-        val next = (restTimerSeconds + deltaSeconds).coerceAtLeast(0)
+        val now = System.currentTimeMillis()
+        val next = adjustedRestSeconds(_activeSession.value?.restTimerEndsAt, deltaSeconds, now)
         if (next == 0) {
             stopRestTimer(persist = true)
             return
         }
-        val endsAt = System.currentTimeMillis() + next * 1_000L
+        val endsAt = now + next * 1_000L
         observedRestTimerEndsAt = endsAt
         restTimerFinishHandled = false
         restTimerClearRequested = false
-        viewModelScope.launch {
-            updateActiveWorkoutRestTimerUseCase(endsAt, next)?.let(::applyActiveSession)
-        }
+        persistRestTimer(endsAt, next)
     }
 
+    private fun persistRestTimer(endsAt: Long?, seconds: Int) {
+        val previous = _activeSession.value ?: return
+        restTimerWrites.submit(
+            previous = RestTimerValue(previous.restTimerEndsAt, previous.restTimerTotalSeconds),
+            next = RestTimerValue(endsAt, seconds),
+        )
+    }
     fun skipRestTimer() {
         stopRestTimer(persist = true)
         _message.value = "Rusttimer overgeslagen."
@@ -1356,7 +1377,7 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun setExerciseCollapsed(exerciseId: Long, collapsed: Boolean) {
-        viewModelScope.launch {
+        launchAction {
             setActiveWorkoutCollapsedUseCase(exerciseId, collapsed)?.let(::applyActiveSession)
         }
     }
@@ -1383,7 +1404,7 @@ class WorkoutViewModel @Inject constructor(
     private fun updateRestTimerFromSession() {
         val active = _activeSession.value
         val endsAt = active?.restTimerEndsAt
-        val remaining = endsAt?.let { ((it - System.currentTimeMillis()) / 1_000).toInt().coerceAtLeast(0) } ?: 0
+        val remaining = remainingRestSeconds(endsAt, System.currentTimeMillis())
         val previousRemaining = restTimerSeconds
         if (endsAt != observedRestTimerEndsAt) {
             observedRestTimerEndsAt = endsAt
@@ -1401,16 +1422,14 @@ class WorkoutViewModel @Inject constructor(
                     message = restTimerFinishedMessage(),
                 ),
             )
-            viewModelScope.launch {
-                updateActiveWorkoutRestTimerUseCase(null, 0)?.let(::applyActiveSession)
-            }
+            persistRestTimer(null, 0)
         } else if (endsAt != null && remaining == 0 && !restTimerClearRequested) {
             restTimerClearRequested = true
-            viewModelScope.launch {
-                updateActiveWorkoutRestTimerUseCase(null, 0)?.let(::applyActiveSession)
-            }
+            persistRestTimer(null, 0)
         }
     }
+    private fun launchAction(action: suspend kotlinx.coroutines.CoroutineScope.() -> Unit) =
+        viewModelScope.launchUserAction({ _message.value = "Actie kon niet worden afgerond. Probeer opnieuw." }) { action() }
 }
 
 @Composable
@@ -1422,6 +1441,10 @@ fun WorkoutRoute(
     viewModel: WorkoutViewModel = hiltViewModel(),
 ) {
     val screenState by viewModel.uiState.collectAsStateWithLifecycle()
+    (screenState as? ScreenUiState.Error)?.let { error ->
+        WorkoutObservationError(error, viewModel::retry)
+        return
+    }
     val content = screenState.workoutContentOrDefault()
     WorkoutScreen(
         overview = content.overview,
@@ -1456,6 +1479,15 @@ fun WorkoutRoute(
         onMoveRoutineSet = viewModel::moveRoutineSet,
         onDeleteWorkoutSession = viewModel::deleteWorkoutSession,
     )
+}
+
+@Composable
+internal fun WorkoutObservationError(error: ScreenUiState.Error, onRetry: () -> Unit) {
+    Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(error.title, style = MaterialTheme.typography.headlineSmall)
+        Text(error.message, style = MaterialTheme.typography.bodyLarge)
+        Button(onClick = onRetry) { Text("Opnieuw proberen") }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1747,32 +1779,10 @@ fun WorkoutScreen(
 class WorkoutCompletionViewModel @Inject constructor(
     private val getWorkoutCompletionSummaryUseCase: GetWorkoutCompletionSummaryUseCase,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow<WorkoutCompletionUiState>(WorkoutCompletionUiState.Loading)
-    val uiState: StateFlow<WorkoutCompletionUiState> = _uiState.asStateFlow()
-
-    fun load(sessionId: Long) {
-        _uiState.value = WorkoutCompletionUiState.Loading
-        viewModelScope.launch {
-            val summary = getWorkoutCompletionSummaryUseCase(sessionId)
-            _uiState.value = if (summary == null) {
-                WorkoutCompletionUiState.Error("Deze afgeronde training kon niet worden geladen.")
-            } else {
-                WorkoutCompletionUiState.Success(summary)
-            }
-            if (summary?.debrief?.source == WorkoutDebriefSource.LOCAL_FALLBACK) {
-                repeat(6) {
-                    kotlinx.coroutines.delay(2_000L)
-                    val refreshed = getWorkoutCompletionSummaryUseCase(sessionId) ?: return@repeat
-                    _uiState.value = WorkoutCompletionUiState.Success(refreshed)
-                    if (refreshed.debrief.source != WorkoutDebriefSource.LOCAL_FALLBACK) {
-                        return@launch
-                    }
-                }
-            }
-        }
-    }
+    private val loader = WorkoutCompletionLoader(viewModelScope, getWorkoutCompletionSummaryUseCase::invoke)
+    val uiState: StateFlow<WorkoutCompletionUiState> = loader.uiState
+    fun load(sessionId: Long) = loader.load(sessionId)
 }
-
 sealed interface WorkoutProcessingUiState {
     data object SavingWorkout : WorkoutProcessingUiState
     data object BuildingSummary : WorkoutProcessingUiState
@@ -4750,6 +4760,11 @@ fun ActiveWorkoutRoute(
         onDispose { soundPlayer.release() }
     }
 
+    (screenState as? ScreenUiState.Error)?.let { error ->
+        BackHandler(onBack = onBack)
+        WorkoutObservationError(error, viewModel::retry)
+        return
+    }
     ActiveWorkoutScreen(
         uiState = uiState,
         exerciseLibrary = content.overview?.exercises.orEmpty(),
@@ -4877,14 +4892,16 @@ fun WorkoutCompletionRoute(
         uiState = uiState,
         onBackToTraining = onBackToTraining,
         onHome = onHome,
+        onRetry = { viewModel.load(sessionId) },
     )
 }
 
 @Composable
-private fun WorkoutCompletionScreen(
+internal fun WorkoutCompletionScreen(
     uiState: WorkoutCompletionUiState,
     onBackToTraining: () -> Unit,
     onHome: () -> Unit,
+    onRetry: () -> Unit = {},
 ) {
     var autoReturnActive by rememberSaveable { mutableStateOf(true) }
     var countdown by rememberSaveable { mutableIntStateOf(12) }
@@ -4892,8 +4909,8 @@ private fun WorkoutCompletionScreen(
     val cancelAutoReturn = {
         autoReturnActive = false
     }
-    LaunchedEffect(autoReturnActive) {
-        if (!autoReturnActive) return@LaunchedEffect
+    LaunchedEffect(autoReturnActive, uiState is WorkoutCompletionUiState.Success) {
+        if (!autoReturnActive || uiState !is WorkoutCompletionUiState.Success) return@LaunchedEffect
         countdown = 12
         while (countdown > 0 && autoReturnActive) {
             delay(1_000L)
@@ -4947,8 +4964,8 @@ private fun WorkoutCompletionScreen(
                         EmptyStateCard(
                             title = "Geen samenvatting gevonden",
                             body = uiState.message,
-                            actionLabel = "Terug naar krachttraining",
-                            onAction = onBackToTraining,
+                            actionLabel = "Opnieuw proberen",
+                            onAction = onRetry,
                         )
                     }
                 }
@@ -5284,8 +5301,12 @@ fun ActiveWorkoutScreen(
     val exerciseGroups = remember(workoutExercises) { workoutExerciseGroups(workoutExercises) }
     val activeWorkoutListState = rememberLazyListState()
     val clockState = rememberActiveWorkoutClock(uiState.activeSession)
-    val suggestionsByExerciseId = remember(uiState.progressionSuggestions) {
-        uiState.progressionSuggestions.associateBy { it.exerciseId }
+    val suggestionsByPlanId = remember(uiState.progressionSuggestions, workoutExercises) {
+        workoutExercises.associate { plan ->
+            plan.id to uiState.progressionSuggestions.firstOrNull {
+                it.exerciseId == plan.exercise.id && it.suggestedReps == plan.repRange
+            }
+        }
     }
     LaunchedEffect(uiState.message) {
         val currentMessage = uiState.message ?: return@LaunchedEffect
@@ -5469,7 +5490,7 @@ fun ActiveWorkoutScreen(
                             ActiveWorkoutPlanCard(
                                 plan = plan,
                                 exerciseState = exerciseState,
-                                suggestion = suggestionsByExerciseId[plan.exercise.id],
+                                suggestion = suggestionsByPlanId[plan.id],
                                 hapticOnSuccess = {
                                     if (workoutHapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                 },
@@ -5497,7 +5518,7 @@ fun ActiveWorkoutScreen(
                     ActiveWorkoutPlanCard(
                         plan = plan,
                         exerciseState = exerciseState,
-                        suggestion = suggestionsByExerciseId[plan.exercise.id],
+                        suggestion = suggestionsByPlanId[plan.id],
                         hapticOnSuccess = {
                             if (workoutHapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         },

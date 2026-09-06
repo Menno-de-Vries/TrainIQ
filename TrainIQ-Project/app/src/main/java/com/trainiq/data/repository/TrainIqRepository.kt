@@ -185,9 +185,7 @@ class TrainIqDataCoordinator @Inject constructor(
         val todaysMeals = snapshot.meals.filter { it.timestamp.isOnActivityDate() }
         val todaysNutrition = todaysMeals.fold(NutritionFacts.Zero) { acc, meal -> acc + meal.totalNutrition }
         val profile = snapshot.profile
-        val todaysWorkoutCalories = snapshot.sessions
-            .filter { normalizeToDay(it.date) == todayEpochMillis() }
-            .sumOf { it.caloriesBurned }
+        val todaysWorkoutCalories = completedWorkoutCalories(snapshot.sessions)
         HomeDashboard(
             profile = profile,
             energyBalance = profile?.let {
@@ -1196,8 +1194,8 @@ class TrainIqDataCoordinator @Inject constructor(
                 gramsUsed = gramsUsed,
             )
         }
-        val (persisted, persistedIngredients) = runtimeStore.saveRecipe(recipe, ingredientStorage)
-        return buildRecipes(current.foods, listOf(persisted), persistedIngredients)
+        val (persisted, persistedIngredients, ingredientFoods) = runtimeStore.saveRecipe(recipe, ingredientStorage)
+        return buildRecipes(ingredientFoods, listOf(persisted), persistedIngredients)
             .single()
     }
 
@@ -1579,9 +1577,7 @@ class TrainIqDataCoordinator @Inject constructor(
         val todaysMealsByType = MealType.entries.associateWith { mealType ->
             todaysMeals.filter { it.mealType == mealType }
         }
-        val todaysWorkoutCalories = snapshot.sessions
-            .filter { normalizeToDay(it.date) == todayEpochMillis() }
-            .sumOf { it.caloriesBurned }
+        val todaysWorkoutCalories = completedWorkoutCalories(snapshot.sessions)
         return NutritionOverview(
             foods = snapshot.foods.sortedBy { it.name.lowercase() },
             recipes = snapshot.recipes.sortedBy { it.name.lowercase() },
@@ -1627,9 +1623,7 @@ class TrainIqDataCoordinator @Inject constructor(
             .filter { it.timestamp.isOnActivityDate() }
             .sumOf { it.totalNutrition.protein }
         val proteinGap = profile.proteinTarget - todaysProtein.toInt()
-        val todaysWorkoutCalories = snapshot.sessions
-            .filter { normalizeToDay(it.date) == todayEpochMillis() }
-            .sumOf { it.caloriesBurned }
+        val todaysWorkoutCalories = completedWorkoutCalories(snapshot.sessions)
         return when {
             snapshot.sessions.none { it.completed && it.status == "COMPLETED" } -> "Je bent klaar om te starten. Plan ${nextWorkout.name} als eerste sessie voor je doel '${profile.goal}'."
             proteinGap > 20 -> "Je volgende workout is ${nextWorkout.name}. Voeg vandaag nog ongeveer $proteinGap g eiwit toe en houd rekening met ${todaysWorkoutCalories} kcal krachttraining."

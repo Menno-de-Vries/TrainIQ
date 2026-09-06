@@ -111,6 +111,35 @@ class WorkoutProgressionSuggestionCalculatorTest {
         assertEquals(ReadinessLevel.DELOAD, suggestionForTarget("AMRAP", rpe = 10.0).readinessSignal)
     }
 
+    @Test
+    fun duplicateExercisePlansUseTheirOwnRepTargets() {
+        val plan = day.exercises.single()
+        val suggestions = calculator.calculate(
+            day.copy(exercises = listOf(plan.copy(repRange = "5"), plan.copy(id = 45L, repRange = "10"))),
+            completedSessions(1_000L, 2_000L),
+            listOf(completedSet(1L, 1L, 100.0, 5, 7.0, 3), completedSet(2L, 2L, 102.5, 5, 7.0, 3)),
+        )
+        assertEquals(listOf(ReadinessLevel.INCREASE, ReadinessLevel.MAINTAIN), suggestions.map { it.readinessSignal })
+    }
+
+    @Test
+    fun unratedSetsDoNotDiluteRecordedHighEffort() {
+        val suggestions = calculator.calculate(day, completedSessions(1_000L), listOf(
+            completedSet(1L, 1L, 100.0, 5, 10.0, null),
+            completedSet(2L, 1L, 100.0, 5, 0.0, null),
+        ))
+        assertEquals(10f, suggestions.single().lastSessionAvgRpe)
+        assertEquals(ReadinessLevel.DELOAD, suggestions.single().readinessSignal)
+    }
+
+    @Test
+    fun allUnratedSetsKeepEffortUnknown() {
+        val suggestions = calculator.calculate(day, completedSessions(1_000L),
+            listOf(completedSet(1L, 1L, 100.0, 5, 0.0, null)))
+        assertEquals(null, suggestions.single().lastSessionAvgRpe)
+        assertEquals(ReadinessLevel.MAINTAIN, suggestions.single().readinessSignal)
+    }
+
     private fun suggestionForTarget(target: String, rpe: Double = 7.0) = calculator.calculate(
         day.copy(exercises = day.exercises.map { it.copy(repRange = target) }),
         completedSessions(1_000L, 2_000L),

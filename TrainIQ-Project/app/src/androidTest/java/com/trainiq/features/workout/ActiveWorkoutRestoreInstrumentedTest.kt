@@ -2,6 +2,11 @@ package com.trainiq.features.workout
 
 import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -10,6 +15,8 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.trainiq.MainActivity
+import com.trainiq.core.datastore.OnboardingPreferences
+import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.database.ActiveWorkoutSessionEntity
 import com.trainiq.core.database.ActiveWorkoutSetEntity
 import com.trainiq.core.database.ExerciseEntity
@@ -38,6 +45,9 @@ class ActiveWorkoutRestoreInstrumentedTest {
     @Before
     fun seedActiveWorkout() = runBlocking {
         context = ApplicationProvider.getApplicationContext()
+        UserPreferencesRepository(context).saveOnboardingPreferences(
+            OnboardingPreferences(completed = true, guidedTourCompleted = true),
+        )
         database = resetTrainIqAndroidTestDatabase(context)
         val dao = database.dao()
         val now = System.currentTimeMillis()
@@ -106,22 +116,24 @@ class ActiveWorkoutRestoreInstrumentedTest {
     @Test
     fun activeWorkoutRestoresFromRoomAfterActivityRecreation() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            compose.waitUntil(timeoutMillis = 10_000L) {
-                compose.onAllNodesWithText("Training").fetchSemanticsNodes().isNotEmpty()
+            val training = (hasContentDescription("Training") or hasText("Training")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(training).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(training).assertIsDisplayed().performClick()
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("Training starten").fetchSemanticsNodes().isNotEmpty()
             }
-            compose.onNodeWithText("Training").assertIsDisplayed()
-            compose.onNodeWithText("Training").performClick()
+            compose.onNodeWithText("Training starten").performScrollTo().performClick()
+            assertRestoredLoggedSet()
             scenario.recreate()
-            compose.waitUntil(timeoutMillis = 10_000L) {
-                compose.onAllNodesWithText("Training").fetchSemanticsNodes().isNotEmpty()
-            }
-            compose.onNodeWithText("Training").assertIsDisplayed()
-            compose.onNodeWithText("Training").performClick()
-            compose.waitUntil(timeoutMillis = 30_000L) {
-                compose.onAllNodesWithText("QA Upper", substring = true).fetchSemanticsNodes().isNotEmpty()
-            }
-            compose.onNodeWithText("Actieve routine").assertIsDisplayed()
+            assertRestoredLoggedSet()
         }
     }
 
+    private fun assertRestoredLoggedSet() {
+        compose.waitUntil(30_000) {
+            compose.onAllNodesWithText("Actieve training").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("Actieve training").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Gelogde set corrigeren").performScrollTo().assertIsDisplayed()
+    }
 }

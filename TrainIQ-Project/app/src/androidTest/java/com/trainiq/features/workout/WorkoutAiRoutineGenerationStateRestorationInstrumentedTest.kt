@@ -8,6 +8,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.StateRestorationTester
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -81,7 +82,8 @@ class WorkoutAiRoutineGenerationStateRestorationInstrumentedTest {
         inputs[0].performTextReplacement("Herstelgericht")
         inputs[1].performTextReplacement("4")
         inputs[2].performTextReplacement("Dumbbells")
-        onNodeWithText("Gevorderd").performClick()
+        onNodeWithText("Gevorderd").performScrollTo().assertIsDisplayed().performClick()
+        onNodeWithText("Gevorderd").assertIsSelected()
         onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo(60f, 30f..90f, 3)))
             .performSemanticsAction(SemanticsActions.SetProgress) { setProgress -> setProgress(75f) }
         onNodeWithContentDescription("Deload-richtlijn opnemen")
@@ -93,6 +95,7 @@ class WorkoutAiRoutineGenerationStateRestorationInstrumentedTest {
 
         onNodeWithText("AI-routine genereren").assertIsDisplayed()
         onNodeWithContentDescription("Deload-richtlijn opnemen").assertIsOff()
+        onNodeWithText("Gevorderd").assertIsSelected()
         onNodeWithText("Genereren").performClick()
 
         assertEquals(

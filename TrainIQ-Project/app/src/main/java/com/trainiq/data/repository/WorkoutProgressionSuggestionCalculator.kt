@@ -20,7 +20,6 @@ class WorkoutProgressionSuggestionCalculator @Inject constructor() {
         val sessionsById = sessions
             .filter { it.completed && it.status == "COMPLETED" }
             .associateBy { it.id }
-        val targetRepsByExerciseId = day.exercises.associate { it.exercise.id to parseTargetRepTarget(it.repRange) }
         return day.exercises.mapNotNull { plan ->
             val exerciseSessions = sets
                 .filter { it.exerciseId == plan.exercise.id }
@@ -36,7 +35,9 @@ class WorkoutProgressionSuggestionCalculator @Inject constructor() {
                 .sortedByDescending { it.date }
                 .take(3)
             val lastSession = exerciseSessions.firstOrNull() ?: return@mapNotNull null
-            val lastSessionAvgRpe = lastSession.sets.map { it.rpe }.average().takeIf { !it.isNaN() }?.toFloat()
+            val lastSessionAvgRpe = lastSession.sets.map { it.rpe }
+                .filter { it.isFinite() && it in 1.0..10.0 }
+                .average().takeIf { !it.isNaN() }?.toFloat()
             val recentAverageRir = exerciseSessions
                 .mapNotNull { session ->
                     session.sets
@@ -52,7 +53,7 @@ class WorkoutProgressionSuggestionCalculator @Inject constructor() {
                 .take(2)
                 .takeIf { it.size == 2 }
                 ?.all { session ->
-                    val target = targetRepsByExerciseId[plan.exercise.id]
+                    val target = parseTargetRepTarget(plan.repRange)
                     target != null && session.sets.isNotEmpty() && session.sets.all { it.reps >= target }
                 }
                 ?: false

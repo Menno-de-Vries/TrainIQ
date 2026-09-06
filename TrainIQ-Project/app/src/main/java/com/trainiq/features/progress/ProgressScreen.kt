@@ -31,6 +31,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
+import com.trainiq.features.nutrition.importScannerImage
+import com.trainiq.features.nutrition.deleteScannerTemporaryImage
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -248,21 +251,25 @@ class ProgressViewModel @Inject constructor(
         }
     }
 
-    fun analyzeScalePhoto(path: String, context: String, onResult: (com.trainiq.domain.model.BodyMeasurementPhotoResult) -> Unit) {
-        viewModelScope.launch {
-            runCatching { analyzeBodyMeasurementPhotoUseCase(path, context) }
-                .onSuccess { result ->
-                    if (result.source == BodyMeasurementPhotoSource.LOCAL_FALLBACK || result.weight <= 0.0) {
-                        emitMessage(result.notes ?: "Geen betrouwbare meting gevonden. Vul de waarden handmatig in.")
-                    } else {
-                        onResult(result)
-                        emitMessage(result.notes ?: "Weegfoto geimporteerd. Controleer de waarden voor opslaan.")
-                    }
-                }
-                .onFailure { emitMessage("Weegfoto analyseren mislukt. Probeer opnieuw of vul handmatig in.") }
-        }
+    private val importedScaleScan = com.trainiq.features.nutrition.LatestScanRequest(viewModelScope) {
+        deleteScannerTemporaryImage(it)
     }
 
+    fun analyzeScalePhoto(path: String, context: String, onResult: (com.trainiq.domain.model.BodyMeasurementPhotoResult) -> Unit) {
+        importedScaleScan.start(
+            path = path,
+            analyze = { analyzeBodyMeasurementPhotoUseCase(path, context) },
+            publish = { result ->
+                if (result.source == BodyMeasurementPhotoSource.LOCAL_FALLBACK || result.weight <= 0.0) {
+                    emitMessage(result.notes ?: "Geen betrouwbare meting gevonden. Vul de waarden handmatig in.")
+                } else {
+                    onResult(result)
+                    emitMessage(result.notes ?: "Weegfoto geimporteerd. Controleer de waarden voor opslaan.")
+                }
+            },
+            fail = { emitMessage("Weegfoto analyseren mislukt. Probeer opnieuw of vul handmatig in.") },
+        )
+    }
     private fun emitMessage(text: String) {
         _message.value = UiMessage(text)
     }
@@ -346,17 +353,25 @@ fun ProgressScreen(
     val overview = successState?.overview
     val message = successState?.message
     val snackbarHostState = remember { SnackbarHostState() }
+    val imageImportScope = rememberCoroutineScope()
     val photoImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        val path = copyScannerImageFromUri(context, uri) ?: return@rememberLauncherForActivityResult
-        onAnalyzeImportedScalePhoto(path) { result ->
-            weight = result.weight.takeIf { it > 0.0 }?.let(::oneDecimal).orEmpty()
-            bodyFat = result.bodyFat.takeIf { it > 0.0 }?.let(::oneDecimal).orEmpty()
-            muscleMass = result.muscleMass.takeIf { it > 0.0 }?.let(::oneDecimal).orEmpty()
-            weightTouched = weight.isNotBlank()
-            bodyFatTouched = bodyFat.isNotBlank()
-            muscleMassTouched = muscleMass.isNotBlank()
-            scalePhotoNote = result.notes
+        imageImportScope.launch {
+            importScannerImage(
+                copy = { copyScannerImageFromUri(context, uri) },
+                failed = { scalePhotoNote = "Foto importeren mislukt. Probeer opnieuw of vul handmatig in." },
+                consume = { path ->
+                    onAnalyzeImportedScalePhoto(path) { result ->
+                        weight = result.weight.takeIf { it > 0.0 }?.let(::oneDecimal).orEmpty()
+                        bodyFat = result.bodyFat.takeIf { it > 0.0 }?.let(::oneDecimal).orEmpty()
+                        muscleMass = result.muscleMass.takeIf { it > 0.0 }?.let(::oneDecimal).orEmpty()
+                        weightTouched = weight.isNotBlank()
+                        bodyFatTouched = bodyFat.isNotBlank()
+                        muscleMassTouched = muscleMass.isNotBlank()
+                        scalePhotoNote = result.notes
+                    }
+                },
+            )
         }
     }
 

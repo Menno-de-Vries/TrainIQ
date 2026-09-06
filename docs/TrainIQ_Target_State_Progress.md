@@ -1,5 +1,10 @@
 # TrainIQ Target-State Progress
 
+## 2026-09-06 Twenty-finding rerun
+
+Exactly TWENTY-01 through TWENTY-20 address existing nutrition portions/imports, Coach save state, workout recovery/timers/progression and transactional food/recipe/meal consistency. See the [selection and local verification evidence](qa/TrainIQ_Twenty_New_Findings_2026-09-06.md). Base: 2ea47df763d21930d6975bbe7ee269048261c606; task branch: codex/twenty-new-audit-fixes. No release, merge, dependency/schema change or unrelated cleanup; alignment score not reassessed.
+
+
 ## 2026-09-06 Next five-finding rerun
 
 - NEXT-001–005: current-week Coach volume, consistent historical 1RM, cancelled/stale scan containment, recoverable report refresh and transactional meal/recipe identities are implemented. See the [audit evidence](TrainIQ_QA_Findings_To_Improve.md).

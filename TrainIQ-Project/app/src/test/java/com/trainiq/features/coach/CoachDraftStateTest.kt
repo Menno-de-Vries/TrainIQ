@@ -112,6 +112,28 @@ class CoachDraftStateTest {
         assertEquals("Ingediend", repository.profile.value?.name)
         assertEquals("Nieuwer concept", viewModel.success().profileDraft.name)
         assertTrue(viewModel.success().isProfileDraftDirty)
+        assertEquals(null, viewModel.success().goalAdvice)
+    }
+
+    @Test
+    fun profileSaveIsGuardedBeforeDispatchAndCanRetryAfterFailure() = runTest {
+        Dispatchers.setMain(kotlinx.coroutines.test.StandardTestDispatcher(testScheduler))
+        val repository = FakeCoachRepository(profile(name = "Opgeslagen")).apply {
+            saveFailure = IllegalStateException("synthetic storage failure")
+        }
+        val viewModel = coachViewModel(repository, SavedStateHandle())
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+        viewModel.saveProfile()
+        viewModel.saveProfile()
+        advanceUntilIdle()
+        assertEquals(1, repository.saveCalls)
+        assertEquals("Profiel opslaan mislukt. Probeer opnieuw.", viewModel.success().message)
+        repository.saveFailure = null
+        viewModel.saveProfile()
+        advanceUntilIdle()
+        assertEquals(2, repository.saveCalls)
+        assertEquals("Profiel en doelen opgeslagen.", viewModel.success().message)
     }
 
     @Test
@@ -321,6 +343,8 @@ class CoachDraftStateTest {
         val profile = MutableStateFlow(profile)
         val saveStarted = CompletableDeferred<Unit>()
         var saveGate: CompletableDeferred<Unit>? = null
+        var saveFailure: Throwable? = null
+        var saveCalls = 0
         var goalAdviceResult: GoalAdvice? = null
         var adviceCalls = 0
         var adviceForWeight: (suspend (Double) -> GoalAdvice)? = null
@@ -366,8 +390,10 @@ class CoachDraftStateTest {
         override fun observeSavedGoalAdvice(): Flow<SavedGoalAdvice?> = savedAdvice
 
         override suspend fun saveProfile(profile: UserProfile, savedGoalAdvice: SavedGoalAdvice?) {
+            saveCalls++
             saveStarted.complete(Unit)
             saveGate?.await()
+            saveFailure?.let { throw it }
             this.profile.value = profile
             this.savedAdvice.value = savedGoalAdvice
         }

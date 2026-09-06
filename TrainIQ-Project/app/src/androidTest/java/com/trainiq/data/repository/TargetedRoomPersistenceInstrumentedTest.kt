@@ -80,13 +80,14 @@ class TargetedRoomPersistenceInstrumentedTest {
     fun sequentialMealsAllocateDistinctIdsAndEditingPreservesOtherSnapshotsAfterReopen() = runTest {
         val store = runtimeStore()
         val items = listOf(LoggedMealItemStorage(id = 1, name = "Oats", calories = 120.0))
-        val first = store.saveMeal(LoggedMealStorage(name = "First"), items)
+        val first = store.saveMeal(LoggedMealStorage(name = "First", timestamp = 1234L), items)
         val second = store.saveMeal(LoggedMealStorage(name = "Second"), items)
         assertTrue(first > 0 && second > 0 && first != second)
         store.saveMeal(LoggedMealStorage(id = first, name = "Edited"), items.map { it.copy(calories = 200.0) })
         closeDatabase()
         database = openDatabase()
         assertEquals(setOf("Edited", "Second"), database.dao().observeMeals().first().map { it.name }.toSet())
+        assertEquals(1234L, database.dao().observeMeals().first().single { it.id == first }.date)
         val savedItems = database.dao().observeMealItems().first()
         assertEquals(2, savedItems.map { it.id }.toSet().size)
         assertEquals(120.0, savedItems.single { it.mealId == second }.calories, 0.0)
@@ -98,13 +99,13 @@ class TargetedRoomPersistenceInstrumentedTest {
         val store = runtimeStore()
         val food = store.saveFood(FoodItemStorage(name = "Oats"))
         val ingredients = listOf(RecipeIngredientStorage(id = 1, foodItemId = food.id, gramsUsed = 100.0))
-        val (first, firstIngredients) = store.saveRecipe(RecipeStorage(name = "First"), ingredients)
+        val (first, firstIngredients) = store.saveRecipe(RecipeStorage(name = "First", createdAt = 1234L), ingredients)
         val (second, secondIngredients) = store.saveRecipe(RecipeStorage(name = "Second"), ingredients)
         assertTrue(first.id > 0 && second.id > 0 && first.id != second.id)
         assertTrue(firstIngredients.single().id != secondIngredients.single().id)
         assertEquals(second.id, secondIngredients.single().recipeId)
         assertEquals(secondIngredients.single().id, database.dao().observeRecipeIngredients().first().single { it.recipeId == second.id }.id)
-        store.saveRecipe(first.copy(name = "Edited"), ingredients.map { it.copy(gramsUsed = 200.0) })
+        store.saveRecipe(first.copy(name = "Edited", createdAt = 9999L), ingredients.map { it.copy(gramsUsed = 200.0) })
         val failed = runCatching {
             store.saveRecipe(first.copy(name = "Invalid"), ingredients.map { it.copy(foodItemId = 999999L) })
         }
@@ -112,10 +113,39 @@ class TargetedRoomPersistenceInstrumentedTest {
         closeDatabase()
         database = openDatabase()
         assertEquals(setOf("Edited", "Second"), database.dao().observeRecipes().first().map { it.name }.toSet())
+        assertEquals(1234L, database.dao().observeRecipes().first().single { it.id == first.id }.createdAt)
         val savedIngredients = database.dao().observeRecipeIngredients().first()
         assertEquals(2, savedIngredients.map { it.id }.toSet().size)
         assertEquals(100.0, savedIngredients.single { it.recipeId == second.id }.gramsUsed, 0.0)
         assertEquals(200.0, savedIngredients.single { it.recipeId == first.id }.gramsUsed, 0.0)
+    }
+
+    @Test
+    fun recipeSaveReturnsCurrentIngredientFoodsWithoutWaitingForObservation() = runTest {
+        val store = runtimeStore()
+        val food = store.saveFood(FoodItemStorage(name = "Oats", caloriesPer100g = 123.0))
+        val saved = store.saveRecipe(RecipeStorage(name = "Bowl"),
+            listOf(RecipeIngredientStorage(foodItemId = food.id, gramsUsed = 50.0)))
+        assertEquals(listOf(food), saved.foods)
+        assertEquals(food.id, saved.ingredients.single().foodItemId)
+        val updated = store.saveFood(food.copy(caloriesPer100g = 234.0))
+        val edited = store.saveRecipe(saved.recipe, saved.ingredients)
+        assertEquals(listOf(updated), edited.foods)
+    }
+
+    @Test
+    fun conflictingBarcodeEditPreservesBothProductsAndNewScanStillMatches() = runTest {
+        val store = runtimeStore()
+        val first = store.saveFood(FoodItemStorage(name = "First", barcode = "111"))
+        val second = store.saveFood(FoodItemStorage(name = "Second", barcode = "222"))
+        assertTrue(runCatching { store.saveFood(first.copy(barcode = "222", name = "Conflict")) }.isFailure)
+        val rescanned = store.saveFood(FoodItemStorage(name = "Scanned", barcode = "222"))
+        assertEquals(second.id, rescanned.id)
+        closeDatabase()
+        database = openDatabase()
+        assertEquals("First", database.dao().getFoodItem(first.id)?.name)
+        assertEquals("111", database.dao().getFoodItem(first.id)?.barcode)
+        assertEquals("Scanned", database.dao().getFoodItem(second.id)?.name)
     }
 
     @Test

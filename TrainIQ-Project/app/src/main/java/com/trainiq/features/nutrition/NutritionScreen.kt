@@ -1,4 +1,4 @@
-﻿@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.trainiq.features.nutrition
 
@@ -329,45 +329,38 @@ class NutritionViewModel @Inject constructor(
         reloads.update { it + 1 }
     }
 
-    fun analyze(path: String, context: String, capturedAtMillis: Long) {
-        viewModelScope.launch {
-            val ai = aiPreferences.value?.getOrNull() ?: AiPreferences(false, "")
-            if (!ai.enabled) {
-                ephemeral.update { it.copy(message = "AI staat uit in Instellingen. Voeding werkt nog steeds volledig met handmatige invoer.") }
-                return@launch
-            }
-            if (!ai.hasAnyReadyProvider()) {
-                ephemeral.update { it.copy(message = "Er is geen Gemini of OpenAI API-sleutel ingesteld. Voeg er een toe in Instellingen of blijf handmatig werken.") }
-                return@launch
-            }
-            ephemeral.update { it.copy(isAnalyzing = true, message = null) }
-            runCatching { analyzeMealUseCase(path, context, capturedAtMillis) }
-                .onSuccess {
-                    ephemeral.update { state ->
-                        state.copy(
-                            scanResult = it,
-                            message = when {
-                                it.source == MealAnalysisSource.LOCAL_FALLBACK ->
-                                    it.notes ?: "AI was tijdelijk niet beschikbaar. Probeer later opnieuw of voer de maaltijd handmatig in."
-                                it.items.isEmpty() ->
-                                    "Er kwam geen betrouwbare maaltijdinschatting terug. Probeer opnieuw of voer de maaltijd handmatig in."
-                                else -> it.notes ?: "Controleer de AI-inschatting voordat je die aan je maaltijd toevoegt."
-                            },
-                            isAnalyzing = false,
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    ephemeral.update {
-                        it.copy(
-                            message = error.toAiUserMessage("Maaltijdanalyse mislukt. Probeer opnieuw of ga verder met handmatige invoer."),
-                            isAnalyzing = false,
-                        )
-                    }
-                }
-        }
-    }
+    private val importedScan = LatestScanRequest(viewModelScope) { deleteScannerTemporaryImage(it) }
 
+    fun analyze(path: String, context: String, capturedAtMillis: Long) {
+        importedScan.cancel()
+        val ai = aiPreferences.value?.getOrNull() ?: AiPreferences(false, "")
+        if (!ai.hasAnyReadyProvider()) {
+            importedScan.discard(path)
+            ephemeral.update { it.copy(isAnalyzing = false, message = "Zet AI aan en voeg een Gemini of OpenAI API-sleutel toe in Instellingen, of voer de maaltijd handmatig in.") }
+            return
+        }
+        clearLastScanResultUseCase()
+        ephemeral.update { it.copy(isAnalyzing = true, scanResult = null, message = null) }
+        importedScan.start(
+            path = path,
+            analyze = { analyzeMealUseCase(path, context, capturedAtMillis) },
+            publish = { result ->
+                ephemeral.update { it.copy(
+                    scanResult = result,
+                    isAnalyzing = false,
+                    message = when {
+                        result.source == MealAnalysisSource.LOCAL_FALLBACK -> result.notes ?: "AI was tijdelijk niet beschikbaar. Probeer later opnieuw of voer de maaltijd handmatig in."
+                        result.items.isEmpty() -> "Er kwam geen betrouwbare maaltijdinschatting terug. Probeer opnieuw of voer de maaltijd handmatig in."
+                        else -> result.notes ?: "Controleer de AI-inschatting voordat je die aan je maaltijd toevoegt."
+                    },
+                ) }
+            },
+            fail = { error -> ephemeral.update { it.copy(
+                isAnalyzing = false,
+                message = error.toAiUserMessage("Maaltijdanalyse mislukt. Probeer opnieuw of ga verder met handmatige invoer."),
+            ) } },
+        )
+    }
     fun saveFood(
         id: Long?,
         name: String,
@@ -526,11 +519,16 @@ class NutritionViewModel @Inject constructor(
     }
 
     fun setScanResult(result: MealAnalysisResult?) {
-        ephemeral.update { it.copy(scanResult = result) }
+        importedScan.cancel()
+        ephemeral.update { it.copy(scanResult = result, isAnalyzing = false) }
         if (result == null) clearLastScanResultUseCase()
     }
 
     fun setScanTarget(target: ScanTarget) {
+        if (target != ephemeral.value.scanTarget) {
+            importedScan.cancel()
+            ephemeral.update { it.copy(isAnalyzing = false) }
+        }
         ephemeral.update { it.copy(scanTarget = target) }
     }
 
@@ -709,14 +707,17 @@ fun NutritionScreen(
     val editableAiItems = rememberSaveable(saver = EditableAiItemsSaver) { mutableStateListOf<EditableAiItem>() }
     val photoImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        val path = copyScannerImageFromUri(context, uri)
-        if (path == null) {
-            onSetMessage("Foto importeren mislukt. Kies een duidelijke JPG of PNG.")
-            return@rememberLauncherForActivityResult
-        }
         val activeContext = if (aiResultTarget == NutritionAiResultTarget.RecipeDraft) recipeAiContext else aiContext
-        onAnalyzeImportedPhoto(path, activeContext, System.currentTimeMillis())
-        selectedTab = 2
+        coroutineScope.launch {
+            importScannerImage(
+                copy = { copyScannerImageFromUri(context, uri) },
+                consume = { path ->
+                    onAnalyzeImportedPhoto(path, activeContext, System.currentTimeMillis())
+                    selectedTab = 2
+                },
+                failed = { onSetMessage("Foto importeren mislukt. Kies een duidelijke JPG of PNG.") },
+            )
+        }
     }
     var aiItemErrors by remember { mutableStateOf<Map<Int, AiItemFieldErrors>>(emptyMap()) }
     var aiSaveProgress by remember { mutableStateOf(startAiBatchSaveProgress(0)) }
@@ -1163,7 +1164,7 @@ fun NutritionScreen(
                                         val current = mealDraft[index]
                                         if (parsed != null && parsed > 0.0) {
                                             mealDraft[index] = current.copy(
-                                                request = current.request.copy(gramsUsed = parsed),
+                                                request = current.request.withGrams(parsed),
                                                 gramsText = grams,
                                             )
                                         } else {
@@ -3454,7 +3455,7 @@ private fun List<EditableMealEntryRequest>.toMealEntryRequestsOrNull(): List<Mea
         val grams = entry.gramsText.toNutritionNumberOrNull(max = 100_000.0)
             ?.takeIf { it > 0.0 }
             ?: return null
-        entry.request.copy(gramsUsed = grams)
+        entry.request.withGrams(grams)
     }
 
 private fun AiBatchItem.toSnapshotMealEntry(): MealEntryRequest {
@@ -3547,15 +3548,6 @@ private fun LoggedMealItemType.toMealEntryType(): MealEntryType = when (this) {
     LoggedMealItemType.RECIPE -> MealEntryType.RECIPE
     LoggedMealItemType.SNAPSHOT -> MealEntryType.SNAPSHOT
 }
-
-private fun LoggedMealItem.toMealEntrySnapshot(): MealEntrySnapshot =
-    MealEntrySnapshot(
-        name = name,
-        calories = nutritionSnapshot.calories,
-        protein = nutritionSnapshot.protein,
-        carbs = nutritionSnapshot.carbs,
-        fat = nutritionSnapshot.fat,
-    )
 
 internal fun nutritionEnergyProgressFraction(calories: Double, energyBalance: EnergyBalanceSnapshot?): Float {
     val target = energyBalance?.caloriesOut?.takeIf { it > 0 } ?: return 0f

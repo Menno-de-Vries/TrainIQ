@@ -47,6 +47,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -427,14 +429,17 @@ internal fun CameraScannerScreen(
         hasPermission = it
         restorableState = restorableState.copy(permissionDenied = !it)
     }
+    val imageImportScope = rememberCoroutineScope()
     val imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         restorableState = restorableState.copy(cameraError = null)
-        copyScannerImageFromUri(context, uri)
-            ?.let(onAnalyze)
-            ?: run {
-                restorableState = restorableState.copy(cameraError = "Foto importeren mislukt. Kies een duidelijke JPG of PNG.")
-            }
+        imageImportScope.launch {
+            importScannerImage(
+                copy = { copyScannerImageFromUri(context, uri) },
+                consume = onAnalyze,
+                failed = { restorableState = restorableState.copy(cameraError = "Foto importeren mislukt. Kies een duidelijke JPG of PNG.") },
+            )
+        }
     }
 
     val controller = remember(context, scannerMode, bindCameraPreview) {

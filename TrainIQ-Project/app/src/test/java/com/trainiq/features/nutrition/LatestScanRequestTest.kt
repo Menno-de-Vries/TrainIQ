@@ -14,6 +14,19 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class LatestScanRequestTest {
+    @Test fun rejectingAnImportWithoutAProviderReleasesItAndCancelsPreviousAnalysis() = runTest {
+        val released = mutableListOf<String>()
+        val gate = CompletableDeferred<String>()
+        val request = LatestScanRequest(backgroundScope) { released.add(it) }
+        request.start("previous", { withContext(NonCancellable) { gate.await() } },
+            { error("Rejected scan must not publish") }, { error("Unexpected feedback") })
+        request.discard("disabled-provider-import")
+        gate.complete("late result")
+        runCurrent()
+        assertEquals(setOf("previous", "disabled-provider-import"), released.toSet())
+        assertEquals(2, released.size)
+    }
+
     @Test fun ownerCancellationDoesNotPublishAProvidersLateFailure() = runTest {
         val owner = Job()
         val released = mutableListOf<String>()

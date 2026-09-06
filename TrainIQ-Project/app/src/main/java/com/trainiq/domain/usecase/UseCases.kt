@@ -151,12 +151,6 @@ class StartWorkoutSessionUseCase @Inject constructor(private val repository: Wor
             error("Voeg eerst oefeningen toe aan deze sessie voordat je start.")
         }
         val suggestions = repository.getProgressionSuggestions(dayId)
-        val suggestionDraftsByExercise = suggestions
-            .mapNotNull { suggestion ->
-                val draft = suggestion.toInitialDraft() ?: return@mapNotNull null
-                suggestion.exerciseId to draft
-            }
-            .toMap()
         val planDrafts = workout.exercises
             .mapNotNull { plan ->
                 val draft = ActiveWorkoutSetDraft(
@@ -171,9 +165,12 @@ class StartWorkoutSessionUseCase @Inject constructor(private val repository: Wor
                 plan.id to draft
             }
             .toMap()
-        val suggestionDraftsByPlan = suggestionDraftsByExercise.mapKeys { (exerciseId, _) ->
-            workout.exercises.firstOrNull { it.exercise.id == exerciseId }?.id ?: exerciseId
-        }
+        val suggestionDraftsByPlan = workout.exercises.mapNotNull { plan ->
+            val matching = suggestions.filter { it.exerciseId == plan.exercise.id }
+            val suggestion = matching.firstOrNull { it.suggestedReps == plan.repRange } ?: matching.firstOrNull()
+            val draft = suggestion?.toInitialDraft() ?: return@mapNotNull null
+            plan.id to draft.copy(setType = plan.setType)
+        }.toMap()
         val session = repository.getOrStartActiveWorkoutSession(
             dayId = dayId,
             initialDrafts = planDrafts + suggestionDraftsByPlan,
