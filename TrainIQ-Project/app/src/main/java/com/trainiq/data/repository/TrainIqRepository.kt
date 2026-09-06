@@ -99,6 +99,8 @@ import com.trainiq.domain.model.rounded
 import com.trainiq.domain.model.suggestMealType
 import com.trainiq.domain.repository.CoachRepository
 import com.trainiq.domain.repository.HomeRepository
+import com.trainiq.domain.repository.InvalidMealItemException
+import com.trainiq.domain.repository.UnavailableMealItemException
 import com.trainiq.domain.repository.MealEntryRequest
 import com.trainiq.domain.repository.MealEntryType
 import com.trainiq.domain.repository.NutritionRepository
@@ -177,7 +179,7 @@ class TrainIqDataCoordinator @Inject constructor(
     fun observeDashboard(): Flow<HomeDashboard> = combine(snapshotState, _cachedSteps) { snapshot, steps ->
         val activeRoutine = buildActiveRoutine(snapshot)
         val nextWorkout = activeRoutine?.days?.minByOrNull { it.orderIndex }
-        val todaysMeals = snapshot.meals.filter { it.timestamp >= todayEpochMillis() }
+        val todaysMeals = snapshot.meals.filter { it.timestamp.isOnActivityDate() }
         val todaysNutrition = todaysMeals.fold(NutritionFacts.Zero) { acc, meal -> acc + meal.totalNutrition }
         val profile = snapshot.profile
         val todaysWorkoutCalories = snapshot.sessions
@@ -397,11 +399,13 @@ class TrainIqDataCoordinator @Inject constructor(
     }
 
     suspend fun undoWorkoutLogEvent(eventId: Long): ActiveWorkoutSession? {
-        val updated = runtimeStore.state.value.undoWorkoutSetEvent(
+        val current = runtimeStore.state.value
+        val updated = current.undoWorkoutSetEvent(
             eventId = eventId,
             now = System.currentTimeMillis(),
         )
         val active = updated.activeWorkoutSession ?: return null
+        if (updated === current) return active.toDomain()
         val undoEvent = updated.workoutLogEvents.lastOrNull {
             it.type == WorkoutLogEventType.UNDO_SET && it.targetEventId == eventId
         } ?: return active.toDomain()
@@ -1219,7 +1223,7 @@ class TrainIqDataCoordinator @Inject constructor(
             foods = snapshot.foods,
             recipes = snapshot.recipes,
         )
-        require(mealItems.isNotEmpty()) { "Deze maaltijd bevat geen beschikbare producten of recepten meer." }
+        if (mealItems.isEmpty()) throw InvalidMealItemException()
         runtimeStore.saveMeal(meal = mealStorage, items = mealItems)
         scannedMealResult.value = null
         return mealId
@@ -1568,7 +1572,7 @@ class TrainIqDataCoordinator @Inject constructor(
     }
 
     private fun buildNutritionOverview(snapshot: RepositorySnapshot, steps: Int = 0): NutritionOverview {
-        val todaysMeals = snapshot.meals.filter { it.timestamp >= todayEpochMillis() }.sortedByDescending { it.timestamp }
+        val todaysMeals = snapshot.meals.filter { it.timestamp.isOnActivityDate() }.sortedByDescending { it.timestamp }
         val totals = todaysMeals.fold(NutritionFacts.Zero) { acc, meal -> acc + meal.totalNutrition }
         val todaysMealsByType = MealType.entries.associateWith { mealType ->
             todaysMeals.filter { it.mealType == mealType }
@@ -1618,7 +1622,7 @@ class TrainIqDataCoordinator @Inject constructor(
             return "Maak een actieve routine zodat TrainIQ je volgende workout kan plannen."
         }
         val todaysProtein = snapshot.meals
-            .filter { it.timestamp >= todayEpochMillis() }
+            .filter { it.timestamp.isOnActivityDate() }
             .sumOf { it.totalNutrition.protein }
         val proteinGap = profile.proteinTarget - todaysProtein.toInt()
         val todaysWorkoutCalories = snapshot.sessions
@@ -1632,24 +1636,16 @@ class TrainIqDataCoordinator @Inject constructor(
     }
 
     private fun calculateAdherence(snapshot: RepositorySnapshot): Int {
-        val today = todayEpochMillis()
-        val last7Days = (0..6).map { today - (it * 86_400_000L) }.toSet()
-        val workoutDays = snapshot.sessions.filter { it.completed && it.status == "COMPLETED" }.map { normalizeToDay(it.date) }.toSet()
-        val mealDays = snapshot.meals.map { normalizeToDay(it.timestamp) }.toSet()
-        val activeDays = last7Days.count { it in workoutDays || it in mealDays }
-        return (activeDays / 7.0 * 100).toInt()
+        return activityAdherence(
+            snapshot.sessions.filter { it.completed && it.status == "COMPLETED" }.map { it.date } +
+                snapshot.meals.map { it.timestamp },
+        )
     }
 
     private fun computeStreak(sessions: List<WorkoutSessionEntity>, meals: List<LoggedMeal>): Int {
-        val activeDays = (sessions.filter { it.completed && it.status == "COMPLETED" }.map { normalizeToDay(it.date) } + meals.map { normalizeToDay(it.timestamp) }).toSet()
-        if (activeDays.isEmpty()) return 0
-        var streak = 0
-        var day = todayEpochMillis()
-        while (day in activeDays) {
-            streak += 1
-            day -= 86_400_000L
-        }
-        return streak
+        return activityStreak(
+            sessions.filter { it.completed && it.status == "COMPLETED" }.map { it.date } + meals.map { it.timestamp },
+        )
     }
 
     private fun normalizeToDay(timestamp: Long): Long =
@@ -1833,6 +1829,9 @@ internal fun TrainIqStorageState.undoWorkoutSetEvent(eventId: Long, now: Long): 
     if ((event.undoExpiresAt ?: Long.MIN_VALUE) < now) return this
     if (workoutLogEvents.any { it.type == WorkoutLogEventType.UNDO_SET && it.targetEventId == eventId }) return this
     val active = activeWorkoutSession ?: return this
+    if (event.sessionId != active.sessionId || event.dayId != active.dayId) return this
+    val targetSet = event.set ?: return this
+    if (active.loggedSets.none { it.id == targetSet.id }) return this
     val undoEvent = WorkoutLogEventStorage(
         id = (workoutLogEvents.maxOfOrNull { it.id } ?: 0L) + 1L,
         dayId = event.dayId,
@@ -1841,12 +1840,13 @@ internal fun TrainIqStorageState.undoWorkoutSetEvent(eventId: Long, now: Long): 
         syncStatus = WorkoutSyncStatus.PENDING,
         createdAt = now,
         targetEventId = eventId,
+        set = targetSet,
         previousLoggedSets = active.loggedSets,
     )
     return copy(
         activeWorkoutSession = active.copy(
             updatedAt = now,
-            loggedSets = event.previousLoggedSets,
+            loggedSets = active.loggedSets.filterNot { it.id == targetSet.id },
         ),
         workoutLogEvents = workoutLogEvents + undoEvent,
     )
@@ -2594,7 +2594,7 @@ internal fun buildMealItemSnapshots(
     return requests.map { request ->
         when (request.itemType) {
             MealEntryType.FOOD -> {
-                val food = foodsById[request.referenceId] ?: error("Deze maaltijd bevat een verwijderd product of recept.")
+                val food = foodsById[request.referenceId] ?: throw UnavailableMealItemException()
                 val servingCount = request.servingCount.coerceAtLeast(1)
                 val nutrition = food.nutritionForGrams(request.gramsUsed * servingCount)
                 LoggedMealItemStorage(
@@ -2614,9 +2614,9 @@ internal fun buildMealItemSnapshots(
             }
 
             MealEntryType.RECIPE -> {
-                val recipe = recipesById[request.referenceId] ?: error("Deze maaltijd bevat een verwijderd product of recept.")
+                val recipe = recipesById[request.referenceId] ?: throw UnavailableMealItemException()
                 val baseGrams = recipe.totalCookedGrams ?: recipe.ingredients.sumOf { it.gramsUsed }
-                if (baseGrams <= 0.0 || !baseGrams.isFinite()) error("Deze maaltijd bevat een verwijderd product of recept.")
+                if (baseGrams <= 0.0 || !baseGrams.isFinite()) throw InvalidMealItemException()
                 val servingCount = request.servingCount.coerceAtLeast(1)
                 val ratio = request.gramsUsed / baseGrams
                 val nutrition = NutritionFacts(
@@ -2642,7 +2642,7 @@ internal fun buildMealItemSnapshots(
             }
 
             MealEntryType.SNAPSHOT -> {
-                val snapshot = request.snapshot ?: error("Deze maaltijd bevat een onvolledig tijdelijk product.")
+                val snapshot = request.snapshot ?: throw InvalidMealItemException()
                 val servingCount = request.servingCount.coerceAtLeast(1)
                 val nutrition = NutritionFacts(
                     calories = snapshot.calories * servingCount,

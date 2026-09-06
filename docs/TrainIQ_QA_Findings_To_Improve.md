@@ -1,5 +1,20 @@
 # TrainIQ QA Findings To Improve
 
+## 2026-09-06 Fresh five-finding audit after PRs #16 and #17
+
+Base: `acaf79086d2a9aaa26688b3d313b114ce032a245`; branch: `codex/five-fresh-flow-fixes`.
+Inspected onboarding/navigation, Home, workouts/library/history, nutrition/scanning, Progress, Coach, profile/settings and their state, repository and Room paths. The local emulator walkthrough covered initial setup and all six top-level destinations. These five findings are distinct from the preceding audit batches:
+
+| Finding | Existing behavior and repair | Regression evidence |
+| --- | --- | --- |
+| FRESH-001 | Undo restored a historical set list, dropping later logs/corrections. Remove only the target set in the matching session, including a targeted Room transaction. | Interleaving, correction, stale session, missing target, expiry/idempotence; database reopen. |
+| FRESH-002 | Daily nutrition included tomorrow's meals; fixed 24-hour arithmetic broke activity days across DST. Use local calendar dates for daily totals, streak and adherence. | Local midnight, Amsterdam spring/fall DST, future/old dates, duplicates and gaps. |
+| FRESH-003 | Malformed nonblank routine defaults silently became valid defaults. Reject invalid values and keep picker/custom/edit actions disabled with correction guidance. | Blank/default and numeric boundary tests; production Compose invalid-to-valid flows. |
+| FRESH-004 | Huge weight input could stall plate calculation before save validation. Validate preview input and bound plate arithmetic/allocation using the existing 1000 kg limit. | Huge/nonfinite/tiny inventory cases, normal breakdowns; active logger error and correction. |
+| FRESH-005 | Every meal-save exception blamed a deleted library item. Distinguish unavailable/incomplete items from storage failures, retain the draft for retry and propagate cancellation. | Typed repository failures; component failure/retry/cancellation and success callbacks. |
+
+Local build, full JVM suite (844 tests) and lint passed during implementation. Final-commit commands/results are recorded in the task PR. Runtime uses synthetic data on one isolated API 36 emulator at 360 x 640 dp and font scale 1.3. No physical performance, live AI/provider, Health Connect permission, TalkBack or release certification is claimed. No schema/dependency/service/permission changes or unrelated worktree cleanup. Blueprint alignment was not rescored.
+
 > Release scope update (2026-09-06): [itch.io release policy](../TrainIQ-Project/docs/release/itch-release-policy.md) supersedes the owner-approval and mandatory certification release gates below. LEGAL-001, PERF-001, A11Y-001, and AI-001 are retired for this personal itch.io project. Older BLOCKED/OPEN statements are historical or refer to optional certification/future Play submission, not current itch.io delivery. Preserve actual test results and technical findings; do not claim missing evidence passed.
 
 Audit date: 2026-05-09

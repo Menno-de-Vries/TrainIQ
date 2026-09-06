@@ -13,6 +13,23 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class WorkoutLogEventTest {
+    @Test fun undoOlderSetPreservesLaterSetsAndCorrectionsAndCannotCrossSessions() {
+        val first = ActiveWorkoutSetStorage(id = 1L, exerciseId = 3L, weight = 70.0, reps = 8)
+        val second = first.copy(id = 2L, weight = 80.0)
+        val third = first.copy(id = 3L, weight = 90.0)
+        var state = TrainIqStorageState(activeWorkoutSession = ActiveWorkoutSessionStorage(sessionId = 12L, dayId = 7L, loggedSets = listOf(first)))
+            .appendWorkoutSetEvent(7L, 12L, second, 1000L)
+            .appendWorkoutSetEvent(7L, 12L, third, 2000L)
+        val corrected = first.copy(weight = 75.0)
+        state = state.copy(activeWorkoutSession = state.activeWorkoutSession!!.copy(loggedSets = listOf(corrected, second, third)))
+        val undone = state.undoWorkoutSetEvent(1L, 3000L)
+        assertEquals(listOf(corrected, third), undone.activeWorkoutSession!!.loggedSets)
+        assertEquals(undone, undone.undoWorkoutSetEvent(1L, 3500L))
+        val otherSession = state.copy(activeWorkoutSession = state.activeWorkoutSession!!.copy(sessionId = 99L))
+        assertEquals(otherSession, otherSession.undoWorkoutSetEvent(1L, 3000L))
+        val deletedTarget = state.copy(activeWorkoutSession = state.activeWorkoutSession!!.copy(loggedSets = listOf(corrected, third)))
+        assertEquals(deletedTarget, deletedTarget.undoWorkoutSetEvent(1L, 3000L))
+    }
     @Test
     fun appendWorkoutSetEvent_withAddSetEvent_persistsPendingEventAndUpdatesActiveSession() {
         val active = ActiveWorkoutSessionStorage(sessionId = 12L, dayId = 7L, startedAt = 1_000L)

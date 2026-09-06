@@ -33,6 +33,16 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class TrainIqRepositoryTest {
+    @Test fun missingFoodAndRecipeUseTypedRecoverableFailure() {
+        listOf(MealEntryType.FOOD, MealEntryType.RECIPE).forEach { type ->
+            assertThrows(com.trainiq.domain.repository.UnavailableMealItemException::class.java) {
+                buildMealItemSnapshots(1L, 0L, listOf(MealEntryRequest(type, 99L, 100.0)), emptyList(), emptyList())
+            }
+        }
+        assertThrows(com.trainiq.domain.repository.InvalidMealItemException::class.java) {
+            buildMealItemSnapshots(1L, 0L, listOf(MealEntryRequest(MealEntryType.SNAPSHOT, 0L, 100.0)), emptyList(), emptyList())
+        }
+    }
     @Test
     fun foodPortionsRoundOnceAfterScalingAndKeepServingMetadata() {
         val food = FoodItem(1L, "Portie", caloriesPer100g = 124.0, proteinPer100g = 0.4,

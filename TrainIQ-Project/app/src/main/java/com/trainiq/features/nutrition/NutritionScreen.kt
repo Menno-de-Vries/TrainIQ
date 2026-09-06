@@ -450,15 +450,12 @@ class NutritionViewModel @Inject constructor(
         }
         ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits + NutritionSubmitKey.Meal, message = null) }
         viewModelScope.launch {
-            runCatching { saveMealUseCase(id, mealType, name.trim(), notes.trim(), items) }
-                .onSuccess {
-                    ephemeral.update { it.copy(message = "Maaltijd opgeslagen.") }
-                    onSaved()
-                }
-                .onFailure {
-                    ephemeral.update { it.copy(message = "Deze maaltijd bevat een verwijderd product of recept. Verwijder het item uit je concept en probeer opnieuw.") }
-                }
-            ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits - NutritionSubmitKey.Meal) }
+            performMealSave(
+                save = { saveMealUseCase(id, mealType, name.trim(), notes.trim(), items) },
+                onSaved = onSaved,
+                message = { text -> ephemeral.update { it.copy(message = text) } },
+                onFinished = { ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits - NutritionSubmitKey.Meal) } },
+            )
         }
     }
 

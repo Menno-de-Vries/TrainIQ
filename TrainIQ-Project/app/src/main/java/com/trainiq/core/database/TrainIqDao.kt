@@ -722,13 +722,13 @@ interface TrainIqDao {
     @Transaction
     suspend fun undoActiveWorkoutLogEvent(
         sessionId: Long,
-        restoredSets: List<ActiveWorkoutSetEntity>,
+        targetSetId: Long,
         undoEvent: WorkoutLogEventEntity,
         undoEventSets: List<WorkoutLogEventSetEntity>,
         updatedAt: Long,
     ) {
-        deleteActiveWorkoutSetsForSession(sessionId)
-        insertActiveWorkoutSets(restoredSets)
+        require(undoEvent.sessionId == sessionId)
+        deleteActiveWorkoutSet(sessionId = sessionId, setId = targetSetId)
         insertWorkoutLogEvents(listOf(undoEvent))
         insertWorkoutLogEventSets(undoEventSets)
         updateActiveWorkoutSessionUpdatedAt(sessionId = sessionId, updatedAt = updatedAt)
