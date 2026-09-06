@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import androidx.core.net.toUri
 import android.os.Build
 import android.util.Log
 import androidx.activity.result.contract.ActivityResultContracts
@@ -621,7 +622,7 @@ fun SettingsRoute(
         SettingsDocumentRequest(coroutineScope,
             read = { document ->
                 withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(Uri.parse(document))?.bufferedReader()?.use { reader ->
+                    context.contentResolver.openInputStream(document.toUri())?.bufferedReader()?.use { reader ->
                         readTrainIqImportJson(reader)
                     } ?: error("Kon importbestand niet openen.")
                 }
