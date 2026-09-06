@@ -558,7 +558,7 @@ class RoomTrainIqRuntimeStore @Inject constructor(
         mutex.withLock {
             dao.undoActiveWorkoutLogEvent(
                 sessionId = active.sessionId,
-                restoredSets = active.loggedSets.map { it.toActiveWorkoutSetEntity(sessionId = active.sessionId) },
+                targetSetId = requireNotNull(undoEvent.set).id,
                 undoEvent = undoEvent.toWorkoutLogEventEntity(),
                 undoEventSets = undoEvent.toWorkoutLogEventSetEntities(),
                 updatedAt = active.updatedAt,

@@ -1,5 +1,9 @@
 # TrainIQ Flow Audit Polish Progress
 
+## 2026-09-06 Fresh audit rerun
+
+Implemented the five new findings FRESH-001 through FRESH-005 documented in [the findings register](TrainIQ_QA_Findings_To_Improve.md): targeted workout undo, local activity dates, routine-input validation, bounded plate previews and recoverable meal-save errors. Task branch: `codex/five-fresh-flow-fixes`, from main `acaf79086d2a9aaa26688b3d313b114ce032a245`. The PR carries final-commit local verification and environment limits. Existing historical findings and unrelated worktrees remain preserved; no overall readiness or alignment score was re-certified.
+
 Updated date: 2026-05-12
 
 Source of truth: `docs/TrainIQ_QA_Findings_2026-05-12_Flow_Audit.md`

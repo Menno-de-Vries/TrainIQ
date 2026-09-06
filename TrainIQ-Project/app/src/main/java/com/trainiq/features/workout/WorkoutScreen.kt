@@ -409,7 +409,7 @@ private fun ScreenUiState<WorkoutUiContent>.workoutContentOrDefault(): WorkoutUi
         is ScreenUiState.Success -> content
     }
 
-private data class ExercisePlanInput(
+internal data class ExercisePlanInput(
     val targetSets: Int,
     val repRange: String,
     val restSeconds: Int,
@@ -3989,6 +3989,7 @@ internal fun ExercisePickerSheet(
     var defaultsExpanded by rememberSaveable { mutableStateOf(false) }
     val dismissThresholdPx = with(LocalDensity.current) { ExercisePickerHandleDismissThreshold.toPx() }
     val filteredExercises = remember(query, exercises) { filterPickerExercises(exercises, query) }
+    val validDefaults = parseExercisePlanInput(targetSets, repRange, restSeconds, targetWeightKg, targetRpe) != null
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -4136,6 +4137,9 @@ internal fun ExercisePickerSheet(
                             }
                         }
                     }
+                    if (showDefaults && !validDefaults) {
+                        item { Text(PlanValidationMessage, color = MaterialTheme.colorScheme.error) }
+                    }
                     if (allowCustomExercise) {
                         item {
                             TextButton(onClick = onCustomExercise, modifier = Modifier.fillMaxWidth()) {
@@ -4171,7 +4175,7 @@ internal fun ExercisePickerSheet(
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                 }
-                                TextButton(onClick = { onSelect(exercise) }) { Text(if (showDefaults) "Toevoegen" else "Vervangen") }
+                                TextButton(onClick = { onSelect(exercise) }, enabled = !showDefaults || validDefaults) { Text(if (showDefaults) "Toevoegen" else "Vervangen") }
                             }
                         }
                     }
@@ -4201,6 +4205,7 @@ internal fun CustomExerciseDialog(
     var exerciseName by rememberSaveable { mutableStateOf("") }
     var muscleGroup by rememberSaveable { mutableStateOf("") }
     var equipment by rememberSaveable { mutableStateOf("") }
+    val validDefaults = parseExercisePlanInput(targetSets, repRange, restSeconds, targetWeightKg, targetRpe) != null
     val scrollState = rememberScrollState()
 
     AlertDialog(
@@ -4216,6 +4221,7 @@ internal fun CustomExerciseDialog(
                     .verticalScroll(scrollState),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                if (!validDefaults) Text(PlanValidationMessage, color = MaterialTheme.colorScheme.error)
                 TapOnlyOutlinedTextField(exerciseName, { exerciseName = it }, label = { Text("Oefening") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
                 TapOnlyOutlinedTextField(muscleGroup, { muscleGroup = it }, label = { Text("Spiergroep") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
                 TapOnlyOutlinedTextField(equipment, { equipment = it }, label = { Text("Materiaal") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
@@ -4248,7 +4254,7 @@ internal fun CustomExerciseDialog(
         confirmButton = {
             Button(
                 onClick = { onConfirm(exerciseName, muscleGroup, equipment) },
-                enabled = exerciseName.isNotBlank() && muscleGroup.isNotBlank() && equipment.isNotBlank(),
+                enabled = exerciseName.isNotBlank() && muscleGroup.isNotBlank() && equipment.isNotBlank() && validDefaults,
             ) {
                 Text("Toevoegen")
             }
@@ -4258,7 +4264,7 @@ internal fun CustomExerciseDialog(
 }
 
 @Composable
-private fun ExercisePlanEditDialog(
+internal fun ExercisePlanEditDialog(
     plan: WorkoutExercisePlan,
     onConfirm: (String, String, String, String, String, SetType) -> Unit,
     onDismiss: () -> Unit,
@@ -4269,6 +4275,7 @@ private fun ExercisePlanEditDialog(
     var targetWeightKg by remember(plan.id) { mutableStateOf(plan.targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
     var targetRpe by remember(plan.id) { mutableStateOf(plan.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
     var setType by remember(plan.id) { mutableStateOf(plan.setType) }
+    val validInput = parseExercisePlanInput(targetSets, repRange, restSeconds, targetWeightKg, targetRpe) != null
     val scrollState = rememberScrollState()
 
     AlertDialog(
@@ -4293,6 +4300,7 @@ private fun ExercisePlanEditDialog(
                     TapOnlyOutlinedTextField(targetWeightKg, { targetWeightKg = it }, label = { Text("Kg") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f).bringIntoViewOnFocus())
                     TapOnlyOutlinedTextField(targetRpe, { targetRpe = it }, label = { Text("RPE") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f).bringIntoViewOnFocus())
                 }
+                if (!validInput) Text(PlanValidationMessage, color = MaterialTheme.colorScheme.error)
                 SetTypeSelector(
                     selectedType = setType,
                     onSelectedTypeChange = { setType = it },
@@ -4305,7 +4313,7 @@ private fun ExercisePlanEditDialog(
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(targetSets, repRange, restSeconds, targetWeightKg, targetRpe, setType) }) {
+            Button(onClick = { onConfirm(targetSets, repRange, restSeconds, targetWeightKg, targetRpe, setType) }, enabled = validInput) {
                 Text("Opslaan")
             }
         },
@@ -5958,7 +5966,7 @@ private fun ActiveExerciseCard(
         activeSetTargetCount = activeSetTargetCount,
         hasPendingCorrection = hasPendingCorrection,
     )
-    val targetWeight = draft.weight.toFloatOrNull() ?: suggestion?.suggestedWeightKg?.toFloat()
+    val targetWeight = platePreviewWeight(draft.weight, suggestion?.suggestedWeightKg)
     var activeInputIndex by rememberSaveable(plan.id) { mutableIntStateOf(-1) }
     val platePlan = remember(targetWeight) {
         targetWeight?.let { StrengthCalculator.calculatePlates(it) }.orEmpty()
@@ -7351,23 +7359,23 @@ internal fun validateSetInput(draft: SetInputDraft): SetLogValidationResult {
 private const val MaxTargetSets = 20
 private const val MaxReps = 100
 private const val MaxRestSeconds = 900
-private const val MaxWeightKg = 1000.0
-private const val PlanValidationMessage =
+private const val MaxWeightKg = StrengthCalculator.MaxWeightKg
+internal const val PlanValidationMessage =
     "Gebruik geldige waarden: sets 1-20, rust 0-900s, gewicht 0-1000kg en RPE 0-10."
 private const val RoutineSetValidationMessage =
     "Set niet opgeslagen. Gebruik reps 1-100, rust 0-900s, gewicht 0-1000kg en RPE 0-10."
 
-private fun parseExercisePlanInput(
+internal fun parseExercisePlanInput(
     targetSets: String,
     repRange: String,
     restSeconds: String,
     targetWeightKg: String,
     targetRpe: String,
 ): ExercisePlanInput? {
-    val parsedSets = targetSets.trim().takeIf { it.isNotBlank() }?.toIntOrNull() ?: 3
-    val parsedRest = restSeconds.trim().takeIf { it.isNotBlank() }?.toIntOrNull() ?: 90
-    val parsedWeight = targetWeightKg.normalizedDecimal().takeIf { it.isNotBlank() }?.toDoubleOrNull() ?: 0.0
-    val parsedRpe = targetRpe.normalizedDecimal().takeIf { it.isNotBlank() }?.toDoubleOrNull() ?: 0.0
+    val parsedSets = if (targetSets.isBlank()) 3 else targetSets.trim().toIntOrNull() ?: return null
+    val parsedRest = if (restSeconds.isBlank()) 90 else restSeconds.trim().toIntOrNull() ?: return null
+    val parsedWeight = if (targetWeightKg.isBlank()) 0.0 else targetWeightKg.normalizedDecimal().toDoubleOrNull() ?: return null
+    val parsedRpe = if (targetRpe.isBlank()) 0.0 else targetRpe.normalizedDecimal().toDoubleOrNull() ?: return null
     if (parsedSets !in 1..MaxTargetSets) return null
     if (parsedRest !in 0..MaxRestSeconds) return null
     if (parsedWeight !in 0.0..MaxWeightKg) return null

@@ -4,6 +4,16 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class StrengthCalculatorTest {
+    @Test(timeout = 1000) fun platePreviewRejectsUnboundedInputsAndInvalidInventories() {
+        listOf(Float.POSITIVE_INFINITY, Float.NaN, Float.MAX_VALUE, 1001f).forEach {
+            assertEquals(emptyList<Float>(), StrengthCalculator.calculatePlates(it))
+        }
+        assertEquals(listOf(20f, 20f), StrengthCalculator.calculatePlates(100f, availablePlates = listOf(0f, -5f, Float.NaN, Float.POSITIVE_INFINITY, 20f)))
+        assertEquals(emptyList<Float>(), StrengthCalculator.calculatePlates(100f, availablePlates = listOf(Float.MIN_VALUE)))
+        assertEquals(emptyList<Float>(), StrengthCalculator.calculatePlates(100f, barWeight = Float.NaN))
+        assertEquals(listOf(20f, 10f, 1.25f), StrengthCalculator.calculatePlates(82.5f))
+        assertEquals(490f, StrengthCalculator.calculatePlates(1000f).sum(), 0f)
+    }
 
     @Test
     fun estimateOneRepMax_withBrzyckiRange_usesBrzyckiFormula() {

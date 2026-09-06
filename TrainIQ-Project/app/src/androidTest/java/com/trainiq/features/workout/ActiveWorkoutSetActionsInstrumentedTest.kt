@@ -2,19 +2,31 @@ package com.trainiq.features.workout
 
 import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.trainiq.MainActivity
+import com.trainiq.core.datastore.OnboardingPreferences
+import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.database.ActiveWorkoutSessionEntity
 import com.trainiq.core.database.ActiveWorkoutSetEntity
 import com.trainiq.core.database.ExerciseEntity
@@ -46,6 +58,9 @@ class ActiveWorkoutSetActionsInstrumentedTest {
     @Before
     fun seedActiveWorkout() = runBlocking {
         context = ApplicationProvider.getApplicationContext()
+        UserPreferencesRepository(context).saveOnboardingPreferences(
+            OnboardingPreferences(completed = true, guidedTourCompleted = true),
+        )
         database = resetTrainIqAndroidTestDatabase(context)
         val dao = database.dao()
         val now = System.currentTimeMillis()
@@ -114,33 +129,48 @@ class ActiveWorkoutSetActionsInstrumentedTest {
     @Test
     fun loggedSetCanEnterCorrectionModeAndBeDeletedFromActiveWorkout() {
         ActivityScenario.launch(MainActivity::class.java).use {
-            compose.waitForText("Training")
-            compose.onNodeWithText("Training").performClick()
+            val trainingNavigation = (hasContentDescription("Training") or hasText("Training")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(trainingNavigation).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(trainingNavigation).performClick()
             compose.waitForText("QA Upper")
             compose.onNodeWithText("Training starten").performClick()
             compose.waitForText("Actieve training")
 
-            compose.waitForContentDescription("Set 1 type Normaal, wijzig naar Warm-up")
-            compose.onNodeWithContentDescription("Set 1 type Normaal, wijzig naar Warm-up")
+            compose.waitForText("N")
+            compose.onNodeWithText("N")
                 .performScrollTo()
-                .performClick()
-            compose.waitForText("Set 1 - Warm-up")
+            compose.onNodeWithText("N").performSemanticsAction(SemanticsActions.OnClick) { it() }
+            compose.waitForText("Warm-up")
+            compose.onNodeWithText("Warm-up").performClick()
+            compose.waitForText("W")
 
             compose.onNodeWithContentDescription("Gelogde set corrigeren")
                 .performScrollTo()
-                .performClick()
+            compose.onNodeWithContentDescription("Gelogde set corrigeren")
+                .performSemanticsAction(SemanticsActions.OnClick) { it() }
             compose.waitForText("Wijzig loggen")
 
-            compose.onNodeWithContentDescription("Gewicht, kg")
+            metricInput("Kg, kg")
+                .performScrollTo()
+                .performTextReplacement("9999999999999999999999999999999999999999")
+            compose.onNodeWithText("Wijzig loggen").performScrollTo()
+            compose.onNodeWithText("Wijzig loggen").performSemanticsAction(SemanticsActions.OnClick) { it() }
+            compose.onNodeWithContentDescription("Kg, kg").assert(
+                SemanticsMatcher.expectValue(SemanticsProperties.Error, "Voer een gewicht tussen 0 en 1000 kg in."),
+            )
+            assertEquals(80.0, readActiveWorkoutSet().weight, 0.0)
+
+            metricInput("Kg, kg")
                 .performScrollTo()
                 .performTextReplacement("82.5")
-            compose.onNodeWithContentDescription("Reps")
+            metricInput("Herh.")
                 .performScrollTo()
                 .performTextReplacement("6")
-            compose.onNodeWithContentDescription("RPE")
+            metricInput("RPE")
                 .performScrollTo()
                 .performTextReplacement("8.5")
-            compose.onNodeWithText("Wijzig loggen").performScrollTo().performClick()
+            compose.onNodeWithText("Wijzig loggen").performScrollTo()
+            compose.onNodeWithText("Wijzig loggen").performSemanticsAction(SemanticsActions.OnClick) { it() }
 
             compose.waitForText("bijgewerkt")
             val updatedSet = readActiveWorkoutSet()
@@ -148,11 +178,12 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             assertEquals(82.5, updatedSet.weight, 0.0)
             assertEquals(6, updatedSet.reps)
             assertEquals(8.5, updatedSet.rpe, 0.0)
-            compose.waitForText("Set 1 - Warm-up")
+            compose.waitForText("W")
 
             compose.onNodeWithContentDescription("Set verwijderen")
                 .performScrollTo()
-                .performClick()
+            compose.onNodeWithContentDescription("Set verwijderen")
+                .performSemanticsAction(SemanticsActions.OnClick) { it() }
             compose.waitForText("Set verwijderen?")
             compose.onNodeWithText("Verwijderen").performClick()
             compose.waitForNoActiveWorkoutSets()
@@ -166,11 +197,10 @@ class ActiveWorkoutSetActionsInstrumentedTest {
         }
     }
 
-    private fun androidx.compose.ui.test.junit4.ComposeTestRule.waitForContentDescription(description: String) {
-        waitUntil(timeoutMillis = 30_000L) {
-            onAllNodesWithContentDescription(description).fetchSemanticsNodes().isNotEmpty()
-        }
-    }
+    private fun metricInput(description: String): SemanticsNodeInteraction = compose.onNode(
+        hasSetTextAction() and hasAnyAncestor(hasContentDescription(description)),
+        useUnmergedTree = true,
+    )
 
     private fun androidx.compose.ui.test.junit4.ComposeTestRule.waitForNoActiveWorkoutSets() {
         waitUntil(timeoutMillis = 30_000L) {

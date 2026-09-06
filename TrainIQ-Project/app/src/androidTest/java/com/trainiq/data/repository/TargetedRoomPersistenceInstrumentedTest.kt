@@ -1161,13 +1161,12 @@ class TargetedRoomPersistenceInstrumentedTest {
         dao.insertActiveWorkoutSets(
             listOf(
                 ActiveWorkoutSetEntity(sessionId = 50L, id = 70L, exerciseId = 20L, performedExerciseId = 60L, sourceWorkoutExerciseId = 30L, weight = 85.0, reps = 6, rpe = 9.0, setType = "WORKING", restSeconds = 120, orderIndex = 0, completed = true, loggedAt = 1_400L),
+                ActiveWorkoutSetEntity(sessionId = 50L, id = 71L, exerciseId = 20L, performedExerciseId = 60L, sourceWorkoutExerciseId = 30L, weight = 80.0, reps = 8, rpe = 8.0, setType = "WORKING", restSeconds = 120, orderIndex = 1, completed = true, loggedAt = 1_450L),
             ),
         )
         dao.undoActiveWorkoutLogEvent(
             sessionId = 50L,
-            restoredSets = listOf(
-                ActiveWorkoutSetEntity(sessionId = 50L, id = 71L, exerciseId = 20L, performedExerciseId = 60L, sourceWorkoutExerciseId = 30L, weight = 80.0, reps = 8, rpe = 8.0, setType = "WORKING", restSeconds = 120, orderIndex = 0, completed = true, loggedAt = 1_200L),
-            ),
+            targetSetId = 70L,
             undoEvent = WorkoutLogEventEntity(id = 81L, dayId = 10L, sessionId = 50L, type = "UNDO", syncStatus = "PENDING", createdAt = 1_500L, targetEventId = 80L),
             undoEventSets = listOf(
                 WorkoutLogEventSetEntity(eventId = 81L, snapshotRole = "RESTORED", snapshotIndex = 0, id = 71L, exerciseId = 20L, performedExerciseId = 60L, sourceWorkoutExerciseId = 30L, weight = 80.0, reps = 8, rpe = 8.0, setType = "WORKING", restSeconds = 120, orderIndex = 0, completed = true, loggedAt = 1_200L),
