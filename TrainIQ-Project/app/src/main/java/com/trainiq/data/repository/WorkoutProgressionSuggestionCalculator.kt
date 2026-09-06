@@ -52,7 +52,8 @@ class WorkoutProgressionSuggestionCalculator @Inject constructor() {
                 .take(2)
                 .takeIf { it.size == 2 }
                 ?.all { session ->
-                    session.sets.isNotEmpty() && session.sets.all { it.reps >= (targetRepsByExerciseId[plan.exercise.id] ?: 0) }
+                    val target = targetRepsByExerciseId[plan.exercise.id]
+                    target != null && session.sets.isNotEmpty() && session.sets.all { it.reps >= target }
                 }
                 ?: false
             val referenceWeight = lastSession.sets.maxOfOrNull { it.weight } ?: 0.0
@@ -139,7 +140,10 @@ private fun isProgressionSet(set: WorkoutSetEntity): Boolean =
 
 private fun SetType.isProgressionType(): Boolean = this == SetType.NORMAL || this == SetType.BACK_OFF
 
-private fun parseTargetRepTarget(repRange: String): Int =
-    repRange.substringAfter('-', repRange).trim().toIntOrNull()
-        ?: repRange.filter(Char::isDigit).toIntOrNull()
-        ?: 0
+private fun parseTargetRepTarget(repRange: String): Int? {
+    val match = Regex("^(\\d+)\\s*(?:[-–]\\s*(\\d+))?$").matchEntire(repRange.trim()) ?: return null
+    val lower = match.groupValues[1].toIntOrNull()?.takeIf { it > 0 } ?: return null
+    val upper = match.groupValues[2].takeIf { it.isNotEmpty() }?.toIntOrNull()
+    if (match.groupValues[2].isNotEmpty() && upper == null) return null
+    return (upper ?: lower).takeIf { it >= lower }
+}

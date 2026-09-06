@@ -2596,14 +2596,7 @@ internal fun buildMealItemSnapshots(
             MealEntryType.FOOD -> {
                 val food = foodsById[request.referenceId] ?: error("Deze maaltijd bevat een verwijderd product of recept.")
                 val servingCount = request.servingCount.coerceAtLeast(1)
-                val nutrition = food.nutritionForGrams(request.gramsUsed).let { base ->
-                    NutritionFacts(
-                        calories = base.calories * servingCount,
-                        protein = base.protein * servingCount,
-                        carbs = base.carbs * servingCount,
-                        fat = base.fat * servingCount,
-                    ).rounded()
-                }
+                val nutrition = food.nutritionForGrams(request.gramsUsed * servingCount)
                 LoggedMealItemStorage(
                     id = nextItemId++,
                     mealId = mealId,

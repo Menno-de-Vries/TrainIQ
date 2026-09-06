@@ -91,6 +91,35 @@ class WorkoutProgressionSuggestionCalculatorTest {
         assertEquals(100.4, suggestions.single().suggestedWeightKg, 0.0)
     }
 
+    @Test
+    fun unknownOrInvalidRepTargetsNeverCountAsAchievedForAnIncrease() {
+        listOf("AMRAP", "30 sec", "0", "12-8", "8/12", "999999999999").forEach { target ->
+            assertEquals(target, ReadinessLevel.MAINTAIN, suggestionForTarget(target).readinessSignal)
+        }
+    }
+
+    @Test
+    fun numericRangesUseTheUpperBoundIncludingTypographicDashes() {
+        listOf("5", "3-5", "3–5", "3 – 5").forEach { target ->
+            assertEquals(target, ReadinessLevel.INCREASE, suggestionForTarget(target).readinessSignal)
+        }
+        assertEquals(ReadinessLevel.MAINTAIN, suggestionForTarget("5-6").readinessSignal)
+    }
+
+    @Test
+    fun unknownTargetStillAllowsFatigueDeload() {
+        assertEquals(ReadinessLevel.DELOAD, suggestionForTarget("AMRAP", rpe = 10.0).readinessSignal)
+    }
+
+    private fun suggestionForTarget(target: String, rpe: Double = 7.0) = calculator.calculate(
+        day.copy(exercises = day.exercises.map { it.copy(repRange = target) }),
+        completedSessions(1_000L, 2_000L),
+        listOf(
+            completedSet(1L, 1L, 100.0, 5, rpe, 3),
+            completedSet(2L, 2L, 102.5, 5, rpe, 3),
+        ),
+    ).single()
+
     private fun completedSessions(vararg dates: Long): List<WorkoutSessionEntity> =
         dates.mapIndexed { index, date ->
             WorkoutSessionEntity(

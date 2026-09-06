@@ -5,6 +5,20 @@ import org.junit.Test
 
 class ExercisePickerTextTest {
     @Test
+    fun searchMatchesDisplayedDutchAndOriginalMetadataWithoutChangingOrder() {
+        val bench = com.trainiq.domain.model.Exercise(1L, "Bench Press", "Chest", "Barbell")
+        val squat = com.trainiq.domain.model.Exercise(2L, "Squat", "Legs", "Barbell")
+        val rows = listOf(bench, squat)
+        assertEquals(listOf(bench), filterPickerExercises(rows, "  BORST halterstang "))
+        assertEquals(listOf(bench), filterPickerExercises(rows, "chest bench"))
+        assertEquals(rows, filterPickerExercises(rows, "halterstang"))
+        assertEquals(rows, filterPickerExercises(rows, "  "))
+        assertEquals(emptyList<Any>(), filterPickerExercises(rows, "borst dumbbell"))
+        assertEquals(true, matchesExerciseSearch(bench, exerciseSearchTerms("borst beginner"), "Beginner"))
+        assertEquals(false, matchesExerciseSearch(bench, exerciseSearchTerms("rug beginner"), "Beginner"))
+    }
+
+    @Test
     fun exercisePickerChromeUsesDutchLabels() {
         assertEquals("Oefening kiezen", exercisePickerTitle())
         assertEquals("Sluiten", exercisePickerCloseLabel())
