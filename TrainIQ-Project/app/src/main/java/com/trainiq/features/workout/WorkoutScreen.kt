@@ -2336,8 +2336,8 @@ private fun RoutineCard(
     var starterRestSeconds by rememberSaveable(routine.id) { mutableStateOf("90") }
     var starterTargetWeight by rememberSaveable(routine.id) { mutableStateOf("") }
     var starterTargetRpe by rememberSaveable(routine.id) { mutableStateOf("") }
-    var showStarterExercisePicker by remember(routine.id) { mutableStateOf(false) }
-    var showStarterCustomExerciseDialog by remember(routine.id) { mutableStateOf(false) }
+    var showStarterExercisePicker by rememberSaveable(routine.id) { mutableStateOf(false) }
+    var showStarterCustomExerciseDialog by rememberSaveable(routine.id) { mutableStateOf(false) }
     var showDeleteRoutineConfirm by remember(routine.id) { mutableStateOf(false) }
     var detailTab by rememberSaveable(routine.id) { mutableStateOf(initialRoutineDetailTab(routine)) }
     var editError by rememberSaveable(routine.id) { mutableStateOf<String?>(null) }
@@ -2713,8 +2713,8 @@ private fun WorkoutDayEditor(
     var restSeconds by rememberSaveable(day.id) { mutableStateOf("90") }
     var targetWeight by rememberSaveable(day.id) { mutableStateOf("") }
     var targetRpe by rememberSaveable(day.id) { mutableStateOf("") }
-    var showExercisePicker by remember(day.id) { mutableStateOf(false) }
-    var showCustomExerciseDialog by remember(day.id) { mutableStateOf(false) }
+    var showExercisePicker by rememberSaveable(day.id) { mutableStateOf(false) }
+    var showCustomExerciseDialog by rememberSaveable(day.id) { mutableStateOf(false) }
     var showRemoveDayConfirm by remember(day.id) { mutableStateOf(false) }
     var sessionMenuExpanded by remember(day.id) { mutableStateOf(false) }
     var pendingRemoveExercise by remember(day.id) { mutableStateOf<WorkoutExercisePlan?>(null) }
@@ -3966,7 +3966,7 @@ private fun ExercisePrescriptionChips(plan: WorkoutExercisePlan) {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun ExercisePickerSheet(
+internal fun ExercisePickerSheet(
     exercises: List<Exercise>,
     title: String = "Oefening toevoegen",
     showDefaults: Boolean = true,
@@ -3985,23 +3985,10 @@ private fun ExercisePickerSheet(
     onCustomExercise: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var query by remember { mutableStateOf("") }
-    var defaultsExpanded by remember { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var defaultsExpanded by rememberSaveable { mutableStateOf(false) }
     val dismissThresholdPx = with(LocalDensity.current) { ExercisePickerHandleDismissThreshold.toPx() }
-    val filteredExercises by remember(query, exercises) {
-        derivedStateOf {
-            val normalized = query.trim()
-            if (normalized.isBlank()) {
-                exercises
-            } else {
-                exercises.filter {
-                    it.name.contains(normalized, ignoreCase = true) ||
-                        it.muscleGroup.contains(normalized, ignoreCase = true) ||
-                        it.equipment.contains(normalized, ignoreCase = true)
-                }
-            }
-        }
-    }
+    val filteredExercises = remember(query, exercises) { filterPickerExercises(exercises, query) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -4156,6 +4143,9 @@ private fun ExercisePickerSheet(
                             }
                         }
                     }
+                    if (filteredExercises.isEmpty()) {
+                        item { Text(exerciseSearchEmptyText(), style = MaterialTheme.typography.bodyMedium) }
+                    }
                     items(filteredExercises, key = { it.id }) { exercise ->
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Row(
@@ -4194,7 +4184,7 @@ private fun ExercisePickerSheet(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun CustomExerciseDialog(
+internal fun CustomExerciseDialog(
     targetSets: String,
     repRange: String,
     restSeconds: String,
@@ -4208,9 +4198,9 @@ private fun CustomExerciseDialog(
     onConfirm: (String, String, String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var exerciseName by remember { mutableStateOf("") }
-    var muscleGroup by remember { mutableStateOf("") }
-    var equipment by remember { mutableStateOf("") }
+    var exerciseName by rememberSaveable { mutableStateOf("") }
+    var muscleGroup by rememberSaveable { mutableStateOf("") }
+    var equipment by rememberSaveable { mutableStateOf("") }
     val scrollState = rememberScrollState()
 
     AlertDialog(
@@ -5278,7 +5268,7 @@ fun ActiveWorkoutScreen(
     var showFinishConfirm by remember { mutableStateOf(false) }
     var showDiscardConfirm by remember { mutableStateOf(false) }
     var replacingActivePlan by remember { mutableStateOf<WorkoutExercisePlan?>(null) }
-    var creatingActiveReplacement by remember { mutableStateOf<WorkoutExercisePlan?>(null) }
+    var creatingActiveReplacementId by rememberSaveable(uiState.workout?.id) { mutableStateOf<Long?>(null) }
     var pendingActiveReplacement by remember { mutableStateOf<Pair<WorkoutExercisePlan, Exercise>?>(null) }
     var pendingRemoveActivePlan by remember { mutableStateOf<WorkoutExercisePlan?>(null) }
     val currentOnDismissMessage by rememberUpdatedState(onDismissMessage)
@@ -5330,12 +5320,12 @@ fun ActiveWorkoutScreen(
             allowCustomExercise = true,
             onCustomExercise = {
                 replacingActivePlan = null
-                creatingActiveReplacement = plan
+                creatingActiveReplacementId = plan.id
             },
             onDismiss = { replacingActivePlan = null },
         )
     }
-    creatingActiveReplacement?.let { plan ->
+    workoutExercises.firstOrNull { it.id == creatingActiveReplacementId }?.let { plan ->
         CustomExerciseDialog(
             targetSets = plan.targetSets.toString(),
             repRange = plan.repRange,
@@ -5348,10 +5338,10 @@ fun ActiveWorkoutScreen(
             onTargetWeightChange = {},
             onTargetRpeChange = {},
             onConfirm = { name, muscleGroup, equipment ->
-                creatingActiveReplacement = null
+                creatingActiveReplacementId = null
                 onReplaceActiveExerciseWithCustom(plan.id, name, muscleGroup, equipment)
             },
-            onDismiss = { creatingActiveReplacement = null },
+            onDismiss = { creatingActiveReplacementId = null },
         )
     }
 
@@ -6340,7 +6330,7 @@ private fun List<ExerciseLibraryItem>.filteredByExerciseLibraryQuery(
     query: String,
     filterKey: String,
 ): List<ExerciseLibraryItem> {
-    val normalized = query.trim().lowercase(Locale.getDefault())
+    val terms = exerciseSearchTerms(query)
     return asSequence()
         .filter { item ->
             when (filterKey) {
@@ -6351,15 +6341,7 @@ private fun List<ExerciseLibraryItem>.filteredByExerciseLibraryQuery(
             }
         }
         .filter { item ->
-            if (normalized.isBlank()) {
-                true
-            } else {
-                val exercise = item.exercise
-                exercise.name.lowercase(Locale.getDefault()).contains(normalized) ||
-                    exercise.muscleGroup.lowercase(Locale.getDefault()).contains(normalized) ||
-                    exercise.equipment.lowercase(Locale.getDefault()).contains(normalized) ||
-                    item.rankLabel.lowercase(Locale.getDefault()).contains(normalized)
-            }
+            matchesExerciseSearch(item.exercise, terms, item.rankLabel)
         }
         .sortedWith(
             when (filterKey) {

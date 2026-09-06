@@ -854,10 +854,10 @@ class WorkoutInputValidationTest {
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
         val activeReplacementPicker = workoutScreen
             .substringAfter("replacingActivePlan?.let { plan ->")
-            .substringBefore("creatingActiveReplacement?.let")
+            .substringBefore("workoutExercises.firstOrNull { it.id == creatingActiveReplacementId }")
 
         assertTrue(activeReplacementPicker.contains("allowCustomExercise = true"))
-        assertTrue(activeReplacementPicker.contains("creatingActiveReplacement = plan"))
+        assertTrue(activeReplacementPicker.contains("creatingActiveReplacementId = plan.id"))
     }
 
     @Test

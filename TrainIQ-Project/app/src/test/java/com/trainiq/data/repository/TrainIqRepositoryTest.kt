@@ -34,6 +34,29 @@ import org.junit.Test
 
 class TrainIqRepositoryTest {
     @Test
+    fun foodPortionsRoundOnceAfterScalingAndKeepServingMetadata() {
+        val food = FoodItem(1L, "Portie", caloriesPer100g = 124.0, proteinPer100g = 0.4,
+            carbsPer100g = 12.2, fatPer100g = 1.2, sourceType = FoodSourceType.MANUAL,
+            createdAt = 0L, updatedAt = 0L)
+        mapOf(
+            1 to NutritionFacts(18.6, 0.1, 1.8, 0.2),
+            3 to NutritionFacts(55.8, 0.2, 5.5, 0.5),
+            10 to NutritionFacts(186.0, 0.6, 18.3, 1.8),
+            0 to NutritionFacts(18.6, 0.1, 1.8, 0.2),
+        ).forEach { (count, expected) ->
+            val item = buildMealItemSnapshots(2L, 0L,
+                listOf(MealEntryRequest(MealEntryType.FOOD, 1L, 15.0, servingCount = count)),
+                listOf(food), emptyList()).single()
+            assertEquals(expected.calories, item.calories, 0.00001)
+            assertEquals(expected.protein, item.protein, 0.00001)
+            assertEquals(expected.carbs, item.carbs, 0.00001)
+            assertEquals(expected.fat, item.fat, 0.00001)
+            assertEquals(15.0, item.gramsUsed, 0.0)
+            assertEquals(count.coerceAtLeast(1), item.servingCount)
+        }
+    }
+
+    @Test
     fun generatedExerciseMatcher_prefersExistingExerciseId() {
         val exercises = listOf(
             ExerciseEntity(id = 3L, name = "Bench Press", muscleGroup = "Chest", equipment = "Barbell"),

@@ -251,14 +251,18 @@ class SettingsViewModel @Inject constructor(
     private val healthStatus: StateFlow<HealthConnectStatus> = _healthStatus.asStateFlow()
 
     private val _message = MutableStateFlow<UiMessage?>(null)
-    private val _importPreview = MutableStateFlow<AppDataImportPreview?>(null)
-    private val _isImporting = MutableStateFlow(false)
-    private var pendingImportJson: String? = null
+    private val importController = SettingsImportController(
+        scope = viewModelScope,
+        previewDocument = previewAppDataImportUseCase::invoke,
+        importDocument = importAppDataUseCase::invoke,
+        message = ::emitMessage,
+        onImported = ::refreshHealthConnectStatus,
+    )
     val uiState: StateFlow<SettingsUiState> = combine(
         externalInputs,
         healthStatus,
-        _importPreview,
-        _isImporting,
+        importController.preview,
+        importController.isImporting,
         _message,
     ) { externalInputs, health, importPreview, isImporting, message ->
         when {
@@ -528,47 +532,11 @@ class SettingsViewModel @Inject constructor(
 
     suspend fun exportAppDataJson(): String = exportAppDataUseCase()
 
-    fun previewImportJson(json: String) {
-        viewModelScope.launch {
-            runCatching {
-                previewAppDataImportUseCase(json)
-            }.onSuccess { preview ->
-                pendingImportJson = json
-                _importPreview.value = preview
-                emitMessage("Importbestand gecontroleerd. Bevestig om lokale data te vervangen.")
-            }.onFailure { throwable ->
-                pendingImportJson = null
-                _importPreview.value = null
-                emitMessage(throwable.message ?: "Importbestand kon niet worden gelezen.")
-            }
-        }
-    }
+    fun previewImportJson(json: String) = importController.preview(json)
 
-    fun confirmImport() {
-        val json = pendingImportJson ?: run {
-            emitMessage("Kies eerst een geldig importbestand.")
-            return
-        }
-        viewModelScope.launch {
-            _isImporting.value = true
-            runCatching {
-                importAppDataUseCase(json)
-            }.onSuccess { result ->
-                pendingImportJson = null
-                _importPreview.value = null
-                emitMessage("TrainIQ-data geimporteerd: ${result.importedRowCount} rijen hersteld.")
-                refreshHealthConnectStatus()
-            }.onFailure { throwable ->
-                emitMessage(throwable.message ?: "Data importeren mislukt. Probeer opnieuw.")
-            }
-            _isImporting.value = false
-        }
-    }
+    fun confirmImport() = importController.confirm()
 
-    fun dismissImportPreview() {
-        pendingImportJson = null
-        _importPreview.value = null
-    }
+    fun dismissImportPreview() = importController.dismiss()
 
     fun reopenOnboarding() {
         viewModelScope.launch {
