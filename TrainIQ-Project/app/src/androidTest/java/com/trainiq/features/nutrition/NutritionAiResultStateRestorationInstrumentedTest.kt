@@ -23,8 +23,35 @@ import com.trainiq.domain.model.MealType
 import com.trainiq.domain.model.NutritionFacts
 import com.trainiq.domain.model.NutritionOverview
 import org.junit.Test
+import org.junit.Assert.assertTrue
+import androidx.test.espresso.Espresso.pressBack
+import com.trainiq.domain.model.BarcodeProductLookupResult
 
 class NutritionAiResultStateRestorationInstrumentedTest {
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun closedBarcodeEditorCannotBeReopenedByLateLookupResult() = runComposeUiTest {
+        var state by mutableStateOf(syntheticUiState(scanResult = null))
+        var pendingBarcode by mutableStateOf<String?>("12345678")
+        var clears = 0
+        setContent {
+            SyntheticNutritionScreen(state, pendingBarcode, { pendingBarcode = null }, { clears++ })
+        }
+        onNodeWithContentDescription("Productnaam").performScrollTo().assertIsDisplayed()
+        pressBack()
+        waitForIdle()
+        assertTrue(clears > 0)
+        runOnIdle {
+            state = state.copy(barcodeLookupResult = BarcodeLookupUiResult(
+                BarcodeLookupTarget.FOOD_EDITOR,
+                BarcodeProductLookupResult("12345678", "Late product", 100.0, 10.0, 10.0, 2.0),
+                "12345678",
+            ))
+        }
+        onNodeWithContentDescription("Productnaam").assertDoesNotExist()
+        onNodeWithText("Late product").assertDoesNotExist()
+    }
+
     @OptIn(ExperimentalTestApi::class)
     @Test
     fun editedAiResultAndValidationErrorSurviveStateRestoration() = runComposeUiTest {
@@ -78,7 +105,12 @@ class NutritionAiResultStateRestorationInstrumentedTest {
 }
 
 @Composable
-private fun SyntheticNutritionScreen(uiState: NutritionUiState.Success) {
+private fun SyntheticNutritionScreen(
+    uiState: NutritionUiState.Success,
+    pendingBarcode: String? = null,
+    onBarcodeClear: () -> Unit = {},
+    onLookupClear: () -> Unit = {},
+) {
     TrainIqTheme(dynamicColor = false) {
         NutritionScreen(
             uiState = uiState,
@@ -96,6 +128,9 @@ private fun SyntheticNutritionScreen(uiState: NutritionUiState.Success) {
             onRetry = {},
             onAiScanner = {},
             onOpenBarcodeScanner = {},
+            pendingBarcode = pendingBarcode,
+            onBarcodeClear = onBarcodeClear,
+            onClearBarcodeLookupResult = onLookupClear,
         )
     }
 }

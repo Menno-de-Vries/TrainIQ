@@ -5,6 +5,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -17,6 +18,64 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class OnboardingCompletionTest {
+    @Test
+    fun loadFailureOffersRetryAndSuccessfulRetryRestoresStoredChoices() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        try {
+            var reads = 0
+            val vm = OnboardingViewModel({ flow {
+                if (++reads == 1) error("storage unavailable")
+                emit(OnboardingPreferences(goal = "Saved choice"))
+            } }, {}, {}, dispatcher)
+            runCurrent()
+            assertTrue(vm.uiState.value is OnboardingUiState.Error)
+            vm.retry()
+            runCurrent()
+            assertEquals("Saved choice", (vm.uiState.value as OnboardingUiState.Success).content.draft.goal)
+        } finally { Dispatchers.resetMain() }
+    }
+
+    @Test
+    fun draftAndCompletionFailuresPreserveChoicesAndCanBeRetried() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        try {
+            val stored = MutableStateFlow(OnboardingPreferences())
+            var failSave = true
+            var failComplete = true
+            var navigations = 0
+            val vm = OnboardingViewModel({ stored }, {
+                if (failSave) error("disk full")
+                stored.value = it
+            }, {
+                if (failComplete) error("disk full")
+                stored.value = it
+            }, dispatcher)
+            runCurrent()
+            vm.dispatch(OnboardingEvent.SelectGoal("Keep me"))
+            runCurrent()
+            assertEquals("Keep me", (vm.uiState.value as OnboardingUiState.Success).content.draft.goal)
+            assertTrue((vm.uiState.value as OnboardingUiState.Success).saveError != null)
+            failSave = false
+            vm.retry()
+            runCurrent()
+            assertEquals("Keep me", stored.value.goal)
+            assertEquals(null, (vm.uiState.value as OnboardingUiState.Success).saveError)
+            vm.complete { navigations++ }
+            runCurrent()
+            assertEquals(0, navigations)
+            assertFalse((vm.uiState.value as OnboardingUiState.Success).isCompleting)
+            assertTrue((vm.uiState.value as OnboardingUiState.Success).saveError != null)
+            failComplete = false
+            vm.complete { navigations++ }
+            runCurrent()
+            assertEquals(1, navigations)
+            assertTrue(stored.value.completed)
+            assertEquals("Keep me", stored.value.goal)
+        } finally { Dispatchers.resetMain() }
+    }
+
     @Test
     fun draftEventsKeepOrderAndCompletionIgnoresLateEventsAndDuplicateFinish() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)

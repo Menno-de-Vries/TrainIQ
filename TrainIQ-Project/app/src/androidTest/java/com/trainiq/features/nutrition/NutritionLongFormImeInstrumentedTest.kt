@@ -8,11 +8,18 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasClickAction
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.trainiq.MainActivity
+import com.trainiq.core.datastore.UserPreferencesRepository
+import com.trainiq.core.datastore.OnboardingPreferences
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
@@ -26,10 +33,17 @@ class NutritionLongFormImeInstrumentedTest {
 
     private lateinit var context: Context
     private var originalFontScale: String = "1.0"
+    private lateinit var preferences: UserPreferencesRepository
+    private lateinit var originalOnboarding: OnboardingPreferences
 
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
+        preferences = UserPreferencesRepository(context)
+        runBlocking {
+            originalOnboarding = preferences.getOnboardingPreferences()
+            preferences.saveOnboardingPreferences(OnboardingPreferences(completed = true, guidedTourCompleted = true))
+        }
         originalFontScale = shell("settings get system font_scale").trim().ifBlank { "1.0" }
         shell("settings put system font_scale 1.5")
     }
@@ -38,18 +52,21 @@ class NutritionLongFormImeInstrumentedTest {
     fun tearDown() {
         shell("settings put system font_scale $originalFontScale")
         shell("input keyevent 4")
+        runBlocking { preferences.saveOnboardingPreferences(originalOnboarding) }
     }
 
     @Test
     fun nutritionAddSheetKeepsLongAiContextVisibleAfterImeDismissAtFontScale15() {
         ActivityScenario.launch(MainActivity::class.java).use {
-            compose.waitForText("Voeding")
-            compose.onNodeWithText("Voeding").performClick()
+            val nutritionNavigation = (hasContentDescription("Voeding") or hasText("Voeding")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(nutritionNavigation).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(nutritionNavigation).performClick()
             compose.waitForText("Voedingsdag")
             compose.onNodeWithContentDescription("Toevoegen aan Ochtend").performClick()
             compose.waitForText("Toevoegen aan Ochtend")
 
             compose.onNodeWithText("AI-context voor foto")
+                .performScrollTo()
                 .performTextInput("kip rollade kaas wrap saus sla tomaat ui yoghurt knoflook kruiden lange context voor clipping en IME controle")
             shell("input keyevent 4")
             compose.waitForIdle()

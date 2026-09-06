@@ -85,6 +85,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import java.util.Locale
 
 enum class ProgressMeasurementField {
@@ -114,6 +115,8 @@ sealed interface ProgressUiState {
     data class Success(
         val overview: ProgressOverview,
         val message: UiMessage? = null,
+        val isSaving: Boolean = false,
+        val savedMeasurement: ValidatedProgressMeasurement? = null,
     ) : ProgressUiState
     data class Error(val message: String) : ProgressUiState
 }
@@ -196,24 +199,37 @@ class ProgressViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val _message = MutableStateFlow<UiMessage?>(null)
-    val uiState: StateFlow<ProgressUiState> = combine(overview, _message, ::progressUiState)
+    private data class SaveState(val isSaving: Boolean = false, val saved: ValidatedProgressMeasurement? = null)
+    private val saveState = MutableStateFlow(SaveState())
+    val uiState: StateFlow<ProgressUiState> = combine(overview, _message, saveState) { current, message, save ->
+        when (val state = progressUiState(current, message)) {
+            is ProgressUiState.Success -> state.copy(isSaving = save.isSaving, savedMeasurement = save.saved)
+            else -> state
+        }
+    }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ProgressUiState.Loading)
 
     fun addMeasurement(weight: String, bodyFat: String, muscleMass: String) {
+        if (saveState.value.isSaving) return
         when (val validation = validateProgressMeasurementInput(weight, bodyFat, muscleMass)) {
             is ProgressMeasurementValidationResult.Invalid -> {
                 emitMessage(validation.error.message)
                 return
             }
             is ProgressMeasurementValidationResult.Valid -> {
+                saveState.value = SaveState(isSaving = true)
                 viewModelScope.launch {
-                    runCatching {
+                    try {
                         val measurement = validation.measurement
                         addMeasurementUseCase(measurement.weight, measurement.bodyFat, measurement.muscleMass)
-                    }.onSuccess {
+                        saveState.value = SaveState(saved = measurement)
                         emitMessage("Meting opgeslagen.")
-                    }.onFailure {
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
                         emitMessage("Meting opslaan mislukt. Probeer opnieuw.")
+                    } finally {
+                        saveState.update { it.copy(isSaving = false) }
                     }
                 }
             }
@@ -325,8 +341,8 @@ fun ProgressScreen(
     val bodyFatError = validateProgressMeasurementField(bodyFat, bodyFatSpec).takeIf { bodyFatTouched }
     val muscleMassError = validateProgressMeasurementField(muscleMass, muscleMassSpec).takeIf { muscleMassTouched }
     val measurementValidation = validateProgressMeasurementInput(weight, bodyFat, muscleMass)
-    val canSaveMeasurement = measurementValidation is ProgressMeasurementValidationResult.Valid
     val successState = uiState as? ProgressUiState.Success
+    val canSaveMeasurement = measurementValidation is ProgressMeasurementValidationResult.Valid && successState?.isSaving != true
     val overview = successState?.overview
     val message = successState?.message
     val snackbarHostState = remember { SnackbarHostState() }
@@ -346,7 +362,9 @@ fun ProgressScreen(
 
     LaunchedEffect(message?.id) {
         val currentMessage = message
-        if (currentMessage?.text == "Meting opgeslagen.") {
+        if (currentMessage?.text == "Meting opgeslagen." &&
+            (measurementValidation as? ProgressMeasurementValidationResult.Valid)?.measurement == successState?.savedMeasurement
+        ) {
             weight = ""
             bodyFat = ""
             muscleMass = ""
@@ -495,7 +513,9 @@ fun ProgressScreen(
                         if (measurementValidation is ProgressMeasurementValidationResult.Valid) {
                             onAddMeasurement(weight, bodyFat, muscleMass)
                         }
-                    }, enabled = canSaveMeasurement, modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) { Text("Meting opslaan") }
+                    }, enabled = canSaveMeasurement, modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
+                        Text(if (successState?.isSaving == true) "Meting opslaan..." else "Meting opslaan")
+                    }
                 }
             }
             }

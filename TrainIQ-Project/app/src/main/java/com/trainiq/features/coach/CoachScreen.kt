@@ -88,6 +88,8 @@ import com.trainiq.domain.usecase.SaveUserProfileUseCase
 import com.trainiq.navigation.TrainIqWindowWidthClass
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.Serializable
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -170,6 +172,8 @@ class CoachViewModel @Inject constructor(
     private val savedGoalAdvice = reloadableObservation(reloads) { observeSavedGoalAdviceUseCase() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     private val ephemeral = MutableStateFlow(CoachEphemeralState())
+    private var adviceJob: Job? = null
+    private var adviceRevision = 0L
     private val profileDraft = savedStateHandle.getStateFlow(
         CoachProfileDraftKey,
         savedStateHandle.get<CoachProfileDraft>(CoachProfileDraftKey) ?: CoachProfileDraft(),
@@ -200,7 +204,7 @@ class CoachViewModel @Inject constructor(
             else -> CoachUiState.Success(
                 overview = currentOverview.getOrThrow(),
                 currentProfile = currentProfile.getOrThrow(),
-                goalAdvice = temp.goalAdvice ?: persistedAdvice.getOrThrow()?.advice,
+                goalAdvice = temp.goalAdvice ?: persistedAdvice.getOrThrow()?.advice?.takeUnless { draftState.isDirty },
                 savedGoalAdvice = persistedAdvice.getOrThrow(),
                 generatedReport = temp.generatedReport,
                 message = temp.message,
@@ -217,11 +221,16 @@ class CoachViewModel @Inject constructor(
     }
 
     fun updateProfileDraft(draft: CoachProfileDraft) {
+        if (draft == profileDraft.value) return
+        adviceRevision++
+        adviceJob?.cancel()
+        ephemeral.update { it.copy(goalAdvice = null, goalAdviceInput = null, isGeneratingAdvice = false) }
         savedStateHandle[CoachProfileDraftDirtyKey] = true
         savedStateHandle[CoachProfileDraftKey] = draft
     }
 
     fun generateGoalAdvice() {
+        if (ephemeral.value.isGeneratingAdvice) return
         val draft = profileDraft.value
         val input = when (
             val result = validateGoalAdviceInput(
@@ -242,18 +251,21 @@ class CoachViewModel @Inject constructor(
                 return
             }
         }
-        viewModelScope.launch {
-            ephemeral.update {
-                it.copy(
-                    goalAdvice = null,
-                    goalAdviceInput = null,
-                    isGeneratingAdvice = true,
-                    message = null,
-                )
-            }
+        val revision = ++adviceRevision
+        ephemeral.update {
+            it.copy(
+                goalAdvice = null,
+                goalAdviceInput = null,
+                isGeneratingAdvice = true,
+                message = null,
+            )
+        }
+        adviceJob = viewModelScope.launch {
             val result = runCatching {
                 generateGoalAdviceUseCase(input.height, input.weight, input.bodyFat, input.age, input.sex, input.activityLevel, input.goal, input.manualCalorieTarget)
             }
+            (result.exceptionOrNull() as? CancellationException)?.let { throw it }
+            if (revision != adviceRevision) return@launch
             ephemeral.update {
                 val advice = result.getOrNull()
                 it.copy(

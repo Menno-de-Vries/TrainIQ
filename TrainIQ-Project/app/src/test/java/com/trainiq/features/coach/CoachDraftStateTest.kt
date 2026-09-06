@@ -18,6 +18,9 @@ import com.trainiq.domain.usecase.ObserveUserProfileUseCase
 import com.trainiq.domain.usecase.SaveUserProfileUseCase
 import java.io.Serializable
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -181,6 +184,50 @@ class CoachDraftStateTest {
         assertEquals(disabledMessage, viewModel.success().message)
     }
 
+    @Test
+    fun editedInputInvalidatesDelayedAdviceAndNewRequestWins() = runTest {
+        val oldResponse = CompletableDeferred<Unit>()
+        val repository = FakeCoachRepository(profile = profile("Tester")).apply {
+            adviceForWeight = { weight ->
+                if (weight == 80.0) withContext(NonCancellable) { oldResponse.await() }
+                goalAdvice("Advice for $weight")
+            }
+        }
+        val vm = coachViewModel(repository, SavedStateHandle())
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
+        runCurrent()
+        vm.generateGoalAdvice()
+        vm.generateGoalAdvice()
+        runCurrent()
+        assertEquals(1, repository.adviceCalls)
+        vm.updateProfileDraft(vm.success().profileDraft.copy(weight = "85"))
+        runCurrent()
+        assertFalse(vm.success().isGeneratingAdvice)
+        assertEquals(null, vm.success().goalAdvice)
+        vm.generateGoalAdvice()
+        runCurrent()
+        assertEquals("Advice for 85.0", vm.success().goalAdvice?.summary)
+        oldResponse.complete(Unit)
+        runCurrent()
+        assertEquals("Advice for 85.0", vm.success().goalAdvice?.summary)
+        assertFalse(vm.success().isGeneratingAdvice)
+    }
+
+    @Test
+    fun failedAdviceRequestCanBeRetried() = runTest {
+        val repository = FakeCoachRepository(profile = profile("Tester"))
+        val vm = coachViewModel(repository, SavedStateHandle())
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
+        runCurrent()
+        vm.generateGoalAdvice()
+        runCurrent()
+        assertFalse(vm.success().isGeneratingAdvice)
+        repository.goalAdviceResult = goalAdvice("Recovered")
+        vm.generateGoalAdvice()
+        runCurrent()
+        assertEquals("Recovered", vm.success().goalAdvice?.summary)
+    }
+
     private fun coachViewModel(repository: CoachRepository, savedStateHandle: SavedStateHandle) = CoachViewModel(
         savedStateHandle = savedStateHandle,
         observeCoachUseCase = ObserveCoachUseCase(repository),
@@ -229,6 +276,8 @@ class CoachDraftStateTest {
         val saveStarted = CompletableDeferred<Unit>()
         var saveGate: CompletableDeferred<Unit>? = null
         var goalAdviceResult: GoalAdvice? = null
+        var adviceCalls = 0
+        var adviceForWeight: (suspend (Double) -> GoalAdvice)? = null
         var weeklyReportResult: WeeklyReportResult? = null
         private val savedAdvice = MutableStateFlow<SavedGoalAdvice?>(null)
         private val overview = MutableStateFlow(
@@ -251,7 +300,10 @@ class CoachDraftStateTest {
             activityLevel: String,
             goal: String,
             manualCalorieTarget: Int?,
-        ): GoalAdvice = goalAdviceResult ?: error("Not used")
+        ): GoalAdvice {
+            adviceCalls++
+            return adviceForWeight?.invoke(weight) ?: goalAdviceResult ?: error("Not used")
+        }
 
         override suspend fun generateWeeklyReport(): WeeklyReportResult =
             weeklyReportResult ?: error("Not used")

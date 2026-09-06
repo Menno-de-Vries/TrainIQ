@@ -537,29 +537,27 @@ class NutritionViewModel @Inject constructor(
         ephemeral.update { it.copy(scanTarget = target) }
     }
 
-    fun lookupBarcodeProduct(barcode: String, target: BarcodeLookupTarget) {
-        val cleanBarcode = barcode.filter(Char::isDigit)
-        if (cleanBarcode.isBlank()) return
-        viewModelScope.launch {
-            val product = runCatching { lookupBarcodeProductUseCase(cleanBarcode) }.getOrNull()
+    private val barcodeLookup = BarcodeLookupRequest(
+        scope = viewModelScope,
+        lookup = lookupBarcodeProductUseCase::invoke,
+        publish = { result ->
             ephemeral.update {
                 it.copy(
-                    barcodeLookupResult = BarcodeLookupUiResult(
-                        target = target,
-                        product = product,
-                        barcode = cleanBarcode,
-                    ),
-                    message = if (product == null) {
-                        "Barcode gevonden. Productdata ontbreekt; vul kcal en macro's handmatig in."
-                    } else {
-                        "${product.name} gevonden via barcode."
-                    },
+                    barcodeLookupResult = result,
+                    message = result.product?.let { product -> "${product.name} gevonden via barcode." }
+                        ?: "Barcode gevonden. Productdata ontbreekt; vul kcal en macro's handmatig in.",
                 )
             }
-        }
+        },
+    )
+
+    fun lookupBarcodeProduct(barcode: String, target: BarcodeLookupTarget) {
+        ephemeral.update { it.copy(barcodeLookupResult = null) }
+        barcodeLookup.start(barcode, target)
     }
 
     fun clearBarcodeLookupResult() {
+        barcodeLookup.clear()
         ephemeral.update { it.copy(barcodeLookupResult = null) }
     }
 }
@@ -748,6 +746,7 @@ fun NutritionScreen(
     }
 
     fun resetFoodEditorState() {
+        onClearBarcodeLookupResult()
         selectedFoodId = null
         hydratedFoodId = null
         foodName = ""
@@ -794,6 +793,7 @@ fun NutritionScreen(
     }
 
     fun resetQuickIngredientEditor() {
+        onClearBarcodeLookupResult()
         quickIngredientName = ""
         quickIngredientBarcode = ""
         quickIngredientKcal = ""
@@ -948,6 +948,7 @@ fun NutritionScreen(
         result.product?.let { product ->
             when (result.target) {
                 BarcodeLookupTarget.FOOD_EDITOR -> {
+                    if (!showFoodEditor || barcode.filter(Char::isDigit) != result.barcode) return@let
                     barcode = product.barcode
                     foodName = product.name
                     calories = formatNumber(product.caloriesPer100g)
@@ -960,6 +961,7 @@ fun NutritionScreen(
                     selectedTab = 4
                 }
                 BarcodeLookupTarget.RECIPE_DRAFT -> {
+                    if (!showIngredientEditor || quickIngredientBarcode.filter(Char::isDigit) != result.barcode) return@let
                     quickIngredientBarcode = product.barcode
                     quickIngredientName = product.name
                     quickIngredientKcal = formatNumber(product.caloriesPer100g)
