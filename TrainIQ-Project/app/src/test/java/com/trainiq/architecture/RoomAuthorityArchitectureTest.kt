@@ -511,8 +511,12 @@ class RoomAuthorityArchitectureTest {
         val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
         val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
 
-        assertTrue(addBody.contains("runtimeStore.addWorkoutExerciseToDay("))
-        assertTrue(addRoutineBody.contains("runtimeStore.addWorkoutExerciseToDay("))
+        val targetedAdd = Regex("runtimeStore\\.addWorkoutExerciseToDay\\s*(\\(|\\{)")
+        assertTrue(targetedAdd.containsMatchIn(addBody))
+        assertTrue(targetedAdd.containsMatchIn(addRoutineBody))
+        listOf(addBody, addRoutineBody, removeBody).forEach { body ->
+            assertFalse(body.contains("runtimeStore.state.value"))
+        }
         assertTrue(removeBody.contains("runtimeStore.removeWorkoutExerciseFromDay("))
         assertFalse(addBody.contains("runtimeStore.update {"))
         assertFalse(addRoutineBody.contains("runtimeStore.update {"))

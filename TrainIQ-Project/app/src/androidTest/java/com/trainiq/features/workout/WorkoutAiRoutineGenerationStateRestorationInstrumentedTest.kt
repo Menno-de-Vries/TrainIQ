@@ -31,6 +31,17 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class WorkoutAiRoutineGenerationStateRestorationInstrumentedTest {
     @OptIn(ExperimentalTestApi::class)
+    @Test fun failedGenerationKeepsDraftForRetryAndUnrelatedErrorsDoNotDismissIt() = runComposeUiTest {
+        var message by mutableStateOf<String?>(null)
+        setContent { SyntheticWorkoutScreen(message, {}, { _, _, _, _, _, _ -> }) }
+        onNodeWithContentDescription("Met AI genereren").performScrollTo().performClick()
+        onAllNodes(hasSetTextAction())[0].performTextReplacement("Mijn herstelplan")
+        runOnIdle { message = "Routine genereren is mislukt." }
+        onNode(hasSetTextAction() and hasText("Mijn herstelplan")).assertExists()
+        runOnIdle { message = "Instelling bijwerken mislukt." }
+        onNode(hasSetTextAction() and hasText("Mijn herstelplan")).assertExists()
+    }
+    @OptIn(ExperimentalTestApi::class)
     @Test
     fun manualRoutineNameAndDialogSurviveStateRestoration() = runComposeUiTest {
         val restorationTester = StateRestorationTester(this)

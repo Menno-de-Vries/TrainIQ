@@ -617,21 +617,23 @@ fun SettingsRoute(
             viewModel.setExportMessage(success)
         }
     }
-    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri ?: return@rememberLauncherForActivityResult
-        coroutineScope.launch {
-            val json = runCatching {
+    val importDocumentRequest = remember(context, viewModel, coroutineScope) {
+        SettingsDocumentRequest(coroutineScope,
+            read = { document ->
                 withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
+                    context.contentResolver.openInputStream(Uri.parse(document))?.bufferedReader()?.use { reader ->
                         readTrainIqImportJson(reader)
                     } ?: error("Kon importbestand niet openen.")
                 }
-            }.getOrElse {
-                viewModel.setImportFileReadMessage(false)
-                return@launch
-            }
-            viewModel.previewImportJson(json)
-        }
+            },
+            publish = viewModel::previewImportJson,
+            failure = { viewModel.setImportFileReadMessage(false) },
+        )
+    }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        viewModel.dismissImportPreview()
+        importDocumentRequest.start(uri.toString())
     }
     HealthConnectRefreshOnResume(viewModel::refreshHealthConnectStatus, refreshOnFirstResume = false)
     val requestNotificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->

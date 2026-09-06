@@ -35,6 +35,7 @@ import com.trainiq.data.local.TrainIqStorageState
 import com.trainiq.data.local.WorkoutLogEventStorage
 import com.trainiq.data.mapper.parseSetType
 import com.trainiq.data.mapper.toDomain
+import com.trainiq.domain.model.nextStartableWorkoutDay
 import com.trainiq.data.remote.BarcodeProductLookupService
 import com.trainiq.domain.model.BodyMeasurement
 import com.trainiq.domain.model.BodyMeasurementPhotoResult
@@ -181,7 +182,7 @@ class TrainIqDataCoordinator @Inject constructor(
 
     fun observeDashboard(): Flow<HomeDashboard> = combine(snapshotState, _cachedSteps) { snapshot, steps ->
         val activeRoutine = buildActiveRoutine(snapshot)
-        val nextWorkout = activeRoutine?.days?.minByOrNull { it.orderIndex }
+        val nextWorkout = activeRoutine?.nextStartableWorkoutDay()
         val todaysMeals = snapshot.meals.filter { it.timestamp.isOnActivityDate() }
         val todaysNutrition = todaysMeals.fold(NutritionFacts.Zero) { acc, meal -> acc + meal.totalNutrition }
         val profile = snapshot.profile
@@ -253,7 +254,7 @@ class TrainIqDataCoordinator @Inject constructor(
     }
 
     suspend fun getNextWorkoutDay(): WorkoutDay? =
-        buildWorkoutOverview(snapshotState.value).activeRoutine?.days?.minByOrNull { it.orderIndex }
+        buildWorkoutOverview(snapshotState.value).activeRoutine?.nextStartableWorkoutDay()
 
     suspend fun getCurrentActiveWorkoutSession(): ActiveWorkoutSession? =
         withContext(Dispatchers.IO) {
@@ -735,30 +736,11 @@ class TrainIqDataCoordinator @Inject constructor(
     }
 
     suspend fun replaceExerciseInPlan(workoutExerciseId: Long, newExerciseId: Long) {
-        val updated = runtimeStore.state.value.withExerciseReplacedInPlan(workoutExerciseId, newExerciseId)
-        val updatedExercise = updated.workoutExercises.firstOrNull { it.id == workoutExerciseId } ?: return
-        runtimeStore.saveWorkoutExercise(updatedExercise)
+        runtimeStore.saveWorkoutExercise(workoutExerciseId, newExerciseId)
     }
 
     suspend fun replaceExerciseInActiveWorkout(workoutExerciseId: Long, newExerciseId: Long): ActiveWorkoutSession? {
-        val now = System.currentTimeMillis()
-        val current = runtimeStore.state.value
-        val updated = current.withExerciseReplacedInActiveWorkout(workoutExerciseId, newExerciseId, now)
-        val updatedExercise = updated.workoutExercises.firstOrNull { it.id == workoutExerciseId }
-        val currentExercise = current.workoutExercises.firstOrNull { it.id == workoutExerciseId }
-        if (updatedExercise != null && updatedExercise != currentExercise) {
-            val currentActive = current.activeWorkoutSession
-            val updatedActive = updated.activeWorkoutSession
-            val activeSessionId = updatedActive?.sessionId?.takeIf { sessionId ->
-                currentActive?.sessionId == sessionId && currentActive.updatedAt != updatedActive.updatedAt
-            }
-            runtimeStore.replaceWorkoutExerciseInActiveWorkout(
-                workoutExercise = updatedExercise,
-                activeSessionId = activeSessionId,
-                updatedAt = updatedActive?.updatedAt?.takeIf { activeSessionId != null },
-            )
-        }
-        return updated.activeWorkoutSession?.toDomain()
+        return runtimeStore.replaceWorkoutExerciseInActiveWorkout(workoutExerciseId, newExerciseId)?.toDomain()
     }
 
     suspend fun updateWorkoutExercisePlan(
@@ -770,21 +752,17 @@ class TrainIqDataCoordinator @Inject constructor(
         targetRpe: Double,
         setType: SetType,
     ) {
-        val updated = runtimeStore.state.value.withRoutineSetCountSynced(
-            workoutExerciseId = workoutExerciseId,
-            targetSets = targetSets.coerceAtLeast(1),
-            repRange = repRange.ifBlank { "8-12" },
-            restSeconds = restSeconds.coerceAtLeast(0),
-            targetWeightKg = targetWeightKg.coerceAtLeast(0.0),
-            targetRpe = targetRpe.coerceIn(0.0, 10.0),
-            setType = setType,
-        )
-        val updatedExercise = updated.workoutExercises.firstOrNull { it.id == workoutExerciseId } ?: return
-        runtimeStore.replaceRoutineSetsForExercise(
-            workoutExerciseId = workoutExerciseId,
-            sets = updated.routineSets.filter { it.workoutExerciseId == workoutExerciseId },
-            workoutExercise = updatedExercise,
-        )
+        runtimeStore.replaceRoutineSetsForExercise(workoutExerciseId) { current ->
+            current.withRoutineSetCountSynced(
+                workoutExerciseId = workoutExerciseId,
+                targetSets = targetSets.coerceAtLeast(1),
+                repRange = repRange.ifBlank { "8-12" },
+                restSeconds = restSeconds.coerceAtLeast(0),
+                targetWeightKg = targetWeightKg.coerceAtLeast(0.0),
+                targetRpe = targetRpe.coerceIn(0.0, 10.0),
+                setType = setType,
+            )
+        }
     }
 
     suspend fun addSetToExercise(workoutExerciseId: Long) {
@@ -817,22 +795,11 @@ class TrainIqDataCoordinator @Inject constructor(
         setId: Long,
         transform: (RoutineSetEntity) -> RoutineSetEntity,
     ) {
-        val updated = runtimeStore.state.value.updateRoutineSet(setId = setId, transform = transform)
-        val updatedSet = updated.routineSets.firstOrNull { it.id == setId } ?: return
-        val updatedExercise = updated.workoutExercises.firstOrNull { it.id == updatedSet.workoutExerciseId } ?: return
-        runtimeStore.updateRoutineSet(set = updatedSet, workoutExercise = updatedExercise)
+        runtimeStore.updateRoutineSet(setId, transform)
     }
 
     suspend fun deleteRoutineSet(setId: Long) {
-        val workoutExerciseId = runtimeStore.state.value.routineSets
-            .firstOrNull { it.id == setId }
-            ?.workoutExerciseId
-            ?: return
-        replaceTargetedRoutineSetsForExercise(workoutExerciseId) { state ->
-            state.copy(routineSets = state.routineSets.filterNot { it.id == setId })
-                .renumberRoutineSets(workoutExerciseId)
-                .withWorkoutExerciseTargetsSynced(workoutExerciseId)
-        }
+        runtimeStore.deleteRoutineSet(setId)
     }
 
     suspend fun moveRoutineSet(workoutExerciseId: Long, orderedSetIds: List<Long>) {
@@ -861,24 +828,11 @@ class TrainIqDataCoordinator @Inject constructor(
         workoutExerciseId: Long,
         transform: (TrainIqStorageState) -> TrainIqStorageState,
     ) {
-        val updated = transform(runtimeStore.state.value)
-        val updatedExercise = updated.workoutExercises.firstOrNull { it.id == workoutExerciseId } ?: return
-        val updatedSets = updated.routineSets
-            .filter { it.workoutExerciseId == workoutExerciseId }
-            .sortedWith(compareBy<RoutineSetEntity> { it.orderIndex }.thenBy { it.id })
-        runtimeStore.replaceRoutineSetsForExercise(
-            workoutExerciseId = workoutExerciseId,
-            sets = updatedSets,
-            workoutExercise = updatedExercise,
-        )
+        runtimeStore.replaceRoutineSetsForExercise(workoutExerciseId, transform)
     }
 
     suspend fun addWorkoutDay(routineId: Long, name: String) {
-        val state = runtimeStore.state.value
-        val dayId = (state.days.maxOfOrNull { it.id } ?: 0L) + 1L
-        val nextOrder = state.days.count { it.routineId == routineId }
-        val sessionName = name.trim().ifBlank { defaultWorkoutSessionName(nextOrder) }
-        runtimeStore.addWorkoutDay(WorkoutDayEntity(dayId, routineId, sessionName, nextOrder))
+        runtimeStore.addWorkoutDay(routineId, name)
     }
 
     suspend fun removeWorkoutDay(dayId: Long) {
@@ -896,32 +850,19 @@ class TrainIqDataCoordinator @Inject constructor(
         targetWeightKg: Double,
         targetRpe: Double,
     ) {
-        val current = runtimeStore.state.value
-        val updated = current.withExerciseAddedToDay(
-            dayId,
-            name,
-            muscleGroup,
-            equipment,
-            targetSets,
-            repRange,
-            restSeconds,
-            targetWeightKg,
-            targetRpe,
-        )
-        val workoutExercise = updated.workoutExercises
-            .filterNot { candidate -> current.workoutExercises.any { it.id == candidate.id } }
-            .maxByOrNull { it.id }
-            ?: return
-        val exercise = updated.exercises.first { it.id == workoutExercise.exerciseId }
-        val sets = updated.routineSets
-            .filter { it.workoutExerciseId == workoutExercise.id }
-            .sortedWith(compareBy<RoutineSetEntity> { it.orderIndex }.thenBy { it.id })
-        runtimeStore.addWorkoutExerciseToDay(
-            day = null,
-            exercise = exercise,
-            workoutExercise = workoutExercise,
-            sets = sets,
-        )
+        runtimeStore.addWorkoutExerciseToDay { current ->
+            current.withExerciseAddedToDay(
+                dayId,
+                name,
+                muscleGroup,
+                equipment,
+                targetSets,
+                repRange,
+                restSeconds,
+                targetWeightKg,
+                targetRpe,
+            )
+        }
     }
 
     suspend fun addExerciseToRoutine(
@@ -935,46 +876,23 @@ class TrainIqDataCoordinator @Inject constructor(
         targetWeightKg: Double,
         targetRpe: Double,
     ) {
-        val current = runtimeStore.state.value
-        val updated = current.withExerciseAddedToRoutine(
-            routineId,
-            name,
-            muscleGroup,
-            equipment,
-            targetSets,
-            repRange,
-            restSeconds,
-            targetWeightKg,
-            targetRpe,
-        )
-        val day = updated.days
-            .filterNot { candidate -> current.days.any { it.id == candidate.id } }
-            .maxByOrNull { it.id }
-        val workoutExercise = updated.workoutExercises
-            .filterNot { candidate -> current.workoutExercises.any { it.id == candidate.id } }
-            .maxByOrNull { it.id }
-            ?: return
-        val exercise = updated.exercises.first { it.id == workoutExercise.exerciseId }
-        val sets = updated.routineSets
-            .filter { it.workoutExerciseId == workoutExercise.id }
-            .sortedWith(compareBy<RoutineSetEntity> { it.orderIndex }.thenBy { it.id })
-        runtimeStore.addWorkoutExerciseToDay(
-            day = day,
-            exercise = exercise,
-            workoutExercise = workoutExercise,
-            sets = sets,
-        )
+        runtimeStore.addWorkoutExerciseToDay { current ->
+            current.withExerciseAddedToRoutine(
+                routineId,
+                name,
+                muscleGroup,
+                equipment,
+                targetSets,
+                repRange,
+                restSeconds,
+                targetWeightKg,
+                targetRpe,
+            )
+        }
     }
 
     suspend fun removeExerciseFromDay(workoutExerciseId: Long) {
-        val updated = runtimeStore.state.value.withExerciseRemovedFromDay(
-            workoutExerciseId = workoutExerciseId,
-            now = System.currentTimeMillis(),
-        )
-        runtimeStore.removeWorkoutExerciseFromDay(
-            workoutExerciseId = workoutExerciseId,
-            active = updated.activeWorkoutSession,
-        )
+        runtimeStore.removeWorkoutExerciseFromDay(workoutExerciseId)
     }
 
     suspend fun deleteWorkoutSession(sessionId: Long) {
@@ -1206,25 +1124,25 @@ class TrainIqDataCoordinator @Inject constructor(
         notes: String?,
         items: List<MealEntryRequest>,
     ): Long {
-        val snapshot = snapshotState.value
         val mealId = id ?: 0L
-        val timestamp = snapshot.meals.firstOrNull { it.id == mealId }?.timestamp ?: System.currentTimeMillis()
         val mealStorage = LoggedMealStorage(
             id = mealId,
-            timestamp = timestamp,
+            timestamp = System.currentTimeMillis(),
             mealType = mealType,
             name = name.trim().ifBlank { mealType.label },
             notes = notes?.trim()?.takeIf { it.isNotBlank() },
         )
-        val mealItems = buildMealItemSnapshots(
-            mealId = mealId,
-            startItemId = 0L,
-            requests = items,
-            foods = snapshot.foods,
-            recipes = snapshot.recipes,
-        )
-        if (mealItems.isEmpty()) throw InvalidMealItemException()
-        val persistedId = runtimeStore.saveMeal(meal = mealStorage, items = mealItems)
+        val persistedId = runtimeStore.saveMeal(mealStorage) { foods, recipes, ingredients ->
+            val mealItems = buildMealItemSnapshots(
+                mealId = mealId,
+                startItemId = 0L,
+                requests = items,
+                foods = foods.map(::mapFood),
+                recipes = buildRecipes(foods, recipes, ingredients),
+            )
+            if (mealItems.isEmpty()) throw InvalidMealItemException()
+            mealItems
+        }
         scannedMealResult.value = null
         return persistedId
     }
@@ -1250,10 +1168,8 @@ class TrainIqDataCoordinator @Inject constructor(
         bodyMeasurementPhotoService.analyzeScaleImage(path = path, userContext = context)
 
     suspend fun addMeasurement(weight: Double, bodyFat: Double, muscleMass: Double) {
-        val measurementId = (runtimeStore.state.value.measurements.maxOfOrNull { it.id } ?: 0L) + 1L
         runtimeStore.addMeasurement(
             BodyMeasurementEntity(
-                id = measurementId,
                 date = System.currentTimeMillis(),
                 weight = weight,
                 bodyFat = bodyFat,
@@ -2301,7 +2217,7 @@ internal fun TrainIqStorageState.withExerciseAddedToDay(
     val exerciseId = existing?.id ?: ((exercises.maxOfOrNull { it.id } ?: 0L) + 1L)
     val exercise = existing ?: ExerciseEntity(exerciseId, name, muscleGroup, equipment)
     val workoutExerciseId = (workoutExercises.maxOfOrNull { it.id } ?: 0L) + 1L
-    val nextOrder = workoutExercises.count { it.dayId == dayId }
+    val nextOrder = (workoutExercises.filter { it.dayId == dayId }.maxOfOrNull { it.orderIndex } ?: -1) + 1
     val nextSetId = (routineSets.maxOfOrNull { it.id } ?: 0L) + 1L
     val newRoutineSets = List(targetSets.coerceAtLeast(0)) { index ->
         RoutineSetEntity(
@@ -2443,21 +2359,16 @@ internal fun TrainIqStorageState.withExerciseRemovedFromDay(
             val remainingActivePlanUsesExercise = remainingWorkoutExercises.any {
                 it.dayId == removed.dayId && it.exerciseId == removed.exerciseId
             }
+            val keysToRemove = setOf(workoutExerciseId) + listOfNotNull(removed.exerciseId.takeIf { legacyKey ->
+                !remainingActivePlanUsesExercise && remainingWorkoutExercises.none { it.dayId == removed.dayId && it.id == legacyKey }
+            })
             activeWorkoutSession.copy(
                 loggedSets = activeWorkoutSession.loggedSets.filterNot { set ->
                     set.sourceWorkoutExerciseId == workoutExerciseId ||
                         (!remainingActivePlanUsesExercise && set.sourceWorkoutExerciseId == null && set.exerciseId == removed.exerciseId)
                 },
-                drafts = if (remainingActivePlanUsesExercise) {
-                    activeWorkoutSession.drafts
-                } else {
-                    activeWorkoutSession.drafts - removed.exerciseId
-                },
-                collapsedExerciseIds = if (remainingActivePlanUsesExercise) {
-                    activeWorkoutSession.collapsedExerciseIds
-                } else {
-                    activeWorkoutSession.collapsedExerciseIds - removed.exerciseId
-                },
+                drafts = activeWorkoutSession.drafts - keysToRemove,
+                collapsedExerciseIds = activeWorkoutSession.collapsedExerciseIds - keysToRemove,
                 updatedAt = now,
             )
         }
@@ -2500,10 +2411,10 @@ internal fun TrainIqStorageState.withRoutineSetCountSynced(
     targetRpe: Double,
     setType: SetType,
 ): TrainIqStorageState {
+    val currentPlan = workoutExercises.firstOrNull { it.id == workoutExerciseId } ?: return this
     val currentSets = routineSets
         .filter { it.workoutExerciseId == workoutExerciseId }
         .sortedWith(compareBy<RoutineSetEntity> { it.orderIndex }.thenBy { it.id })
-    if (currentSets.size == targetSets) return withWorkoutExerciseTargetsSynced(workoutExerciseId)
     var nextSetId = (routineSets.maxOfOrNull { it.id } ?: 0L) + 1L
     val adjustedSets = when {
         currentSets.size > targetSets -> currentSets.take(targetSets)
@@ -2523,7 +2434,15 @@ internal fun TrainIqStorageState.withRoutineSetCountSynced(
         }
     }
     return copy(
-        routineSets = routineSets.filterNot { it.workoutExerciseId == workoutExerciseId } + adjustedSets,
+        routineSets = routineSets.filterNot { it.workoutExerciseId == workoutExerciseId } + adjustedSets.map {
+            it.copy(
+                targetReps = if (parseRoutineRepTarget(repRange) != parseRoutineRepTarget(currentPlan.repRange)) parseRoutineRepTarget(repRange) else it.targetReps,
+                restSeconds = if (restSeconds != currentPlan.restSeconds) restSeconds else it.restSeconds,
+                targetWeightKg = if (targetWeightKg != currentPlan.targetWeightKg) targetWeightKg else it.targetWeightKg,
+                targetRpe = if (targetRpe != currentPlan.targetRpe) targetRpe else it.targetRpe,
+                setType = if (setType.name != currentPlan.setType) setType.name else it.setType,
+            )
+        },
     ).renumberRoutineSets(workoutExerciseId).withWorkoutExerciseTargetsSynced(workoutExerciseId)
 }
 

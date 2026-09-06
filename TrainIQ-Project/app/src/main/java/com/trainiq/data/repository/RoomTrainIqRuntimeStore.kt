@@ -219,6 +219,90 @@ class RoomTrainIqRuntimeStore internal constructor(
         }
     }
 
+    internal suspend fun updateRoutineSet(setId: Long, transform: (RoutineSetEntity) -> RoutineSetEntity) {
+        mutex.withLock {
+            database.withTransaction {
+                val updated = readCurrentPlan().updateRoutineSet(setId, transform)
+                val set = updated.routineSets.firstOrNull { it.id == setId } ?: return@withTransaction
+                dao.updateRoutineSet(set, updated.workoutExercises.first { it.id == set.workoutExerciseId })
+            }
+        }
+    }
+
+    internal suspend fun replaceRoutineSetsForExercise(workoutExerciseId: Long, transform: (TrainIqStorageState) -> TrainIqStorageState) {
+        mutex.withLock {
+            database.withTransaction {
+                val updated = transform(readCurrentPlan())
+                val plan = updated.workoutExercises.firstOrNull { it.id == workoutExerciseId } ?: return@withTransaction
+                dao.replaceRoutineSetsForExercise(workoutExerciseId, updated.routineSets.filter { it.workoutExerciseId == workoutExerciseId }, plan)
+            }
+        }
+    }
+
+    internal suspend fun saveWorkoutExercise(workoutExerciseId: Long, newExerciseId: Long) {
+        mutex.withLock {
+            database.withTransaction {
+                require(dao.getExercise(newExerciseId) != null) { "Oefening bestaat niet meer." }
+                dao.readWorkoutExercisesForExport().firstOrNull { it.id == workoutExerciseId }?.let {
+                    dao.insertWorkoutExercise(it.copy(exerciseId = newExerciseId))
+                }
+            }
+        }
+    }
+
+    internal suspend fun deleteRoutineSet(setId: Long) {
+        mutex.withLock {
+            database.withTransaction {
+                val current = readCurrentPlan()
+                val planId = current.routineSets.firstOrNull { it.id == setId }?.workoutExerciseId ?: return@withTransaction
+                val updated = current.copy(routineSets = current.routineSets.filterNot { it.id == setId })
+                    .renumberRoutineSets(planId).withWorkoutExerciseTargetsSynced(planId)
+                dao.replaceRoutineSetsForExercise(planId, updated.routineSets.filter { it.workoutExerciseId == planId },
+                    updated.workoutExercises.first { it.id == planId })
+            }
+        }
+    }
+
+    internal suspend fun replaceWorkoutExerciseInActiveWorkout(workoutExerciseId: Long, newExerciseId: Long): ActiveWorkoutSessionStorage? =
+        mutex.withLock {
+            database.withTransaction {
+                val current = readCurrentPlan().copy(activeWorkoutSession = readCurrentActiveWorkout())
+                require(current.exercises.any { it.id == newExerciseId }) { "Oefening bestaat niet meer." }
+                val updated = current.withExerciseReplacedInActiveWorkout(workoutExerciseId, newExerciseId, System.currentTimeMillis())
+                val plan = updated.workoutExercises.firstOrNull { it.id == workoutExerciseId } ?: return@withTransaction current.activeWorkoutSession
+                val active = updated.activeWorkoutSession
+                val affected = active?.takeIf { it.dayId == plan.dayId }
+                dao.replaceWorkoutExerciseInActiveWorkout(plan, affected?.sessionId, affected?.updatedAt)
+                active
+            }
+        }
+
+    internal suspend fun addWorkoutDay(routineId: Long, name: String) {
+        mutex.withLock {
+            database.withTransaction {
+                val days = dao.observeWorkoutDaysSnapshot(routineId)
+                val order = (days.maxOfOrNull { it.orderIndex } ?: -1) + 1
+                dao.insertWorkoutDay(WorkoutDayEntity((dao.getMaxWorkoutDayId() ?: 0L) + 1L, routineId,
+                    name.trim().ifBlank { defaultWorkoutSessionName(order) }, order))
+            }
+        }
+    }
+
+    internal suspend fun addWorkoutExerciseToDay(transform: (TrainIqStorageState) -> TrainIqStorageState) {
+        mutex.withLock {
+            database.withTransaction {
+                val current = readCurrentPlan()
+                val updated = transform(current)
+                val plan = updated.workoutExercises.firstOrNull { candidate -> current.workoutExercises.none { it.id == candidate.id } } ?: return@withTransaction
+                dao.addWorkoutExerciseToDay(
+                    updated.days.firstOrNull { candidate -> current.days.none { it.id == candidate.id } },
+                    updated.exercises.first { it.id == plan.exerciseId }, plan,
+                    updated.routineSets.filter { it.workoutExerciseId == plan.id },
+                )
+            }
+        }
+    }
+
     suspend fun replaceRoutineSetsForExercise(
         workoutExerciseId: Long,
         sets: List<RoutineSetEntity>,
@@ -235,33 +319,51 @@ class RoomTrainIqRuntimeStore internal constructor(
 
     suspend fun createRoutine(name: String, description: String) {
         mutex.withLock {
-            val routineId = (dao.getMaxRoutineId() ?: 0L) + 1L
-            dao.insertRoutine(
-                WorkoutRoutineEntity(
-                    id = routineId,
-                    name = name,
-                    description = description,
-                    active = dao.routineCount() == 0,
-                ),
-            )
+            database.withTransaction {
+                require(name.isNotBlank() && dao.getRoutinesSnapshot().none { it.name.equals(name.trim(), ignoreCase = true) }) {
+                    "Een routine met deze naam bestaat al of de naam is leeg."
+                }
+                val routineId = (dao.getMaxRoutineId() ?: 0L) + 1L
+                dao.insertRoutine(
+                    WorkoutRoutineEntity(
+                        id = routineId,
+                        name = name.trim(),
+                        description = description,
+                        active = dao.routineCount() == 0,
+                    ),
+                )
+            }
         }
     }
 
     suspend fun updateRoutine(routineId: Long, name: String, description: String) {
         mutex.withLock {
-            dao.updateRoutine(routineId = routineId, name = name, description = description)
+            database.withTransaction {
+                require(name.isNotBlank() && dao.getRoutinesSnapshot().none {
+                    it.id != routineId && it.name.equals(name.trim(), ignoreCase = true)
+                }) { "Een routine met deze naam bestaat al of de naam is leeg." }
+                dao.updateRoutine(routineId = routineId, name = name.trim(), description = description)
+            }
         }
     }
 
     suspend fun deleteRoutine(routineId: Long) {
         mutex.withLock {
-            dao.deleteRoutineAndNormalizeActive(routineId)
+            database.withTransaction {
+                val dayIds = dao.observeWorkoutDaysSnapshot(routineId).map { it.id }.toSet()
+                if (dao.readActiveWorkoutSessionsForExport().any { it.dayId in dayIds })
+                    throw com.trainiq.domain.repository.ActiveWorkoutPlanInUseException()
+                dao.deleteRoutineAndNormalizeActive(routineId)
+            }
         }
     }
 
     suspend fun setActiveRoutine(routineId: Long) {
         mutex.withLock {
-            dao.setActiveRoutine(routineId)
+            database.withTransaction {
+                require(dao.getRoutinesSnapshot().any { it.id == routineId }) { "Routine bestaat niet meer." }
+                dao.setActiveRoutine(routineId)
+            }
         }
     }
 
@@ -319,7 +421,11 @@ class RoomTrainIqRuntimeStore internal constructor(
 
     suspend fun removeWorkoutDay(dayId: Long) {
         mutex.withLock {
-            dao.deleteWorkoutDayCascade(dayId)
+            database.withTransaction {
+                if (dao.readActiveWorkoutSessionsForExport().any { it.dayId == dayId })
+                    throw com.trainiq.domain.repository.ActiveWorkoutPlanInUseException()
+                dao.deleteWorkoutDayCascade(dayId)
+            }
         }
     }
 
@@ -341,32 +447,35 @@ class RoomTrainIqRuntimeStore internal constructor(
 
     suspend fun removeWorkoutExerciseFromDay(
         workoutExerciseId: Long,
-        active: ActiveWorkoutSessionStorage?,
     ) {
         mutex.withLock {
-            dao.deleteWorkoutExerciseCascade(
-                workoutExerciseId = workoutExerciseId,
-                activeSession = active?.toActiveWorkoutSessionEntity(),
-                activeDrafts = active?.drafts?.map { (exerciseId, draft) ->
-                    ActiveWorkoutDraftEntity(
-                        sessionId = active.sessionId,
-                        exerciseId = exerciseId,
-                        weight = draft.weight,
-                        reps = draft.reps,
-                        rpe = draft.rpe,
-                        setType = draft.setType.name,
-                    )
-                }.orEmpty(),
-                activeCollapsedExercises = active?.collapsedExerciseIds?.map { exerciseId ->
-                    ActiveWorkoutCollapsedExerciseEntity(
-                        sessionId = active.sessionId,
-                        exerciseId = exerciseId,
-                    )
-                }.orEmpty(),
-                activeSets = active?.loggedSets?.map {
-                    it.toActiveWorkoutSetEntity(sessionId = active.sessionId)
-                }.orEmpty(),
-            )
+            database.withTransaction {
+                val active = readCurrentPlan().copy(activeWorkoutSession = readCurrentActiveWorkout())
+                    .withExerciseRemovedFromDay(workoutExerciseId, System.currentTimeMillis()).activeWorkoutSession
+                dao.deleteWorkoutExerciseCascade(
+                    workoutExerciseId = workoutExerciseId,
+                    activeSession = active?.toActiveWorkoutSessionEntity(),
+                    activeDrafts = active?.drafts?.map { (exerciseId, draft) ->
+                        ActiveWorkoutDraftEntity(
+                            sessionId = active.sessionId,
+                            exerciseId = exerciseId,
+                            weight = draft.weight,
+                            reps = draft.reps,
+                            rpe = draft.rpe,
+                            setType = draft.setType.name,
+                        )
+                    }.orEmpty(),
+                    activeCollapsedExercises = active?.collapsedExerciseIds?.map { exerciseId ->
+                        ActiveWorkoutCollapsedExerciseEntity(
+                            sessionId = active.sessionId,
+                            exerciseId = exerciseId,
+                        )
+                    }.orEmpty(),
+                    activeSets = active?.loggedSets?.map {
+                        it.toActiveWorkoutSetEntity(sessionId = active.sessionId)
+                    }.orEmpty(),
+                )
+            }
         }
     }
 
@@ -578,17 +687,35 @@ class RoomTrainIqRuntimeStore internal constructor(
 
     suspend fun saveMeal(meal: LoggedMealStorage, items: List<LoggedMealItemStorage>): Long = mutex.withLock {
         database.withTransaction {
-            val mealId = meal.id.takeIf { it > 0L } ?: ((dao.getMaxMealId() ?: 0L) + 1L)
-            val firstItemId = (dao.getMaxMealItemId() ?: 0L) + 1L
-            val persistedItems = items.mapIndexed { index, item ->
-                item.copy(id = firstItemId + index, mealId = mealId)
-            }
-            dao.saveMeal(
-                meal = meal.copy(id = mealId, timestamp = dao.getMeal(mealId)?.date ?: meal.timestamp).toMealEntity(persistedItems),
-                items = persistedItems.mapIndexed { index, item -> item.toMealItemEntity(orderIndex = index) },
-            )
-            mealId
+            persistMeal(meal, items)
         }
+    }
+
+    internal suspend fun saveMeal(
+        meal: LoggedMealStorage,
+        buildItems: (List<FoodItemStorage>, List<RecipeStorage>, List<RecipeIngredientStorage>) -> List<LoggedMealItemStorage>,
+    ): Long = mutex.withLock {
+        database.withTransaction {
+            val items = buildItems(
+                dao.readFoodItemsForExport().map { it.toStorage() },
+                dao.readRecipesForExport().map { it.toStorage() },
+                dao.readRecipeIngredientsForExport().map { it.toStorage() },
+            )
+            persistMeal(meal, items)
+        }
+    }
+
+    private suspend fun persistMeal(meal: LoggedMealStorage, items: List<LoggedMealItemStorage>): Long {
+        val mealId = meal.id.takeIf { it > 0L } ?: ((dao.getMaxMealId() ?: 0L) + 1L)
+        val firstItemId = (dao.getMaxMealItemId() ?: 0L) + 1L
+        val persistedItems = items.mapIndexed { index, item ->
+            item.copy(id = firstItemId + index, mealId = mealId)
+        }
+        dao.saveMeal(
+            meal = meal.copy(id = mealId, timestamp = dao.getMeal(mealId)?.date ?: meal.timestamp).toMealEntity(persistedItems),
+            items = persistedItems.mapIndexed { index, item -> item.toMealItemEntity(orderIndex = index) },
+        )
+        return mealId
     }
 
     suspend fun deleteMeal(mealId: Long) {
@@ -600,6 +727,7 @@ class RoomTrainIqRuntimeStore internal constructor(
     suspend fun saveFood(food: FoodItemStorage): FoodItemStorage = mutex.withLock {
         database.withTransaction {
             val existing = food.id.takeIf { it > 0L }?.let { dao.getFoodItem(it) }
+            require(food.id <= 0L || existing != null) { "Dit product bestaat niet meer. Maak een nieuw product aan." }
             val duplicateBarcode = food.barcode
                 ?.takeIf { it.isNotBlank() }
                 ?.let { dao.getFoodItemByBarcode(it) }
@@ -728,6 +856,23 @@ class RoomTrainIqRuntimeStore internal constructor(
             sink.importTransaction(planner.plan(gson.toJson(legacyState)))
         }
     }
+
+    /** Planning inputs only; history, nutrition and JSON mirrors are never read or rewritten. */
+    private suspend fun readCurrentPlan() = TrainIqStorageState(
+        routines = dao.readRoutinesForExport(),
+        days = dao.readWorkoutDaysForExport(),
+        exercises = dao.readExercisesForExport(),
+        workoutExercises = dao.readWorkoutExercisesForExport(),
+        routineSets = dao.readRoutineSetsForExport(),
+    )
+
+    private suspend fun readCurrentActiveWorkout() = ActiveWorkoutTables(
+        sessions = dao.readActiveWorkoutSessionsForExport(),
+        drafts = dao.readActiveWorkoutDraftsForExport(),
+        collapsed = dao.readActiveWorkoutCollapsedExercisesForExport(),
+        sets = dao.readActiveWorkoutSetsForExport(),
+        events = emptyList(),
+    ).toStorage()
 }
 
 data class WorkoutDebriefRefreshSnapshot(
