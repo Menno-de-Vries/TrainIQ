@@ -8,6 +8,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.StateRestorationTester
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithText
@@ -22,6 +23,32 @@ import com.trainiq.domain.model.UserProfile
 import org.junit.Test
 
 class CoachProfileStateRestorationInstrumentedTest {
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun previousReportRemainsReadableDuringRefreshAndFailureAllowsRetry() = runComposeUiTest {
+        val profile = syntheticProfile()
+        var state by mutableStateOf(syntheticCoachUiState(profile, profile.toSyntheticDraft()).copy(
+            generatedReport = com.trainiq.domain.model.WeeklyReportResult(
+                summary = "Previously saved report", wins = emptyList(), risks = emptyList(),
+                nextWeekFocus = "Keep recovering", source = com.trainiq.domain.model.WeeklyReportSource.LOCAL_FALLBACK,
+            ),
+            isGeneratingReport = true,
+        ))
+        var retries = 0
+        setContent {
+            TrainIqTheme {
+                CoachScreen(state, {}, { retries++ }, {}, {}, {}, {})
+            }
+        }
+        onNodeWithText("Previously saved report").performScrollTo().assertExists()
+        onNodeWithText("Rapport maken...").performScrollTo().assertIsNotEnabled()
+        runOnIdle { state = state.copy(isGeneratingReport = false, message = "Refresh failed; try again") }
+        onNodeWithText("Previously saved report").performScrollTo().assertExists()
+        onNodeWithText("Refresh failed; try again").assertExists()
+        onNodeWithText("Weekrapport maken").performScrollTo().performClick()
+        runOnIdle { org.junit.Assert.assertEquals(1, retries) }
+    }
+
     @OptIn(ExperimentalTestApi::class)
     @Test
     fun existingProfileDraftSurvivesStateRestoration() = runComposeUiTest {

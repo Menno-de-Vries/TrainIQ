@@ -106,7 +106,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 @Keep
 enum class ScannerMode { BARCODE, AI_MEAL, AI_SCALE }
@@ -220,7 +219,10 @@ class CameraScannerViewModel @Inject constructor(
             )
         }
 
+    private val scanRequest = LatestScanRequest(viewModelScope) { deleteScannerTemporaryImage(it) }
+
     fun setContextHint(hint: String) {
+        scanRequest.cancel()
         ephemeral.update { it.copy(contextHint = hint.trim(), phase = Phase.Preview, message = null) }
     }
 
@@ -243,82 +245,57 @@ class CameraScannerViewModel @Inject constructor(
             deleteScannerTemporaryImage(path)
             return
         }
-        viewModelScope.launch {
-            ephemeral.update { it.copy(phase = Phase.Processing, message = null) }
-            if (scannerMode == ScannerMode.AI_SCALE) {
-                try {
-                    runCatching { analyzeBodyMeasurementPhotoUseCase(path, contextHint) }
-                        .onSuccess { result ->
-                            ephemeral.update {
-                                if (result.source == BodyMeasurementPhotoSource.LOCAL_FALLBACK || result.weight <= 0.0) {
-                                    it.copy(phase = Phase.LocalFallback, message = result.notes)
-                                } else {
-                                    it.copy(phase = Phase.CompletedScale, bodyMeasurement = result, message = result.notes)
-                                }
-                            }
-                        }
-                        .onFailure { error ->
-                            ephemeral.update {
-                                it.copy(
-                                    phase = Phase.Error,
-                                    message = error.toAiUserMessage("Weegfoto analyseren mislukt. Probeer opnieuw."),
-                                )
-                            }
-                        }
-                } finally {
-                    deleteScannerTemporaryImage(path)
+        val processing = ephemeral.value.copy(phase = Phase.Processing, message = null)
+        ephemeral.value = processing
+        scanRequest.start(
+            path = path,
+            analyze = {
+                if (scannerMode == ScannerMode.AI_SCALE) {
+                    val result = analyzeBodyMeasurementPhotoUseCase(path, contextHint)
+                    if (result.source == BodyMeasurementPhotoSource.LOCAL_FALLBACK || result.weight <= 0.0) {
+                        processing.copy(phase = Phase.LocalFallback, message = result.notes)
+                    } else {
+                        processing.copy(phase = Phase.CompletedScale, bodyMeasurement = result, message = result.notes)
+                    }
+                } else {
+                    val result = analyzeMealUseCase(path, contextHint, capturedAtMillis)
+                    when (val state = classifyMealScanResultForScanner(result, contextHint)) {
+                        is CameraScannerUiState.Completed -> processing.copy(
+                            phase = Phase.Completed, suggestedMealType = state.suggestedMealType,
+                            itemCount = state.itemCount, message = null,
+                        )
+                        is CameraScannerUiState.Empty -> processing.copy(
+                            phase = Phase.Empty, suggestedMealType = result.suggestedMealType,
+                            itemCount = 0, message = state.message,
+                        )
+                        is CameraScannerUiState.LocalFallback -> processing.copy(
+                            phase = Phase.LocalFallback, suggestedMealType = result.suggestedMealType,
+                            itemCount = 0, message = state.message,
+                        )
+                        else -> processing
+                    }
                 }
-                return@launch
-            }
-            try {
-                runCatching { analyzeMealUseCase(path, contextHint, capturedAtMillis) }
-                    .onSuccess { result ->
-                        val resultState = classifyMealScanResultForScanner(result, contextHint)
-                        ephemeral.update {
-                            when (resultState) {
-                                is CameraScannerUiState.Completed -> it.copy(
-                                    phase = Phase.Completed,
-                                    suggestedMealType = resultState.suggestedMealType,
-                                    itemCount = resultState.itemCount,
-                                    message = null,
-                                )
-                                is CameraScannerUiState.Empty -> it.copy(
-                                    phase = Phase.Empty,
-                                    suggestedMealType = result.suggestedMealType,
-                                    itemCount = 0,
-                                    message = resultState.message,
-                                )
-                                is CameraScannerUiState.LocalFallback -> it.copy(
-                                    phase = Phase.LocalFallback,
-                                    suggestedMealType = result.suggestedMealType,
-                                    itemCount = 0,
-                                    message = resultState.message,
-                                )
-                                else -> it
-                            }
-                        }
-                    }
-                    .onFailure { error ->
-                        ephemeral.update {
-                            it.copy(
-                                phase = Phase.Error,
-                                message = error.toAiUserMessage("Scan mislukt. Probeer opnieuw."),
-                            )
-                        }
-                    }
-            } finally {
-                deleteScannerTemporaryImage(path)
-            }
-        }
+            },
+            publish = { ephemeral.value = it },
+            fail = { error ->
+                val fallback = if (scannerMode == ScannerMode.AI_SCALE) {
+                    "Weegfoto analyseren mislukt. Probeer opnieuw."
+                } else {
+                    "Scan mislukt. Probeer opnieuw."
+                }
+                ephemeral.update { it.copy(phase = Phase.Error, message = error.toAiUserMessage(fallback)) }
+            },
+        )
     }
 
     fun resetToPreview(clearScanResult: Boolean = true) {
+        scanRequest.cancel()
         if (clearScanResult) clearLastScanResultUseCase()
         ephemeral.update { it.copy(phase = Phase.Preview, message = null) }
     }
 
     fun clearScanResult() {
-        clearLastScanResultUseCase()
+        resetToPreview(clearScanResult = true)
     }
 }
 
@@ -377,6 +354,10 @@ fun CameraScannerRoute(
 
     LaunchedEffect(contextHint) {
         viewModel.setContextHint(contextHint)
+    }
+
+    DisposableEffect(viewModel) {
+        onDispose { viewModel.resetToPreview(clearScanResult = false) }
     }
 
     LaunchedEffect(uiState) {

@@ -28,6 +28,10 @@ import com.trainiq.core.database.WorkoutRoutineEntity
 import com.trainiq.core.database.WorkoutSessionEntity
 import com.trainiq.core.database.WorkoutSetEntity
 import com.trainiq.data.local.FoodItemStorage
+import com.trainiq.data.local.LoggedMealStorage
+import com.trainiq.data.local.LoggedMealItemStorage
+import com.trainiq.data.local.RecipeStorage
+import com.trainiq.data.local.RecipeIngredientStorage
 import com.trainiq.data.local.TrainIqLocalStore
 import com.trainiq.data.migration.JsonRoomImportPlanner
 import com.trainiq.data.migration.RoomImportDryRun
@@ -39,6 +43,12 @@ import com.trainiq.data.migration.RoomRuntimeReadinessGate
 import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.usecase.ExportAppDataUseCase
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -52,6 +62,7 @@ class TargetedRoomPersistenceInstrumentedTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private val dbName = "targeted-room-persistence-test.db"
     private lateinit var database: TrainIqDatabase
+    private val storeJobs = mutableListOf<Job>()
 
     @Before
     fun setUp() {
@@ -61,8 +72,50 @@ class TargetedRoomPersistenceInstrumentedTest {
 
     @After
     fun tearDown() {
-        database.close()
+        closeDatabase()
         context.deleteDatabase(dbName)
+    }
+
+    @Test
+    fun sequentialMealsAllocateDistinctIdsAndEditingPreservesOtherSnapshotsAfterReopen() = runTest {
+        val store = runtimeStore()
+        val items = listOf(LoggedMealItemStorage(id = 1, name = "Oats", calories = 120.0))
+        val first = store.saveMeal(LoggedMealStorage(name = "First"), items)
+        val second = store.saveMeal(LoggedMealStorage(name = "Second"), items)
+        assertTrue(first > 0 && second > 0 && first != second)
+        store.saveMeal(LoggedMealStorage(id = first, name = "Edited"), items.map { it.copy(calories = 200.0) })
+        closeDatabase()
+        database = openDatabase()
+        assertEquals(setOf("Edited", "Second"), database.dao().observeMeals().first().map { it.name }.toSet())
+        val savedItems = database.dao().observeMealItems().first()
+        assertEquals(2, savedItems.map { it.id }.toSet().size)
+        assertEquals(120.0, savedItems.single { it.mealId == second }.calories, 0.0)
+        assertEquals(200.0, savedItems.single { it.mealId == first }.calories, 0.0)
+    }
+
+    @Test
+    fun sequentialRecipesAllocateDistinctIdsAndInvalidEditRollsBackAfterReopen() = runTest {
+        val store = runtimeStore()
+        val food = store.saveFood(FoodItemStorage(name = "Oats"))
+        val ingredients = listOf(RecipeIngredientStorage(id = 1, foodItemId = food.id, gramsUsed = 100.0))
+        val (first, firstIngredients) = store.saveRecipe(RecipeStorage(name = "First"), ingredients)
+        val (second, secondIngredients) = store.saveRecipe(RecipeStorage(name = "Second"), ingredients)
+        assertTrue(first.id > 0 && second.id > 0 && first.id != second.id)
+        assertTrue(firstIngredients.single().id != secondIngredients.single().id)
+        assertEquals(second.id, secondIngredients.single().recipeId)
+        assertEquals(secondIngredients.single().id, database.dao().observeRecipeIngredients().first().single { it.recipeId == second.id }.id)
+        store.saveRecipe(first.copy(name = "Edited"), ingredients.map { it.copy(gramsUsed = 200.0) })
+        val failed = runCatching {
+            store.saveRecipe(first.copy(name = "Invalid"), ingredients.map { it.copy(foodItemId = 999999L) })
+        }
+        assertTrue(failed.isFailure)
+        closeDatabase()
+        database = openDatabase()
+        assertEquals(setOf("Edited", "Second"), database.dao().observeRecipes().first().map { it.name }.toSet())
+        val savedIngredients = database.dao().observeRecipeIngredients().first()
+        assertEquals(2, savedIngredients.map { it.id }.toSet().size)
+        assertEquals(100.0, savedIngredients.single { it.recipeId == second.id }.gramsUsed, 0.0)
+        assertEquals(200.0, savedIngredients.single { it.recipeId == first.id }.gramsUsed, 0.0)
     }
 
     @Test
@@ -167,7 +220,7 @@ class TargetedRoomPersistenceInstrumentedTest {
         )
         dao.deleteWorkoutSessionCascade(50L)
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
 
@@ -239,7 +292,7 @@ class TargetedRoomPersistenceInstrumentedTest {
             source = "GEMINI",
         )
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
         val completed = reopened.observeWorkoutSessions().first().single { it.id == 51L }
@@ -283,7 +336,7 @@ class TargetedRoomPersistenceInstrumentedTest {
             ),
         )
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
         val routine = reopened.observeRoutines().first().single { it.id == 2L }
@@ -357,7 +410,7 @@ class TargetedRoomPersistenceInstrumentedTest {
         )
         dao.deleteWorkoutDayCascade(10L)
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
 
@@ -381,7 +434,7 @@ class TargetedRoomPersistenceInstrumentedTest {
         dao.updateRoutine(routineId = 1L, name = "A updated", description = "Persisted")
         dao.deleteRoutineAndNormalizeActive(2L)
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
         val routines = reopened.observeRoutines().first()
@@ -431,7 +484,7 @@ class TargetedRoomPersistenceInstrumentedTest {
         )
         dao.deleteRoutineCascade(2L)
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
 
@@ -483,7 +536,7 @@ class TargetedRoomPersistenceInstrumentedTest {
         dao.deleteRecipeWithIngredients(80L)
         dao.deleteFoodItem(90L)
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
 
@@ -519,7 +572,7 @@ class TargetedRoomPersistenceInstrumentedTest {
         dao.insertMeasurement(BodyMeasurementEntity(id = 11L, date = 2_000L, weight = 83.0, bodyFat = 14.8, muscleMass = 38.4))
         dao.deleteMeasurement(10L)
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
 
@@ -554,7 +607,7 @@ class TargetedRoomPersistenceInstrumentedTest {
         dao.insertMeasurement(BodyMeasurementEntity(id = 12L, date = 3_000L, weight = 84.0, bodyFat = 14.5, muscleMass = 38.8))
         dao.clearMirrorUserProfile()
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
 
@@ -620,7 +673,7 @@ class TargetedRoomPersistenceInstrumentedTest {
         )
         dao.deleteMealWithItems(120L)
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
 
@@ -751,7 +804,7 @@ class TargetedRoomPersistenceInstrumentedTest {
             ingredients = listOf(RecipeIngredientEntity(id = 102L, recipeId = 80L, foodItemId = 91L, gramsUsed = 200.0)),
         )
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
         val snapshots = reopened.observeMealItems().first().sortedBy { it.orderIndex }
@@ -803,7 +856,7 @@ class TargetedRoomPersistenceInstrumentedTest {
             ),
         )
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
 
@@ -849,7 +902,7 @@ class TargetedRoomPersistenceInstrumentedTest {
             activeKey = 20L,
         )
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
         val active = reopened.observeActiveWorkoutSessions().first().single()
@@ -898,7 +951,7 @@ class TargetedRoomPersistenceInstrumentedTest {
             updatedAt = 1_600L,
         )
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
 
@@ -935,7 +988,7 @@ class TargetedRoomPersistenceInstrumentedTest {
 
         dao.discardActiveWorkoutSession(sessionId = 50L)
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
 
@@ -987,7 +1040,7 @@ class TargetedRoomPersistenceInstrumentedTest {
 
         dao.deleteActiveWorkoutSet(sessionId = 50L, setId = 70L, updatedAt = 1_600L)
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
 
@@ -1025,7 +1078,7 @@ class TargetedRoomPersistenceInstrumentedTest {
 
         dao.updateActiveWorkoutSetType(sessionId = 50L, setId = 70L, setType = "WARMUP", updatedAt = 1_700L)
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
 
@@ -1069,7 +1122,7 @@ class TargetedRoomPersistenceInstrumentedTest {
             updatedAt = 1_800L,
         )
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
         val active = reopened.observeActiveWorkoutSessions().first().single()
@@ -1126,7 +1179,7 @@ class TargetedRoomPersistenceInstrumentedTest {
             activeSessionId = 50L,
         )
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
         val session = reopened.observeWorkoutSessions().first().single { it.id == 50L }
@@ -1174,7 +1227,7 @@ class TargetedRoomPersistenceInstrumentedTest {
             updatedAt = 1_500L,
         )
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
         val active = reopened.observeActiveWorkoutSessions().first().single()
@@ -1203,7 +1256,7 @@ class TargetedRoomPersistenceInstrumentedTest {
         )
         dao.setActiveRoutine(2L)
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
         val routines = reopened.observeRoutines().first().associateBy { it.id }
@@ -1234,7 +1287,7 @@ class TargetedRoomPersistenceInstrumentedTest {
         )
         dao.reorderExercises(dayId = 10L, orderedIds = listOf(32L, 30L, 31L))
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
         val exercises = reopened.observeWorkoutExercises().first().filter { it.dayId == 10L }
@@ -1265,7 +1318,7 @@ class TargetedRoomPersistenceInstrumentedTest {
         )
         dao.setSupersetGroup(workoutExerciseIds = listOf(30L, 31L), groupId = 700L)
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
         val exercises = reopened.observeWorkoutExercises().first().associateBy { it.id }
@@ -1314,7 +1367,7 @@ class TargetedRoomPersistenceInstrumentedTest {
             ),
         )
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
         val exercise = reopened.observeWorkoutExercises().first().single { it.id == 30L }
@@ -1362,7 +1415,7 @@ class TargetedRoomPersistenceInstrumentedTest {
             ),
         )
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
         val exercise = reopened.observeWorkoutExercises().first().single { it.id == 30L }
@@ -1403,7 +1456,7 @@ class TargetedRoomPersistenceInstrumentedTest {
             WorkoutExerciseEntity(id = 30L, dayId = 10L, exerciseId = 21L, targetSets = 3, repRange = "6-8", restSeconds = 120, orderIndex = 0),
         )
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
         val exercise = reopened.observeWorkoutExercises().first().single { it.id == 30L }
@@ -1447,7 +1500,7 @@ class TargetedRoomPersistenceInstrumentedTest {
             updatedAt = 2_000L,
         )
 
-        database.close()
+        closeDatabase()
         database = openDatabase()
         val reopened = database.dao()
         val exercise = reopened.observeWorkoutExercises().first().single { it.id == 30L }
@@ -1478,6 +1531,15 @@ class TargetedRoomPersistenceInstrumentedTest {
                 },
             ),
         )
-        return RoomTrainIqRuntimeStore(database, legacyStore)
+        // The fixture owns observation jobs and joins them before closing the database.
+        runBlocking { legacyStore.exportLegacyState() }
+        val job = SupervisorJob().also { storeJobs.add(it) }
+        return RoomTrainIqRuntimeStore(database, legacyStore, CoroutineScope(job + Dispatchers.IO))
+    }
+
+    private fun closeDatabase() {
+        runBlocking { storeJobs.forEach { it.cancelAndJoin() } }
+        storeJobs.clear()
+        database.close()
     }
 }
