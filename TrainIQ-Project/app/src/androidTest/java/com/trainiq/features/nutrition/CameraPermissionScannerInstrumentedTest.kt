@@ -1,86 +1,68 @@
-package com.trainiq.features.nutrition
+﻿package com.trainiq.features.nutrition
 
 import android.Manifest
-import android.content.Context
-import android.os.ParcelFileDescriptor
-import androidx.compose.ui.test.junit4.createEmptyComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.camera.core.CameraState
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
-import androidx.test.core.app.ActivityScenario
-import androidx.test.core.app.ApplicationProvider
-import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.trainiq.MainActivity
-import org.junit.Before
+import com.trainiq.core.theme.TrainIqTheme
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import org.junit.runner.RunWith
+import java.util.concurrent.TimeUnit
 
-@RunWith(AndroidJUnit4::class)
 class CameraPermissionScannerInstrumentedTest {
-    @get:Rule
-    val compose = createEmptyComposeRule()
+    @get:Rule val compose = createComposeRule()
 
-    private lateinit var context: Context
-
-    @Before
-    fun setUp() {
-        context = ApplicationProvider.getApplicationContext()
-    }
-
-    @Test
-    fun barcodeScannerShowsDeniedFallbackThenGrantedCameraCopy() {
-        setCameraPermission(granted = false)
-        ActivityScenario.launch(MainActivity::class.java).use {
-            openBarcodeScanner()
-            compose.waitForText("Cameratoegang nodig")
-            compose.waitForText("Toegang geven")
-            compose.waitForText("Terug")
-        }
-
-        setCameraPermission(granted = true)
-        ActivityScenario.launch(MainActivity::class.java).use {
-            openBarcodeScanner()
-            compose.waitForText("Barcodescanner")
-            compose.waitForText("Richt de camera op de barcode van het product.")
-            compose.waitForText("Annuleren")
-        }
-    }
-
-    private fun openBarcodeScanner() {
-        compose.waitForText("Voeding")
-        compose.onNodeWithText("Voeding").performClick()
-        compose.onNodeWithContentDescription("Voeding secties openen").performClick()
-        compose.waitForText("Voeding secties")
-        compose.onNodeWithText("Producten").performClick()
-        compose.waitForText("Producten")
-        compose.onNodeWithText("Barcode scannen")
-            .performScrollTo()
-            .performClick()
-    }
-
-    private fun setCameraPermission(granted: Boolean) {
-        val action = if (granted) "grant" else "revoke"
-        shell("pm $action ${context.packageName} ${Manifest.permission.CAMERA}")
-    }
-
-    private fun shell(command: String) {
-        InstrumentationRegistry.getInstrumentation()
-            .uiAutomation
-            .executeShellCommand(command)
-            .use { descriptor ->
-                ParcelFileDescriptor.AutoCloseInputStream(descriptor)
-                    .bufferedReader()
-                    .use { it.readText() }
+    @Test fun deniedCameraKeepsBackActionAvailable() {
+        var backedOut = false
+        compose.setContent {
+            TrainIqTheme {
+                CameraScannerScreen(
+                    uiState = CameraScannerUiState.Preview("", true), scannerMode = ScannerMode.BARCODE,
+                    onAnalyze = {}, onDismissError = {}, onScanAgain = {}, onReviewItems = {}, onReviewScaleMeasurement = {},
+                    onBack = { backedOut = true }, onBarcodeScanned = {},
+                    bindCameraPreview = false, initialCameraPermissionGranted = false,
+                )
             }
+        }
+        compose.onNodeWithText("Cameratoegang nodig").assertIsDisplayed()
+        compose.onNodeWithText("Toegang geven").assertIsDisplayed()
+        compose.onNodeWithText("Terug").performClick()
+        compose.runOnIdle { assertTrue(backedOut) }
     }
 
-    private fun androidx.compose.ui.test.junit4.ComposeTestRule.waitForText(text: String) {
-        waitUntil(timeoutMillis = 30_000L) {
-            onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty()
+    @Test fun alreadyGrantedCameraOpensBarcodeAfterAiCameraAndCanReopen() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        // Revoking our own permission kills the instrumentation process on Android 16.
+        // Denial uses the fixture above and the separate system UI smoke.
+        instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.CAMERA)
+        val provider = ProcessCameraProvider.getInstance(context).get(15, TimeUnit.SECONDS)
+        var mode by mutableStateOf(ScannerMode.AI_MEAL)
+        compose.setContent {
+            TrainIqTheme {
+                key(mode) {
+                    CameraScannerScreen(
+                        uiState = CameraScannerUiState.Preview("", true), scannerMode = mode,
+                        onAnalyze = {}, onDismissError = {}, onScanAgain = {}, onReviewItems = {}, onReviewScaleMeasurement = {},
+                        onBack = {}, onBarcodeScanned = {},
+                    )
+                }
+            }
+        }
+        listOf(ScannerMode.AI_MEAL, ScannerMode.BARCODE, ScannerMode.AI_MEAL, ScannerMode.BARCODE).forEach { next ->
+            compose.runOnIdle { mode = next }
+            compose.waitUntil(15_000) { provider.availableCameraInfos.any { it.cameraState.value?.type == CameraState.Type.OPEN } }
+            compose.onNodeWithText(if (next == ScannerMode.BARCODE) "Barcodescanner" else "Camerascanner").assertIsDisplayed()
+            compose.onNodeWithText(scannerCameraBindFailureMessage(next)).assertDoesNotExist()
         }
     }
 }

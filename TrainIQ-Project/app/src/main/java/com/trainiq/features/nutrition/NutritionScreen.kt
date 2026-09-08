@@ -244,7 +244,14 @@ data class BarcodeLookupUiResult(
     val target: BarcodeLookupTarget,
     val product: BarcodeProductLookupResult?,
     val barcode: String,
+    val failed: Boolean = false,
 )
+
+internal fun BarcodeLookupUiResult.userMessage(): String = when {
+    failed -> "Product ophalen mislukt. Controleer je verbinding en probeer opnieuw, of vul het product handmatig in."
+    product != null -> "${product.name} gevonden via barcode."
+    else -> "Product niet gevonden of voedingswaarden ontbreken. Vul het product handmatig in of scan opnieuw."
+}
 
 private sealed interface PendingNutritionDelete {
     data class Meal(val id: Long) : PendingNutritionDelete
@@ -544,8 +551,7 @@ class NutritionViewModel @Inject constructor(
             ephemeral.update {
                 it.copy(
                     barcodeLookupResult = result,
-                    message = result.product?.let { product -> "${product.name} gevonden via barcode." }
-                        ?: "Barcode gevonden. Productdata ontbreekt; vul kcal en macro's handmatig in.",
+                    message = result.userMessage(),
                 )
             }
         },
@@ -676,6 +682,11 @@ fun NutritionScreen(
 
     var foodName by rememberSaveable { mutableStateOf("") }
     var barcode by rememberSaveable { mutableStateOf("") }
+    var newBarcodeProduct by rememberSaveable { mutableStateOf(false) }
+    var barcodeMealTarget by rememberSaveable { mutableStateOf<MealType?>(null) }
+    var barcodeStatus by rememberSaveable { mutableStateOf<String?>(null) }
+    var barcodeLookupPending by rememberSaveable { mutableStateOf(false) }
+    val resumeBarcodeLookup = remember { barcodeLookupPending }
     var calories by rememberSaveable { mutableStateOf("") }
     var protein by rememberSaveable { mutableStateOf("") }
     var carbs by rememberSaveable { mutableStateOf("") }
@@ -750,6 +761,8 @@ fun NutritionScreen(
 
     fun resetFoodEditorState() {
         onClearBarcodeLookupResult()
+        barcodeStatus = null
+        barcodeLookupPending = false
         selectedFoodId = null
         hydratedFoodId = null
         foodName = ""
@@ -770,6 +783,13 @@ fun NutritionScreen(
     fun openNewFoodEditor() {
         resetFoodEditorState()
         showFoodEditor = true
+    }
+
+    fun openNewBarcodeProduct(type: MealType? = null) {
+        newBarcodeProduct = true
+        barcodeMealTarget = type
+        onSetScanTarget(ScanTarget.FOOD_EDITOR)
+        onOpenBarcodeScanner()
     }
 
     fun resetRecipeEditorState() {
@@ -926,8 +946,17 @@ fun NutritionScreen(
         )
     }
 
-    LaunchedEffect(pendingBarcode) {
-        if (pendingBarcode != null) {
+    LaunchedEffect(successState != null) {
+        // A restored editor must not remain blocked by a lookup lost with its old process.
+        if (resumeBarcodeLookup && successState != null && showFoodEditor &&
+            barcodeLookupPending && barcodeLookupResult == null && barcode.isNotBlank()
+        ) {
+            onLookupBarcodeProduct(barcode, BarcodeLookupTarget.FOOD_EDITOR)
+        }
+    }
+
+    LaunchedEffect(pendingBarcode, successState != null) {
+        if (pendingBarcode != null && successState != null) {
             if (successState?.scanTarget == ScanTarget.RECIPE_DRAFT) {
                 quickIngredientBarcode = pendingBarcode
                 selectedTab = 3
@@ -936,11 +965,20 @@ fun NutritionScreen(
                 showIngredientEditor = true
                 onLookupBarcodeProduct(pendingBarcode, BarcodeLookupTarget.RECIPE_DRAFT)
             } else {
+                if (newBarcodeProduct) {
+                    resetFoodEditorState()
+                    hasAddToMealTarget = barcodeMealTarget != null
+                    barcodeMealTarget?.let { selectMealDraftTarget(it) }
+                    newBarcodeProduct = false
+                    barcodeMealTarget = null
+                }
                 barcode = pendingBarcode
                 showFoodEditor = true
                 selectedTab = 4
                 onLookupBarcodeProduct(pendingBarcode, BarcodeLookupTarget.FOOD_EDITOR)
             }
+            barcodeStatus = "Product ophalen..."
+            barcodeLookupPending = true
             onSetScanTarget(ScanTarget.FOOD_EDITOR)
             onBarcodeClear()
         }
@@ -948,6 +986,8 @@ fun NutritionScreen(
 
     LaunchedEffect(barcodeLookupResult) {
         val result = barcodeLookupResult ?: return@LaunchedEffect
+        barcodeLookupPending = false
+        barcodeStatus = result.userMessage()
         result.product?.let { product ->
             when (result.target) {
                 BarcodeLookupTarget.FOOD_EDITOR -> {
@@ -1325,9 +1365,7 @@ fun NutritionScreen(
                                         openNewFoodEditor()
                                     },
                                     onScanBarcode = {
-                                        openNewFoodEditor()
-                                        onSetScanTarget(ScanTarget.FOOD_EDITOR)
-                                        onOpenBarcodeScanner()
+                                        openNewBarcodeProduct()
                                     },
                                     onPhotoProduct = {
                                         aiResultTarget = NutritionAiResultTarget.ProductLibrary
@@ -1425,7 +1463,12 @@ fun NutritionScreen(
                     fat = fat,
                     defaultServingGrams = defaultServingGrams,
                     onFoodNameChange = { foodName = it; foodErrors = foodErrors.copy(name = null) },
-                    onBarcodeChange = { barcode = it },
+                    onBarcodeChange = {
+                        barcode = it
+                        onClearBarcodeLookupResult()
+                        barcodeLookupPending = false
+                        barcodeStatus = null
+                    },
                     onCaloriesChange = { calories = it; foodErrors = foodErrors.copy(calories = null) },
                     onProteinChange = { protein = it; foodErrors = foodErrors.copy(protein = null) },
                     onCarbsChange = { carbs = it; foodErrors = foodErrors.copy(carbs = null) },
@@ -1434,15 +1477,23 @@ fun NutritionScreen(
                     isEditing = selectedFoodId != null,
                     errors = foodErrors,
                     isSaving = isFoodSaving,
+                    isLookingUpBarcode = barcodeLookupPending,
+                    barcodeStatus = barcodeStatus,
+                    onRetryBarcode = {
+                        barcodeStatus = "Product ophalen..."
+                        barcodeLookupPending = true
+                        onLookupBarcodeProduct(barcode, BarcodeLookupTarget.FOOD_EDITOR)
+                    },
                     saveToMealOnly = hasAddToMealTarget && selectedFoodId == null,
                     onScanBarcode = {
+                        newBarcodeProduct = false
                         onSetScanTarget(ScanTarget.FOOD_EDITOR)
                         onOpenBarcodeScanner()
                     },
                     onSave = {
                         val errors = validateFoodInput(foodName, calories, protein, carbs, fat, defaultServingGrams)
                         foodErrors = errors
-                        if (errors.hasErrors || isFoodSaving) return@FoodEditorCard
+                        if (errors.hasErrors || isFoodSaving || barcodeLookupPending) return@FoodEditorCard
                         if (hasAddToMealTarget && selectedFoodId == null) {
                             val grams = defaultServingGrams.toNutritionNumberOrNull(max = 100_000.0) ?: 100.0
                             applyDefaultMealName(foodName)
@@ -1703,6 +1754,10 @@ fun NutritionScreen(
                     openNewFoodEditor()
                     showAddToMealActions = false
                     selectedTab = 4
+                },
+                onBarcode = {
+                    showAddToMealActions = false
+                    openNewBarcodeProduct(addToMealType)
                 },
                 onSavedFood = {
                     mealType = addToMealType
@@ -2187,6 +2242,7 @@ private fun AddToMealActionSheet(
     aiContext: String,
     onDismiss: () -> Unit,
     onManualFood: () -> Unit,
+    onBarcode: () -> Unit,
     onSavedFood: () -> Unit,
     onRecipe: () -> Unit,
     onAiContextChange: (String) -> Unit,
@@ -2205,6 +2261,7 @@ private fun AddToMealActionSheet(
         BottomSheetHeader(title = "Toevoegen aan ${mealType.dutchLabel}")
         Text("Kies een bron en controleer daarna voor opslaan.", color = MaterialTheme.trainIqColors.mutedText)
         Button(onClick = onManualFood, modifier = Modifier.fillMaxWidth()) { Text("Handmatig product maken") }
+        OutlinedButton(onClick = onBarcode, modifier = Modifier.fillMaxWidth()) { Text("Barcode scannen") }
         OutlinedButton(onClick = onSavedFood, enabled = hasSavedFoods, modifier = Modifier.fillMaxWidth()) { Text("Opgeslagen product gebruiken") }
         OutlinedButton(onClick = onRecipe, enabled = hasSavedRecipes, modifier = Modifier.fillMaxWidth()) { Text("Opgeslagen recept gebruiken") }
         NutritionTextField(
@@ -2215,6 +2272,9 @@ private fun AddToMealActionSheet(
             singleLine = false,
         )
         OutlinedButton(onClick = onPhotoAi, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) { Text("Foto / AI-inschatting") }
+        if (!aiEnabled) {
+            NutritionAiSetupHint()
+        }
         if (hasDraft) {
             OutlinedButton(onClick = onOpenMealDraft, modifier = Modifier.fillMaxWidth()) { Text("Huidige maaltijd controleren") }
         }
@@ -2266,7 +2326,17 @@ private fun EqualNutritionHeaderActions(items: List<NutritionHeaderAction>) {
                 }
             }
         }
+        if (items.any { !it.enabled }) NutritionAiSetupHint()
     }
+}
+
+@Composable
+private fun NutritionAiSetupHint() {
+    Text(
+        "Schakel AI in via Instellingen en stel een provider in om foto's te analyseren. Handmatig toevoegen blijft beschikbaar.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable
@@ -2397,6 +2467,9 @@ private fun FoodEditorCard(
     isEditing: Boolean,
     errors: FoodFieldErrors,
     isSaving: Boolean,
+    isLookingUpBarcode: Boolean,
+    barcodeStatus: String?,
+    onRetryBarcode: () -> Unit,
     saveToMealOnly: Boolean,
     onScanBarcode: () -> Unit,
     onSave: () -> Unit,
@@ -2416,6 +2489,12 @@ private fun FoodEditorCard(
             )
             NutritionTextField(value = foodName, onValueChange = onFoodNameChange, label = "Productnaam", modifier = Modifier.fillMaxWidth(), error = errors.name)
             NutritionTextField(value = barcode, onValueChange = onBarcodeChange, label = "Barcode (optioneel)", modifier = Modifier.fillMaxWidth())
+            barcodeStatus?.let { status ->
+                Text(status, style = MaterialTheme.typography.bodyMedium)
+                if (!isSaving && !isLookingUpBarcode && barcode.any(Char::isDigit)) {
+                    OutlinedButton(onClick = onRetryBarcode, modifier = Modifier.fillMaxWidth()) { Text("Product opnieuw ophalen") }
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 NutritionNumberField(value = calories, onValueChange = onCaloriesChange, label = "kcal / 100g", modifier = Modifier.weight(1f), error = errors.calories)
                 NutritionNumberField(value = protein, onValueChange = onProteinChange, label = "Eiwit / 100g", modifier = Modifier.weight(1f), error = errors.protein)
@@ -2433,9 +2512,10 @@ private fun FoodEditorCard(
                 imeSettledDelayMillis = 560L,
             )
             WrappingNutritionActions {
-                Button(onClick = onSave, enabled = !isSaving, modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = onSave, enabled = !isSaving && !isLookingUpBarcode, modifier = Modifier.fillMaxWidth()) {
                     Text(
                         when {
+                            isLookingUpBarcode -> "Product ophalen..."
                             isSaving -> "Opslaan..."
                             saveToMealOnly -> "Alleen aan maaltijd toevoegen"
                             isEditing -> "Wijzigingen opslaan"
@@ -2653,6 +2733,9 @@ private fun ProductSearchField(
         label = label,
         modifier = Modifier.fillMaxWidth(),
     )
+    if (query.isNotEmpty()) {
+        TextButton(onClick = { onQueryChange("") }) { Text("Zoekterm wissen") }
+    }
 }
 
 @Composable

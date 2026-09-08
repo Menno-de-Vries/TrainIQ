@@ -71,6 +71,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -429,6 +431,16 @@ internal fun CameraScannerScreen(
         hasPermission = it
         restorableState = restorableState.copy(permissionDenied = !it)
     }
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && initialCameraPermissionGranted == null) {
+                hasPermission = isCameraPermissionGranted(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA))
+                if (hasPermission) restorableState = restorableState.copy(permissionDenied = false)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val imageImportScope = rememberCoroutineScope()
     val imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
@@ -442,48 +454,72 @@ internal fun CameraScannerScreen(
         }
     }
 
-    val controller = remember(context, scannerMode, bindCameraPreview) {
-        if (bindCameraPreview) {
-            LifecycleCameraController(context).apply {
-                setEnabledUseCases(
-                    if (scannerMode == ScannerMode.BARCODE) CameraController.IMAGE_ANALYSIS
-                    else CameraController.IMAGE_CAPTURE,
-                )
-                cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+    val controllerResult = remember(context, scannerMode, bindCameraPreview, hasPermission, hasCameraFeature) {
+        runCatching {
+            if (bindCameraPreview && hasPermission && hasCameraFeature) {
+                LifecycleCameraController(context).apply {
+                    setEnabledUseCases(
+                        if (scannerMode == ScannerMode.BARCODE) CameraController.IMAGE_ANALYSIS
+                        else CameraController.IMAGE_CAPTURE,
+                    )
+                    cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+                }
+            } else {
+                null
             }
-        } else {
-            null
+        }
+    }
+    val controller = controllerResult.getOrNull()
+    LaunchedEffect(controllerResult) {
+        if (controllerResult.isFailure) {
+            Log.w(ScannerLogTag, "Camera controller creation failed", controllerResult.exceptionOrNull())
+            restorableState = restorableState.copy(cameraError = scannerCameraBindFailureMessage(scannerMode))
         }
     }
 
     DisposableEffect(controller, lifecycleOwner, hasPermission, hasCameraFeature, scannerMode, bindCameraPreview) {
         var scanner: com.google.mlkit.vision.barcode.BarcodeScanner? = null
+        val active = AtomicBoolean(true)
         if (hasPermission && hasCameraFeature && controller != null) {
-            val bound = runCatching { controller.bindToLifecycle(lifecycleOwner) }
-                .onFailure {
-                    restorableState = restorableState.copy(
-                        cameraError = scannerCameraBindFailureMessage(scannerMode),
+            runCatching {
+                if (scannerMode == ScannerMode.BARCODE) {
+                    val barcodeScanner = BarcodeScanning.getClient(
+                        BarcodeScannerOptions.Builder()
+                            .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
+                            .build(),
                     )
-                }
-                .isSuccess
-            if (bound && scannerMode == ScannerMode.BARCODE) {
-                val barcodeScanner = BarcodeScanning.getClient(
-                    BarcodeScannerOptions.Builder()
-                        .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
-                        .build(),
-                )
-                scanner = barcodeScanner
-                controller.setImageAnalysisAnalyzer(ContextCompat.getMainExecutor(context)) { imageProxy ->
-                    processBarcode(imageProxy, barcodeScanner) { barcode ->
-                        if (hasDetectedBarcode.compareAndSet(false, true)) {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onBarcodeScanned(barcode)
+                    scanner = barcodeScanner
+                    controller.setImageAnalysisAnalyzer(ContextCompat.getMainExecutor(context)) { imageProxy ->
+                        processBarcode(imageProxy, barcodeScanner, onError = {
+                            if (active.get()) restorableState = restorableState.copy(cameraError = "Barcodeherkenning kon niet starten. Ga terug en probeer opnieuw.")
+                        }) { barcode ->
+                            if (active.get() && hasDetectedBarcode.compareAndSet(false, true)) {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onBarcodeScanned(barcode)
+                            }
                         }
                     }
                 }
+                controller.bindToLifecycle(lifecycleOwner)
+                controller.initializationFuture.addListener({
+                    if (active.get()) {
+                        runCatching { controller.initializationFuture.get() }.onFailure {
+                            Log.w(ScannerLogTag, "Camera initialization failed", it)
+                            controller.unbind()
+                            restorableState = restorableState.copy(cameraError = scannerCameraBindFailureMessage(scannerMode))
+                        }
+                    }
+                }, ContextCompat.getMainExecutor(context))
+            }.onFailure {
+                Log.w(ScannerLogTag, "Camera binding failed", it)
+                controller.unbind()
+                restorableState = restorableState.copy(cameraError = scannerCameraBindFailureMessage(scannerMode))
             }
         }
         onDispose {
+            active.set(false)
+            // Unbind first: changing the analyzer while bound can restart the camera.
+            controller?.unbind()
             controller?.clearImageAnalysisAnalyzer()
             scanner?.close()
         }
@@ -526,7 +562,11 @@ internal fun CameraScannerScreen(
                     AndroidView(
                         factory = { previewContext ->
                             PreviewView(previewContext).apply {
-                                this.controller = controller
+                                runCatching { this.controller = controller }.onFailure {
+                                    Log.w(ScannerLogTag, "Camera preview attachment failed", it)
+                                    controller.unbind()
+                                    restorableState = restorableState.copy(cameraError = scannerCameraBindFailureMessage(scannerMode))
+                                }
                                 scaleType = PreviewView.ScaleType.FILL_CENTER
                             }
                         },
@@ -1044,16 +1084,27 @@ private fun FullscreenScanningBeam(modifier: Modifier = Modifier) {
 private fun processBarcode(
     imageProxy: ImageProxy,
     scanner: com.google.mlkit.vision.barcode.BarcodeScanner,
+    onError: () -> Unit,
     onDetected: (String) -> Unit,
 ) {
-    val mediaImage = imageProxy.image
-    if (mediaImage != null) {
-        val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-        scanner.process(image)
-            .addOnSuccessListener { codes -> codes.firstOrNull()?.rawValue?.let(onDetected) }
-            .addOnCompleteListener { imageProxy.close() }
-    } else {
+    try {
+        val mediaImage = imageProxy.image
+        if (mediaImage != null) {
+            val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+            scanner.process(image)
+                .addOnSuccessListener { codes ->
+                    codes.firstNotNullOfOrNull { code ->
+                        code.rawValue?.takeIf { value -> value.length in 8..14 && value.all(Char::isDigit) }
+                    }?.let(onDetected)
+                }
+                .addOnFailureListener { onError() }
+                .addOnCompleteListener { imageProxy.close() }
+        } else {
+            imageProxy.close()
+        }
+    } catch (_: Exception) {
         imageProxy.close()
+        onError()
     }
 }
 

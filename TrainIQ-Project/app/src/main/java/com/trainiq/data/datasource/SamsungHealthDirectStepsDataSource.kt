@@ -1,6 +1,5 @@
 package com.trainiq.data.datasource
 
-import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageInfo
 import android.os.Build
@@ -63,39 +62,6 @@ class SamsungHealthDirectStepsDataSource @Inject constructor(
             )
         }.getOrElse { throwable ->
             SamsungHealthDirectStepSnapshot(status = throwable.samsungFailureStatus())
-        }
-    }
-
-    suspend fun requestTodayStepPermission(activity: Activity): SamsungHealthDirectStepSnapshot {
-        if (!BuildConfig.SAMSUNG_HEALTH_DATA_SDK_AAR_PRESENT) {
-            return SamsungHealthDirectStepSnapshot(status = unavailableStatus())
-        }
-        samsungHealthAndroidRuntimeReadiness()
-            .takeIf { readiness -> !readiness.canUseDirectSdk }
-            ?.let { readiness -> return SamsungHealthDirectStepSnapshot(status = readiness.status) }
-        samsungHealthRuntimeReadiness()
-            .takeIf { readiness -> !readiness.canUseDirectSdk }
-            ?.let { readiness -> return SamsungHealthDirectStepSnapshot(status = readiness.status) }
-        return runCatching {
-            val store = samsungHealthDataStore()
-            val permissions = setOf(samsungStepsReadPermission())
-            val grantedPermissions = invokeSuspend(store, "getGrantedPermissions", permissions).asSamsungPermissionSet()
-            val missingPermissions = permissions - grantedPermissions
-            if (missingPermissions.isNotEmpty()) {
-                val requestResult = invokeSuspend(store, "requestPermissions", missingPermissions, activity)
-                val newlyGranted = requestResult.asSamsungPermissionSet().ifEmpty {
-                    invokeSuspend(store, "getGrantedPermissions", permissions).asSamsungPermissionSet()
-                }
-                if (!newlyGranted.containsAll(permissions)) {
-                    return@runCatching SamsungHealthDirectStepSnapshot(status = StatusPermissionMissing)
-                }
-            }
-
-            val now = LocalDateTime.now()
-            readTodaySteps(start = now.toLocalDate().atStartOfDay(), end = now)
-        }.getOrElse { throwable ->
-            val cause = throwable.unwrapInvocationTarget()
-            SamsungHealthDirectStepSnapshot(status = cause.samsungResolutionStatus(activity) ?: cause.samsungFailureStatus())
         }
     }
 
@@ -540,18 +506,6 @@ class SamsungHealthDirectStepsDataSource @Inject constructor(
         }
     }
 
-    private fun Throwable.samsungResolutionStatus(activity: Activity): String? {
-        val cause = unwrapInvocationTarget()
-        if (!cause.javaClass.name.endsWith("ResolvablePlatformException") || !cause.hasSamsungResolution()) {
-            return null
-        }
-        return if (cause.resolveSamsungAction(activity)) {
-            StatusSdkResolutionStarted
-        } else {
-            StatusSdkResolutionFailed + cause.userFacingMessage()
-        }
-    }
-
     private fun Throwable.hasSamsungResolution(): Boolean =
         runCatching {
             javaClass.methods
@@ -561,16 +515,6 @@ class SamsungHealthDirectStepsDataSource @Inject constructor(
                     .firstOrNull { method -> method.name == "hasResolution" && method.parameterTypes.isEmpty() }
                     ?.invoke(this) as? Boolean
                 ?: false
-        }.getOrDefault(false)
-
-    private fun Throwable.resolveSamsungAction(activity: Activity): Boolean =
-        runCatching {
-            javaClass.methods
-                .firstOrNull { method -> method.name == "resolve" && method.parameterTypes.size == 1 }
-                ?.let { method ->
-                    method.invoke(this, activity)
-                    true
-                } ?: false
         }.getOrDefault(false)
 
     companion object {
@@ -590,8 +534,6 @@ class SamsungHealthDirectStepsDataSource @Inject constructor(
         const val StatusSdkInvalidRequest = "Samsung Health Data SDK stappenverzoek is ongeldig: "
         const val StatusSdkPlatformInternal = "Samsung Health gaf een interne SDK-fout terug: "
         const val StatusSdkHealthDataFailed = "Samsung Health Data SDK gaf een health-data fout terug: "
-        const val StatusSdkResolutionStarted = "Samsung Health Data SDK heeft een Samsung Health-actie geopend. Rond die af en vernieuw daarna TrainIQ."
-        const val StatusSdkResolutionFailed = "Samsung Health Data SDK-actie kon niet worden geopend: "
     }
 }
 

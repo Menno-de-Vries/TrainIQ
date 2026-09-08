@@ -25,6 +25,25 @@ import org.junit.Test
 class CoachProfileStateRestorationInstrumentedTest {
     @OptIn(ExperimentalTestApi::class)
     @Test
+    fun missingProfileHasADirectPathToTheProfileForm() = runComposeUiTest {
+        val profile = syntheticProfile()
+        val state = syntheticCoachUiState(profile, profile.toSyntheticDraft()).copy(currentProfile = null)
+        setContent { TrainIqTheme { CoachScreen(state, {}, {}, {}, {}, {}, {}) } }
+        onNode(hasText("Profiel instellen") and androidx.compose.ui.test.hasClickAction()).performClick()
+        onNode(hasSetTextAction() and hasText("Bestaand profiel")).performScrollTo().assertExists()
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun missingAdviceHasADirectPathToGoals() = runComposeUiTest {
+        setContent { SyntheticCoachScreen(syntheticProfile()) }
+        onNodeWithText("Advies").performClick()
+        onNodeWithText("Naar doelen").performClick()
+        onNode(hasSetTextAction() and hasText("Bestaand profiel")).performScrollTo().assertExists()
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
     fun previousReportRemainsReadableDuringRefreshAndFailureAllowsRetry() = runComposeUiTest {
         val profile = syntheticProfile()
         var state by mutableStateOf(syntheticCoachUiState(profile, profile.toSyntheticDraft()).copy(
