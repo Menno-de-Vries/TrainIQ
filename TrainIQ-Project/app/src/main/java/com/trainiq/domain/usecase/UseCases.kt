@@ -519,6 +519,7 @@ class ResetProfileUseCase @Inject constructor(
 }
 
 class ClearAppDataUseCase @Inject constructor(
+    private val sleepRoutineRepository: com.trainiq.data.sleep.SleepRoutineRepository,
     private val runtimeStore: RoomTrainIqRuntimeStore,
     private val legacyStore: TrainIqLocalStore,
     private val preferencesRepository: UserPreferencesRepository,
@@ -526,6 +527,7 @@ class ClearAppDataUseCase @Inject constructor(
     private val aiUsageGate: AiUsageGate,
 ) {
     suspend operator fun invoke() {
+        sleepRoutineRepository.clear()
         runtimeStore.clearAll()
         legacyStore.clearAll()
         aiUsageGate.clearAllAiKeys()

@@ -277,13 +277,13 @@ fun registerRoomMigrationChainVerificationMarkerTask(
     )
 
     doLast {
-        val marker = "trainiq-room-migration-chain-v2-to-v16"
+        val marker = "trainiq-room-migration-chain-v2-to-v17"
         val testTask = "connectedDebugAndroidTest"
-        val currentRoomVersion = 16
+        val currentRoomVersion = 17
         val requiredStartVersion = 2
-        val requiredEndVersion = 16
+        val requiredEndVersion = 17
         val coveredStartVersion = 2
-        val coveredEndVersion = 16
+        val coveredEndVersion = 17
         val verifiedAtMillis = verifiedAtMillisProperty
             .map(String::toLong)
             .getOrElse(System.currentTimeMillis())

@@ -39,6 +39,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var diagnosticsTracker: DiagnosticsTracker
     @Inject lateinit var healthConnectBackgroundSyncScheduler: HealthConnectBackgroundSyncScheduler
     @Inject lateinit var reminderScheduler: TrainIqReminderScheduler
+    @Inject lateinit var sleepRoutineRepository: com.trainiq.data.sleep.SleepRoutineRepository
     @Inject lateinit var telemetryExporter: TelemetryExporter
 
     private val viewModel: MainViewModel by viewModels()
@@ -74,6 +75,9 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch(Dispatchers.IO) {
                 healthConnectBackgroundSyncScheduler.scheduleIfBackgroundReadAvailable()
                 reminderScheduler.syncScheduleWithPreferences()
+                try { sleepRoutineRepository.reconcile() } catch (_: Exception) {
+                    // Durable recovery and the sleep screen expose/retry scheduling failures.
+                }
             }
         }, StartupDiagnosticsDelayMillis)
     }

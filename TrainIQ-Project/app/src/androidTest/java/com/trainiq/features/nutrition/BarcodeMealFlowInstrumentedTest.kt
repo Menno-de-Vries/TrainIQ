@@ -33,6 +33,39 @@ class BarcodeMealFlowInstrumentedTest {
     private var savedFoods = 0
     private var lookupCalls = 0
 
+    @Test fun optionalSaveDefaultsOffAndSurvivesRestoration() {
+        val restoration = showFlow()
+        openMealScanner("Middag")
+        compose.onNodeWithText("Herken barcode").performClick()
+        compose.onNodeWithText("Opslaan bij mijn producten").performScrollTo().assertIsOff().performClick()
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNodeWithText("Opslaan bij mijn producten").performScrollTo().assertIsOn()
+        val capture = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
+            .executeShellCommand("screencap -p /data/local/tmp/trainiq-barcode-choice.png")
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(capture).use { it.readBytes() }
+        compose.onNodeWithText("Aan maaltijd toevoegen en product opslaan").performScrollTo().performClick()
+        compose.onNodeWithText("Maaltijd opslaan").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(1, savedFoods); assertEquals(listOf(MealType.LUNCH), savedMeals) }
+        compose.onNodeWithContentDescription("Voeding secties openen").performClick()
+        compose.onNodeWithText("Producten").assertIsDisplayed().performClick()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Aan maaltijd toevoegen"))
+        compose.onNodeWithText("Test kwark").assertExists()
+        compose.onNodeWithText("Aan maaltijd toevoegen").performScrollTo().performClick()
+        compose.onNodeWithText("Maaltijd opslaan").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(2, savedMeals.size); assertEquals(1, savedFoods); assertEquals(1, lookupCalls) }
+    }
+
+    @Test fun optionalSaveFailureKeepsMealAndExplainsFailure() {
+        showFlow(failFoodSave = true)
+        openMealScanner("Avond")
+        compose.onNodeWithText("Herken barcode").performClick()
+        compose.onNodeWithText("Opslaan bij mijn producten").performScrollTo().performClick()
+        compose.onNodeWithText("Aan maaltijd toevoegen en product opslaan").performScrollTo().performClick()
+        compose.onNodeWithText("Product aan de maaltijd toegevoegd, maar opslaan bij mijn producten is mislukt.", substring = true).assertExists()
+        compose.onNodeWithText("Maaltijd opslaan").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(listOf(MealType.DINNER), savedMeals) }
+    }
+
     @Test fun breakfastScanIsConfirmedIntoBreakfast() = verifyMeal("Ochtend", MealType.BREAKFAST)
     @Test fun lunchScanIsConfirmedIntoLunch() = verifyMeal("Middag", MealType.LUNCH)
     @Test fun dinnerScanIsConfirmedIntoDinner() = verifyMeal("Avond", MealType.DINNER)
@@ -119,7 +152,7 @@ class BarcodeMealFlowInstrumentedTest {
         compose.onNodeWithText("Barcode scannen").performScrollTo().performClick()
     }
 
-    private fun showFlow(found: Boolean = true, failFirstLookup: Boolean = false, stallFirstLookup: Boolean = false): StateRestorationTester {
+    private fun showFlow(found: Boolean = true, failFirstLookup: Boolean = false, stallFirstLookup: Boolean = false, failFoodSave: Boolean = false): StateRestorationTester {
         val restoration = StateRestorationTester(compose)
         restoration.setContent {
             var state by remember { mutableStateOf(barcodeFlowState()) }
@@ -131,7 +164,15 @@ class BarcodeMealFlowInstrumentedTest {
                         val barcode by entry.savedStateHandle.getStateFlow(BarcodeScanResultKey, "").collectAsStateWithLifecycle()
                         NutritionScreen(
                             uiState = state,
-                            onSaveFood = { _, _, _, _, _, _, _, _, _, _, _ -> savedFoods++ },
+                            onSaveFood = { _, name, code, kcal, protein, carbs, fat, grams, source, done, failed ->
+                                savedFoods++
+                                if (failFoodSave) failed(IllegalStateException("Synthetic failure"))
+                                else {
+                                    val food = FoodItem(1, name, code, kcal.toDouble(), protein.toDouble(), carbs.toDouble(), fat.toDouble(), grams.toDouble(), source, 0, 0)
+                                    state = state.copy(overview = state.overview.copy(foods = listOf(food)))
+                                    done(food)
+                                }
+                            },
                             onSaveRecipe = { _, _, _, _, _, _ -> },
                             onSaveMeal = { _, type, _, _, entries, done ->
                                 assertEquals(1, entries.size)
@@ -140,7 +181,7 @@ class BarcodeMealFlowInstrumentedTest {
                             },
                             onDeleteMeal = {}, onDeleteFood = {}, onDeleteRecipe = {},
                             onTryStartAiBatchSave = { true }, onFinishAiBatchSave = {},
-                            onSetScanResult = {}, onSetMessage = {}, onDismissMessage = {}, onRetry = {}, onAiScanner = {},
+                            onSetScanResult = {}, onSetMessage = { state = state.copy(message = it) }, onDismissMessage = {}, onRetry = {}, onAiScanner = {},
                             onSetScanTarget = { state = state.copy(scanTarget = it) },
                             onOpenBarcodeScanner = { nav.navigate(CameraScanner(scannerMode = ScannerMode.BARCODE)) },
                             pendingBarcode = barcode.takeIf { it.isNotBlank() },
