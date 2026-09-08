@@ -1535,7 +1535,9 @@ fun WorkoutScreen(
     var exerciseLibraryQuery by rememberSaveable { mutableStateOf("") }
     var exerciseLibraryFilter by rememberSaveable { mutableStateOf(ExerciseLibraryFilter.All.key) }
     var previousSelectedRoutineId by rememberSaveable { mutableStateOf<Long?>(null) }
-    val trainingListState = rememberLazyListState()
+    val overviewListState = rememberLazyListState()
+    val detailListState = rememberLazyListState()
+    val trainingListState = if (selectedRoutineId == null) overviewListState else detailListState
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(selectedRoutineId) {
         onDetailModeChanged(selectedRoutineId != null)
@@ -1747,6 +1749,14 @@ fun WorkoutScreen(
                     query = exerciseLibraryQuery,
                     filterKey = exerciseLibraryFilter,
                 )
+                if (exerciseLibraryQuery.isNotBlank() || exerciseLibraryFilter != ExerciseLibraryFilter.All.key) {
+                    item {
+                        TextButton(onClick = {
+                            exerciseLibraryQuery = ""
+                            exerciseLibraryFilter = ExerciseLibraryFilter.All.key
+                        }) { Text("Zoekfilters wissen") }
+                    }
+                }
                 if (filteredExercises.isEmpty()) {
                     item { EmptyCard("Geen oefeningen gevonden", "Pas je zoekterm aan of voeg een oefening toe vanuit een routine.") }
                 } else {

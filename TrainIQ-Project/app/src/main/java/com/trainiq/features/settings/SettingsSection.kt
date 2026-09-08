@@ -1,7 +1,6 @@
 package com.trainiq.features.settings
 
 import android.Manifest
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -100,7 +99,6 @@ import com.trainiq.core.ui.UiMessage
 import com.trainiq.core.ui.reloadableObservation
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.datastore.UserPreferencesRepository
-import com.trainiq.data.datasource.SamsungHealthDirectStepsDataSource
 import com.trainiq.core.theme.ThemeMode
 import com.trainiq.features.profile.ProfileInputField
 import com.trainiq.features.profile.ProfileInputValidationError
@@ -200,7 +198,6 @@ class SettingsViewModel @Inject constructor(
     observeUserProfileUseCase: ObserveUserProfileUseCase,
     private val saveUserProfileUseCase: SaveUserProfileUseCase,
     private val getHealthConnectStatusUseCase: GetHealthConnectStatusUseCase,
-    private val samsungHealthDirectStepsDataSource: SamsungHealthDirectStepsDataSource,
     private val aiUsageGate: AiUsageGate,
     private val goalAdvisorService: GoalAdvisorService,
     private val resetProfileUseCase: ResetProfileUseCase,
@@ -520,19 +517,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun requestSamsungHealthStepPermission(activity: Activity) {
-        launchAction {
-            val samsungStatus = runUserActionCatching {
-                samsungHealthDirectStepsDataSource.requestTodayStepPermission(activity).status
-            }.getOrElse { throwable ->
-                "Samsung Health-stappentoegang kon niet worden geopend: ${throwable.message ?: throwable.javaClass.simpleName}"
-            }
-            _healthStatus.value = runUserActionCatching { getHealthConnectStatusUseCase() }
-                .getOrElse { _healthStatus.value }
-            emitMessage(samsungStatus)
-        }
-    }
-
     suspend fun exportAppDataJson(): String = exportAppDataUseCase()
 
     fun previewImportJson(json: String) = importController.preview(json)
@@ -600,7 +584,6 @@ fun SettingsRoute(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
-    val activity = context as? Activity
     val coroutineScope = rememberCoroutineScope()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val requestHealthPermission = rememberHealthConnectPermissionRequester(viewModel::refreshHealthConnectStatus)
@@ -684,13 +667,6 @@ fun SettingsRoute(
                 onClearAllData = viewModel::clearAllData,
                 onDismissMessage = viewModel::clearMessage,
                 onRequestHealthPermission = requestHealthPermission,
-                onRequestSamsungHealthPermission = {
-                    if (activity != null) {
-                        viewModel.requestSamsungHealthStepPermission(activity)
-                    } else {
-                        viewModel.refreshHealthConnectStatus()
-                    }
-                },
                 onRefreshHealth = viewModel::refreshHealthConnectStatus,
                 onOpenHealthSettings = {
                     val intent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
@@ -820,7 +796,6 @@ fun SettingsScreen(
     onClearAllData: () -> Unit,
     onDismissMessage: (Long) -> Unit,
     onRequestHealthPermission: () -> Unit,
-    onRequestSamsungHealthPermission: () -> Unit,
     onRefreshHealth: () -> Unit,
     onOpenHealthSettings: () -> Unit,
     onOpenHealthInstall: () -> Unit,
@@ -1154,12 +1129,6 @@ fun SettingsScreen(
                         ) { Text("Health Connect openen") }
                         HealthConnectState.UNSUPPORTED -> Text("Niet ondersteund op dit apparaat.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         HealthConnectState.ERROR -> Text("Health Connect kan nu niet worden gelezen.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (BuildConfig.SAMSUNG_HEALTH_DATA_SDK_AAR_PRESENT) {
-                        Button(
-                            modifier = Modifier.settingsActionLabel("Samsung Health-stappentoegang geven"),
-                            onClick = onRequestSamsungHealthPermission,
-                        ) { Text("Samsung toegang geven") }
                     }
                     TextButton(
                         modifier = Modifier.settingsActionLabel("Health Connect-status vernieuwen"),

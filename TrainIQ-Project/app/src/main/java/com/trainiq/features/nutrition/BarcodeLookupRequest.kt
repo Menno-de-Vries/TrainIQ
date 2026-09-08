@@ -21,15 +21,17 @@ internal class BarcodeLookupRequest(
         if (cleanBarcode.isBlank()) return
         val requestRevision = revision
         job = scope.launch {
+            var failed = false
             val product = try {
                 lookup(cleanBarcode)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
+                failed = true
                 null
             }
             if (requestRevision == revision) {
-                publish(BarcodeLookupUiResult(target, product, cleanBarcode))
+                publish(BarcodeLookupUiResult(target, product, cleanBarcode, failed))
             }
         }
     }

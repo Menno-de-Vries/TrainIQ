@@ -14,6 +14,21 @@ import org.junit.Test
 
 class BarcodeProductLookupServiceTest {
     @Test
+    fun unknownHttp404IsNotATransportFailure() = runTest {
+        val connection = FakeHttpConnection("", HttpURLConnection.HTTP_NOT_FOUND)
+        assertNull(lookupOpenFoodFactsProduct("0000000000000") { connection })
+        assertTrue(connection.disconnected)
+    }
+
+    @Test
+    fun transportFailureMustRemainDistinguishableFromUnknownBarcode() = runTest {
+        val failure = runCatching {
+            lookupOpenFoodFactsProduct("3017620422003") { throw IOException("offline") }
+        }.exceptionOrNull()
+        assertTrue("A network failure must not be reported as an unknown product", failure is IOException)
+    }
+
+    @Test
     fun parseOpenFoodFactsProduct_withNutritionPer100g_returnsProduct() {
         val product = parseOpenFoodFactsProduct(
             barcode = "8712345678901",
@@ -88,26 +103,15 @@ class BarcodeProductLookupServiceTest {
     }
 
     @Test
-    fun barcodeLookupService_usesBoundedTimeoutsAndNullOnNetworkFailures() {
+    fun barcodeLookupService_usesBoundedTimeoutsAndResponseSize() {
         val source = File("src/main/java/com/trainiq/data/remote/BarcodeProductLookupService.kt").readText()
         val lookupBody = source.substringAfter("internal suspend fun lookupOpenFoodFactsProduct(").substringBefore("internal fun parseOpenFoodFactsProduct")
 
         assertTrue(lookupBody.contains("barcode.filter(Char::isDigit)"))
         assertTrue(lookupBody.contains("it.length in 8..14"))
-        assertTrue(lookupBody.contains("runCatching"))
         assertTrue(lookupBody.contains("connectTimeout = 5_000"))
         assertTrue(lookupBody.contains("readTimeout = 5_000"))
         assertTrue(lookupBody.contains("MaxOpenFoodFactsResponseChars"))
-        assertTrue(lookupBody.contains("getOrNull()"))
-    }
-
-    @Test
-    fun lookupOpenFoodFactsProduct_withNetworkFailureReturnsNull() = runTest {
-        val result = lookupOpenFoodFactsProduct("3017620422003") {
-            throw IOException("offline")
-        }
-
-        assertNull(result)
     }
 
     @Test
@@ -125,12 +129,12 @@ class BarcodeProductLookupServiceTest {
     }
 
     @Test
-    fun lookupOpenFoodFactsProduct_withOversizedResponseReturnsNullAndDisconnects() = runTest {
+    fun lookupOpenFoodFactsProduct_withOversizedResponseFailsAndDisconnects() = runTest {
         val connection = FakeHttpConnection(" ".repeat(300_000))
 
-        val result = lookupOpenFoodFactsProduct("3017620422003") { connection }
+        val result = runCatching { lookupOpenFoodFactsProduct("3017620422003") { connection } }
 
-        assertNull(result)
+        assertTrue(result.isFailure)
         assertTrue(connection.disconnected)
     }
 
@@ -164,6 +168,7 @@ class BarcodeProductLookupServiceTest {
 
 private class FakeHttpConnection(
     private val body: String,
+    private val responseStatus: Int = HttpURLConnection.HTTP_OK,
 ) : HttpURLConnection(URL("https://example.test/product.json")) {
     var disconnected: Boolean = false
         private set
@@ -176,6 +181,7 @@ private class FakeHttpConnection(
     override fun usingProxy(): Boolean = false
 
     override fun connect() = Unit
+    override fun getResponseCode(): Int = responseStatus
 
     override fun getInputStream(): InputStream = ByteArrayInputStream(body.toByteArray())
 

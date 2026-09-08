@@ -757,9 +757,9 @@ class NutritionInputValidationTest {
     @Test
     fun pendingBarcodeResult_populatesCorrectNutritionTargetAndClearsNavigationResult() {
         val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
-        val pendingBarcodeEffect = source.substringAfter("LaunchedEffect(pendingBarcode) {").substringBefore("LaunchedEffect(barcodeLookupResult)")
+        val pendingBarcodeEffect = source.substringAfter("LaunchedEffect(pendingBarcode, successState != null) {").substringBefore("LaunchedEffect(barcodeLookupResult)")
 
-        assertTrue(pendingBarcodeEffect.contains("if (pendingBarcode != null)"))
+        assertTrue(pendingBarcodeEffect.contains("if (pendingBarcode != null && successState != null)"))
         assertTrue(pendingBarcodeEffect.contains("successState?.scanTarget == ScanTarget.RECIPE_DRAFT"))
         assertTrue(pendingBarcodeEffect.contains("quickIngredientBarcode = pendingBarcode"))
         assertTrue(pendingBarcodeEffect.contains("selectedTab = 3"))

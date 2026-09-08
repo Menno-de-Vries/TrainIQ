@@ -550,7 +550,9 @@ class WorkoutInputValidationTest {
             .substringAfter("var selectedRoutineId by rememberSaveable")
             .substringBefore("@HiltViewModel\nclass WorkoutCompletionViewModel")
 
-        assertTrue(routeBody.contains("val trainingListState = rememberLazyListState()"))
+        assertTrue(routeBody.contains("val overviewListState = rememberLazyListState()"))
+        assertTrue(routeBody.contains("val detailListState = rememberLazyListState()"))
+        assertTrue(routeBody.contains("val trainingListState = if (selectedRoutineId == null) overviewListState else detailListState"))
         assertTrue(routeBody.contains("var previousSelectedRoutineId by rememberSaveable"))
         assertTrue(routeBody.contains("selectedRoutineId != null && previousSelectedRoutineId == null"))
         assertTrue(routeBody.contains("previousSelectedRoutineId = selectedRoutineId"))

@@ -47,6 +47,8 @@ class BarcodeLookupRequestTest {
         runCurrent()
         assertEquals("22222222", results.single().barcode)
         assertNull(results.single().product)
+        assertTrue(results.single().failed)
+        assertTrue(results.single().userMessage().startsWith("Product ophalen mislukt."))
         request.start("letters", BarcodeLookupTarget.entries.first())
         runCurrent()
         assertEquals(1, results.size)

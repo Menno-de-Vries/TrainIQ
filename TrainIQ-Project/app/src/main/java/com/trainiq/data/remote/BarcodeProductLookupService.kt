@@ -22,7 +22,7 @@ internal suspend fun lookupOpenFoodFactsProduct(
     openConnection: (URL) -> URLConnection = URL::openConnection,
 ): BarcodeProductLookupResult? = withContext(Dispatchers.IO) {
     val cleanBarcode = barcode.filter(Char::isDigit).takeIf { it.length in 8..14 } ?: return@withContext null
-    runCatching {
+    run {
         val encodedBarcode = URLEncoder.encode(cleanBarcode, Charsets.UTF_8.name())
         val url = URL("$OpenFoodFactsBaseUrl$encodedBarcode.json?fields=status,product_name,nutriments")
         val connection = (openConnection(url) as HttpURLConnection).apply {
@@ -33,13 +33,14 @@ internal suspend fun lookupOpenFoodFactsProduct(
             setRequestProperty("User-Agent", "TrainIQ Android - barcode nutrition lookup")
         }
         try {
+            if (connection.responseCode == HttpURLConnection.HTTP_NOT_FOUND) return@run null
             connection.inputStream.bufferedReader().use { reader ->
                 parseOpenFoodFactsProduct(cleanBarcode, reader.readText(MaxOpenFoodFactsResponseChars))
             }
         } finally {
             connection.disconnect()
         }
-    }.getOrNull()
+    }
 }
 
 internal fun parseOpenFoodFactsProduct(barcode: String, json: String): BarcodeProductLookupResult? {

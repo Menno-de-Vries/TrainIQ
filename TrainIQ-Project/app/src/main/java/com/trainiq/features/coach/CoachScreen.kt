@@ -634,6 +634,7 @@ fun CoachScreen(
     var manualCalorieTargetError by remember { mutableStateOf<String?>(null) }
     var profileInputError by remember { mutableStateOf<ProfileInputValidationError?>(null) }
     var selectedCoachTab by rememberSaveable { mutableStateOf(CoachSectionTab.Week.key) }
+    val sectionListStates = CoachSectionTab.entries.map { androidx.compose.foundation.lazy.rememberLazyListState() }
     val haptics = LocalHapticFeedback.current
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -659,6 +660,7 @@ fun CoachScreen(
     AnimatedContent(targetState = uiState::class, label = "coach-ui-state") {
         val state = uiState
         LazyColumn(
+            state = sectionListStates[CoachSectionTab.entries.indexOfFirst { it.key == selectedCoachTab }.coerceAtLeast(0)],
             modifier = Modifier
                 .fillMaxSize()
                 .clearFocusOnScrollOrDrag()
@@ -702,6 +704,9 @@ fun CoachScreen(
                             AppCard(modifier = Modifier.fillMaxWidth()) {
                                 Text("Profiel instellen", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                                 Text("Vul je profiel en doel in onder Doelen. Daarna worden weekrapporten en advies zichtbaar op basis van jouw gegevens.")
+                                Button(onClick = { selectedCoachTab = CoachSectionTab.Goals.key }, modifier = Modifier.fillMaxWidth()) {
+                                    Text("Profiel instellen")
+                                }
                             }
                         }
                     } else if (selectedCoachTab == CoachSectionTab.Week.key) item {
@@ -947,6 +952,9 @@ fun CoachScreen(
                                 )
                             } ?: run {
                                 Text("Nog geen advies", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+                                Button(onClick = { selectedCoachTab = CoachSectionTab.Goals.key }, modifier = Modifier.fillMaxWidth()) {
+                                    Text("Naar doelen")
+                                }
                                 Text("Maak eerst een doeladvies onder Doelen. Daarna zie je hier calorieën, macro's, actiepunten en datakwaliteit los van het formulier.")
                             }
                         }
