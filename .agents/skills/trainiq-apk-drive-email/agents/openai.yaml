@@ -1,0 +1,6 @@
+interface:
+  display_name: "TrainIQ APK naar Drive en e-mail"
+  short_description: "Bouw remote main en verstuur een private APK-ZIP-link"
+  default_prompt: "Gebruik $trainiq-apk-drive-email om de actuele remote main als release-APK te bouwen, te valideren, als ZIP in Drive-map TrainIQ te plaatsen en de link eenmaal te mailen."
+policy:
+  allow_implicit_invocation: false
