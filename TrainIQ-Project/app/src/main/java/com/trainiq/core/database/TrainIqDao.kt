@@ -10,6 +10,15 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TrainIqDao {
+    @Query("SELECT * FROM sleep_routine WHERE id = 1")
+    fun observeSleepRoutine(): Flow<SleepRoutineEntity?>
+
+    @Query("SELECT * FROM sleep_routine WHERE id = 1")
+    suspend fun getSleepRoutine(): SleepRoutineEntity?
+
+    @Upsert
+    suspend fun saveSleepRoutine(routine: SleepRoutineEntity)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMirrorImportRun(run: RoomMirrorImportRunEntity)
 

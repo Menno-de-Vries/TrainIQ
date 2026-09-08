@@ -113,6 +113,9 @@ data object Coach
 data object Settings
 
 @Serializable
+data object SleepPreparation
+
+@Serializable
 data class ActiveWorkout(val dayId: Long)
 
 @Serializable
@@ -678,8 +681,12 @@ private fun TrainIqNavHost(
             )
         }
         composable<Coach> { CoachRoute(windowWidthClass = windowWidthClass) }
+        composable<SleepPreparation> {
+            com.trainiq.features.sleep.SleepRoutineRoute(onBack = { navController.popBackStack() })
+        }
         composable<Settings> {
             SettingsRoute(
+                onOpenSleepRoutine = { navController.navigate(SleepPreparation) },
                 windowWidthClass = windowWidthClass,
                 onOpenProgress = {
                     navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Progress::class })

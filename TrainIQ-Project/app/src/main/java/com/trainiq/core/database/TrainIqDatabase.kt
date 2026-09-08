@@ -1,10 +1,12 @@
 package com.trainiq.core.database
 
 import androidx.room.Database
+import androidx.room.AutoMigration
 import androidx.room.RoomDatabase
 
 @Database(
     entities = [
+        SleepRoutineEntity::class,
         RoomMirrorImportRunEntity::class,
         UserProfileEntity::class,
         SavedGoalAdviceEntity::class,
@@ -29,7 +31,8 @@ import androidx.room.RoomDatabase
         WorkoutLogEventSetEntity::class,
         BodyMeasurementEntity::class,
     ],
-    version = 16,
+    version = 17,
+    autoMigrations = [AutoMigration(from = 16, to = 17)],
     exportSchema = true,
 )
 abstract class TrainIqDatabase : RoomDatabase() {

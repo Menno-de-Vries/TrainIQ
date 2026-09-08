@@ -1,6 +1,7 @@
 @file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.trainiq.features.nutrition
+import androidx.compose.foundation.selection.toggleable
 
 import android.os.Bundle
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -683,6 +684,7 @@ fun NutritionScreen(
     var foodName by rememberSaveable { mutableStateOf("") }
     var barcode by rememberSaveable { mutableStateOf("") }
     var newBarcodeProduct by rememberSaveable { mutableStateOf(false) }
+    var saveScannedProduct by rememberSaveable { mutableStateOf(false) }
     var barcodeMealTarget by rememberSaveable { mutableStateOf<MealType?>(null) }
     var barcodeStatus by rememberSaveable { mutableStateOf<String?>(null) }
     var barcodeLookupPending by rememberSaveable { mutableStateOf(false) }
@@ -760,6 +762,7 @@ fun NutritionScreen(
     }
 
     fun resetFoodEditorState() {
+        saveScannedProduct = false
         onClearBarcodeLookupResult()
         barcodeStatus = null
         barcodeLookupPending = false
@@ -1485,6 +1488,9 @@ fun NutritionScreen(
                         onLookupBarcodeProduct(barcode, BarcodeLookupTarget.FOOD_EDITOR)
                     },
                     saveToMealOnly = hasAddToMealTarget && selectedFoodId == null,
+                    showSaveProductChoice = hasAddToMealTarget && selectedFoodId == null && barcode.isNotBlank(),
+                    saveProduct = saveScannedProduct,
+                    onSaveProductChange = { saveScannedProduct = it },
                     onScanBarcode = {
                         newBarcodeProduct = false
                         onSetScanTarget(ScanTarget.FOOD_EDITOR)
@@ -1505,10 +1511,20 @@ fun NutritionScreen(
                                 carbsPer100g = carbs.toNutritionNumberOrNull(max = 1000.0) ?: 0.0,
                                 fatPer100g = fat.toNutritionNumberOrNull(max = 1000.0) ?: 0.0,
                             ).toEditableMealEntryRequest()
+                            val alsoSave = saveScannedProduct && barcode.isNotBlank()
+                            if (alsoSave) {
+                                onSaveFood(
+                                    null, foodName, barcode, calories, protein, carbs, fat, defaultServingGrams,
+                                    FoodSourceType.BARCODE,
+                                    { onSetMessage("Product aan de maaltijd toegevoegd en opgeslagen bij mijn producten.") },
+                                    { onSetMessage("Product aan de maaltijd toegevoegd, maar opslaan bij mijn producten is mislukt. Je maaltijd blijft behouden; scan het product opnieuw via Producten om opslaan opnieuw te proberen.") },
+                                )
+                            } else {
+                                onSetMessage("Product alleen aan deze maaltijd toegevoegd.")
+                            }
                             resetFoodEditor()
                             hasAddToMealTarget = false
                             selectedTab = 1
-                            onSetMessage("Product alleen aan deze maaltijd toegevoegd.")
                             return@FoodEditorCard
                         }
                         onSaveFood(
@@ -2471,6 +2487,9 @@ private fun FoodEditorCard(
     barcodeStatus: String?,
     onRetryBarcode: () -> Unit,
     saveToMealOnly: Boolean,
+    showSaveProductChoice: Boolean,
+    saveProduct: Boolean,
+    onSaveProductChange: (Boolean) -> Unit,
     onScanBarcode: () -> Unit,
     onSave: () -> Unit,
     onCancelEdit: () -> Unit,
@@ -2483,7 +2502,8 @@ private fun FoodEditorCard(
         Column(modifier = Modifier.padding(MaterialTheme.spacing.medium), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
             Text(if (isEditing) "Product bewerken" else "Product", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(
-                "Sla producten eenmalig op en voeg ze daarna toe aan maaltijden of gebruik ze als receptingrediënten.",
+                if (saveToMealOnly) "Voeg dit product toe aan je maaltijd. Bewaren voor later is optioneel."
+                else "Sla producten eenmalig op en voeg ze daarna toe aan maaltijden of gebruik ze als receptingrediënten.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.trainIqColors.mutedText,
             )
@@ -2511,12 +2531,25 @@ private fun FoodEditorCard(
                 error = errors.defaultServingGrams,
                 imeSettledDelayMillis = 560L,
             )
+            if (showSaveProductChoice) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().then(Modifier.toggleable(
+                        value = saveProduct, enabled = !isSaving && !isLookingUpBarcode,
+                        role = androidx.compose.ui.semantics.Role.Checkbox, onValueChange = onSaveProductChange,
+                    )).padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    androidx.compose.material3.Checkbox(checked = saveProduct, onCheckedChange = null)
+                    Text("Opslaan bij mijn producten", modifier = Modifier.weight(1f))
+                }
+            }
             WrappingNutritionActions {
                 Button(onClick = onSave, enabled = !isSaving && !isLookingUpBarcode, modifier = Modifier.fillMaxWidth()) {
                     Text(
                         when {
                             isLookingUpBarcode -> "Product ophalen..."
                             isSaving -> "Opslaan..."
+                            saveToMealOnly && showSaveProductChoice && saveProduct -> "Aan maaltijd toevoegen en product opslaan"
                             saveToMealOnly -> "Alleen aan maaltijd toevoegen"
                             isEditing -> "Wijzigingen opslaan"
                             else -> "Product opslaan"

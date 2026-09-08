@@ -1,4 +1,5 @@
 package com.trainiq.features.settings
+import androidx.compose.material3.OutlinedButton
 
 import android.Manifest
 import android.content.Context
@@ -578,6 +579,7 @@ internal suspend fun refreshHealthConnectStatusAndReconcile(
 
 @Composable
 fun SettingsRoute(
+    onOpenSleepRoutine: () -> Unit = {},
     windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
     onOpenOnboarding: () -> Unit = {},
     onOpenProgress: () -> Unit = {},
@@ -708,6 +710,7 @@ fun SettingsRoute(
                     onOpenOnboarding()
                 },
                 onOpenProgress = onOpenProgress,
+                onOpenSleepRoutine = onOpenSleepRoutine,
             )
         }
     }
@@ -770,6 +773,7 @@ private fun SettingsErrorScreen(message: String, onRetry: () -> Unit) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
+    onOpenSleepRoutine: () -> Unit = {},
     themeMode: ThemeMode,
     aiStatus: SettingsAiStatus,
     telemetryOptIn: Boolean,
@@ -937,6 +941,9 @@ fun SettingsScreen(
                     checked = workoutFeedbackPreferences.workoutHapticsEnabled,
                     onCheckedChange = onToggleWorkoutHaptics,
                 )
+                OutlinedButton(onClick = onOpenSleepRoutine, modifier = Modifier.fillMaxWidth()) {
+                    Text("Slaapvoorbereiding instellen")
+                }
                 FeedbackToggleRow(
                     title = "TrainIQ-reminders",
                     body = "Stuur lokale notificaties voor gemiste food-logs en krachttraining. Alleen na jouw toestemming.",
