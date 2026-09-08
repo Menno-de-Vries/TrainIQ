@@ -47,7 +47,7 @@ class SleepNotificationInstrumentedTest {
             context.sendBroadcast(Intent(context, SleepRoutineReceiver::class.java).setAction("com.trainiq.SLEEP_ROUTINE"))
             compose.waitUntil(10_000) { manager.activeNotifications.any { it.id == 2010 } }
             val first = manager.activeNotifications.single { it.id == 2010 }.notification
-            assertEquals(0, first.flags and Notification.FLAG_INSISTENT)
+            assertTrue(first.flags and Notification.FLAG_INSISTENT != 0)
             assertEquals(Notification.VISIBILITY_PRIVATE, first.visibility)
             // Notification delivery precedes the receiver's durable transition. Wait for that
             // public state before advancing the next synthetic trigger.
@@ -59,10 +59,16 @@ class SleepNotificationInstrumentedTest {
                 database.dao().saveSleepRoutine(active.copy(nextAt = System.currentTimeMillis() - 1000))
             }
             context.sendBroadcast(Intent(context, SleepRoutineReceiver::class.java).setAction("com.trainiq.SLEEP_ROUTINE"))
-            compose.waitUntil(10_000) { manager.activeNotifications.any { it.id == 2010 && it.notification.flags and Notification.FLAG_INSISTENT != 0 } }
+            compose.waitUntil(10_000) { manager.activeNotifications.any {
+                it.id == 2010 && it.notification.extras.getString(Notification.EXTRA_TITLE) == "Slaapalarm: bevestiging nodig"
+            } }
             val escalated = manager.activeNotifications.single { it.id == 2010 }.notification
             assertTrue(escalated.flags and Notification.FLAG_INSISTENT != 0)
             escalated.contentIntent.send()
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("Slaapvoorbereiding")
+                    .fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+            }
             compose.onNodeWithText("Slaapvoorbereiding").assertExists()
             compose.onNodeWithText("Ik ga binnen 2 minuten slapen").performScrollTo()
             captureSleepEvidence("sleep-active")

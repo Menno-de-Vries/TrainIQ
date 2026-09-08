@@ -635,6 +635,8 @@ private fun TrainIqNavHost(
                 onOpenCoach = { navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Coach::class }) },
                 onOpenTrain = { navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Train::class }) },
                 onOpenSettings = { navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Settings::class }) },
+                onOpenSleep = { navController.navigate(SleepPreparation) { launchSingleTop = true } },
+                onOpenWeight = { navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Progress::class }) },
             )
         }
         composable<Train> {

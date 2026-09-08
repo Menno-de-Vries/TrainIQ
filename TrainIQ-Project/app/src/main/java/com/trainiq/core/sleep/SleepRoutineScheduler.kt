@@ -19,26 +19,31 @@ import androidx.core.content.ContextCompat
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.PeriodicWorkRequest
 import com.trainiq.R
 import com.trainiq.domain.sleep.SleepCountdownMillis
 import com.trainiq.domain.sleep.SleepRoutine
+import com.trainiq.domain.sleep.SleepRepeatMillis
+import com.trainiq.domain.sleep.SleepAlarmDelivery
 import com.trainiq.features.sleep.SleepRoutineActivity
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.Duration
 import javax.inject.Inject
 import javax.inject.Singleton
 
-const val SleepChannelId = "trainiq_sleep_preparation"
+const val SleepChannelId = "trainiq_sleep_alarm_v2"
+private const val LegacySleepChannelId = "trainiq_sleep_preparation"
 private const val SleepNotificationId = 2010
 
 @Singleton
 class SleepRoutineScheduler @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val workManager: WorkManager,
-) {
+) : SleepAlarmDelivery {
     private val alarms get() = context.getSystemService(AlarmManager::class.java)
     private val notifications get() = context.getSystemService(NotificationManager::class.java)
     fun exactAllowed() = Build.VERSION.SDK_INT < 31 || alarms.canScheduleExactAlarms()
+    fun fullScreenAllowed() = Build.VERSION.SDK_INT < 34 || notifications.canUseFullScreenIntent()
 
     fun notificationsAllowed(): Boolean {
         ensureChannel()
@@ -55,19 +60,23 @@ class SleepRoutineScheduler @Inject constructor(
     }
 
     @SuppressLint("ScheduleExactAlarm")
-    fun schedule(state: SleepRoutine) {
+    override fun schedule(state: SleepRoutine) {
         val pending = alarmIntent()
-        alarms.cancel(pending)
         if (!state.enabled) {
+            alarms.cancel(pending)
             workManager.cancelUniqueWork("trainiq_sleep_recovery")
             return
         }
         // A durable fallback also repairs alarms removed when exact-alarm access is revoked.
         workManager.enqueueUniquePeriodicWork("trainiq_sleep_recovery", ExistingPeriodicWorkPolicy.KEEP,
-            PeriodicWorkRequestBuilder<SleepRoutineWorker>(Duration.ofMinutes(15)).build())
+            PeriodicWorkRequestBuilder<SleepRoutineWorker>(Duration.ofMillis(PeriodicWorkRequest.MIN_PERIODIC_INTERVAL_MILLIS)).build())
         if (state.nextAt <= 0) return
         try {
-            if (exactAllowed()) alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, state.nextAt, pending)
+            // Reusing the PendingIntent atomically replaces the previous alarm. Do not cancel
+            // first: a failed replacement must not erase an already scheduled successor.
+            if (exactAllowed() && state.confirmedAt == 0L) {
+                alarms.setAlarmClock(AlarmManager.AlarmClockInfo(state.nextAt, screenIntent()), pending)
+            } else if (exactAllowed()) alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, state.nextAt, pending)
             else alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, state.nextAt, pending)
         } catch (_: SecurityException) {
             alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, state.nextAt, pending)
@@ -75,20 +84,24 @@ class SleepRoutineScheduler @Inject constructor(
     }
 
     @SuppressLint("MissingPermission")
-    fun showReminder(escalated: Boolean) {
+    override fun showReminder(escalated: Boolean) {
         if (!notificationsAllowed()) return
         val notification = builder()
-            .setContentTitle("Tijd om je klaar te maken om te slapen")
-            .setContentText("Open de slaaproutine en bevestig bewust dat je binnen 2 minuten gaat slapen.")
-            .setStyle(NotificationCompat.BigTextStyle().bigText("Open de slaaproutine en bevestig bewust dat je binnen 2 minuten gaat slapen. Zonder bevestiging wordt de melding ongeveer elke 15 minuten herhaald; Android kan dit vertragen."))
+            .setContentTitle(if (escalated) "Slaapalarm: bevestiging nodig" else "Slaapalarm: tijd om te gaan slapen")
+            .setContentText("Tik hier: Ik ga binnen 2 minuten slapen")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("Open en kies ‘Ik ga binnen 2 minuten slapen’. Zonder bevestiging volgt elke ${SleepRepeatMillis / 60_000} minuten een nieuw alarm."))
             .setOngoing(true)
-            .addAction(0, "Slaaproutine openen", screenIntent())
-            .build().apply { if (escalated) flags = flags or Notification.FLAG_INSISTENT }
+            .addAction(0, "Open slaapbevestiging", screenIntent())
+            .apply { if (fullScreenAllowed()) setFullScreenIntent(screenIntent(), true) }
+            .build().apply { flags = flags or Notification.FLAG_INSISTENT }
+        // End an earlier alert (including one silenced by opening the shade), then start
+        // this distinct alarm occurrence. Only one notification remains visible.
+        notifications.cancel(SleepNotificationId)
         notifications.notify(SleepNotificationId, notification)
     }
 
     @SuppressLint("MissingPermission")
-    fun showCountdown(state: SleepRoutine) {
+    override fun showCountdown(state: SleepRoutine) {
         if (!notificationsAllowed()) return
         val end = state.confirmedAt + SleepCountdownMillis
         val remaining = end - System.currentTimeMillis()
@@ -100,7 +113,7 @@ class SleepRoutineScheduler @Inject constructor(
             .setTimeoutAfter(remaining).build())
     }
 
-    fun cancelNotification() = notifications.cancel(SleepNotificationId)
+    override fun cancelNotification() = notifications.cancel(SleepNotificationId)
 
     private fun builder() = NotificationCompat.Builder(context, SleepChannelId)
         .setSmallIcon(R.mipmap.ic_launcher).setContentIntent(screenIntent())
@@ -118,13 +131,18 @@ class SleepRoutineScheduler @Inject constructor(
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
     private fun ensureChannel() {
+        if (notifications.getNotificationChannel(SleepChannelId) != null) return
+        val legacy = notifications.getNotificationChannel(LegacySleepChannelId)
         val sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
             ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
         notifications.createNotificationChannel(NotificationChannel(SleepChannelId,
-            "Slaapvoorbereiding", NotificationManager.IMPORTANCE_HIGH).apply {
+            "Slaapalarm", legacy?.importance ?: NotificationManager.IMPORTANCE_HIGH).apply {
             description = "Dagelijkse slaapvoorbereiding en herhaling tot bewuste bevestiging."
-            setSound(sound, AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT).build())
-            enableVibration(true)
+            // Preserve an existing mute/custom ringtone; migration must not bypass user choices.
+            setSound(if (legacy != null) legacy.sound else sound,
+                AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+            enableVibration(legacy?.shouldVibrate() ?: true)
             lockscreenVisibility = Notification.VISIBILITY_PRIVATE
         })
     }

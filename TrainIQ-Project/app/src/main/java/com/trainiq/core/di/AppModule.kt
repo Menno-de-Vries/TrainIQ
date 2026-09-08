@@ -51,6 +51,10 @@ import java.util.concurrent.TimeUnit
 @InstallIn(SingletonComponent::class)
 object AppModule {
     @Provides
+    fun provideSleepAlarmDelivery(scheduler: com.trainiq.core.sleep.SleepRoutineScheduler):
+        com.trainiq.domain.sleep.SleepAlarmDelivery = scheduler
+
+    @Provides
     @Singleton
     fun provideOkHttpClient(): OkHttpClient =
         OkHttpClient.Builder()
