@@ -1,5 +1,7 @@
 # TrainIQ Target State Blueprint
 
+> Product routing update (2026-09-09): body measurements and their history belong to **Coach → Lichaam & voortgang**. Settings contains preferences/configuration only; historical references below to a Settings progress entry are superseded. Nutrition owns explicit-volume hydration. See [implementation and local verification](docs/agent-guides/coach-hydration-food-providers.md).
+
 > Release scope update (2026-09-06): [itch.io release policy](TrainIQ-Project/docs/release/itch-release-policy.md) supersedes the owner-approval and mandatory certification release gates below. LEGAL-001, PERF-001, A11Y-001, and AI-001 are retired for this personal itch.io project. Older BLOCKED/OPEN statements are historical or refer to optional certification/future Play submission, not current itch.io delivery. Preserve actual test results and technical findings; do not claim missing evidence passed.
 
 This document is the product-quality target state for TrainIQ. It replaces the earlier high-level foundation notes with a QA- and research-backed standard for implementation, validation, and release readiness.

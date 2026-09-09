@@ -259,6 +259,7 @@ internal fun BarcodeLookupUiResult.userMessage(): String = when {
     failure == com.trainiq.domain.model.FoodLookupFailure.INVALID_BARCODE -> "Ongeldige barcode. Controleer de cijfers."
     failure == com.trainiq.domain.model.FoodLookupFailure.AUTH -> "De voedingsbron heeft geen geldige toegang. Kies een andere bron."
     failure == com.trainiq.domain.model.FoodLookupFailure.NOT_CONFIGURED -> "FatSecret is nog niet aangesloten. Kies Open Food Facts of voer het product handmatig in."
+    failure == com.trainiq.domain.model.FoodLookupFailure.INVALID_RESPONSE -> "De voedingsbron leverde geen bruikbare portie of voedingswaarden. Kies een andere bron of vul het product handmatig in."
     failed -> "Product ophalen mislukt. Controleer je verbinding en probeer opnieuw, of vul het product handmatig in."
     product != null -> "${product.name} gevonden via ${product.provider.label}."
     else -> "Product niet gevonden of voedingswaarden ontbreken. Vul het product handmatig in of scan opnieuw."

@@ -6,6 +6,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class FoodProviderPolicyTest {
+    @Test fun gatewayPayloadPreservesProviderAndRejectsInvalidNutrition() {
+        val json = """{"name":"Fixture","caloriesPer100g":60,"proteinPer100g":10,"carbsPer100g":4,"fatPer100g":0.5}"""
+        val result = parseFatSecretGatewayProduct("0012345678905", json)
+        assertEquals(FoodProviderMode.FATSECRET, result.provider)
+        assertEquals(60.0, result.caloriesPer100g, 0.0)
+        listOf("{", "{}", json.replace("60", "-1")).forEach { invalid ->
+            try { parseFatSecretGatewayProduct("0012345678905", invalid); fail() }
+            catch (error: FoodLookupException) { assertEquals(FoodLookupFailure.INVALID_RESPONSE, error.failure) }
+        }
+    }
     private val barcode = "012345678905"
     private val product = BarcodeProductLookupResult(barcode, "Fixture", 100.0, 2.0, 3.0, 4.0)
     @Test fun primaryHitNeverCallsFallback() = runTest {

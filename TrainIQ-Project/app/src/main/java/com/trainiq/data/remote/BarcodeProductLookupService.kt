@@ -54,10 +54,18 @@ private suspend fun lookupFatSecretGateway(barcode: String): BarcodeProductLooku
             404 -> return@withContext null
             401, 403 -> throw FoodLookupException(FoodLookupFailure.AUTH)
             503 -> throw FoodLookupException(FoodLookupFailure.NOT_CONFIGURED)
+            422 -> throw FoodLookupException(FoodLookupFailure.INVALID_RESPONSE)
             200 -> Unit
             else -> throw FoodLookupException(FoodLookupFailure.NETWORK)
         }
-        val root = connection.inputStream.bufferedReader().use { JsonParser.parseString(it.readText(MaxOpenFoodFactsResponseChars)).asJsonObject }
+        val json = connection.inputStream.bufferedReader().use { it.readText(MaxOpenFoodFactsResponseChars) }
+        parseFatSecretGatewayProduct(gtin, json)
+    } catch (error: java.io.IOException) { throw FoodLookupException(FoodLookupFailure.NETWORK) }
+    finally { connection.disconnect() }
+}
+
+internal fun parseFatSecretGatewayProduct(gtin: String, json: String): BarcodeProductLookupResult = try {
+        val root = JsonParser.parseString(json).asJsonObject
         fun number(key: String, max: Double) = root.safeOpenFoodFactsNumber(key, 0.0..max)
             ?: throw FoodLookupException(FoodLookupFailure.INVALID_RESPONSE)
         val name = root.get("name")?.asString?.trim()?.takeIf { it.isNotBlank() }
@@ -65,9 +73,7 @@ private suspend fun lookupFatSecretGateway(barcode: String): BarcodeProductLooku
         BarcodeProductLookupResult(gtin, name, number("caloriesPer100g", 5000.0),
             number("proteinPer100g", 1000.0), number("carbsPer100g", 1000.0), number("fatPer100g", 1000.0),
             provider = FoodProviderMode.FATSECRET)
-    } catch (error: java.io.IOException) { throw FoodLookupException(FoodLookupFailure.NETWORK) }
-    finally { connection.disconnect() }
-}
+    } catch (_: Exception) { throw FoodLookupException(FoodLookupFailure.INVALID_RESPONSE) }
 
 internal suspend fun lookupOpenFoodFactsProduct(
     barcode: String,

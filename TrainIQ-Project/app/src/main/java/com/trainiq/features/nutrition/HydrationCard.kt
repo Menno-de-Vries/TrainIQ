@@ -25,7 +25,7 @@ import java.util.UUID
 
 sealed interface HydrationUiState {
     data object Loading : HydrationUiState
-    data class Success(val records: List<HydrationRecord>, val totalMl: Double, val saving: Boolean, val message: String?) : HydrationUiState
+    data class Success(val records: List<HydrationRecord>, val totalMl: Double, val saving: Boolean, val message: String?, val earlierRecords: List<HydrationRecord> = emptyList()) : HydrationUiState
     data object Error : HydrationUiState
 }
 
@@ -41,7 +41,7 @@ class HydrationViewModel @Inject constructor(private val repository: HydrationRe
     val uiState: StateFlow<HydrationUiState> = reload.flatMapLatest {
         combine(repository.observe(), writing, message, day) { records, busy, feedback, today ->
             val entries = records.filter { Instant.ofEpochMilli(it.timestamp).atZone(ZoneId.systemDefault()).toLocalDate() == today }
-            HydrationUiState.Success(entries, entries.sumOf { it.volumeMl }, busy, feedback) as HydrationUiState
+            HydrationUiState.Success(entries, entries.sumOf { it.volumeMl }, busy, feedback, records.filterNot { it in entries }) as HydrationUiState
         }.catch { emit(HydrationUiState.Error) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HydrationUiState.Loading)
     fun retry() { reload.value++ }
@@ -79,6 +79,7 @@ fun HydrationCard(
     var amount by rememberSaveable { mutableStateOf("") }
     var editing by rememberSaveable { mutableStateOf(false) }
     var submitted by rememberSaveable { mutableStateOf(false) }
+    var showEarlier by rememberSaveable { mutableStateOf(false) }
     com.trainiq.core.ui.AppCard(modifier = Modifier.fillMaxWidth()) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Vocht vandaag", style = MaterialTheme.typography.titleMedium)
@@ -106,7 +107,14 @@ fun HydrationCard(
                         editing = false; submitted = false; amount = ""; entryId = UUID.randomUUID().toString()
                     }, enabled = !state.saving) { Text("Annuleren") }
                     state.message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-                    state.records.forEach { record ->
+                    if (state.earlierRecords.isNotEmpty()) TextButton(onClick = { showEarlier = !showEarlier }) {
+                        Text(if (showEarlier) "Eerdere vochtinvoer verbergen" else "Eerdere vochtinvoer bekijken")
+                    }
+                    (state.records + if (showEarlier) state.earlierRecords else emptyList()).forEach { record ->
+                        if (record in state.earlierRecords) Text(
+                            Instant.ofEpochMilli(record.timestamp).atZone(ZoneId.systemDefault()).toLocalDate().toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
                         Text("${record.label}: ${record.volumeMl.toLong()} ml")
                         if (record.mealId == null) {
                             Row {

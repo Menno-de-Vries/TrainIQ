@@ -17,10 +17,15 @@ fun FoodProviderSelector(selected: FoodProviderMode, select: (FoodProviderMode) 
                 FilterChip(selected = selected == mode, onClick = { select(mode) }, label = { Text(mode.label) })
             }
         }
-        TextButton(onClick = {
-            uriHandler.openUri(if (selected == FoodProviderMode.FATSECRET) "https://www.fatsecret.com" else "https://world.openfoodfacts.org/data")
+        if (selected != FoodProviderMode.FATSECRET) TextButton(onClick = {
+            uriHandler.openUri("https://world.openfoodfacts.org/data")
         }) {
-            Text(if (selected == FoodProviderMode.FATSECRET) "Powered by fatsecret" else "Open Food Facts · ODbL", style = MaterialTheme.typography.labelSmall)
+            Text("Open Food Facts · ODbL", style = MaterialTheme.typography.labelSmall)
+        }
+        if (selected != FoodProviderMode.OPEN_FOOD_FACTS) TextButton(onClick = {
+            uriHandler.openUri("https://www.fatsecret.com")
+        }) {
+            Text("Powered by fatsecret", style = MaterialTheme.typography.labelSmall)
         }
     }
 }
