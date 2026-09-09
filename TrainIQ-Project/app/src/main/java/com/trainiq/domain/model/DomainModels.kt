@@ -337,6 +337,8 @@ data class NutritionFacts(
 }
 
 enum class FoodSourceType {
+    OPEN_FOOD_FACTS,
+    FATSECRET,
     MANUAL,
     BARCODE,
     AI,
@@ -364,6 +366,9 @@ data class BarcodeProductLookupResult(
     val proteinPer100g: Double,
     val carbsPer100g: Double,
     val fatPer100g: Double,
+    val provider: FoodProviderMode = FoodProviderMode.OPEN_FOOD_FACTS,
+    val explicitServingMl: Double? = null,
+    val isBeverage: Boolean = false,
 )
 
 data class FoodPortion(
@@ -408,6 +413,7 @@ data class LoggedMealItem(
     val servingCount: Int = 1,
     val nutritionSnapshot: NutritionFacts,
     val notes: String? = null,
+    val hydrationMl: Double = 0.0,
 )
 
 data class LoggedMeal(

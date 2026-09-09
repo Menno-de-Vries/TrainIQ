@@ -409,6 +409,7 @@ class AnalyzeMealUseCase @Inject constructor(private val repository: NutritionRe
 
 class LookupBarcodeProductUseCase @Inject constructor(private val repository: NutritionRepository) {
     suspend operator fun invoke(barcode: String) = repository.lookupBarcodeProduct(barcode)
+    suspend operator fun invoke(barcode: String, mode: com.trainiq.domain.model.FoodProviderMode) = repository.lookupBarcodeProduct(barcode, mode)
 }
 
 class SaveFoodItemUseCase @Inject constructor(private val repository: NutritionRepository) {

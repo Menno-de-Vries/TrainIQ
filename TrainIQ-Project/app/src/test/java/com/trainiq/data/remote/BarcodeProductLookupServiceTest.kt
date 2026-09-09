@@ -115,12 +115,12 @@ class BarcodeProductLookupServiceTest {
     }
 
     @Test
-    fun lookupOpenFoodFactsProduct_withMalformedResponseReturnsNullAndDisconnects() = runTest {
+    fun lookupOpenFoodFactsProduct_withMalformedResponseFailsAndDisconnects() = runTest {
         val connection = FakeHttpConnection("{malformed-json")
 
-        val result = lookupOpenFoodFactsProduct("3017620422003") { connection }
+        val error = runCatching { lookupOpenFoodFactsProduct("3017620422003") { connection } }.exceptionOrNull()
 
-        assertNull(result)
+        assertEquals(com.trainiq.domain.model.FoodLookupFailure.INVALID_RESPONSE, (error as com.trainiq.domain.model.FoodLookupException).failure)
         assertTrue(connection.disconnected)
         assertEquals("GET", connection.requestMethod)
         assertEquals(5_000, connection.connectTimeout)

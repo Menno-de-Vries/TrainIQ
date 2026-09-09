@@ -38,6 +38,7 @@ data class LoggedMealStorage(
     val id: Long = 0L,
     val timestamp: Long = 0L,
     val mealType: MealType = MealType.LUNCH,
+    val dateExplicit: Boolean = false,
     val name: String = "",
     val notes: String? = null,
 )
@@ -55,4 +56,5 @@ data class LoggedMealItemStorage(
     val carbs: Double = 0.0,
     val fat: Double = 0.0,
     val notes: String? = null,
+    val hydrationMl: Double = 0.0,
 )

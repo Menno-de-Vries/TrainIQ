@@ -597,17 +597,15 @@ class SettingsUiStateTest {
     }
 
     @Test
-    fun compactSettingsReadsAsOverflowAndExposesProgressAction() {
+    fun settingsDoesNotExposeBodyRegistration() {
         assertEquals("Meer", settingsOverflowSectionTitle())
-        assertTrue(settingsOverflowSectionBody().contains("Compacte navigatie"))
-        assertTrue(settingsOverflowSectionBody().contains("Voortgang"))
-        assertEquals("Voortgang openen", settingsOpenProgressActionLabel())
+        assertFalse(settingsOverflowSectionBody().contains("Voortgang"))
 
         val source = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
         val overflowSection = source.substringAfter("SectionCard(title = settingsOverflowSectionTitle())")
             .substringBefore("SectionCard(title = \"Onboarding\")")
-        assertTrue(overflowSection.contains("onClick = onOpenProgress"))
-        assertTrue(overflowSection.contains("settingsOpenProgressActionLabel()"))
+        assertFalse(overflowSection.contains("onClick = onOpenProgress"))
+        assertFalse(overflowSection.contains("settingsOpenProgressActionLabel()"))
     }
 
     @Test

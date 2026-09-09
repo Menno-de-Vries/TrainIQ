@@ -2,6 +2,7 @@ package com.trainiq.data.remote
 
 import com.google.gson.JsonParser
 import com.trainiq.domain.model.BarcodeProductLookupResult
+import com.trainiq.domain.model.*
 import java.io.Reader
 import java.net.HttpURLConnection
 import java.net.URL
@@ -14,7 +15,58 @@ import kotlinx.coroutines.withContext
 
 @Singleton
 class BarcodeProductLookupService @Inject constructor() {
-    suspend fun lookup(barcode: String): BarcodeProductLookupResult? = lookupOpenFoodFactsProduct(barcode)
+    suspend fun lookup(barcode: String, mode: FoodProviderMode = FoodProviderMode.AUTOMATIC): BarcodeProductLookupResult? =
+        lookupFoodProduct(barcode, mode, { lookupOpenFoodFactsProduct(it) }, { lookupFatSecretGateway(it) })
+}
+
+internal suspend fun lookupFoodProduct(
+    barcode: String, mode: FoodProviderMode,
+    primary: suspend (String) -> BarcodeProductLookupResult?,
+    fallback: suspend (String) -> BarcodeProductLookupResult?,
+): BarcodeProductLookupResult? {
+    val normalized = normalizedBarcode(barcode) ?: throw FoodLookupException(FoodLookupFailure.INVALID_BARCODE)
+    if (mode == FoodProviderMode.FATSECRET) return fallback(normalized)
+    val result = try { primary(normalized) }
+    catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+    catch (error: FoodLookupException) {
+        if (mode != FoodProviderMode.AUTOMATIC || error.failure != FoodLookupFailure.NETWORK) throw error
+        return fallback(normalized)
+    }
+    catch (error: java.io.IOException) {
+        if (mode != FoodProviderMode.AUTOMATIC) throw FoodLookupException(FoodLookupFailure.NETWORK)
+        return fallback(normalized)
+    }
+    return result ?: if (mode == FoodProviderMode.AUTOMATIC) fallback(normalized) else null
+}
+
+private suspend fun lookupFatSecretGateway(barcode: String): BarcodeProductLookupResult? = withContext(Dispatchers.IO) {
+    val gtin = fatSecretGtin13(barcode) ?: throw FoodLookupException(FoodLookupFailure.INVALID_BARCODE)
+    val base = com.trainiq.BuildConfig.FOOD_GATEWAY_URL
+    if (base.isBlank()) throw FoodLookupException(FoodLookupFailure.NOT_CONFIGURED)
+    val url = URL("${base.trimEnd('/')}/food/barcode/$gtin")
+    require(url.protocol == "https")
+    val connection = (url.openConnection() as HttpURLConnection).apply {
+        connectTimeout = 5_000; readTimeout = 5_000; instanceFollowRedirects = false
+        setRequestProperty("Accept", "application/json")
+    }
+    try {
+        when (connection.responseCode) {
+            404 -> return@withContext null
+            401, 403 -> throw FoodLookupException(FoodLookupFailure.AUTH)
+            503 -> throw FoodLookupException(FoodLookupFailure.NOT_CONFIGURED)
+            200 -> Unit
+            else -> throw FoodLookupException(FoodLookupFailure.NETWORK)
+        }
+        val root = connection.inputStream.bufferedReader().use { JsonParser.parseString(it.readText(MaxOpenFoodFactsResponseChars)).asJsonObject }
+        fun number(key: String, max: Double) = root.safeOpenFoodFactsNumber(key, 0.0..max)
+            ?: throw FoodLookupException(FoodLookupFailure.INVALID_RESPONSE)
+        val name = root.get("name")?.asString?.trim()?.takeIf { it.isNotBlank() }
+            ?: throw FoodLookupException(FoodLookupFailure.INVALID_RESPONSE)
+        BarcodeProductLookupResult(gtin, name, number("caloriesPer100g", 5000.0),
+            number("proteinPer100g", 1000.0), number("carbsPer100g", 1000.0), number("fatPer100g", 1000.0),
+            provider = FoodProviderMode.FATSECRET)
+    } catch (error: java.io.IOException) { throw FoodLookupException(FoodLookupFailure.NETWORK) }
+    finally { connection.disconnect() }
 }
 
 internal suspend fun lookupOpenFoodFactsProduct(
@@ -24,7 +76,7 @@ internal suspend fun lookupOpenFoodFactsProduct(
     val cleanBarcode = barcode.filter(Char::isDigit).takeIf { it.length in 8..14 } ?: return@withContext null
     run {
         val encodedBarcode = URLEncoder.encode(cleanBarcode, Charsets.UTF_8.name())
-        val url = URL("$OpenFoodFactsBaseUrl$encodedBarcode.json?fields=status,product_name,nutriments")
+        val url = URL("$OpenFoodFactsBaseUrl$encodedBarcode.json?fields=status,product_name,nutriments,categories_tags,serving_quantity,serving_quantity_unit")
         val connection = (openConnection(url) as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 5_000
@@ -34,10 +86,17 @@ internal suspend fun lookupOpenFoodFactsProduct(
         }
         try {
             if (connection.responseCode == HttpURLConnection.HTTP_NOT_FOUND) return@run null
+            if (connection.responseCode == 429 || connection.responseCode >= 500) throw FoodLookupException(FoodLookupFailure.NETWORK)
+            if (connection.responseCode != 200) throw FoodLookupException(FoodLookupFailure.AUTH)
             connection.inputStream.bufferedReader().use { reader ->
-                parseOpenFoodFactsProduct(cleanBarcode, reader.readText(MaxOpenFoodFactsResponseChars))
+                val json = reader.readText(MaxOpenFoodFactsResponseChars)
+                val status = runCatching { JsonParser.parseString(json).asJsonObject.get("status").asInt }.getOrNull()
+                    ?: throw FoodLookupException(FoodLookupFailure.INVALID_RESPONSE)
+                if (status == 0) null else parseOpenFoodFactsProduct(cleanBarcode, json)
+                    ?: throw FoodLookupException(FoodLookupFailure.INVALID_RESPONSE)
             }
-        } finally {
+        } catch (error: java.io.IOException) { throw FoodLookupException(FoodLookupFailure.NETWORK) }
+        finally {
             connection.disconnect()
         }
     }
@@ -61,6 +120,10 @@ internal fun parseOpenFoodFactsProduct(barcode: String, json: String): BarcodePr
         proteinPer100g = protein,
         carbsPer100g = carbs,
         fatPer100g = fat,
+        explicitServingMl = product.get("serving_quantity")?.asString?.let { quantity ->
+            explicitVolumeMl(quantity, product.get("serving_quantity_unit")?.asString.orEmpty())
+        },
+        isBeverage = product.getAsJsonArray("categories_tags")?.any { it.asString == "en:beverages" } == true,
     )
 }
 

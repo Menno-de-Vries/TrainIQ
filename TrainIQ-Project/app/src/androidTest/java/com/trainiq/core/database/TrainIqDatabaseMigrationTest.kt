@@ -9,12 +9,23 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class TrainIqDatabaseMigrationTest {
+    @Test
+    fun migration17To18PreservesHistoryWithoutHydrationBackfill() {
+        helper.createDatabase(TEST_DB, 17).apply { seedVersion11RelationalData(); close() }
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 18, true)
+        migrated.assertVersion11RelationalDataSurvived()
+        migrated.query("SELECT COUNT(*) FROM hydration_entries").use { assertTrue(it.moveToFirst()); assertEquals(0, it.getInt(0)) }
+        migrated.query("SELECT COUNT(*) FROM meal_items WHERE hydration_ml != 0").use { assertTrue(it.moveToFirst()); assertEquals(0, it.getInt(0)) }
+        migrated.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
+        migrated.close()
+    }
     @Test
     fun migration16To17PreservesProfileAndStartsWithNoSleepRoutine() {
         helper.createDatabase(TEST_DB, 16).apply {

@@ -162,6 +162,7 @@ class RoomTrainIqRuntimeStore internal constructor(
             )
             val eventSets = dao.readWorkoutLogEventSetsForExport()
             TrainIqStorageState(
+                hydrationEntries = dao.readHydrationForExport(),
                 profile = dao.readUserProfileForExport(),
                 routines = dao.readRoutinesForExport(),
                 days = dao.readWorkoutDaysForExport(),
@@ -712,7 +713,7 @@ class RoomTrainIqRuntimeStore internal constructor(
             item.copy(id = firstItemId + index, mealId = mealId)
         }
         dao.saveMeal(
-            meal = meal.copy(id = mealId, timestamp = dao.getMeal(mealId)?.date ?: meal.timestamp).toMealEntity(persistedItems),
+            meal = meal.copy(id = mealId, timestamp = if (meal.dateExplicit) meal.timestamp else dao.getMeal(mealId)?.date ?: meal.timestamp).toMealEntity(persistedItems),
             items = persistedItems.mapIndexed { index, item -> item.toMealItemEntity(orderIndex = index) },
         )
         return mealId
@@ -1012,6 +1013,7 @@ private fun MealEntity.toStorage() = LoggedMealStorage(
 )
 
 private fun MealItemEntity.toStorage() = LoggedMealItemStorage(
+    hydrationMl = hydrationMl,
     id = id,
     mealId = mealId,
     itemType = itemType.toEnum(LoggedMealItemType.FOOD),
@@ -1039,6 +1041,7 @@ private fun LoggedMealStorage.toMealEntity(items: List<LoggedMealItemStorage>) =
 )
 
 private fun LoggedMealItemStorage.toMealItemEntity(orderIndex: Int) = MealItemEntity(
+    hydrationMl = hydrationMl,
     id = id,
     mealId = mealId,
     itemType = itemType.name,

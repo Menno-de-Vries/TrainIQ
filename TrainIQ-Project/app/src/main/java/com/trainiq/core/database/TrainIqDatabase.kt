@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
 @Database(
     entities = [
         SleepRoutineEntity::class,
+        HydrationEntity::class,
         RoomMirrorImportRunEntity::class,
         UserProfileEntity::class,
         SavedGoalAdviceEntity::class,
@@ -31,8 +32,8 @@ import androidx.room.RoomDatabase
         WorkoutLogEventSetEntity::class,
         BodyMeasurementEntity::class,
     ],
-    version = 17,
-    autoMigrations = [AutoMigration(from = 16, to = 17)],
+    version = 18,
+    autoMigrations = [AutoMigration(from = 16, to = 17), AutoMigration(from = 17, to = 18)],
     exportSchema = true,
 )
 abstract class TrainIqDatabase : RoomDatabase() {

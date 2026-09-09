@@ -431,7 +431,7 @@ fun ProgressScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
         ) {
-            item { ScreenHeader(title = "Trend", subtitle = "Metingen, grafieken en krachttrends") }
+            item { ScreenHeader(title = "Lichaam & voortgang", subtitle = "Metingen, grafieken en krachttrends") }
             when (uiState) {
             ProgressUiState.Loading -> {
                 item { ShimmerCardPlaceholder(lineCount = 4) }

@@ -246,6 +246,7 @@ private data class LoadedJsonState(
 )
 
 data class TrainIqStorageState(
+    val hydrationEntries: List<com.trainiq.core.database.HydrationEntity> = emptyList(),
     val profile: UserProfileEntity? = null,
     val routines: List<WorkoutRoutineEntity> = emptyList(),
     val days: List<WorkoutDayEntity> = emptyList(),
