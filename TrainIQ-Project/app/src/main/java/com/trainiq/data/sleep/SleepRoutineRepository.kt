@@ -3,7 +3,7 @@ package com.trainiq.data.sleep
 import com.trainiq.core.database.TrainIqDao
 import com.trainiq.core.database.toDomain
 import com.trainiq.core.database.toEntity
-import com.trainiq.core.sleep.SleepRoutineScheduler
+import com.trainiq.domain.sleep.SleepAlarmDelivery
 import com.trainiq.domain.sleep.SleepRoutine
 import com.trainiq.domain.sleep.SleepRepeatMillis
 import java.time.ZoneId
@@ -16,13 +16,15 @@ import kotlinx.coroutines.sync.withLock
 @Singleton
 class SleepRoutineRepository @Inject constructor(
     private val dao: TrainIqDao,
-    private val scheduler: SleepRoutineScheduler,
+    private val scheduler: SleepAlarmDelivery,
 ) {
     private val mutex = Mutex()
     val routine = dao.observeSleepRoutine().map { it?.toDomain() ?: SleepRoutine() }
 
     suspend fun configure(enabled: Boolean, minute: Int) = mutex.withLock {
-        val state = read().configure(enabled, minute, System.currentTimeMillis(), ZoneId.systemDefault())
+        val previous = read()
+        val state = previous.configure(enabled, minute, System.currentTimeMillis(), ZoneId.systemDefault())
+        if (state == previous) { scheduler.schedule(state); return@withLock }
         dao.saveSleepRoutine(state.toEntity())
         scheduler.cancelNotification()
         scheduler.schedule(state)
@@ -46,18 +48,17 @@ class SleepRoutineRepository @Inject constructor(
         val now = System.currentTimeMillis()
         var state = read()
         val alreadyActive = state.active
-        if (timeChanged && state.enabled && !state.active) {
-            state = state.configure(true, state.minuteOfDay, now, ZoneId.systemDefault())
-        }
+        if (timeChanged) state = state.rebaseTime(now, ZoneId.systemDefault())
         state = state.advance(now, ZoneId.systemDefault())
-        if (state.active && state.confirmedAt == 0L && state.nextAt <= now) {
-            scheduler.showReminder(escalated = alreadyActive)
+        val shouldRemind = state.active && state.confirmedAt == 0L && state.nextAt <= now
+        if (shouldRemind) {
             state = state.copy(nextAt = now + SleepRepeatMillis)
-        } else if (!state.active) {
-            scheduler.cancelNotification()
         }
         dao.saveSleepRoutine(state.toEntity())
         scheduler.schedule(state)
+        // A blocked/failed notification cannot prevent the durable successor from existing.
+        if (shouldRemind) scheduler.showReminder(escalated = alreadyActive)
+        else if (!state.active) scheduler.cancelNotification()
     }
 
     private suspend fun read() = dao.getSleepRoutine()?.toDomain() ?: SleepRoutine()

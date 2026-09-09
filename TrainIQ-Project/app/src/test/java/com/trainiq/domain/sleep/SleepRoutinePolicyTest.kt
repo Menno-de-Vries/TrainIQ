@@ -14,6 +14,36 @@ class SleepRoutinePolicyTest {
         assertFalse(SleepRoutine().advance(now, zone).active)
     }
 
+    @Test fun savingUnchangedSettingsDoesNotDiscardUnconfirmedRoutine() {
+        val active = SleepRoutine().configure(true, 1320, now, zone).advance(now + 3_600_000, zone)
+        assertEquals(active, active.configure(true, 1320, now + 3_660_000, zone))
+    }
+
+    @Test fun timezoneRebaseMovesOnlyFutureInactiveRoutine() {
+        val planned = SleepRoutine().configure(true, 1320, now, zone)
+        assertEquals(time("2026-09-08T22:00:00Z"), planned.rebaseTime(now, ZoneId.of("UTC")).nextAt)
+        val active = planned.advance(planned.nextAt, zone)
+        assertEquals(active, active.rebaseTime(now + 86_400_000, ZoneId.of("UTC")))
+    }
+
+    @Test fun clockChangeCannotDiscardAnAlreadyDueRoutine() {
+        val planned = SleepRoutine().configure(true, 1320, now, zone)
+        val rebased = planned.rebaseTime(planned.nextAt + 1, zone)
+        assertTrue(rebased.active)
+        assertEquals("2026-09-08", rebased.routineDay)
+        assertEquals(0L, rebased.confirmedAt)
+    }
+
+    @Test fun unchangedConfigurationPreservesCountdownAndDisableCancelsIt() {
+        val confirmed = SleepRoutine().configure(true, 1320, now, zone)
+            .advance(now + 3_600_000, zone).confirm(now + 3_600_000)
+        assertEquals(confirmed, confirmed.configure(true, 1320, now + 3_610_000, zone))
+        val disabled = confirmed.configure(false, 1320, now + 3_610_000, zone)
+        assertEquals(0L, disabled.nextAt)
+        assertFalse(disabled.active)
+        assertEquals(0L, disabled.confirmedAt)
+    }
+
     @Test fun scheduleTriggersOnlyWhenDueAndRepeatsUntilConfirmed() {
         val planned = SleepRoutine().configure(true, 22 * 60, now, zone)
         assertEquals(time("2026-09-08T20:00:00Z"), planned.nextAt)

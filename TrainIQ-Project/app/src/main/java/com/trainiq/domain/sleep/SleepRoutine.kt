@@ -5,7 +5,7 @@ import java.time.LocalTime
 import java.time.ZoneId
 
 const val SleepCountdownMillis = 120_000L
-const val SleepRepeatMillis = 15 * 60_000L
+const val SleepRepeatMillis = 10 * 60_000L
 
 /** Only the current routine is retained; confirmation is not evidence of actual sleep. */
 data class SleepRoutine(
@@ -19,8 +19,15 @@ data class SleepRoutine(
     val active: Boolean get() = enabled && routineDay.isNotEmpty()
     fun configure(enabled: Boolean, minute: Int, now: Long, zone: ZoneId): SleepRoutine {
         require(minute in 0..1439)
+        if (this.enabled == enabled && minuteOfDay == minute && (!enabled || nextAt > 0)) return this
         return copy(enabled = enabled, minuteOfDay = minute, routineDay = "", confirmedAt = 0,
             nextAt = if (enabled) nextOccurrence(minute, now, zone, completedDay) else 0)
+    }
+
+    fun rebaseTime(now: Long, zone: ZoneId): SleepRoutine = when {
+        !enabled || active -> this
+        nextAt in 1..now -> advance(now, zone)
+        else -> copy(nextAt = nextOccurrence(minuteOfDay, now, zone, completedDay))
     }
 
     fun confirm(now: Long): SleepRoutine =

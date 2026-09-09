@@ -29,6 +29,7 @@ import com.trainiq.core.sleep.SleepRoutineScheduler
 import com.trainiq.data.sleep.SleepRoutineRepository
 import com.trainiq.domain.sleep.SleepCountdownMillis
 import com.trainiq.domain.sleep.SleepRoutine
+import com.trainiq.domain.sleep.SleepRepeatMillis
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Instant
 import java.time.ZoneId
@@ -51,6 +52,7 @@ sealed interface SleepRoutineUiState {
         val notificationsAllowed: Boolean = false,
         val exactAllowed: Boolean = false,
         val soundEnabled: Boolean = true,
+        val fullScreenAllowed: Boolean = false,
     ) : SleepRoutineUiState
 }
 
@@ -63,7 +65,8 @@ class SleepRoutineViewModel @Inject constructor(
     private val message = MutableStateFlow<String?>(null)
     private val refresh = MutableStateFlow(0)
     private val capabilities = refresh.map {
-        Triple(scheduler.notificationsAllowed(), scheduler.exactAllowed(), scheduler.soundEnabled())
+        SleepAlarmCapabilities(scheduler.notificationsAllowed(), scheduler.exactAllowed(),
+            scheduler.soundEnabled(), scheduler.fullScreenAllowed())
     }.distinctUntilChanged()
     private val ticks = flow {
         while (true) { emit(System.currentTimeMillis()); delay(1_000) }
@@ -71,7 +74,7 @@ class SleepRoutineViewModel @Inject constructor(
     val uiState: StateFlow<SleepRoutineUiState> = combine(repository.routine, ticks, busy, message, capabilities) {
         state, now, saving, error, access ->
         SleepRoutineUiState.Success(state, sleepRoutineStatus(state, now), saving, error,
-            access.first, access.second, access.third) as SleepRoutineUiState
+            access.notifications, access.exact, access.sound, access.fullScreen) as SleepRoutineUiState
     }.catch { emit(SleepRoutineUiState.Error("Slaaproutine laden mislukt. Open dit scherm opnieuw om te proberen.")) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SleepRoutineUiState.Loading)
 
@@ -91,6 +94,9 @@ class SleepRoutineViewModel @Inject constructor(
         }
     }
 }
+
+private data class SleepAlarmCapabilities(val notifications: Boolean, val exact: Boolean,
+    val sound: Boolean, val fullScreen: Boolean)
 
 internal fun sleepRoutineStatus(state: SleepRoutine, now: Long): String = when {
     !state.enabled -> "Slaapvoorbereiding staat uit."
@@ -130,6 +136,10 @@ fun SleepRoutineRoute(onBack: () -> Unit, viewModel: SleepRoutineViewModel = hil
         },
         onNotificationSettings = { context.startActivity(Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
             .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName).putExtra(Settings.EXTRA_CHANNEL_ID, SleepChannelId)) },
+        onFullScreen = {
+            if (Build.VERSION.SDK_INT >= 34) context.startActivity(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                "package:${context.packageName}".toUri()))
+        },
     )
 }
 
@@ -143,6 +153,7 @@ fun SleepRoutineScreen(
     onNotifications: () -> Unit,
     onExactAlarms: () -> Unit,
     onNotificationSettings: () -> Unit,
+    onFullScreen: () -> Unit = {},
 ) {
     val context = LocalContext.current
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -165,7 +176,7 @@ fun SleepRoutineScreen(
                                 }
                             }
                         }
-                        Text("Kies wanneer je je dagelijks klaar wilt maken om te slapen. Zonder bevestiging herhalen we de melding ongeveer elke 15 minuten.")
+                        Text("Kies je dagelijkse bedtijd. Zonder bevestiging volgt elke ${SleepRepeatMillis / 60_000} minuten een nieuw slaapalarm.")
                         Row(Modifier.fillMaxWidth().toggleable(state.routine.enabled, enabled = !state.busy,
                             role = Role.Switch, onValueChange = { onConfigure(it, state.routine.minuteOfDay) }).padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically) {
@@ -188,12 +199,16 @@ fun SleepRoutineScreen(
                             Button(onClick = onNotifications) { Text("Meldingen toestaan") }
                         }
                         if (state.routine.enabled && !state.exactAllowed) {
-                            Text("Exacte alarms zijn niet toegestaan. Android kan je herinnering later afleveren.")
+                            Text("Exacte alarms zijn niet toegestaan. Het ingestelde tijdstip en de herhaling kunnen hierdoor worden vertraagd.")
                             OutlinedButton(onClick = onExactAlarms) { Text("Exacte alarms instellen") }
+                        }
+                        if (state.routine.enabled && !state.fullScreenAllowed) {
+                            Text("Volledig scherm is niet toegestaan. Open de slaapbevestiging via de melding of via Start → Slaap.")
+                            OutlinedButton(onClick = onFullScreen) { Text("Alarmscherm toestaan") }
                         }
                         if (state.routine.enabled && !state.soundEnabled) Text("Het geluid van dit meldingskanaal staat uit of stil. Controleer de meldingsinstellingen.")
                         OutlinedButton(onClick = onNotificationSettings) { Text("Geluid en meldingen beheren") }
-                        Text("We gebruiken het standaard Android-alarmgeluid via een meldingskanaal. Je eigen wekkerinstelling kan afwijken. Android, niet-storen, volume en batterijbeheer bepalen of en wanneer je geluid hoort. Je kunt meldingen altijd stoppen; wegvegen geldt niet als slaapbevestiging.",
+                        Text("Het alarm gebruikt het Android-alarmvolume en standaard alarmgeluid, tenzij je het kanaal zelf hebt aangepast. Je persoonlijke Klok-alarm kan een ander geluid hebben. Niet-storen en een stil alarmkanaal of alarmvolume kunnen geluid blokkeren. Wegvegen bevestigt de routine niet. Na geforceerd stoppen moet je TrainIQ opnieuw openen.",
                             style = MaterialTheme.typography.bodySmall)
                     }
                 }

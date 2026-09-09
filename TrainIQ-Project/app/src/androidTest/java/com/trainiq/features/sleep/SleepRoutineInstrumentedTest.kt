@@ -24,15 +24,17 @@ class SleepRoutineInstrumentedTest {
     @Test fun blockedPermissionsRemainActionableAndConfirmationIsExplicit() {
         var confirmed = 0
         var permissions = 0
+        var fullScreen = 0
         val active = SleepRoutine(enabled = true, routineDay = "2026-09-08")
         compose.setContent { TrainIqTheme(dynamicColor = false) {
             SleepRoutineScreen(SleepRoutineUiState.Success(active, sleepRoutineStatus(active, 1)),
-                {}, { _, _ -> }, { confirmed++ }, {}, { permissions++ }, {}, {})
+                {}, { _, _ -> }, { confirmed++ }, {}, { permissions++ }, {}, {}, { fullScreen++ })
         } }
         compose.onNodeWithText("Ik ga binnen 2 minuten slapen").performScrollTo().assertHasClickAction().performClick()
         compose.onNodeWithText("Meldingen toestaan").performScrollTo().performClick()
         compose.onNodeWithText("Exacte alarms instellen").performScrollTo().assertHasClickAction()
-        compose.runOnIdle { assertEquals(1, confirmed); assertEquals(1, permissions) }
+        compose.onNodeWithText("Alarmscherm toestaan").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(1, confirmed); assertEquals(1, permissions); assertEquals(1, fullScreen) }
     }
 
     @Test fun confirmedCountdownHasNoSecondConfirmationAction() {
