@@ -369,6 +369,7 @@ data class RecipeIngredientEntity(
     ],
 )
 data class MealItemEntity(
+    @ColumnInfo(name = "hydration_ml", defaultValue = "0.0") val hydrationMl: Double = 0.0,
     @PrimaryKey val id: Long,
     @ColumnInfo(name = "meal_id") val mealId: Long,
     @ColumnInfo(name = "item_type") val itemType: String,

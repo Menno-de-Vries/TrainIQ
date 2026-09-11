@@ -51,6 +51,7 @@ class BarcodeLookupRequestTest {
         assertTrue(results.single().userMessage().startsWith("Product ophalen mislukt."))
         request.start("letters", BarcodeLookupTarget.entries.first())
         runCurrent()
-        assertEquals(1, results.size)
+        assertEquals(2, results.size)
+        assertEquals(com.trainiq.domain.model.FoodLookupFailure.INVALID_BARCODE, results.last().failure)
     }
 }

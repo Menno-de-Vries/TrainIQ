@@ -10,6 +10,29 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TrainIqDao {
+    @Query("""
+        SELECT id, timestamp, volumeMl, NULL AS mealId, 'Handmatig vocht' AS label FROM hydration_entries
+        UNION ALL
+        SELECT 'meal:' || m.id AS id, m.date AS timestamp,
+            SUM(i.hydration_ml * i.serving_count) AS volumeMl, m.id AS mealId, m.name AS label
+        FROM meals m JOIN meal_items i ON i.meal_id = m.id
+        WHERE i.hydration_ml > 0 GROUP BY m.id
+        ORDER BY timestamp DESC
+    """)
+    fun observeHydration(): Flow<List<com.trainiq.domain.model.HydrationRecord>>
+
+    @Upsert
+    suspend fun saveHydration(entry: HydrationEntity)
+
+    @Query("DELETE FROM hydration_entries WHERE id = :id")
+    suspend fun deleteHydration(id: String)
+
+    @Query("DELETE FROM hydration_entries")
+    suspend fun clearHydration()
+
+    @Query("SELECT * FROM hydration_entries")
+    suspend fun readHydrationForExport(): List<HydrationEntity>
+
     @Query("SELECT * FROM sleep_routine WHERE id = 1")
     fun observeSleepRoutine(): Flow<SleepRoutineEntity?>
 
@@ -28,6 +51,7 @@ interface TrainIqDao {
     @Query(
         """
         SELECT
+            (SELECT COUNT(*) FROM hydration_entries) +
             (SELECT COUNT(*) FROM user_profile) +
             (SELECT COUNT(*) FROM workout_routines) +
             (SELECT COUNT(*) FROM workout_days) +
@@ -121,6 +145,7 @@ interface TrainIqDao {
 
     @Transaction
     suspend fun clearMirrorTables() {
+        clearHydration()
         clearSavedGoalAdvice()
         clearMirrorWorkoutLogEventSets()
         clearMirrorWorkoutLogEvents()
@@ -303,6 +328,7 @@ interface TrainIqDao {
 
     @Transaction
     suspend fun saveMeal(meal: MealEntity, items: List<MealItemEntity>) {
+        require(items.all { it.hydrationMl.isFinite() && it.hydrationMl in 0.0..100_000.0 && it.servingCount > 0 })
         insertMeals(listOf(meal))
         deleteMealItems(meal.id)
         insertMealItems(items)

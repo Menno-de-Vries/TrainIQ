@@ -459,7 +459,7 @@ internal fun compactBottomNavigationRouteClasses(): List<KClass<*>> =
 internal fun navigationRailRouteClasses(): List<KClass<*>> = topLevelDestinations().map { it.routeClass }
 
 internal fun compactSelectedNavigationRouteClass(currentRouteClass: KClass<*>?): KClass<*>? =
-    if (currentRouteClass == Progress::class) Settings::class else currentRouteClass
+    if (currentRouteClass == Progress::class) Coach::class else currentRouteClass
 
 internal fun guidedTourTopLevelRouteClasses(): List<KClass<*>> =
     listOf(Home::class, Train::class, Nutrition::class, Progress::class, Coach::class, Settings::class)
@@ -682,7 +682,12 @@ private fun TrainIqNavHost(
                 onOpenScaleScanner = { navController.navigate(CameraScanner(contextHint = "Lees gewicht, vetpercentage en spiermassa uit van de smart-weegschaal.", scannerMode = ScannerMode.AI_SCALE)) },
             )
         }
-        composable<Coach> { CoachRoute(windowWidthClass = windowWidthClass) }
+        composable<Coach> {
+            CoachRoute(
+                windowWidthClass = windowWidthClass,
+                onOpenBodyProgress = { navController.navigate(Progress) { launchSingleTop = true } },
+            )
+        }
         composable<SleepPreparation> {
             com.trainiq.features.sleep.SleepRoutineRoute(onBack = { navController.popBackStack() })
         }
@@ -690,9 +695,6 @@ private fun TrainIqNavHost(
             SettingsRoute(
                 onOpenSleepRoutine = { navController.navigate(SleepPreparation) },
                 windowWidthClass = windowWidthClass,
-                onOpenProgress = {
-                    navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Progress::class })
-                },
                 onOpenOnboarding = {
                     navController.navigate(Onboarding) {
                         launchSingleTop = true

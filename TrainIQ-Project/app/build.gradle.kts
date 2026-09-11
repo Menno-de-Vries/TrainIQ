@@ -51,6 +51,7 @@ android {
             "GEMINI_BASE_URL",
             "\"https://generativelanguage.googleapis.com/\""
         )
+        buildConfigField("String", "FOOD_GATEWAY_URL", providers.gradleProperty("trainiq.foodGatewayUrl").orElse("").get().asBuildConfigString())
         buildConfigField("String", "OPENAI_BASE_URL", "\"https://api.openai.com/\"")
         buildConfigField("String", "GIT_BRANCH", trainIqGitBranch.asBuildConfigString())
         buildConfigField("String", "GIT_SHORT_SHA", trainIqGitShortSha.asBuildConfigString())
@@ -277,17 +278,17 @@ fun registerRoomMigrationChainVerificationMarkerTask(
     )
 
     doLast {
-        val marker = "trainiq-room-migration-chain-v2-to-v17"
+        val marker = "trainiq-room-migration-chain-v2-to-v18"
         val testTask = "connectedDebugAndroidTest"
-        val currentRoomVersion = 17
+        val currentRoomVersion = 18
         val requiredStartVersion = 2
-        val requiredEndVersion = 17
+        val requiredEndVersion = 18
         val coveredStartVersion = 2
-        val coveredEndVersion = 17
+        val coveredEndVersion = 18
         val verifiedAtMillis = verifiedAtMillisProperty
             .map(String::toLong)
             .getOrElse(System.currentTimeMillis())
-        val migrationCount = 12
+        val migrationCount = 13
         val payloadForHash = listOf(
             marker,
             buildVariant,

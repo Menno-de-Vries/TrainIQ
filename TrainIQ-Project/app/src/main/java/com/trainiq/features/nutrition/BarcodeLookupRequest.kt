@@ -17,21 +17,30 @@ internal class BarcodeLookupRequest(
 
     fun start(barcode: String, target: BarcodeLookupTarget) {
         clear()
-        val cleanBarcode = barcode.filter(Char::isDigit)
+        val cleanBarcode = barcode.trim().replace("-", "").replace(" ", "")
         if (cleanBarcode.isBlank()) return
+        if (cleanBarcode.any { it !in '0'..'9' }) {
+            publish(BarcodeLookupUiResult(target, null, cleanBarcode, true, com.trainiq.domain.model.FoodLookupFailure.INVALID_BARCODE))
+            return
+        }
         val requestRevision = revision
         job = scope.launch {
             var failed = false
+            var failure: com.trainiq.domain.model.FoodLookupFailure? = null
             val product = try {
                 lookup(cleanBarcode)
             } catch (cancelled: CancellationException) {
                 throw cancelled
+            } catch (error: com.trainiq.domain.model.FoodLookupException) {
+                failed = true
+                failure = error.failure
+                null
             } catch (_: Exception) {
                 failed = true
                 null
             }
             if (requestRevision == revision) {
-                publish(BarcodeLookupUiResult(target, product, cleanBarcode, failed))
+                publish(BarcodeLookupUiResult(target, product, cleanBarcode, failed, failure))
             }
         }
     }

@@ -608,9 +608,11 @@ private const val ManualCalorieTargetErrorMessage = "Calorie doel moet leeg zijn
 fun CoachRoute(
     windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
     viewModel: CoachViewModel = hiltViewModel(),
+    onOpenBodyProgress: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     CoachScreen(
+        onOpenBodyProgress = onOpenBodyProgress,
         uiState = uiState,
         onGenerateAdvice = viewModel::generateGoalAdvice,
         onGenerateWeeklyReport = viewModel::generateWeeklyReport,
@@ -630,6 +632,7 @@ fun CoachScreen(
     onProfileDraftChange: (CoachProfileDraft) -> Unit,
     onDismissMessage: () -> Unit,
     onRetry: () -> Unit,
+    onOpenBodyProgress: () -> Unit = {},
 ) {
     var manualCalorieTargetError by remember { mutableStateOf<String?>(null) }
     var profileInputError by remember { mutableStateOf<ProfileInputValidationError?>(null) }
@@ -675,6 +678,15 @@ fun CoachScreen(
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
         ) {
             item { ScreenHeader(title = "Coach", subtitle = "Advies op basis van training, voeding en profiel") }
+            if (selectedCoachTab != CoachSectionTab.Goals.key) item {
+                AppCard(modifier = Modifier.fillMaxWidth()) {
+                    Text("Lichaam & voortgang", style = MaterialTheme.typography.titleMedium)
+                    Text("Volg je gewicht, lichaamsmetingen en geschiedenis.")
+                    Button(onClick = onOpenBodyProgress, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                        Text("Lichaamsmetingen openen")
+                    }
+                }
+            }
 
             when (state) {
                 CoachUiState.Loading -> {

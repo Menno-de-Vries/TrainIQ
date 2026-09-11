@@ -24,12 +24,19 @@ import org.junit.Test
 
 class CoachProfileStateRestorationInstrumentedTest {
     @OptIn(ExperimentalTestApi::class)
+    @Test fun bodyProgressHasADirectCoachEntryWithoutAProfile() = runComposeUiTest {
+        var opened = false
+        setContent { TrainIqTheme { CoachScreen(CoachUiState.Loading, {}, {}, {}, {}, {}, {}, onOpenBodyProgress = { opened = true }) } }
+        onNodeWithText("Lichaamsmetingen openen").performScrollTo().performClick()
+        runOnIdle { org.junit.Assert.assertTrue(opened) }
+    }
+    @OptIn(ExperimentalTestApi::class)
     @Test
     fun missingProfileHasADirectPathToTheProfileForm() = runComposeUiTest {
         val profile = syntheticProfile()
         val state = syntheticCoachUiState(profile, profile.toSyntheticDraft()).copy(currentProfile = null)
         setContent { TrainIqTheme { CoachScreen(state, {}, {}, {}, {}, {}, {}) } }
-        onNode(hasText("Profiel instellen") and androidx.compose.ui.test.hasClickAction()).performClick()
+        onNode(hasText("Profiel instellen") and androidx.compose.ui.test.hasClickAction()).performScrollTo().performClick()
         onNode(hasSetTextAction() and hasText("Bestaand profiel")).performScrollTo().assertExists()
     }
 

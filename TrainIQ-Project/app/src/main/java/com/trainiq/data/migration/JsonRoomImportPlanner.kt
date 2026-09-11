@@ -83,8 +83,11 @@ class JsonRoomImportPlanner(
                     orderIndex = index,
                 )
             },
+            hydrationEntries = state.hydrationEntries.orEmpty().onEach { require(it.volumeMl.isFinite() && it.volumeMl > 0 && it.volumeMl <= 100_000 && it.id.isNotBlank() && !it.id.startsWith("meal:")) },
             mealItems = state.mealItems.mapIndexed { index, item ->
+                require(item.hydrationMl.isFinite() && item.hydrationMl in 0.0..100_000.0)
                 MealItemEntity(
+                    hydrationMl = item.hydrationMl,
                     id = item.id,
                     mealId = item.mealId,
                     itemType = enumNameOrDefault({ item.itemType.name }, "FOOD"),
@@ -289,6 +292,7 @@ class JsonRoomImportPlanner(
 }
 
 data class JsonRoomImportPlan(
+    val hydrationEntries: List<com.trainiq.core.database.HydrationEntity> = emptyList(),
     val profile: UserProfileEntity? = null,
     val routines: List<WorkoutRoutineEntity> = emptyList(),
     val days: List<WorkoutDayEntity> = emptyList(),
@@ -356,6 +360,7 @@ class RoomJsonImportSink(
             dao.insertRecipes(plan.recipes)
             dao.insertRecipeIngredients(plan.recipeIngredients)
             dao.insertMealItems(plan.mealItems)
+            plan.hydrationEntries.forEach { dao.saveHydration(it) }
             dao.insertActiveWorkoutSessions(plan.activeWorkoutSessions)
             dao.insertActiveWorkoutDrafts(plan.activeWorkoutDrafts)
             dao.insertActiveWorkoutCollapsedExercises(plan.activeWorkoutCollapsedExercises)
@@ -430,6 +435,7 @@ data class RoomMirrorImportReport(
 
 fun JsonRoomImportPlan.importedRowCount(): Int =
     (if (profile == null) 0 else 1) +
+        hydrationEntries.size +
         routines.size +
         days.size +
         exercises.size +
@@ -451,7 +457,7 @@ fun JsonRoomImportPlan.importedRowCount(): Int =
         workoutLogEventSets.size +
         measurements.size
 
-private const val TrainIqDatabaseVersion = 17
+private const val TrainIqDatabaseVersion = 18
 internal const val TrainIqJsonExportFormat = "trainiq-json-export"
 
 sealed interface JsonRoomImportOutcome {

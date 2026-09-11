@@ -17,6 +17,7 @@ import androidx.navigation.compose.rememberNavController
 import com.trainiq.core.datastore.AiPreferences
 import com.trainiq.core.theme.TrainIqTheme
 import com.trainiq.domain.model.*
+import com.trainiq.domain.repository.MealEntryRequest
 import com.trainiq.navigation.BarcodeScanResultKey
 import com.trainiq.navigation.CameraScanner
 import com.trainiq.navigation.Nutrition
@@ -25,6 +26,7 @@ import com.trainiq.navigation.setBarcodeScanResult
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
+import kotlinx.coroutines.flow.first
 
 /** Real nutrition UI and navigation; only camera recognition, lookup transport and storage are faked. */
 class BarcodeMealFlowInstrumentedTest {
@@ -32,6 +34,36 @@ class BarcodeMealFlowInstrumentedTest {
     private val savedMeals = mutableListOf<MealType>()
     private var savedFoods = 0
     private var lookupCalls = 0
+
+    @Test fun scannedDrinkReachesPersistentHydrationTotal() {
+        val db = androidx.room.Room.inMemoryDatabaseBuilder(
+            androidx.test.core.app.ApplicationProvider.getApplicationContext(),
+            com.trainiq.core.database.TrainIqDatabase::class.java,
+        ).build()
+        try {
+            var total by mutableStateOf(0.0)
+            showFlow(drink = true, hydrationContent = { Text("Geregistreerd vocht: ${total.toLong()} ml") }, saveEntries = { id, entries ->
+                kotlinx.coroutines.runBlocking {
+                    db.dao().saveMeal(
+                        com.trainiq.core.database.MealEntity(id = id, date = 1000, name = "Drank", calories = 0, protein = 0, carbs = 0, fat = 0),
+                        entries.mapIndexed { index, entry ->
+                            com.trainiq.core.database.MealItemEntity(id = index.toLong() + 1, mealId = id, itemType = "SNAPSHOT", referenceId = 0,
+                                name = "Drank", gramsUsed = entry.gramsUsed, calories = 0.0, protein = 0.0, carbs = 0.0, fat = 0.0,
+                                hydrationMl = entry.hydrationMl, servingCount = entry.servingCount)
+                        },
+                    )
+                    total = db.dao().observeHydration().first().sumOf { it.volumeMl }
+                }
+            })
+            openMealScanner("Middag")
+            compose.onNodeWithText("Herken barcode").performClick()
+            compose.onNodeWithText("Alleen aan maaltijd toevoegen").performScrollTo().performClick()
+            compose.onNodeWithText("Volume per portie (ml)").performScrollTo().assertTextContains("250")
+            compose.onNodeWithText("Maaltijd opslaan").performScrollTo().performClick()
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Geregistreerd vocht: 250 ml"))
+            compose.onNodeWithText("Geregistreerd vocht: 250 ml").assertExists()
+        } finally { db.close() }
+    }
 
     @Test fun optionalSaveDefaultsOffAndSurvivesRestoration() {
         val restoration = showFlow()
@@ -152,7 +184,10 @@ class BarcodeMealFlowInstrumentedTest {
         compose.onNodeWithText("Barcode scannen").performScrollTo().performClick()
     }
 
-    private fun showFlow(found: Boolean = true, failFirstLookup: Boolean = false, stallFirstLookup: Boolean = false, failFoodSave: Boolean = false): StateRestorationTester {
+    private fun showFlow(found: Boolean = true, failFirstLookup: Boolean = false, stallFirstLookup: Boolean = false, failFoodSave: Boolean = false,
+        drink: Boolean = false, hydrationContent: @androidx.compose.runtime.Composable () -> Unit = {},
+        saveEntries: (Long, List<MealEntryRequest>) -> Unit = { _, _ -> },
+    ): StateRestorationTester {
         val restoration = StateRestorationTester(compose)
         restoration.setContent {
             var state by remember { mutableStateOf(barcodeFlowState()) }
@@ -163,6 +198,7 @@ class BarcodeMealFlowInstrumentedTest {
                     composable<Nutrition> { entry ->
                         val barcode by entry.savedStateHandle.getStateFlow(BarcodeScanResultKey, "").collectAsStateWithLifecycle()
                         NutritionScreen(
+                            hydrationContent = hydrationContent,
                             uiState = state,
                             onSaveFood = { _, name, code, kcal, protein, carbs, fat, grams, source, done, failed ->
                                 savedFoods++
@@ -174,8 +210,9 @@ class BarcodeMealFlowInstrumentedTest {
                                 }
                             },
                             onSaveRecipe = { _, _, _, _, _, _ -> },
-                            onSaveMeal = { _, type, _, _, entries, done ->
+                            onSaveMeal = { id, type, _, _, entries, done ->
                                 assertEquals(1, entries.size)
+                                saveEntries(requireNotNull(id), entries)
                                 savedMeals += type
                                 done()
                             },
@@ -192,7 +229,8 @@ class BarcodeMealFlowInstrumentedTest {
                                 val failed = failFirstLookup && attempts++ == 0
                                 if (!stallFirstLookup || lookupCalls > 1) {
                                     state = state.copy(barcodeLookupResult = BarcodeLookupUiResult(
-                                        target, if (found && !failed) BarcodeProductLookupResult(code, "Test kwark", 60.0, 10.0, 4.0, 0.5) else null,
+                                        target, if (found && !failed) BarcodeProductLookupResult(code, "Test kwark", 60.0, 10.0, 4.0, 0.5,
+                                            explicitServingMl = if (drink) 250.0 else null, isBeverage = drink) else null,
                                         code, failed,
                                     ))
                                 }

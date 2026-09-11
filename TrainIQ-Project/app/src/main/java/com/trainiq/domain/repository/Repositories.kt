@@ -132,6 +132,7 @@ interface NutritionRepository {
     fun observeNutritionOverview(): Flow<NutritionOverview>
     suspend fun analyzeMealPhoto(path: String, context: String, capturedAtMillis: Long): MealAnalysisResult
     suspend fun lookupBarcodeProduct(barcode: String): BarcodeProductLookupResult?
+    suspend fun lookupBarcodeProduct(barcode: String, mode: com.trainiq.domain.model.FoodProviderMode): BarcodeProductLookupResult? = lookupBarcodeProduct(barcode)
     fun clearLastScanResult()
     suspend fun saveFoodItem(
         id: Long?,
@@ -170,6 +171,8 @@ data class MealEntryRequest(
     val servingCount: Int = 1,
     val notes: String? = null,
     val snapshot: MealEntrySnapshot? = null,
+    val hydrationMl: Double = 0.0,
+    val loggedAt: Long? = null,
 )
 
 enum class MealEntryType {

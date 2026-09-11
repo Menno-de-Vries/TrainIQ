@@ -582,7 +582,6 @@ fun SettingsRoute(
     onOpenSleepRoutine: () -> Unit = {},
     windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
     onOpenOnboarding: () -> Unit = {},
-    onOpenProgress: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -709,7 +708,6 @@ fun SettingsRoute(
                 onOpenOnboarding = {
                     onOpenOnboarding()
                 },
-                onOpenProgress = onOpenProgress,
                 onOpenSleepRoutine = onOpenSleepRoutine,
             )
         }
@@ -809,7 +807,6 @@ fun SettingsScreen(
     onConfirmImport: () -> Unit,
     onDismissImportPreview: () -> Unit,
     onOpenOnboarding: () -> Unit,
-    onOpenProgress: () -> Unit,
 ) {
     var geminiKeyInput by remember { mutableStateOf("") }
     var openAiKeyInput by remember { mutableStateOf("") }
@@ -860,14 +857,6 @@ fun SettingsScreen(
                 Text("Thema: ${themeMode.displayLabel()}")
                 Text("AI: ${if (aiStatus.enabled && (aiStatus.hasGeminiKey || aiStatus.hasOpenAiKey)) "Geconfigureerd voor expliciet gebruik" else "Alleen handmatig"}")
                 Text("Health Connect: ${healthStatusLabel(healthStatus)}")
-                Button(
-                    onClick = onOpenProgress,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .settingsActionLabel(settingsOpenProgressActionLabel()),
-                ) {
-                    Text(settingsOpenProgressActionLabel())
-                }
         }
         SectionCard(title = "Onboarding") {
                 Text(
@@ -1654,9 +1643,8 @@ internal fun debugBuildProvenanceLabel(
 ): String = "Build: $branch @ $shortSha${if (dirty) " (dirty)" else ""}"
 
 internal fun settingsOverflowSectionBody(): String =
-    "Compacte navigatie: instellingen, voorkeuren en appbeheer staan hier. Trends en grafieken open je via Voortgang hieronder."
+    "Instellingen, voorkeuren en appbeheer staan hier."
 
-internal fun settingsOpenProgressActionLabel(): String = "Voortgang openen"
 
 internal fun themeModeAccessibilityLabel(mode: ThemeMode): String = "Themamodus: ${mode.displayLabel()}"
 

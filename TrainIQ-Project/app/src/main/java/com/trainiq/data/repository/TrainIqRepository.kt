@@ -1038,6 +1038,8 @@ class TrainIqDataCoordinator @Inject constructor(
         }
     }
 
+    suspend fun lookupBarcodeProduct(barcode: String, mode: com.trainiq.domain.model.FoodProviderMode): BarcodeProductLookupResult? = barcodeProductLookupService.lookup(barcode, mode)
+
     suspend fun lookupBarcodeProduct(barcode: String): BarcodeProductLookupResult? {
         val cleanBarcode = barcode.filter(Char::isDigit)
         if (cleanBarcode.isBlank()) return null
@@ -1126,8 +1128,9 @@ class TrainIqDataCoordinator @Inject constructor(
     ): Long {
         val mealId = id ?: 0L
         val mealStorage = LoggedMealStorage(
+            dateExplicit = items.firstOrNull()?.loggedAt != null,
             id = mealId,
-            timestamp = System.currentTimeMillis(),
+            timestamp = items.firstOrNull()?.loggedAt ?: System.currentTimeMillis(),
             mealType = mealType,
             name = name.trim().ifBlank { mealType.label },
             notes = notes?.trim()?.takeIf { it.isNotBlank() },
@@ -1654,6 +1657,7 @@ class TrainIqDataCoordinator @Inject constructor(
             .filter { it.mealId == meal.id }
             .map { item ->
                 LoggedMealItem(
+                    hydrationMl = item.hydrationMl,
                     id = item.id,
                     mealId = item.mealId,
                     itemType = item.itemType,
@@ -2504,6 +2508,7 @@ internal fun buildMealItemSnapshots(
     val recipesById = recipes.associateBy { it.id }
     var nextItemId = startItemId + 1L
     return requests.map { request ->
+        require(request.hydrationMl.isFinite() && request.hydrationMl in 0.0..100_000.0)
         when (request.itemType) {
             MealEntryType.FOOD -> {
                 val food = foodsById[request.referenceId] ?: throw UnavailableMealItemException()
@@ -2521,6 +2526,7 @@ internal fun buildMealItemSnapshots(
                     protein = nutrition.protein,
                     carbs = nutrition.carbs,
                     fat = nutrition.fat,
+                    hydrationMl = request.hydrationMl,
                     notes = request.notes,
                 )
             }
@@ -2549,6 +2555,7 @@ internal fun buildMealItemSnapshots(
                     protein = nutrition.protein,
                     carbs = nutrition.carbs,
                     fat = nutrition.fat,
+                    hydrationMl = request.hydrationMl,
                     notes = request.notes,
                 )
             }
@@ -2574,6 +2581,7 @@ internal fun buildMealItemSnapshots(
                     protein = nutrition.protein,
                     carbs = nutrition.carbs,
                     fat = nutrition.fat,
+                    hydrationMl = request.hydrationMl,
                     notes = request.notes,
                 )
             }

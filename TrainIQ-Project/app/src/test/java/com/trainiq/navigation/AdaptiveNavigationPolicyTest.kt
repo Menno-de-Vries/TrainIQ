@@ -1,7 +1,6 @@
 package com.trainiq.navigation
 
 import com.trainiq.features.settings.settingsOverflowSectionBody
-import com.trainiq.features.settings.settingsOpenProgressActionLabel
 import com.trainiq.features.settings.settingsOverflowSectionTitle
 import java.io.File
 import org.junit.Assert.assertFalse
@@ -26,7 +25,7 @@ class AdaptiveNavigationPolicyTest {
             navigationRailRouteClasses(),
         )
         assertEquals("Meer", bottomNavigationLabel("Instellingen"))
-        assertEquals(Settings::class, compactSelectedNavigationRouteClass(Progress::class))
+        assertEquals(Coach::class, compactSelectedNavigationRouteClass(Progress::class))
         assertEquals(Home::class, compactSelectedNavigationRouteClass(Home::class))
     }
 
@@ -39,10 +38,9 @@ class AdaptiveNavigationPolicyTest {
     }
 
     @Test
-    fun compactOverflowSettingsMakesProgressDirectlyDiscoverable() {
+    fun settingsContainsOnlyConfigurationCopy() {
         assertEquals("Meer", settingsOverflowSectionTitle())
-        assertTrue(settingsOverflowSectionBody().contains("Voortgang"))
-        assertEquals("Voortgang openen", settingsOpenProgressActionLabel())
+        assertFalse(settingsOverflowSectionBody().contains("Voortgang"))
     }
 
     @Test
