@@ -121,6 +121,7 @@ sealed interface CameraScannerUiState {
         val message: String? = null,
     ) : CameraScannerUiState
 
+    data class BarcodeReady(val product: com.trainiq.domain.model.BarcodeProductLookupResult) : CameraScannerUiState
     data object Processing : CameraScannerUiState
     data class Completed(val suggestedMealType: MealType?, val itemCount: Int = 0) : CameraScannerUiState
     data class CompletedScale(val result: BodyMeasurementPhotoResult) : CameraScannerUiState
@@ -410,6 +411,7 @@ internal fun CameraScannerScreen(
     onBarcodeScanned: (String) -> Unit,
     bindCameraPreview: Boolean = true,
     initialCameraPermissionGranted: Boolean? = null,
+    onManual: () -> Unit = onBack,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -526,7 +528,7 @@ internal fun CameraScannerScreen(
     }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val showSheet = scannerMode != ScannerMode.BARCODE && uiState !is CameraScannerUiState.Preview
+    val showSheet = uiState !is CameraScannerUiState.Preview
     val showCameraFallback = shouldShowCameraFallback(
         hasPermission = hasPermission,
         hasCameraFeature = hasCameraFeature,
@@ -719,7 +721,7 @@ internal fun CameraScannerScreen(
             containerColor = MaterialTheme.colorScheme.surface,
         ) {
             when (uiState) {
-                is CameraScannerUiState.Processing -> ProcessingSheetContent()
+                is CameraScannerUiState.Processing -> ProcessingSheetContent(scannerMode == ScannerMode.BARCODE)
                 is CameraScannerUiState.Completed -> CompletedSheetContent(
                     itemCount = uiState.itemCount,
                     suggestedMealType = uiState.suggestedMealType,
@@ -734,7 +736,7 @@ internal fun CameraScannerScreen(
                 is CameraScannerUiState.Empty -> EmptySheetContent(
                     message = uiState.message,
                     onRetry = onScanAgain,
-                    onManual = onBack,
+                    onManual = onManual,
                 )
                 is CameraScannerUiState.NoConfig -> ErrorSheetContent(
                     title = "AI-scan niet ingesteld",
@@ -891,7 +893,7 @@ internal fun scannerPermissionSettingsLabel(): String = "Instellingen openen"
 internal fun scannerPermissionBackLabel(): String = "Terug"
 
 @Composable
-private fun ProcessingSheetContent() {
+private fun ProcessingSheetContent(barcode: Boolean = false) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -899,9 +901,9 @@ private fun ProcessingSheetContent() {
             .windowInsetsPadding(WindowInsets.navigationBars),
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
     ) {
-        Text(scannerProcessingTitle(), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(if (barcode) "Product ophalen..." else scannerProcessingTitle(), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text(
-            scannerProcessingMessage(),
+            if (barcode) "Voedingswaarden worden opgehaald. Controleer daarna het product en de hoeveelheid." else scannerProcessingMessage(),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

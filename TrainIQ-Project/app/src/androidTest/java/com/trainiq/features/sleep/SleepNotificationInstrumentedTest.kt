@@ -30,6 +30,28 @@ import org.junit.Test
 /** Runs only on the isolated local test target; never changes DND, volume or alarm access. */
 class SleepNotificationInstrumentedTest {
     @get:Rule val compose = createComposeRule()
+    @Test fun alarmStreamPlaysInVibrateModeAndCancelReleasesIt() {
+        compose.setContent { androidx.compose.material3.Text("Alarm playback contract") }
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        if (Build.VERSION.SDK_INT >= 33) InstrumentationRegistry.getInstrumentation().uiAutomation
+            .grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
+        val audio = context.getSystemService(android.media.AudioManager::class.java)
+        val originalMode = audio.ringerMode
+        val scheduler = SleepRoutineScheduler(context, WorkManager.getInstance(context))
+        try {
+            audio.ringerMode = android.media.AudioManager.RINGER_MODE_VIBRATE
+            assertEquals(android.media.AudioManager.RINGER_MODE_VIBRATE, audio.ringerMode)
+            scheduler.showReminder(false)
+            compose.waitUntil(10_000) { audio.activePlaybackConfigurations.any {
+                it.audioAttributes.usage == android.media.AudioAttributes.USAGE_ALARM
+            } }
+            scheduler.cancelNotification()
+            compose.waitUntil(10_000) { audio.activePlaybackConfigurations.none {
+                it.audioAttributes.usage == android.media.AudioAttributes.USAGE_ALARM
+            } }
+        } finally { scheduler.cancelNotification(); audio.ringerMode = originalMode }
+    }
+
     @Test fun reminderEscalatesAndNotificationOpensRealSleepScreen() {
         compose.setContent { androidx.compose.material3.Text("Notification contract") }
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -47,7 +69,8 @@ class SleepNotificationInstrumentedTest {
             context.sendBroadcast(Intent(context, SleepRoutineReceiver::class.java).setAction("com.trainiq.SLEEP_ROUTINE"))
             compose.waitUntil(10_000) { manager.activeNotifications.any { it.id == 2010 } }
             val first = manager.activeNotifications.single { it.id == 2010 }.notification
-            assertTrue(first.flags and Notification.FLAG_INSISTENT != 0)
+            assertEquals(0, first.flags and Notification.FLAG_INSISTENT)
+            assertEquals(Notification.CATEGORY_ALARM, first.category)
             assertEquals(Notification.VISIBILITY_PRIVATE, first.visibility)
             // Notification delivery precedes the receiver's durable transition. Wait for that
             // public state before advancing the next synthetic trigger.
@@ -63,13 +86,15 @@ class SleepNotificationInstrumentedTest {
                 it.id == 2010 && it.notification.extras.getString(Notification.EXTRA_TITLE) == "Slaapalarm: bevestiging nodig"
             } }
             val escalated = manager.activeNotifications.single { it.id == 2010 }.notification
-            assertTrue(escalated.flags and Notification.FLAG_INSISTENT != 0)
+            assertEquals(0, escalated.flags and Notification.FLAG_INSISTENT)
+            assertEquals(Notification.CATEGORY_ALARM, escalated.category)
             escalated.contentIntent.send()
             compose.waitUntil(10_000) {
                 compose.onAllNodesWithText("Slaapvoorbereiding")
                     .fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
             }
             compose.onNodeWithText("Slaapvoorbereiding").assertExists()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Ik ga binnen 2 minuten slapen").fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
             compose.onNodeWithText("Ik ga binnen 2 minuten slapen").performScrollTo()
             captureSleepEvidence("sleep-active")
             compose.onNodeWithText("Ik ga binnen 2 minuten slapen").performClick()

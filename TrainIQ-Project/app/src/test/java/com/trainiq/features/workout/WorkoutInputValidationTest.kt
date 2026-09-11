@@ -984,11 +984,11 @@ class WorkoutInputValidationTest {
     }
 
     @Test
-    fun `active set metric input replaces default zero when typing around it`() {
-        assertEquals("8", normalizeActiveSetMetricInput(previousValue = "0", filteredInput = "08"))
-        assertEquals("8", normalizeActiveSetMetricInput(previousValue = "0", filteredInput = "80"))
-        assertEquals("12", normalizeActiveSetMetricInput(previousValue = "0", filteredInput = "120"))
-        assertEquals("0.5", normalizeActiveSetMetricInput(previousValue = "0", filteredInput = "0.5"))
+    fun emptyDraftUsesOnlyExistingFallbackAtCommit() {
+        val fallback = SetInputDraft(weight = "80", reps = "8", restSeconds = "120", rpe = "")
+        assertEquals(fallback, commitActiveSetDraft(SetInputDraft(), fallback))
+        val typing = fallback.copy(weight = "80.")
+        assertEquals(typing, commitActiveSetDraft(typing, fallback))
     }
 
     @Test
@@ -1032,7 +1032,7 @@ class WorkoutInputValidationTest {
     }
 
     @Test
-    fun `active logger ui draft falls back to planned bodyweight set`() {
+    fun `active logger defaults only absent drafts and preserves cleared input`() {
         val exercise = Exercise(id = 1, name = "Ab Wheel Rollout", muscleGroup = "Core", equipment = "Lichaamsgewicht")
         val plan = WorkoutExercisePlan(
             id = 1,
@@ -1044,7 +1044,7 @@ class WorkoutInputValidationTest {
         )
 
         assertEquals(SetInputDraft(weight = "0", reps = "12", restSeconds = "90"), activeSetUiDraft(savedDraft = null, plan = plan, loggedSetCount = 0))
-        assertEquals(SetInputDraft(weight = "0", reps = "12", restSeconds = "90"), activeSetUiDraft(savedDraft = SetInputDraft(weight = "", reps = "12"), plan = plan, loggedSetCount = 0))
+        assertEquals(SetInputDraft(weight = "", reps = "12"), activeSetUiDraft(savedDraft = SetInputDraft(weight = "", reps = "12"), plan = plan, loggedSetCount = 0))
         assertEquals(SetInputDraft(weight = "20", reps = "8", restSeconds = "150"), activeSetUiDraft(savedDraft = SetInputDraft(weight = "20", reps = "8", restSeconds = "150"), plan = plan, loggedSetCount = 0))
     }
 

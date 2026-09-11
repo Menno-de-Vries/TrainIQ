@@ -21,19 +21,22 @@ import org.junit.Test
 @OptIn(ExperimentalTestApi::class)
 class FeatureRecoveryInstrumentedTest {
     @Test
-    fun homeWithoutProfileExposesSleepAndExistingWeightTracking() = runComposeUiTest {
+    fun homeWithoutProfileHasNoHealthRegistrationAndCoachExposesBothRoutes() = runComposeUiTest {
+        var coach by mutableStateOf(false)
         var sleep = 0
         var weight = 0
         val dashboard = com.trainiq.domain.model.HomeDashboard(null, null, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 0, "")
         val health = com.trainiq.domain.model.HealthConnectStatus(state = com.trainiq.domain.model.HealthConnectState.ERROR, message = "Niet verbonden")
-        setContent {
-            TrainIqTheme {
-                HomeScreen(HomeUiState.Success(dashboard, health), {}, {}, {}, {}, {}, {},
-                    onOpenSleep = { sleep++ }, onOpenWeight = { weight++ })
-            }
-        }
-        onNodeWithText("Slaap · alarm en bevestiging").performScrollTo().assertIsDisplayed().performClick()
-        onNodeWithText("Gewicht · bijhouden en voortgang").performScrollTo().assertIsDisplayed().performClick()
+        setContent { TrainIqTheme {
+            if (coach) com.trainiq.features.coach.CoachScreen(com.trainiq.features.coach.CoachUiState.Loading,
+                {}, {}, {}, {}, {}, {}, onOpenSleep = { sleep++ }, onOpenBodyProgress = { weight++ })
+            else HomeScreen(HomeUiState.Success(dashboard, health), {}, {}, {}, {}, {}, {})
+        } }
+        onNodeWithText("Slaap · alarm en bevestiging").assertDoesNotExist()
+        onNodeWithText("Gewicht · bijhouden en voortgang").assertDoesNotExist()
+        runOnIdle { coach = true }
+        onNodeWithText("Slaap · alarm en bevestiging").performScrollTo().performClick()
+        onNodeWithText("Lichaamsmetingen openen").performScrollTo().performClick()
         assertEquals(1, sleep)
         assertEquals(1, weight)
     }

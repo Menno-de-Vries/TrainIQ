@@ -104,6 +104,9 @@ data object Train
 data object Nutrition
 
 @Serializable
+data class MealDetail(val mealType: com.trainiq.domain.model.MealType)
+
+@Serializable
 data object Progress
 
 @Serializable
@@ -635,8 +638,7 @@ private fun TrainIqNavHost(
                 onOpenCoach = { navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Coach::class }) },
                 onOpenTrain = { navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Train::class }) },
                 onOpenSettings = { navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Settings::class }) },
-                onOpenSleep = { navController.navigate(SleepPreparation) { launchSingleTop = true } },
-                onOpenWeight = { navController.navigateTopLevel(topLevelDestinations.first { it.routeClass == Progress::class }) },
+                mealsContent = { com.trainiq.features.nutrition.HomeMealsRoute(onOpenMeal = { navController.navigate(MealDetail(it)) }) },
             )
         }
         composable<Train> {
@@ -657,6 +659,20 @@ private fun TrainIqNavHost(
                 pendingBarcode = pendingBarcode.takeIf { it.isNotEmpty() },
                 onBarcodeClear = { entry.clearBarcodeScanResult() },
                 windowWidthClass = windowWidthClass,
+                onOpenMeal = { navController.navigate(MealDetail(it)) },
+            )
+        }
+        composable<MealDetail> { entry ->
+            val route = entry.toRoute<MealDetail>()
+            val pendingBarcode by entry.savedStateHandle.getStateFlow(BarcodeScanResultKey, "").collectAsStateWithLifecycle()
+            NutritionRoute(
+                mealDetail = route.mealType,
+                windowWidthClass = windowWidthClass,
+                onBack = { navController.popBackStack() },
+                onAiScanner = { navController.navigate(CameraScanner(it)) },
+                onOpenBarcodeScanner = { navController.navigate(CameraScanner(scannerMode = ScannerMode.BARCODE)) },
+                pendingBarcode = pendingBarcode.takeIf { it.isNotEmpty() },
+                onBarcodeClear = { entry.clearBarcodeScanResult() },
             )
         }
         composable<Progress> { entry ->
@@ -686,6 +702,7 @@ private fun TrainIqNavHost(
             CoachRoute(
                 windowWidthClass = windowWidthClass,
                 onOpenBodyProgress = { navController.navigate(Progress) { launchSingleTop = true } },
+                onOpenSleep = { navController.navigate(SleepPreparation) { launchSingleTop = true } },
             )
         }
         composable<SleepPreparation> {
@@ -704,7 +721,24 @@ private fun TrainIqNavHost(
         }
         composable<CameraScanner> { entry ->
             val route = entry.toRoute<CameraScanner>()
-            CameraScannerRoute(
+            if (route.scannerMode == ScannerMode.BARCODE) {
+                val parent = remember(entry) { navController.previousBackStackEntry!! }
+                val nutrition: com.trainiq.features.nutrition.NutritionViewModel = androidx.hilt.navigation.compose.hiltViewModel(parent)
+                com.trainiq.features.nutrition.BarcodeProductScannerRoute(
+                    provider = nutrition.selectedFoodProvider,
+                    onManual = { barcode ->
+                        nutrition.prepareManualBarcode(barcode)
+                        parent.setBarcodeScanResult(barcode)
+                        navController.popBackStack()
+                    },
+                    onProduct = { product ->
+                        nutrition.acceptScannedProduct(product)
+                        parent.setBarcodeScanResult(product.barcode)
+                        navController.popBackStack()
+                    },
+                    onBack = { navController.popBackStack() },
+                )
+            } else CameraScannerRoute(
                 contextHint = route.contextHint,
                 scannerMode = route.scannerMode,
                 onBack = { navController.popBackStack() },

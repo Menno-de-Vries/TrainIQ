@@ -14,12 +14,14 @@ internal class BarcodeLookupRequest(
 ) {
     private var job: Job? = null
     private var revision = 0L
+    private var activeRequest: Pair<String, BarcodeLookupTarget>? = null
 
     fun start(barcode: String, target: BarcodeLookupTarget) {
-        clear()
         val cleanBarcode = barcode.trim().replace("-", "").replace(" ", "")
-        if (cleanBarcode.isBlank()) return
-        if (cleanBarcode.any { it !in '0'..'9' }) {
+        if (activeRequest == (cleanBarcode to target) && job?.isActive == true) return
+        clear()
+        activeRequest = cleanBarcode to target
+        if (cleanBarcode.isBlank() || cleanBarcode.any { it !in '0'..'9' }) {
             publish(BarcodeLookupUiResult(target, null, cleanBarcode, true, com.trainiq.domain.model.FoodLookupFailure.INVALID_BARCODE))
             return
         }
@@ -49,5 +51,6 @@ internal class BarcodeLookupRequest(
         revision++
         job?.cancel()
         job = null
+        activeRequest = null
     }
 }

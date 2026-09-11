@@ -203,7 +203,7 @@ fun SleepRoutineScreen(
                             OutlinedButton(onClick = onExactAlarms) { Text("Exacte alarms instellen") }
                         }
                         if (state.routine.enabled && !state.fullScreenAllowed) {
-                            Text("Volledig scherm is niet toegestaan. Open de slaapbevestiging via de melding of via Start → Slaap.")
+                            Text("Volledig scherm is niet toegestaan. Open de slaapbevestiging via de melding of via Coach → Slaap.")
                             OutlinedButton(onClick = onFullScreen) { Text("Alarmscherm toestaan") }
                         }
                         if (state.routine.enabled && !state.soundEnabled) Text("Het geluid van dit meldingskanaal staat uit of stil. Controleer de meldingsinstellingen.")

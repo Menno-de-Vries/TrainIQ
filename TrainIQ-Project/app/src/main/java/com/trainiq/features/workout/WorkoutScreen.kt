@@ -799,7 +799,7 @@ class WorkoutViewModel @Inject constructor(
             loggedSetCount = loggedCount,
             activeRestSeconds = draftRestSeconds,
         )
-        val validation = validateSetInput(draft)
+        val validation = validateSetInput(commitActiveSetDraft(draft, activeSetUiDraft(null, plan, loggedCount, draftRestSeconds)))
         if (validation is SetLogValidationResult.Invalid) {
             _draftErrors.value = _draftErrors.value.toMutableMap().apply { put(key, validation.fieldErrors) }
             _message.value = validation.message
@@ -6590,6 +6590,8 @@ private fun ActiveSetInputMetricValue(
     onSubmit: () -> Unit,
 ) {
     val focusManager = LocalFocusManager.current
+    var focused by remember { mutableStateOf(false) }
+    var valueBeforeFocus by remember { mutableStateOf(value) }
     val content = if (suffix.isBlank()) label else "$label, $suffix"
     val textStyle = MaterialTheme.typography.labelMedium.copy(
         fontWeight = FontWeight.SemiBold,
@@ -6625,7 +6627,7 @@ private fun ActiveSetInputMetricValue(
                 } else {
                     filterIntegerInput(raw)
                 }
-                onValueChange(normalizeActiveSetMetricInput(previousValue = value, filteredInput = filtered))
+                onValueChange(filtered)
             },
             singleLine = true,
             textStyle = textStyle,
@@ -6639,10 +6641,15 @@ private fun ActiveSetInputMetricValue(
             ),
             modifier = Modifier
                 .fillMaxWidth()
-                .defaultMinSize(minHeight = 24.dp),
+                .defaultMinSize(minHeight = 24.dp)
+                .onFocusChanged { state ->
+                    if (state.isFocused && !focused) valueBeforeFocus = value
+                    if (!state.isFocused && focused && value.isBlank()) onValueChange(valueBeforeFocus)
+                    focused = state.isFocused
+                },
             decorationBox = { innerTextField ->
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    if (value.isBlank()) {
+                    if (value.isBlank() && !focused) {
                         Text(
                             fallback.orEmpty(),
                             style = textStyle.copy(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)),
@@ -6655,7 +6662,7 @@ private fun ActiveSetInputMetricValue(
                         horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Box(modifier = if (value.isBlank()) Modifier.width(1.dp) else Modifier) {
+                        Box(modifier = Modifier.weight(1f)) {
                             innerTextField()
                         }
                         if (suffix.isNotBlank() && value.isNotBlank()) {
@@ -7302,16 +7309,6 @@ internal fun filterDecimalInput(input: String, maxDecimals: Int): String {
 internal fun filterIntegerInput(input: String): String =
     input.filter { it.isDigit() }
 
-internal fun normalizeActiveSetMetricInput(previousValue: String, filteredInput: String): String {
-    if (previousValue != "0" || filteredInput.length <= 1 || filteredInput == "0") return filteredInput
-    return when {
-        filteredInput.startsWith("0.") -> filteredInput
-        filteredInput.startsWith("0") -> filteredInput.dropWhile { it == '0' }.ifBlank { "0" }
-        filteredInput.endsWith("0") -> filteredInput.dropLast(1).ifBlank { "0" }
-        else -> filteredInput
-    }
-}
-
 internal fun shouldDismissExercisePickerFromHandleDrag(
     verticalDragPx: Float,
     thresholdPx: Float,
@@ -7635,13 +7632,15 @@ internal fun activeSetUiDraft(
     val plannedDraft = plan.nextPlannedDraft(loggedSetCount).copy(
         restSeconds = activeRestSeconds.takeIf { it > 0 }?.toString().orEmpty(),
     )
-    return savedDraft?.copy(
-        weight = savedDraft.weight.ifBlank { plannedDraft.weight },
-        reps = savedDraft.reps.ifBlank { plannedDraft.reps },
-        restSeconds = savedDraft.restSeconds.ifBlank { plannedDraft.restSeconds },
-        rpe = savedDraft.rpe.ifBlank { plannedDraft.rpe },
-    ) ?: plannedDraft
+    return savedDraft ?: plannedDraft
 }
+
+internal fun commitActiveSetDraft(draft: SetInputDraft, fallback: SetInputDraft): SetInputDraft = draft.copy(
+    weight = draft.weight.ifBlank { fallback.weight },
+    reps = draft.reps.ifBlank { fallback.reps },
+    restSeconds = draft.restSeconds.ifBlank { fallback.restSeconds },
+    rpe = draft.rpe.ifBlank { fallback.rpe },
+)
 
 private fun ProgressionSuggestion.toLastSessionDraft(): SetInputDraft? {
     val weight = lastLoggedWeightKg ?: return null

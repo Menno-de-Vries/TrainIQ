@@ -226,8 +226,7 @@ fun HomeRoute(
     onOpenCoach: () -> Unit,
     onOpenTrain: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenSleep: () -> Unit,
-    onOpenWeight: () -> Unit,
+    mealsContent: @Composable () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -256,8 +255,7 @@ fun HomeRoute(
         onOpenSettings = onOpenSettings,
         onRequestHealthPermission = requestHealthPermission,
         onRefreshHealth = viewModel::refreshDashboardAndHealthStatus,
-        onOpenSleep = onOpenSleep,
-        onOpenWeight = onOpenWeight,
+        mealsContent = mealsContent,
     )
 }
 
@@ -270,8 +268,7 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onRequestHealthPermission: () -> Unit,
     onRefreshHealth: () -> Unit,
-    onOpenSleep: () -> Unit = {},
-    onOpenWeight: () -> Unit = {},
+    mealsContent: @Composable () -> Unit = {},
 ) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
@@ -293,7 +290,6 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                 ) {
                     ScreenHeader(title = "TrainIQ", subtitle = "Vandaag in een slimme cockpit", actionIcon = Icons.Default.Settings, actionContentDescription = "Instellingen openen", onActionClick = onOpenSettings)
-                    DailyHealthActions(onOpenSleep, onOpenWeight)
                     repeat(4) { HomeStartupPlaceholder(modifier = Modifier.height(170.dp)) }
                 }
             }
@@ -332,7 +328,7 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                 ) {
                     ScreenHeader(title = "TrainIQ", subtitle = "Vandaag in een slimme cockpit", actionIcon = Icons.Default.Settings, actionContentDescription = "Instellingen openen", onActionClick = onOpenSettings)
-                    DailyHealthActions(onOpenSleep, onOpenWeight)
+                    mealsContent()
                     if (dashboard.profile == null) {
                         DiscoveryCard(onOpenCoach = onOpenCoach)
                         SetupChecklistCard(
@@ -419,21 +415,6 @@ fun HomeScreen(
                 }
             }
         }
-}
-
-@Composable
-internal fun DailyHealthActions(onOpenSleep: () -> Unit, onOpenWeight: () -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Dagelijkse gezondheid", style = MaterialTheme.typography.titleMedium)
-            OutlinedButton(onClick = onOpenSleep, modifier = Modifier.fillMaxWidth()) {
-                Text("Slaap · alarm en bevestiging")
-            }
-            OutlinedButton(onClick = onOpenWeight, modifier = Modifier.fillMaxWidth()) {
-                Text("Gewicht · bijhouden en voortgang")
-            }
-        }
-    }
 }
 
 internal fun buildHomeRecoverySubtitle(
