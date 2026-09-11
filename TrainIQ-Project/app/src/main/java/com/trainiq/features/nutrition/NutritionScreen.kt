@@ -2041,6 +2041,7 @@ private fun SummaryCard(overview: NutritionOverview?) {
 internal fun DailyMealsDashboard(
     overview: NutritionOverview?,
     detail: MealType? = null,
+    showDailySummary: Boolean = true,
     onOpenMeal: ((MealType) -> Unit)? = null,
     onAddToMeal: (MealType) -> Unit,
     onEditMeal: (LoggedMeal) -> Unit,
@@ -2049,7 +2050,7 @@ internal fun DailyMealsDashboard(
     val sections = detail?.let { listOf(it) } ?: listOf(MealType.BREAKFAST, MealType.LUNCH, MealType.DINNER, MealType.SNACK)
     val hasMealsToday = overview?.todaysMealsByType?.values?.any { it.isNotEmpty() } == true
     AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {
-        if (detail == null) {
+        if (detail == null && showDailySummary) {
         Text("Voedingsdag", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.amber, fontWeight = FontWeight.SemiBold)
         Text(
             "${formatNumber(overview?.todaysCalories ?: 0.0)} kcal",
@@ -3878,7 +3879,7 @@ fun HomeMealsRoute(onOpenMeal: (MealType) -> Unit, viewModel: NutritionViewModel
     when (val current = state) {
         NutritionUiState.Loading -> ShimmerCardPlaceholder(lineCount = 4)
         is NutritionUiState.Error -> { MessageCard(current.message); TextButton(onClick = viewModel::retry) { Text("Opnieuw proberen") } }
-        is NutritionUiState.Success -> DailyMealsDashboard(current.overview, onOpenMeal = onOpenMeal,
+        is NutritionUiState.Success -> DailyMealsDashboard(current.overview, showDailySummary = false, onOpenMeal = onOpenMeal,
             onAddToMeal = onOpenMeal, onEditMeal = {}, onDeleteMeal = {})
     }
 }
