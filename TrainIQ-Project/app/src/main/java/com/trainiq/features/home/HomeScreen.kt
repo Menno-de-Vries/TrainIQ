@@ -66,6 +66,7 @@ import com.trainiq.core.ui.SecondaryActionButton
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.ui.reloadableObservation
 import com.trainiq.core.theme.trainIqColors
+import com.trainiq.core.util.EnergyBalanceCard
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
 import com.trainiq.domain.model.HealthConnectStepDataFreshness
@@ -334,6 +335,11 @@ fun HomeScreen(
                             onRequestHealthPermission = onRequestHealthPermission,
                         )
                     } else {
+                        EnergyBalanceCard(
+                            energyBalance = dashboard.energyBalance,
+                            calorieTarget = dashboard.calorieTarget,
+                            modifier = Modifier,
+                        )
                         HomeMomentumCard(
                             streak = dashboard.streak,
                             healthStatus = healthConnectStatus,

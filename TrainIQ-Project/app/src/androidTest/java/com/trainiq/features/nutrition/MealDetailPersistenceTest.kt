@@ -49,7 +49,7 @@ class MealDetailPersistenceTest {
             assertEquals(400.0, original.gramsUsed, 0.0)
             assertEquals(200.0, original.calories, 0.0)
             scenario.recreate()
-            openHomeMeal()
+            openMealCategory()
             compose.onNodeWithText("Test bereid recept").performScrollTo().performClick()
             compose.onNodeWithText("Hoeveelheid wijzigen").performClick()
             compose.onNodeWithContentDescription("Gram per portie").performScrollTo().performTextReplacement("100")
@@ -77,7 +77,7 @@ class MealDetailPersistenceTest {
             compose.waitUntil(10_000) { runBlocking { dao.readMealItemsForExport().size == 1 } }
             assertEquals(100.0, runBlocking { dao.readMealItemsForExport().single().gramsUsed }, 0.0)
             assertEquals(50.0, runBlocking { dao.readMealItemsForExport().single().calories }, 0.0)
-            openHomeMeal()
+            openMealCategory()
             compose.onNodeWithText("Test bereid recept").performScrollTo().performClick()
             compose.onNodeWithText("Hoeveelheid wijzigen").performClick()
             compose.onNodeWithContentDescription("Gram per portie").performScrollTo().performTextReplacement("200")
@@ -114,11 +114,15 @@ class MealDetailPersistenceTest {
         compose.onNodeWithText("Recepten").performClick()
     }
 
-    private fun openHomeMeal() {
+    private fun openMealCategory() {
         val home = (hasContentDescription("Start") or hasText("Start")) and hasClickAction()
         compose.waitUntil(30_000) { compose.onAllNodes(home).fetchSemanticsNodes().isNotEmpty() }
         compose.onNode(home).performClick()
         compose.onNodeWithText("Test bereid recept").assertDoesNotExist()
+        val nutrition = (hasContentDescription("Voeding") or hasText("Voeding")) and hasClickAction()
+        compose.onNode(nutrition).performClick()
+        compose.onNodeWithContentDescription("Voeding secties openen").performClick()
+        compose.onNodeWithText("Vandaag").performClick()
         compose.onNodeWithText("Middag").performScrollTo().performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Test bereid recept").fetchSemanticsNodes().isNotEmpty() }
     }
