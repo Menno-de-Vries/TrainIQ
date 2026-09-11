@@ -21,24 +21,44 @@ import org.junit.Test
 @OptIn(ExperimentalTestApi::class)
 class FeatureRecoveryInstrumentedTest {
     @Test
-    fun homeWithAndWithoutProfileOmitsNutritionOverview() = runComposeUiTest {
+    fun homeKeepsEnergyBalanceWithoutMealOverview() = runComposeUiTest {
         var dashboard by mutableStateOf(com.trainiq.domain.model.HomeDashboard(null, null, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 0, ""))
         val health = com.trainiq.domain.model.HealthConnectStatus(
             state = com.trainiq.domain.model.HealthConnectState.ERROR, message = "Niet verbonden",
         )
         setContent { TrainIqTheme { HomeScreen(HomeUiState.Success(dashboard, health), {}, {}, {}, {}, {}, {}) } }
         fun assertNoNutritionOverview() {
-            listOf("Voedingsdag", "Ochtend", "Middag", "Avond", "Snacks", "Energiekompas", "Macro's vandaag")
+            listOf("Voedingsdag", "Ochtend", "Middag", "Avond", "Snacks", "Macro's vandaag")
                 .forEach { onNodeWithText(it).assertDoesNotExist() }
         }
         onNodeWithText("Ontdekmodus").assertExists()
+        onNodeWithText("Energiekompas").assertDoesNotExist()
         assertNoNutritionOverview()
         runOnIdle {
             dashboard = dashboard.copy(profile = com.trainiq.domain.model.UserProfile(
                 1, "Test", 30, com.trainiq.domain.model.BiologicalSex.MALE, 180.0, 80.0, 20.0,
                 "moderate", "maintain", 2400, 160, 260, 80, "strength",
+            ), calorieTarget = 2400, energyBalance = com.trainiq.domain.model.EnergyBalanceSnapshot(
+                caloriesIn = 1500, caloriesOut = 2100, balance = -600,
+                bmr = 1600, tefCalories = 150, neatCalories = 100, workoutCalories = 250,
             ))
         }
+        onNodeWithText("Energiekompas").assertIsDisplayed()
+        onNodeWithText("600 kcal tekort").assertIsDisplayed()
+        onNodeWithText("In 1500 kcal - Uit 2100 kcal - Doel 2400 kcal").assertExists()
+        val capture = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
+            .executeShellCommand("screencap -p /data/local/tmp/trainiq-home-energy.png")
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(capture).use { it.readBytes() }
+        onNodeWithText("Bekijk verbranding").performScrollTo().performClick()
+        listOf("BMR", "TEF", "Stappen", "Training", "Profielschatting", "Uit gelogde intake", "Krachttraining")
+            .forEach { onAllNodesWithText(it).onFirst().assertExists() }
+        runOnIdle {
+            dashboard = dashboard.copy(energyBalance = dashboard.energyBalance!!.copy(
+                caloriesIn = 1800, caloriesOut = 2200, balance = -400,
+            ))
+        }
+        onNodeWithText("400 kcal tekort").assertExists()
+        onNodeWithText("In 1800 kcal - Uit 2200 kcal - Doel 2400 kcal").assertExists()
         onNodeWithText("Momentum").assertExists()
         assertNoNutritionOverview()
     }

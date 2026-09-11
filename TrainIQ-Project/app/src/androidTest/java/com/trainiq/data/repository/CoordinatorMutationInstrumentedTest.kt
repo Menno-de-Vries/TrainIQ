@@ -44,6 +44,7 @@ class CoordinatorMutationInstrumentedTest {
     }
 
     @Test fun immediateFoodEditIsUsedByMealSnapshot() = runBlocking {
+        val before = withTimeout(10_000) { coordinator.observeDashboard().first() }.calorieProgress
         val name = "Immediate nutrient proof ${System.nanoTime()}"
         val food = coordinator.saveFoodItem(null, name, null, 100.0, 10.0, 20.0, 3.0, 100.0, FoodSourceType.MANUAL)
         withTimeout(10_000) { coordinator.observeNutritionOverview().first { overview -> overview.foods.any { it.id == food.id } } }
@@ -51,5 +52,12 @@ class CoordinatorMutationInstrumentedTest {
         val mealId = coordinator.saveMeal(null, MealType.LUNCH, name, null,
             listOf(MealEntryRequest(MealEntryType.FOOD, food.id, 100.0)))
         assertEquals(234.0, dao.readMealItemsForExport().single { it.mealId == mealId }.calories, 0.0)
+        withTimeout(10_000) { coordinator.observeDashboard().first { it.calorieProgress == before + 234 } }
+        coordinator.saveMeal(mealId, MealType.LUNCH, name, null,
+            listOf(MealEntryRequest(MealEntryType.FOOD, food.id, 200.0)))
+        withTimeout(10_000) { coordinator.observeDashboard().first { it.calorieProgress == before + 468 } }
+        coordinator.deleteMeal(mealId)
+        withTimeout(10_000) { coordinator.observeDashboard().first { it.calorieProgress == before } }
+        Unit
     }
 }
