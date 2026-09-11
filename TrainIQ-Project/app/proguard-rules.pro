@@ -29,6 +29,10 @@
 -keep class com.trainiq.data.migration.RoomMigrationChainVerificationMarker { *; }
 -keep class com.trainiq.data.model.** { *; }
 
+# Typed Navigation resolves MealDetail's enum argument by its serialized class
+# name and enum constants. Preserve this reflected boundary in minified builds.
+-keep enum com.trainiq.domain.model.MealType { *; }
+
 # ML Kit discovers these manifest-registered components through no-argument
 # constructors. R8 full mode otherwise removes the constructors, causing
 # BarcodeScanning.getClient() to fail before the camera preview opens.
