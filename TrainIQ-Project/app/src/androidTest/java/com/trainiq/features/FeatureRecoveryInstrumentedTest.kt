@@ -21,6 +21,29 @@ import org.junit.Test
 @OptIn(ExperimentalTestApi::class)
 class FeatureRecoveryInstrumentedTest {
     @Test
+    fun homeWithAndWithoutProfileOmitsNutritionOverview() = runComposeUiTest {
+        var dashboard by mutableStateOf(com.trainiq.domain.model.HomeDashboard(null, null, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 0, ""))
+        val health = com.trainiq.domain.model.HealthConnectStatus(
+            state = com.trainiq.domain.model.HealthConnectState.ERROR, message = "Niet verbonden",
+        )
+        setContent { TrainIqTheme { HomeScreen(HomeUiState.Success(dashboard, health), {}, {}, {}, {}, {}, {}) } }
+        fun assertNoNutritionOverview() {
+            listOf("Voedingsdag", "Ochtend", "Middag", "Avond", "Snacks", "Energiekompas", "Macro's vandaag")
+                .forEach { onNodeWithText(it).assertDoesNotExist() }
+        }
+        onNodeWithText("Ontdekmodus").assertExists()
+        assertNoNutritionOverview()
+        runOnIdle {
+            dashboard = dashboard.copy(profile = com.trainiq.domain.model.UserProfile(
+                1, "Test", 30, com.trainiq.domain.model.BiologicalSex.MALE, 180.0, 80.0, 20.0,
+                "moderate", "maintain", 2400, 160, 260, 80, "strength",
+            ))
+        }
+        onNodeWithText("Momentum").assertExists()
+        assertNoNutritionOverview()
+    }
+
+    @Test
     fun homeWithoutProfileHasNoHealthRegistrationAndCoachExposesBothRoutes() = runComposeUiTest {
         var coach by mutableStateOf(false)
         var sleep = 0

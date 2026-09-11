@@ -20,7 +20,7 @@ https://developer.android.com/guide/navigation/use-graph/pass-data#proguard
    agent-owned emulator with compatible signing; never clear existing user data.
 3. Start `com.trainiq/.MainActivity`, verify actual visible onboarding/Home UI and
    a surviving process. `am start -W` returning `ok` alone is insufficient.
-4. Complete optional onboarding locally, open each Home meal category and return;
+4. Complete optional onboarding locally, open each Nutrition meal category and return;
    verify the corresponding empty detail title and Back behavior without saving.
 5. Background/foreground the app and inspect app-specific fatal logs. Retain the
    APK hash, UI trees/screenshots and results in the ignored delivery ledger.
