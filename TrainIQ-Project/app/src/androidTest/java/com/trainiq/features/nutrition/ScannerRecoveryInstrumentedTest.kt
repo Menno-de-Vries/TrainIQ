@@ -13,6 +13,29 @@ import org.junit.Test
 
 class ScannerRecoveryInstrumentedTest {
     @OptIn(ExperimentalTestApi::class)
+    @Test fun barcodeResolvingAndMissingResultExposeRetryAndManualActions() = runComposeUiTest {
+        var state: CameraScannerUiState by mutableStateOf(CameraScannerUiState.Processing)
+        var manual = 0
+        setContent { TrainIqTheme {
+            CameraScannerScreen(uiState = state, scannerMode = ScannerMode.BARCODE, onAnalyze = {},
+                onDismissError = {}, onScanAgain = { state = CameraScannerUiState.Preview("", true) },
+                onReviewItems = {}, onReviewScaleMeasurement = {}, onBack = {}, onBarcodeScanned = {},
+                onManual = { manual++ }, bindCameraPreview = false, initialCameraPermissionGranted = true)
+        } }
+        onNodeWithText("Product ophalen...").assertIsDisplayed()
+        runOnIdle { state = CameraScannerUiState.Empty("", "Geen bruikbaar product gevonden. Probeer opnieuw of voeg het handmatig toe.") }
+        onNodeWithText(scannerEmptyTitle()).assertIsDisplayed()
+        onNodeWithText(scannerManualAddLabel()).performClick()
+        runOnIdle { org.junit.Assert.assertEquals(1, manual) }
+        val capture = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
+            .executeShellCommand("screencap -p /data/local/tmp/trainiq-barcode-missing.png")
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(capture).use { it.readBytes() }
+        onNodeWithText(scannerRetryLabel()).performClick()
+        onNodeWithText(scannerEmptyTitle()).assertDoesNotExist()
+        onNodeWithText("Barcodescanner").assertIsDisplayed()
+    }
+
+    @OptIn(ExperimentalTestApi::class)
     @Test fun scanErrorCanReturnToPreviewWithoutKeepingTheErrorSheet() = runComposeUiTest {
         var state: CameraScannerUiState by mutableStateOf(CameraScannerUiState.Error("Meal context", "Try this scan again"))
         setContent {

@@ -39,7 +39,7 @@ class AiCameraScannerModesInstrumentedTest {
         }
 
         compose.onNodeWithText("Camerascanner").assertIsDisplayed()
-        compose.onNodeWithText("Zet het volledige bord of de verpakking duidelijk in beeld", substring = true)
+        compose.onNodeWithText("Voeg context toe als je weet wat erin zit.", substring = true)
             .assertIsDisplayed()
         compose.onNodeWithText("Foto maken").assertIsDisplayed()
         compose.onNodeWithText("Terug").assertIsDisplayed()
@@ -72,7 +72,7 @@ class AiCameraScannerModesInstrumentedTest {
         compose.onNodeWithText("Camerascanner").assertIsDisplayed()
         compose.onNodeWithText("Lees gewicht, vetpercentage en spiermassa", substring = true).assertIsDisplayed()
         compose.onNodeWithText("Foto maken").assertIsDisplayed()
-        compose.onNodeWithText(scalePhotoImportLabel()).assertIsDisplayed()
+        compose.onNodeWithText("Weegfoto importeren").assertIsDisplayed()
         compose.onNodeWithText("Terug").assertIsDisplayed()
     }
 

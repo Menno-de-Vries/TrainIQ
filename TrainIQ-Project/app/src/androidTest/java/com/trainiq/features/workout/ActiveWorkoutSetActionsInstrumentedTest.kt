@@ -1,6 +1,7 @@
 package com.trainiq.features.workout
 
 import android.content.Context
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -128,7 +129,7 @@ class ActiveWorkoutSetActionsInstrumentedTest {
 
     @Test
     fun loggedSetCanEnterCorrectionModeAndBeDeletedFromActiveWorkout() {
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             val trainingNavigation = (hasContentDescription("Training") or hasText("Training")) and hasClickAction()
             compose.waitUntil(30_000) { compose.onAllNodes(trainingNavigation).fetchSemanticsNodes().isNotEmpty() }
             compose.onNode(trainingNavigation).performClick()
@@ -160,9 +161,20 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             )
             assertEquals(80.0, readActiveWorkoutSet().weight, 0.0)
 
-            metricInput("Kg, kg")
-                .performScrollTo()
-                .performTextReplacement("82.5")
+            metricInput("Kg, kg").performScrollTo().performClick().performTextReplacement("")
+            metricInput("Kg, kg").assertTextEquals("")
+            metricInput("Kg, kg").performTextInput("82.")
+            metricInput("Kg, kg").assertTextEquals("82.")
+            metricInput("Kg, kg").performTextInput("5")
+            metricInput("Kg, kg").assertTextEquals("82.5")
+            val capture = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
+                .executeShellCommand("screencap -p /data/local/tmp/trainiq-workout-input.png")
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(capture).use { it.readBytes() }
+
+            metricInput("Herh.").performClick().performTextReplacement("")
+            metricInput("Herh.").assertTextEquals("")
+            metricInput("Kg, kg").performClick()
+            metricInput("Herh.").assertTextEquals("5")
             metricInput("Herh.")
                 .performScrollTo()
                 .performTextReplacement("6")
@@ -178,6 +190,10 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             assertEquals(82.5, updatedSet.weight, 0.0)
             assertEquals(6, updatedSet.reps)
             assertEquals(8.5, updatedSet.rpe, 0.0)
+            scenario.recreate()
+            compose.waitForText("Actieve training")
+            assertEquals(82.5, readActiveWorkoutSet().weight, 0.0)
+            assertEquals(6, readActiveWorkoutSet().reps)
             compose.waitForText("W")
 
             compose.onNodeWithContentDescription("Set verwijderen")

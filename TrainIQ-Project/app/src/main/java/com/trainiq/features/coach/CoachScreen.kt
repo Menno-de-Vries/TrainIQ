@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -609,10 +610,12 @@ fun CoachRoute(
     windowWidthClass: TrainIqWindowWidthClass = TrainIqWindowWidthClass.Compact,
     viewModel: CoachViewModel = hiltViewModel(),
     onOpenBodyProgress: () -> Unit = {},
+    onOpenSleep: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     CoachScreen(
         onOpenBodyProgress = onOpenBodyProgress,
+        onOpenSleep = onOpenSleep,
         uiState = uiState,
         onGenerateAdvice = viewModel::generateGoalAdvice,
         onGenerateWeeklyReport = viewModel::generateWeeklyReport,
@@ -633,6 +636,7 @@ fun CoachScreen(
     onDismissMessage: () -> Unit,
     onRetry: () -> Unit,
     onOpenBodyProgress: () -> Unit = {},
+    onOpenSleep: () -> Unit = {},
 ) {
     var manualCalorieTargetError by remember { mutableStateOf<String?>(null) }
     var profileInputError by remember { mutableStateOf<ProfileInputValidationError?>(null) }
@@ -678,6 +682,11 @@ fun CoachScreen(
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
         ) {
             item { ScreenHeader(title = "Coach", subtitle = "Advies op basis van training, voeding en profiel") }
+            item {
+                OutlinedButton(onClick = onOpenSleep, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                    Text("Slaap · alarm en bevestiging")
+                }
+            }
             if (selectedCoachTab != CoachSectionTab.Goals.key) item {
                 AppCard(modifier = Modifier.fillMaxWidth()) {
                     Text("Lichaam & voortgang", style = MaterialTheme.typography.titleMedium)

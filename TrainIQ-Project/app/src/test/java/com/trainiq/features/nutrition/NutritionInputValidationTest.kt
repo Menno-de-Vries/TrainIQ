@@ -29,10 +29,11 @@ class NutritionInputValidationTest {
             "selectedFoodId", "selectedRecipeIngredientFoodId", "selectedRecipeId", "foodName", "barcode", "calories", "protein", "carbs", "fat",
             "defaultServingGrams", "recipeName", "recipeNotes", "recipeCookedGrams", "ingredientGrams",
             "recipeAiContext", "quickIngredientName", "quickIngredientBarcode", "quickIngredientKcal", "quickIngredientProtein",
-            "quickIngredientCarbs", "quickIngredientFat", "mealType", "mealName", "mealNotes", "mealRecipeGrams", "editingMealId", "aiContext",
+            "quickIngredientCarbs", "quickIngredientFat", "mealType", "mealName", "mealNotes", "editingMealId", "aiContext",
         ).forEach { stateName ->
             assertTrue("$stateName must survive recreation", draftState.contains("var $stateName by rememberSaveable"))
         }
+        assertTrue(source.contains("rememberSaveable(recipe.id, recipe.totalCookedGrams)"))
         assertTrue(draftState.contains("val recipeDraft = rememberSaveable(saver = RecipeDraftSaver)"))
         assertTrue(draftState.contains("val mealDraft = rememberSaveable(saver = MealDraftSaver)"))
         assertTrue(draftState.contains("val editableAiItems = rememberSaveable(saver = EditableAiItemsSaver)"))
@@ -423,7 +424,7 @@ class NutritionInputValidationTest {
     @Test
     fun dailyAndMealSectionTotalsUseCenteredOneByFourMetricStrip() {
         val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
-        val dashboard = source.substringAfter("private fun DailyMealsDashboard(").substringBefore("@Composable\nprivate fun MealSectionCard")
+        val dashboard = source.substringAfter("internal fun DailyMealsDashboard(").substringBefore("@Composable\nprivate fun MealSectionCard")
         val mealSection = source.substringAfter("private fun MealSectionCard(").substringBefore("@Composable\n@OptIn")
         val stripBody = source.substringAfter("private fun NutritionMetricStrip(").substringBefore("@Composable\nprivate fun NutritionMetricGrid")
         val pillBody = source.substringAfter("private fun NutritionMetricPill(").substringBefore("@Composable\nprivate fun Recipes")

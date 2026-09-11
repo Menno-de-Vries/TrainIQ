@@ -33,7 +33,7 @@ import javax.inject.Singleton
 
 const val SleepChannelId = "trainiq_sleep_alarm_v2"
 private const val LegacySleepChannelId = "trainiq_sleep_preparation"
-private const val SleepNotificationId = 2010
+internal const val SleepNotificationId = 2010
 
 @Singleton
 class SleepRoutineScheduler @Inject constructor(
@@ -83,22 +83,33 @@ class SleepRoutineScheduler @Inject constructor(
         }
     }
 
+    internal val playbackRevision get() = revision.get()
+    private companion object { val revision = java.util.concurrent.atomic.AtomicLong(0) }
+
     @SuppressLint("MissingPermission")
     override fun showReminder(escalated: Boolean) {
         if (!notificationsAllowed()) return
-        val notification = builder()
+        revision.incrementAndGet()
+        try {
+            ContextCompat.startForegroundService(context, Intent(context, SleepAlarmPlaybackService::class.java)
+                .putExtra("revision", playbackRevision).putExtra("escalated", escalated))
+        } catch (_: IllegalStateException) {
+            // Recovery workers/inexact deliveries may lack the background-start exemption.
+            notifications.notify(SleepNotificationId, reminderNotification(escalated, silent = false))
+        } catch (_: SecurityException) {
+            notifications.notify(SleepNotificationId, reminderNotification(escalated, silent = false))
+        }
+    }
+
+    internal fun reminderNotification(escalated: Boolean, silent: Boolean): Notification = builder()
+            .setSilent(silent)
             .setContentTitle(if (escalated) "Slaapalarm: bevestiging nodig" else "Slaapalarm: tijd om te gaan slapen")
             .setContentText("Tik hier: Ik ga binnen 2 minuten slapen")
             .setStyle(NotificationCompat.BigTextStyle().bigText("Open en kies ‘Ik ga binnen 2 minuten slapen’. Zonder bevestiging volgt elke ${SleepRepeatMillis / 60_000} minuten een nieuw alarm."))
             .setOngoing(true)
             .addAction(0, "Open slaapbevestiging", screenIntent())
             .apply { if (fullScreenAllowed()) setFullScreenIntent(screenIntent(), true) }
-            .build().apply { flags = flags or Notification.FLAG_INSISTENT }
-        // End an earlier alert (including one silenced by opening the shade), then start
-        // this distinct alarm occurrence. Only one notification remains visible.
-        notifications.cancel(SleepNotificationId)
-        notifications.notify(SleepNotificationId, notification)
-    }
+            .build()
 
     @SuppressLint("MissingPermission")
     override fun showCountdown(state: SleepRoutine) {
@@ -113,7 +124,13 @@ class SleepRoutineScheduler @Inject constructor(
             .setTimeoutAfter(remaining).build())
     }
 
-    override fun cancelNotification() = notifications.cancel(SleepNotificationId)
+    override fun cancelNotification() {
+        revision.incrementAndGet()
+        context.stopService(Intent(context, SleepAlarmPlaybackService::class.java))
+        notifications.cancel(SleepNotificationId)
+    }
+
+    internal fun alarmSound() = notifications.getNotificationChannel(SleepChannelId)?.sound
 
     private fun builder() = NotificationCompat.Builder(context, SleepChannelId)
         .setSmallIcon(R.mipmap.ic_launcher).setContentIntent(screenIntent())
