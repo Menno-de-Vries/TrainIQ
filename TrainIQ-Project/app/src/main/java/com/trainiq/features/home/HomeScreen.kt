@@ -66,8 +66,6 @@ import com.trainiq.core.ui.SecondaryActionButton
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.core.ui.reloadableObservation
 import com.trainiq.core.theme.trainIqColors
-import com.trainiq.core.util.EnergyBalanceCard
-import com.trainiq.core.util.MacroBreakdownCard
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
 import com.trainiq.domain.model.HealthConnectStepDataFreshness
@@ -226,7 +224,6 @@ fun HomeRoute(
     onOpenCoach: () -> Unit,
     onOpenTrain: () -> Unit,
     onOpenSettings: () -> Unit,
-    mealsContent: @Composable () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -255,7 +252,6 @@ fun HomeRoute(
         onOpenSettings = onOpenSettings,
         onRequestHealthPermission = requestHealthPermission,
         onRefreshHealth = viewModel::refreshDashboardAndHealthStatus,
-        mealsContent = mealsContent,
     )
 }
 
@@ -268,7 +264,6 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onRequestHealthPermission: () -> Unit,
     onRefreshHealth: () -> Unit,
-    mealsContent: @Composable () -> Unit = {},
 ) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
@@ -328,7 +323,6 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                 ) {
                     ScreenHeader(title = "TrainIQ", subtitle = "Vandaag in een slimme cockpit", actionIcon = Icons.Default.Settings, actionContentDescription = "Instellingen openen", onActionClick = onOpenSettings)
-                    mealsContent()
                     if (dashboard.profile == null) {
                         DiscoveryCard(onOpenCoach = onOpenCoach)
                         SetupChecklistCard(
@@ -340,20 +334,6 @@ fun HomeScreen(
                             onRequestHealthPermission = onRequestHealthPermission,
                         )
                     } else {
-                        EnergyBalanceCard(
-                            energyBalance = dashboard.energyBalance,
-                            calorieTarget = dashboard.calorieTarget,
-                            modifier = Modifier,
-                        )
-                        MacroBreakdownCard(
-                            protein = dashboard.proteinProgress,
-                            proteinTarget = dashboard.proteinTarget,
-                            carbs = dashboard.carbsProgress,
-                            carbsTarget = dashboard.carbsTarget,
-                            fat = dashboard.fatProgress,
-                            fatTarget = dashboard.fatTarget,
-                            modifier = Modifier,
-                        )
                         HomeMomentumCard(
                             streak = dashboard.streak,
                             healthStatus = healthConnectStatus,
