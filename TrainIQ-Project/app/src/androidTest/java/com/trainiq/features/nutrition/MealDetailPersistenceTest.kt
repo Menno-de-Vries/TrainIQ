@@ -72,7 +72,10 @@ class MealDetailPersistenceTest {
         ActivityScenario.launch(MainActivity::class.java).use {
             openRecipes()
             compose.onNodeWithContentDescription("Gram voor Test bereid recept").performScrollTo().performTextReplacement("100")
+            androidx.test.espresso.Espresso.closeSoftKeyboard()
             compose.onNodeWithText("Aan maaltijd toevoegen").performScrollTo().performClick()
+            capture("recipe-added")
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Maaltijd opslaan").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Maaltijd opslaan").performScrollTo().performClick()
             compose.waitUntil(10_000) { runBlocking { dao.readMealItemsForExport().size == 1 } }
             assertEquals(100.0, runBlocking { dao.readMealItemsForExport().single().gramsUsed }, 0.0)

@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.*
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -58,7 +59,14 @@ class BarcodeMealFlowInstrumentedTest {
             openMealScanner("Middag")
             compose.onNodeWithText("Herken barcode").performClick()
             compose.onNodeWithText("Alleen aan maaltijd toevoegen").performScrollTo().performClick()
-            compose.onNodeWithText("Volume per portie (ml)").performScrollTo().assertTextContains("250")
+            compose.onNodeWithText("Volume per portie (ml)").assertDoesNotExist()
+            compose.onNodeWithText("Gram per portie").performScrollTo().performTextReplacement("250")
+            compose.onNodeWithText("250 ml per portie - gram telt 1-op-1 als vocht").assertExists()
+            androidx.test.espresso.Espresso.closeSoftKeyboard()
+            val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+            java.io.File(context.getExternalFilesDir(null), "hydration-draft.png").outputStream().use {
+                compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            }
             compose.onNodeWithText("Maaltijd opslaan").performScrollTo().performClick()
             compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Geregistreerd vocht: 250 ml"))
             compose.onNodeWithText("Geregistreerd vocht: 250 ml").assertExists()
@@ -219,7 +227,6 @@ class BarcodeMealFlowInstrumentedTest {
                             onDeleteMeal = {}, onDeleteFood = {}, onDeleteRecipe = {},
                             onTryStartAiBatchSave = { true }, onFinishAiBatchSave = {},
                             onSetScanResult = {}, onSetMessage = { state = state.copy(message = it) }, onDismissMessage = {}, onRetry = {}, onAiScanner = {},
-                            onSetScanTarget = { state = state.copy(scanTarget = it) },
                             onOpenBarcodeScanner = { nav.navigate(CameraScanner(scannerMode = ScannerMode.BARCODE)) },
                             pendingBarcode = barcode.takeIf { it.isNotBlank() },
                             onBarcodeClear = { entry.clearBarcodeScanResult() },

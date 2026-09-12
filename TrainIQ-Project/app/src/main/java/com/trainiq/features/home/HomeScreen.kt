@@ -340,6 +340,11 @@ fun HomeScreen(
                             calorieTarget = dashboard.calorieTarget,
                             modifier = Modifier,
                         )
+                        com.trainiq.core.util.MacroBreakdownCard(
+                            protein = dashboard.proteinProgress, proteinTarget = dashboard.proteinTarget,
+                            carbs = dashboard.carbsProgress, carbsTarget = dashboard.carbsTarget,
+                            fat = dashboard.fatProgress, fatTarget = dashboard.fatTarget,
+                        )
                         HomeMomentumCard(
                             streak = dashboard.streak,
                             healthStatus = healthConnectStatus,

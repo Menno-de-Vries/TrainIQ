@@ -62,13 +62,13 @@ class NutritionLongFormImeInstrumentedTest {
             compose.waitUntil(30_000) { compose.onAllNodes(nutritionNavigation).fetchSemanticsNodes().isNotEmpty() }
             compose.onNode(nutritionNavigation).performClick()
             compose.waitForText("Voedingsdag")
-            compose.onNodeWithContentDescription("Toevoegen aan Ochtend").performClick()
+            compose.onNodeWithContentDescription("Toevoegen aan Ochtend").performScrollTo().performClick()
             compose.waitForText("Toevoegen aan Ochtend")
 
             compose.onNodeWithText("AI-context voor foto")
                 .performScrollTo()
                 .performTextInput("kip rollade kaas wrap saus sla tomaat ui yoghurt knoflook kruiden lange context voor clipping en IME controle")
-            shell("input keyevent 4")
+            androidx.test.espresso.Espresso.closeSoftKeyboard()
             compose.waitForIdle()
 
             compose.waitForText("AI-context voor foto")
