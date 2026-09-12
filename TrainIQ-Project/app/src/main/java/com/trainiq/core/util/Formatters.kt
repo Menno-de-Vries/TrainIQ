@@ -16,6 +16,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.trainiq.core.theme.spacing
@@ -188,7 +190,7 @@ fun MacroBreakdownCard(
     AppCard(modifier = modifier) {
         Text("Macro's vandaag", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
         Text(
-            "Doelen: $proteinTarget g eiwit - $carbsTarget g kh - $fatTarget g vet",
+            "Je macro's bij het Energiekompas.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.trainIqColors.mutedText,
         )
@@ -206,12 +208,13 @@ private fun MacroProgressRow(
     color: androidx.compose.ui.graphics.Color,
 ) {
     androidx.compose.foundation.layout.Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        androidx.compose.foundation.layout.Column(modifier = Modifier.fillMaxWidth()) {
             Text(label, style = MaterialTheme.typography.labelLarge)
-            Text("$current / ${target.coerceAtLeast(0)} g", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.mutedText)
+            Text(if (target > 0) "$current / $target g" else "$current g - Geen doel ingesteld", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.trainIqColors.mutedText)
         }
         AppLinearProgress(
             progress = if (target <= 0) 0f else (current / target.toFloat()).coerceIn(0f, 1f),
+            modifier = Modifier.semantics { contentDescription = "$label voortgang" },
             accent = color,
         )
     }
@@ -252,4 +255,3 @@ fun ChartComposable(title: String, points: List<ChartPoint>, modifier: Modifier 
 }
 
 fun LoggedSet.volume(): Double = weight * reps
-

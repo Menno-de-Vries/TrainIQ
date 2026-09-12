@@ -8,6 +8,28 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class BarcodeProductScannerViewModelTest {
+    @Test fun unchangedCodeDoesNotLoopButAnotherCodeAndExplicitRetryWork() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val calls = mutableListOf<String>()
+            val model = BarcodeProductScannerViewModel { code, _ -> calls += code; null }
+            model.scan("12345678", FoodProviderMode.AUTOMATIC); runCurrent()
+            repeat(10) { model.scan("12345678", FoodProviderMode.AUTOMATIC) }; runCurrent()
+            assertEquals(listOf("12345678"), calls)
+            model.scan("87654321", FoodProviderMode.AUTOMATIC); runCurrent()
+            assertEquals(listOf("12345678", "87654321"), calls)
+            model.retry()
+            assertEquals("87654321", model.lastBarcode)
+            model.scan("87654321", FoodProviderMode.AUTOMATIC); runCurrent()
+            assertEquals(3, calls.size)
+            model.close()
+            model.retry()
+            model.scan("11111111", FoodProviderMode.AUTOMATIC); runCurrent()
+            assertEquals(3, calls.size)
+            model.reset()
+        } finally { Dispatchers.resetMain() }
+    }
+
     @Test fun onlyUsableCompletedLookupCanLeaveResolvingAndCallbacksAreSingleFlight() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
@@ -21,6 +43,8 @@ class BarcodeProductScannerViewModelTest {
             val product = BarcodeProductLookupResult("12345678", "Kwark", 60.0, 10.0, 4.0, 0.0)
             gate.complete(product); runCurrent()
             assertEquals(CameraScannerUiState.BarcodeReady(product), model.uiState.value)
+            assertEquals(product, model.consumeProduct())
+            assertNull(model.consumeProduct())
             model.reset()
         } finally { Dispatchers.resetMain() }
     }

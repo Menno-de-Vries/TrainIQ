@@ -131,7 +131,12 @@ data class WorkoutCompletion(val sessionId: Long)
 data class ExerciseHistory(val exerciseId: Long)
 
 @Serializable
-data class CameraScanner(val contextHint: String = "", val scannerMode: ScannerMode = ScannerMode.AI_MEAL)
+data class CameraScanner(
+    val contextHint: String = "",
+    val scannerMode: ScannerMode = ScannerMode.AI_MEAL,
+    val destination: com.trainiq.features.nutrition.NutritionScanDestination = com.trainiq.features.nutrition.NutritionScanDestination.MealDraft,
+    val mealType: com.trainiq.domain.model.MealType? = null,
+)
 
 enum class TrainIqWindowWidthClass {
     Compact,
@@ -649,29 +654,37 @@ private fun TrainIqNavHost(
             )
         }
         composable<Nutrition> { entry ->
+            val scanCancelled by entry.savedStateHandle.getStateFlow(ScanCancelledKey, false).collectAsStateWithLifecycle()
+            val nutrition: com.trainiq.features.nutrition.NutritionViewModel = androidx.hilt.navigation.compose.hiltViewModel(entry)
             val pendingBarcode by entry.savedStateHandle
                 .getStateFlow(BarcodeScanResultKey, "")
                 .collectAsStateWithLifecycle()
             NutritionRoute(
-                onAiScanner = { contextHint -> navController.navigate(CameraScanner(contextHint)) },
-                onOpenBarcodeScanner = { navController.navigate(CameraScanner(scannerMode = ScannerMode.BARCODE)) },
+                windowWidthClass = windowWidthClass,
+                onAiScanner = { contextHint -> navController.navigate(CameraScanner(contextHint, destination = nutrition.scanDestination, mealType = nutrition.scanMealType)) },
+                onOpenBarcodeScanner = { navController.navigate(CameraScanner(scannerMode = ScannerMode.BARCODE, destination = nutrition.scanDestination, mealType = nutrition.scanMealType)) },
                 pendingBarcode = pendingBarcode.takeIf { it.isNotEmpty() },
                 onBarcodeClear = { entry.clearBarcodeScanResult() },
-                windowWidthClass = windowWidthClass,
+                scanCancelled = scanCancelled,
+                onScanCancelConsumed = { entry.savedStateHandle[ScanCancelledKey] = false },
                 onOpenMeal = { navController.navigate(MealDetail(it)) },
             )
         }
         composable<MealDetail> { entry ->
+            val scanCancelled by entry.savedStateHandle.getStateFlow(ScanCancelledKey, false).collectAsStateWithLifecycle()
+            val nutrition: com.trainiq.features.nutrition.NutritionViewModel = androidx.hilt.navigation.compose.hiltViewModel(entry)
             val route = entry.toRoute<MealDetail>()
             val pendingBarcode by entry.savedStateHandle.getStateFlow(BarcodeScanResultKey, "").collectAsStateWithLifecycle()
             NutritionRoute(
-                mealDetail = route.mealType,
                 windowWidthClass = windowWidthClass,
+                mealDetail = route.mealType,
                 onBack = { navController.popBackStack() },
-                onAiScanner = { navController.navigate(CameraScanner(it)) },
-                onOpenBarcodeScanner = { navController.navigate(CameraScanner(scannerMode = ScannerMode.BARCODE)) },
+                onAiScanner = { navController.navigate(CameraScanner(it, destination = nutrition.scanDestination, mealType = nutrition.scanMealType)) },
+                onOpenBarcodeScanner = { navController.navigate(CameraScanner(scannerMode = ScannerMode.BARCODE, destination = nutrition.scanDestination, mealType = nutrition.scanMealType)) },
                 pendingBarcode = pendingBarcode.takeIf { it.isNotEmpty() },
                 onBarcodeClear = { entry.clearBarcodeScanResult() },
+                scanCancelled = scanCancelled,
+                onScanCancelConsumed = { entry.savedStateHandle[ScanCancelledKey] = false },
             )
         }
         composable<Progress> { entry ->
@@ -720,26 +733,33 @@ private fun TrainIqNavHost(
         }
         composable<CameraScanner> { entry ->
             val route = entry.toRoute<CameraScanner>()
+            val cancelScan: () -> Unit = {
+                navController.previousBackStackEntry?.savedStateHandle?.set(ScanCancelledKey, true)
+                navController.popBackStack()
+            }
             if (route.scannerMode == ScannerMode.BARCODE) {
                 val parent = remember(entry) { navController.previousBackStackEntry!! }
                 val nutrition: com.trainiq.features.nutrition.NutritionViewModel = androidx.hilt.navigation.compose.hiltViewModel(parent)
                 com.trainiq.features.nutrition.BarcodeProductScannerRoute(
                     provider = nutrition.selectedFoodProvider,
                     onManual = { barcode ->
+                        nutrition.prepareScan(route.destination, route.mealType)
                         nutrition.prepareManualBarcode(barcode)
                         parent.setBarcodeScanResult(barcode)
                         navController.popBackStack()
                     },
                     onProduct = { product ->
+                        nutrition.prepareScan(route.destination, route.mealType)
                         nutrition.acceptScannedProduct(product)
                         parent.setBarcodeScanResult(product.barcode)
                         navController.popBackStack()
                     },
-                    onBack = { navController.popBackStack() },
+                    onBack = cancelScan,
                 )
             } else CameraScannerRoute(
                 contextHint = route.contextHint,
                 scannerMode = route.scannerMode,
+                onCancel = cancelScan,
                 onBack = { navController.popBackStack() },
                 onBarcodeScanned = { barcode ->
                     navController.previousBackStackEntry?.setBarcodeScanResult(barcode)
@@ -808,6 +828,7 @@ private fun TrainIqNavHost(
     }
 }
 
+internal const val ScanCancelledKey = "scan_cancelled"
 internal const val BarcodeScanResultKey = "scanned_barcode"
 internal const val ScaleWeightResultKey = "scale_weight"
 internal const val ScaleBodyFatResultKey = "scale_body_fat"

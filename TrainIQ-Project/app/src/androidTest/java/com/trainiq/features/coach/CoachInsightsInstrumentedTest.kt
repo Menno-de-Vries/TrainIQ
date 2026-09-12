@@ -6,19 +6,24 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
-import androidx.room.Room
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.trainiq.MainActivity
+import com.trainiq.core.datastore.OnboardingPreferences
+import com.trainiq.core.datastore.UserPreferencesRepository
+import com.trainiq.testing.resetTrainIqAndroidTestDatabase
 import com.trainiq.core.database.ExerciseEntity
 import com.trainiq.core.database.MealEntity
 import com.trainiq.core.database.PerformedExerciseEntity
 import com.trainiq.core.database.RoutineSetEntity
 import com.trainiq.core.database.TrainIqDatabase
-import com.trainiq.core.database.TrainIqMigrations
 import com.trainiq.core.database.UserProfileEntity
 import com.trainiq.core.database.WorkoutDayEntity
 import com.trainiq.core.database.WorkoutExerciseEntity
@@ -26,7 +31,6 @@ import com.trainiq.core.database.WorkoutRoutineEntity
 import com.trainiq.core.database.WorkoutSessionEntity
 import com.trainiq.core.database.WorkoutSetEntity
 import kotlinx.coroutines.runBlocking
-import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -43,10 +47,11 @@ class CoachInsightsInstrumentedTest {
     @Before
     fun seedCoachContext() = runBlocking {
         context = ApplicationProvider.getApplicationContext()
-        context.deleteDatabase("trainiq.db")
-        database = Room.databaseBuilder(context, TrainIqDatabase::class.java, "trainiq.db")
-            .addMigrations(*TrainIqMigrations.All)
-            .build()
+        database = resetTrainIqAndroidTestDatabase(context)
+        UserPreferencesRepository(context).saveOnboardingPreferences(
+            OnboardingPreferences(completed = true, guidedTourCompleted = true),
+        )
+        UserPreferencesRepository(context).setAiEnabled(false)
         val dao = database.dao()
         val now = System.currentTimeMillis()
 
@@ -127,24 +132,17 @@ class CoachInsightsInstrumentedTest {
                 MealEntity(id = 41L, date = now, mealType = "LUNCH", name = "QA Coach Lunch", calories = 650, protein = 45, carbs = 70, fat = 18),
             ),
         )
-        database.close()
-    }
-
-    @After
-    fun closeDatabase() {
-        if (::database.isInitialized && database.isOpen) {
-            database.close()
-        }
     }
 
     @Test
     fun coachShowsTrainingInsightsAndNutritionCoachForSeededContext() {
         ActivityScenario.launch(MainActivity::class.java).use {
-            compose.waitForText("Coach")
-            compose.onNodeWithText("Coach").performClick()
+            val coach = (hasText("Coach") or hasContentDescription("Coach")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(coach).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(coach).performClick()
             compose.waitForText("Weekrapport maken")
-            compose.onNodeWithText("Weekrapport maken").performClick()
-            compose.waitForText("Samenvatting bijgewerkt.")
+            compose.onNodeWithText("Weekrapport maken").performScrollTo().performClick()
+            compose.waitForText("AI staat uit.")
             compose.waitForText("Lokale analyse")
             compose.waitForText("Hoogtepunten")
             compose.waitForText("Volgende stap")

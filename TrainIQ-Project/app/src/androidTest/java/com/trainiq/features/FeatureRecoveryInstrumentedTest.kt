@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.*
+import androidx.compose.ui.graphics.asAndroidBitmap
 import com.trainiq.core.theme.TrainIqTheme
 import com.trainiq.core.ui.UiMessage
 import com.trainiq.domain.model.ProgressOverview
@@ -20,6 +21,28 @@ import org.junit.Test
 
 @OptIn(ExperimentalTestApi::class)
 class FeatureRecoveryInstrumentedTest {
+    @Test fun macroProgressHasTargetsAndSafeMissingGoalSemantics() = runComposeUiTest {
+        setContent { TrainIqTheme {
+            com.trainiq.core.util.MacroBreakdownCard(80, 160, 300, 260, 20, 0)
+        } }
+        onNodeWithText("80 / 160 g").assertExists()
+        onNodeWithText("300 / 260 g").assertExists()
+        onNodeWithText("20 g - Geen doel ingesteld").assertExists()
+        fun assertProgress(label: String, value: Float) {
+            onNodeWithContentDescription("$label voortgang").assert(
+                SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.ProgressBarRangeInfo,
+                    androidx.compose.ui.semantics.ProgressBarRangeInfo(value, 0f..1f)),
+            )
+        }
+        assertProgress("Eiwit", 0.5f)
+        assertProgress("Koolhydraten", 1f)
+        assertProgress("Vet", 0f)
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        java.io.File(context.getExternalFilesDir(null), "macro-targets.png").outputStream().use {
+            onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+        }
+    }
+
     @Test
     fun homeKeepsEnergyBalanceWithoutMealOverview() = runComposeUiTest {
         var dashboard by mutableStateOf(com.trainiq.domain.model.HomeDashboard(null, null, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 0, ""))
@@ -28,7 +51,7 @@ class FeatureRecoveryInstrumentedTest {
         )
         setContent { TrainIqTheme { HomeScreen(HomeUiState.Success(dashboard, health), {}, {}, {}, {}, {}, {}) } }
         fun assertNoNutritionOverview() {
-            listOf("Voedingsdag", "Ochtend", "Middag", "Avond", "Snacks", "Macro's vandaag")
+            listOf("Voedingsdag", "Ochtend", "Middag", "Avond", "Snacks")
                 .forEach { onNodeWithText(it).assertDoesNotExist() }
         }
         onNodeWithText("Ontdekmodus").assertExists()
@@ -46,6 +69,8 @@ class FeatureRecoveryInstrumentedTest {
         onNodeWithText("Energiekompas").assertIsDisplayed()
         onNodeWithText("600 kcal tekort").assertIsDisplayed()
         onNodeWithText("In 1500 kcal - Uit 2100 kcal - Doel 2400 kcal").assertExists()
+        onNodeWithText("Macro's vandaag").performScrollTo().assertIsDisplayed()
+        listOf("Eiwit", "Koolhydraten", "Vet").forEach { onNodeWithText(it).assertExists() }
         val capture = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
             .executeShellCommand("screencap -p /data/local/tmp/trainiq-home-energy.png")
         android.os.ParcelFileDescriptor.AutoCloseInputStream(capture).use { it.readBytes() }

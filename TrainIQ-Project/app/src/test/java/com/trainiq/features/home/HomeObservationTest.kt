@@ -34,7 +34,7 @@ class HomeObservationTest {
             override suspend fun getHealthConnectStatus() = health
             override suspend fun refreshDashboardData() = Unit
         }
-        val vm = HomeViewModel(ObserveHomeDashboardUseCase(repository), BuildHomeDashboardUseCase(), GetHealthConnectStatusUseCase(repository), RefreshDashboardDataUseCase(repository))
+        val vm = HomeViewModel(ObserveHomeDashboardUseCase(repository), BuildHomeDashboardUseCase(), GetHealthConnectStatusUseCase(repository), RefreshDashboardDataUseCase(repository), StandardTestDispatcher(testScheduler))
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
         runCurrent()
         assertTrue(vm.uiState.value is HomeUiState.Error)

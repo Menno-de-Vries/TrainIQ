@@ -54,6 +54,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.platform.testTag
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -352,6 +355,7 @@ fun CameraScannerRoute(
     onBack: () -> Unit,
     onBarcodeScanned: (String) -> Unit = {},
     onScaleMeasurementScanned: (BodyMeasurementPhotoResult) -> Unit = {},
+    onCancel: () -> Unit = onBack,
     viewModel: CameraScannerViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -384,7 +388,7 @@ fun CameraScannerRoute(
         },
         onBack = {
             viewModel.clearScanResult()
-            onBack()
+            onCancel()
         },
         onBarcodeScanned = onBarcodeScanned,
     )
@@ -413,6 +417,9 @@ internal fun CameraScannerScreen(
     initialCameraPermissionGranted: Boolean? = null,
     onManual: () -> Unit = onBack,
 ) {
+    val screenActive = remember { AtomicBoolean(true) }
+    DisposableEffect(Unit) { onDispose { screenActive.set(false) } }
+    val exitScanner = { screenActive.set(false); onBack() }
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val haptics = LocalHapticFeedback.current
@@ -428,7 +435,9 @@ internal fun CameraScannerScreen(
         mutableStateOf(CameraScannerRestorableState())
     }
     var isCapturing by remember { mutableStateOf(false) }
-    val hasDetectedBarcode = remember { AtomicBoolean(false) }
+    val latestBarcodeCallback by rememberUpdatedState(onBarcodeScanned)
+    val latestScannerState by rememberUpdatedState(uiState)
+    androidx.activity.compose.BackHandler { exitScanner() }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         hasPermission = it
         restorableState = restorableState.copy(permissionDenied = !it)
@@ -450,7 +459,7 @@ internal fun CameraScannerScreen(
         imageImportScope.launch {
             importScannerImage(
                 copy = { copyScannerImageFromUri(context, uri) },
-                consume = onAnalyze,
+                consume = { path -> if (screenActive.get()) onAnalyze(path) else deleteScannerTemporaryImage(path) },
                 failed = { restorableState = restorableState.copy(cameraError = "Foto importeren mislukt. Kies een duidelijke JPG of PNG.") },
             )
         }
@@ -482,27 +491,44 @@ internal fun CameraScannerScreen(
     DisposableEffect(controller, lifecycleOwner, hasPermission, hasCameraFeature, scannerMode, bindCameraPreview) {
         var scanner: com.google.mlkit.vision.barcode.BarcodeScanner? = null
         val active = AtomicBoolean(true)
+        val frameExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val frameInFlight = AtomicBoolean(false)
         if (hasPermission && hasCameraFeature && controller != null) {
             runCatching {
+                controller.bindToLifecycle(lifecycleOwner)
                 if (scannerMode == ScannerMode.BARCODE) {
+                    val options = BarcodeScannerOptions.Builder()
+                        .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
+                        .enableAllPotentialBarcodes()
+                    controller.zoomState.value?.let { zoom ->
+                        options.setZoomSuggestionOptions(
+                            com.google.mlkit.vision.barcode.ZoomSuggestionOptions.Builder { ratio ->
+                                if (active.get()) {
+                                    controller.setZoomRatio(ratio.coerceIn(zoom.minZoomRatio, zoom.maxZoomRatio))
+                                    true
+                                } else false
+                            }.setMaxSupportedZoomRatio(zoom.maxZoomRatio).build(),
+                        )
+                    }
                     val barcodeScanner = BarcodeScanning.getClient(
-                        BarcodeScannerOptions.Builder()
-                            .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
-                            .build(),
+                        options.build(),
                     )
                     scanner = barcodeScanner
-                    controller.setImageAnalysisAnalyzer(ContextCompat.getMainExecutor(context)) { imageProxy ->
+                    controller.setImageAnalysisAnalyzer(frameExecutor) { imageProxy ->
+                        if (!active.get() || !frameInFlight.compareAndSet(false, true)) {
+                            imageProxy.close()
+                            return@setImageAnalysisAnalyzer
+                        }
                         processBarcode(imageProxy, barcodeScanner, onError = {
-                            if (active.get()) restorableState = restorableState.copy(cameraError = "Barcodeherkenning kon niet starten. Ga terug en probeer opnieuw.")
-                        }) { barcode ->
-                            if (active.get() && hasDetectedBarcode.compareAndSet(false, true)) {
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onBarcodeScanned(barcode)
+                            // A failed frame is recoverable; controller/model setup failures are handled above.
+                        }, onClosed = { frameInFlight.set(false) }) { barcode ->
+                            if (active.get() && screenActive.get() && (latestScannerState is CameraScannerUiState.Preview ||
+                                    latestScannerState is CameraScannerUiState.Empty)) {
+                                latestBarcodeCallback(barcode)
                             }
                         }
                     }
                 }
-                controller.bindToLifecycle(lifecycleOwner)
                 controller.initializationFuture.addListener({
                     if (active.get()) {
                         runCatching { controller.initializationFuture.get() }.onFailure {
@@ -524,6 +550,7 @@ internal fun CameraScannerScreen(
             controller?.unbind()
             controller?.clearImageAnalysisAnalyzer()
             scanner?.close()
+            frameExecutor.shutdown()
         }
     }
 
@@ -556,7 +583,7 @@ internal fun CameraScannerScreen(
                         ),
                     )
                 },
-                onBack = onBack,
+                onBack = exitScanner,
             )
         } else {
             Box(modifier = Modifier.fillMaxSize()) {
@@ -641,7 +668,7 @@ internal fun CameraScannerScreen(
                                 .padding(MaterialTheme.spacing.large),
                             horizontalArrangement = Arrangement.Center,
                         ) {
-                            OutlinedButton(onClick = onBack) {
+                            OutlinedButton(onClick = exitScanner) {
                                 Text(if (showCameraFallback) scannerManualFallbackLabel(scannerMode) else "Annuleren")
                             }
                         }
@@ -660,7 +687,7 @@ internal fun CameraScannerScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                OutlinedButton(onClick = onBack) {
+                                OutlinedButton(onClick = exitScanner) {
                                     Text(if (showCameraFallback) scannerManualFallbackLabel(scannerMode) else "Terug")
                                 }
                                 Button(
@@ -681,7 +708,7 @@ internal fun CameraScannerScreen(
                                             controller = activeController,
                                             onPhotoSaved = {
                                                 isCapturing = false
-                                                onAnalyze(it)
+                                                if (screenActive.get()) onAnalyze(it) else deleteScannerTemporaryImage(it)
                                             },
                                             onError = {
                                                 isCapturing = false
@@ -710,16 +737,11 @@ internal fun CameraScannerScreen(
 
     if (showSheet) {
         ModalBottomSheet(
-            onDismissRequest = {
-                if (
-                    uiState is CameraScannerUiState.Error ||
-                    uiState is CameraScannerUiState.NoConfig ||
-                    uiState is CameraScannerUiState.LocalFallback
-                ) onDismissError()
-            },
+            onDismissRequest = exitScanner,
             sheetState = sheetState,
             containerColor = MaterialTheme.colorScheme.surface,
         ) {
+            TextButton(onClick = exitScanner, modifier = Modifier.fillMaxWidth().testTag("scanner-sheet-cancel")) { Text("Annuleren") }
             when (uiState) {
                 is CameraScannerUiState.Processing -> ProcessingSheetContent(scannerMode == ScannerMode.BARCODE)
                 is CameraScannerUiState.Completed -> CompletedSheetContent(
@@ -743,21 +765,21 @@ internal fun CameraScannerScreen(
                     message = uiState.message,
                     onRetry = onDismissError,
                     retryLabel = scannerErrorPrimaryActionLabel(ScannerSheetErrorAction.Dismiss),
-                    onBack = onBack,
+                    onBack = exitScanner,
                 )
                 is CameraScannerUiState.LocalFallback -> ErrorSheetContent(
                     title = "Lokale fallback",
                     message = uiState.message,
                     onRetry = onScanAgain,
                     retryLabel = scannerErrorPrimaryActionLabel(ScannerSheetErrorAction.ScanAgain),
-                    onBack = onBack,
+                    onBack = exitScanner,
                 )
                 is CameraScannerUiState.Error -> ErrorSheetContent(
                     title = "Scan mislukt",
                     message = uiState.message,
                     onRetry = onDismissError,
                     retryLabel = scannerErrorPrimaryActionLabel(ScannerSheetErrorAction.Dismiss),
-                    onBack = onBack,
+                    onBack = exitScanner,
                 )
                 else -> {}
             }
@@ -1087,25 +1109,45 @@ private fun processBarcode(
     imageProxy: ImageProxy,
     scanner: com.google.mlkit.vision.barcode.BarcodeScanner,
     onError: () -> Unit,
+    onClosed: () -> Unit = {},
+    onDetected: (String) -> Unit,
+) = processBarcodeFrame(
+    close = imageProxy::close,
+    start = {
+        val mediaImage = imageProxy.image
+        if (mediaImage == null) com.google.android.gms.tasks.Tasks.forResult(emptyList())
+        else scanner.process(InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees))
+    },
+    onError = onError,
+    onClosed = onClosed,
+    onDetected = onDetected,
+)
+
+/** One frame owns its close, including synchronous failure and cancelled ML Kit tasks. */
+internal fun processBarcodeFrame(
+    close: () -> Unit,
+    start: () -> com.google.android.gms.tasks.Task<List<Barcode>>,
+    onError: () -> Unit,
+    onClosed: () -> Unit,
     onDetected: (String) -> Unit,
 ) {
+    val closed = AtomicBoolean(false)
+    fun closeFrame() {
+        if (closed.compareAndSet(false, true)) {
+            try { close() } finally { onClosed() }
+        }
+    }
     try {
-        val mediaImage = imageProxy.image
-        if (mediaImage != null) {
-            val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-            scanner.process(image)
+            start()
                 .addOnSuccessListener { codes ->
                     codes.firstNotNullOfOrNull { code ->
                         code.rawValue?.takeIf { value -> value.length in 8..14 && value.all(Char::isDigit) }
                     }?.let(onDetected)
                 }
                 .addOnFailureListener { onError() }
-                .addOnCompleteListener { imageProxy.close() }
-        } else {
-            imageProxy.close()
-        }
+                .addOnCompleteListener { closeFrame() }
     } catch (_: Exception) {
-        imageProxy.close()
+        closeFrame()
         onError()
     }
 }

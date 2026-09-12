@@ -29,6 +29,23 @@ import com.trainiq.domain.model.BarcodeProductLookupResult
 
 class NutritionAiResultStateRestorationInstrumentedTest {
     @OptIn(ExperimentalTestApi::class)
+    @Test fun cancellingAiFromProductsRestoresProductsAfterRecreation() = runComposeUiTest {
+        val restoration = StateRestorationTester(this)
+        var cancelled by mutableStateOf(false)
+        restoration.setContent {
+            SyntheticNutritionScreen(syntheticUiState(null, aiEnabled = true), scanCancelled = cancelled)
+        }
+        onNodeWithContentDescription("Voeding secties openen").performClick()
+        onNodeWithText("Producten").performClick()
+        onNodeWithText("Foto/AI product").performClick()
+        onNodeWithText("Product scannen").assertExists()
+        restoration.emulateSaveAndRestore()
+        runOnIdle { cancelled = true }
+        onNodeWithText("Foto/AI product").assertExists()
+        onNodeWithText("Product scannen").assertDoesNotExist()
+    }
+
+    @OptIn(ExperimentalTestApi::class)
     @Test
     fun closedBarcodeEditorCannotBeReopenedByLateLookupResult() = runComposeUiTest {
         var state by mutableStateOf(syntheticUiState(scanResult = null))
@@ -110,6 +127,7 @@ private fun SyntheticNutritionScreen(
     pendingBarcode: String? = null,
     onBarcodeClear: () -> Unit = {},
     onLookupClear: () -> Unit = {},
+    scanCancelled: Boolean = false,
 ) {
     TrainIqTheme(dynamicColor = false) {
         NutritionScreen(
@@ -129,6 +147,7 @@ private fun SyntheticNutritionScreen(
             onAiScanner = {},
             onOpenBarcodeScanner = {},
             pendingBarcode = pendingBarcode,
+            scanCancelled = scanCancelled,
             onBarcodeClear = onBarcodeClear,
             onClearBarcodeLookupResult = onLookupClear,
         )

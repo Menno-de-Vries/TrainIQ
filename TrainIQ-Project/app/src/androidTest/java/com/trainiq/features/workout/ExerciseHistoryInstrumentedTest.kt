@@ -7,10 +7,18 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.trainiq.MainActivity
+import com.trainiq.core.datastore.OnboardingPreferences
+import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.database.ExerciseEntity
 import com.trainiq.core.database.PerformedExerciseEntity
 import com.trainiq.core.database.RoutineSetEntity
@@ -39,6 +47,9 @@ class ExerciseHistoryInstrumentedTest {
     fun seedExerciseHistory() = runBlocking {
         context = ApplicationProvider.getApplicationContext()
         database = resetTrainIqAndroidTestDatabase(context)
+        UserPreferencesRepository(context).saveOnboardingPreferences(
+            OnboardingPreferences(completed = true, guidedTourCompleted = true),
+        )
         val dao = database.dao()
         val now = System.currentTimeMillis()
         val firstSessionStart = now - 172_800_000L
@@ -111,8 +122,9 @@ class ExerciseHistoryInstrumentedTest {
     @Test
     fun seededExerciseHistoryOpensFromTrainingAndShowsProgress() {
         ActivityScenario.launch(MainActivity::class.java).use {
-            compose.waitForText("Training")
-            compose.onNodeWithText("Training").performClick()
+            val training = (hasText("Training") or hasContentDescription("Training")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(training).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(training).performClick()
             compose.waitForText("QA History Routine")
             compose.onNodeWithText("Training starten")
                 .performScrollTo()
@@ -122,12 +134,15 @@ class ExerciseHistoryInstrumentedTest {
                 .performScrollTo()
                 .performClick()
 
-            compose.waitForText("Volume per sessie")
             compose.waitForText("Bench Press")
             compose.waitForText("Sessies")
             compose.waitForText("2")
             compose.waitForText("Beste kg")
             compose.waitForText("90")
+            // The rank card puts the chart below the compact viewport. Ask the lazy
+            // list to compose it instead of waiting for an off-screen node to exist.
+            compose.onNode(hasScrollAction()).performScrollToNode(hasText("Volume per sessie"))
+            compose.onNodeWithText("Volume per sessie").assertIsDisplayed()
         }
     }
 

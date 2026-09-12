@@ -88,6 +88,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -103,12 +104,20 @@ sealed interface HomeUiState {
 }
 
 @HiltViewModel
-class HomeViewModel @Inject constructor(
+class HomeViewModel internal constructor(
     observeHomeDashboardUseCase: ObserveHomeDashboardUseCase,
     private val buildHomeDashboardUseCase: BuildHomeDashboardUseCase,
     private val getHealthConnectStatusUseCase: GetHealthConnectStatusUseCase,
     private val refreshDashboardDataUseCase: RefreshDashboardDataUseCase,
+    private val refreshDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
+    @Inject constructor(
+        observe: ObserveHomeDashboardUseCase,
+        build: BuildHomeDashboardUseCase,
+        health: GetHealthConnectStatusUseCase,
+        refresh: RefreshDashboardDataUseCase,
+    ) : this(observe, build, health, refresh, Dispatchers.IO)
+
     private val healthConnectRefreshGate = HomeRefreshGate()
     private val healthRefreshUiState = MutableStateFlow(HomeHealthRefreshUiState())
 
@@ -146,7 +155,7 @@ class HomeViewModel @Inject constructor(
         if (dashboard.value?.isFailure == true) reloads.update { it + 1 }
         if (!healthConnectRefreshGate.tryStart()) return
         healthRefreshUiState.value = HomeHealthRefreshUiState(isRefreshing = true)
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(refreshDispatcher) {
             try {
                 val dashboardRefreshSucceeded = refreshDashboardDataSafely { refreshDashboardDataUseCase() }
                 val statusResult = runCatching { getHealthConnectStatusUseCase() }
@@ -163,7 +172,7 @@ class HomeViewModel @Inject constructor(
 
     fun refreshHealthConnectStatus() {
         if (!healthConnectRefreshGate.tryStart()) return
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(refreshDispatcher) {
             try {
                 healthConnectStatus.value = runCatching { getHealthConnectStatusUseCase() }.getOrElse {
                     HealthConnectStatus(
@@ -339,6 +348,11 @@ fun HomeScreen(
                             energyBalance = dashboard.energyBalance,
                             calorieTarget = dashboard.calorieTarget,
                             modifier = Modifier,
+                        )
+                        com.trainiq.core.util.MacroBreakdownCard(
+                            protein = dashboard.proteinProgress, proteinTarget = dashboard.proteinTarget,
+                            carbs = dashboard.carbsProgress, carbsTarget = dashboard.carbsTarget,
+                            fat = dashboard.fatProgress, fatTarget = dashboard.fatTarget,
                         )
                         HomeMomentumCard(
                             streak = dashboard.streak,
