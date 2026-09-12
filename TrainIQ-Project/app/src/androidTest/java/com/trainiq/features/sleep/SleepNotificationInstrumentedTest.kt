@@ -30,6 +30,50 @@ import org.junit.Test
 /** Runs only on the isolated local test target; never changes DND, volume or alarm access. */
 class SleepNotificationInstrumentedTest {
     @get:Rule val compose = createComposeRule()
+    @Test fun cancelledQueuedStartsPreserveCountdownWithoutPlaybackOrTimeoutCrash() {
+        compose.setContent { androidx.compose.material3.Text("Cancelled playback contract") }
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        if (Build.VERSION.SDK_INT >= 33) InstrumentationRegistry.getInstrumentation().uiAutomation
+            .grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
+        val scheduler = SleepRoutineScheduler(context, WorkManager.getInstance(context))
+        val manager = context.getSystemService(NotificationManager::class.java)
+        val audio = context.getSystemService(android.media.AudioManager::class.java)
+        try {
+            scheduler.cancelNotification()
+            compose.runOnIdle {
+                // Hold the main looper until all requests and cancellations are queued.
+                // Cancellation must not stop an Android service before its first start.
+                repeat(3) {
+                    scheduler.showReminder(false)
+                    scheduler.cancelNotification()
+                }
+                scheduler.showCountdown(SleepRoutine(enabled = true, routineDay = "2026-09-12",
+                    confirmedAt = System.currentTimeMillis()))
+                repeat(3) {
+                    androidx.core.content.ContextCompat.startForegroundService(context,
+                        Intent(context, com.trainiq.core.sleep.SleepAlarmPlaybackService::class.java)
+                            .putExtra("revision", -1L))
+                }
+            }
+            // Observe beyond Android's foreground-start deadline: early stopSelf used to
+            // appear successful and only crash the process several seconds afterwards.
+            compose.waitUntil(10_000) {
+                manager.activeNotifications.any { it.id == 2010 &&
+                    it.notification.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER) }
+            }
+            val deadline = android.os.SystemClock.elapsedRealtime() + 10_000
+            compose.waitUntil(15_000) {
+                assertTrue(audio.activePlaybackConfigurations.none {
+                    it.audioAttributes.usage == android.media.AudioAttributes.USAGE_ALARM
+                })
+                val countdown = manager.activeNotifications.single { it.id == 2010 }.notification
+                assertTrue(countdown.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))
+                android.os.SystemClock.elapsedRealtime() >= deadline &&
+                    manager.activeNotifications.none { it.id == 2011 }
+            }
+        } finally { scheduler.cancelNotification() }
+    }
+
     @Test fun alarmStreamPlaysInVibrateModeAndCancelReleasesIt() {
         compose.setContent { androidx.compose.material3.Text("Alarm playback contract") }
         val context = ApplicationProvider.getApplicationContext<Context>()

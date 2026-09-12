@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -16,9 +17,10 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.trainiq.MainActivity
+import com.trainiq.core.datastore.OnboardingPreferences
+import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.testing.resetTrainIqAndroidTestDatabase
-import java.io.File
-import org.junit.Assert.assertTrue
+import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -35,44 +37,46 @@ class TrainIqFlowSmokeInstrumentedTest {
     fun resetSafeLocalState() {
         context = ApplicationProvider.getApplicationContext()
         resetTrainIqAndroidTestDatabase(context)
-        deleteAppLocalFile("datastore/trainiq_preferences.preferences_pb")
+        runBlocking {
+            UserPreferencesRepository(context).saveOnboardingPreferences(OnboardingPreferences())
+            UserPreferencesRepository(context).setAiEnabled(false)
+        }
     }
 
     @Test
     fun cleanFirstRunTopLevelFlowExposesGuidanceAndFallbacks() {
         ActivityScenario.launch<MainActivity>(
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-        ).use { scenario ->
-            waitForText("Start", checkpoint = "initial Start tab")
+        ).use {
+            skipFirstRunSetup()
             assertNavigationItemVisible("Start")
             assertNavigationItemVisible("Training")
             assertNavigationItemVisible("Voeding")
             assertNavigationItemVisible("Coach")
-            assertNavigationItemVisible("Meer")
+            assertNavigationItemVisible("Instellingen")
 
             assertAnyVisible("Instellen starten", "Profiel invullen", "Health Connect koppelen")
 
             tapNavigationItem("Training")
-            waitForText("Routine maken", checkpoint = "Training tab content")
-            assertAnyVisible("Routine maken", "Start met een lege template")
+            waitForText("Train", checkpoint = "Training tab content")
+            assertVisible("Nieuwe routine")
 
             tapNavigationItem("Voeding")
             waitForText("Voeding loggen", checkpoint = "Voeding tab content")
             assertAnyVisible("Voedingsdag", "Maaltijdconcept", "Maaltijd scannen")
             tapNavigationItem("Coach")
             waitForText("Coach", checkpoint = "Coach tab content")
-            assertAnyVisible("Gemini 2.5 Flash", "Lokale berekening opgeslagen", "Advies")
+            assertVisible("Profiel instellen")
 
-            tapNavigationItem("Meer")
-            waitForText("Instellingen", checkpoint = "Meer tab content")
-            assertVisible("Meer")
-            assertExists("Voortgang openen")
+            tapNavigationItem("Instellingen")
+            waitForText("Instellingen", checkpoint = "Settings tab content")
             assertExists("Health Connect")
             assertExists("AI / Providers")
 
-            tap("Voortgang openen")
-            waitForText("Voortgang", checkpoint = "Voortgang via Meer")
-            assertVisible("Voortgang")
+            tapNavigationItem("Coach")
+            tap("Lichaamsmetingen openen")
+            waitForText("Lichaam & voortgang", checkpoint = "Progress via Coach")
+            assertVisible("Lichaam & voortgang")
         }
     }
 
@@ -81,41 +85,40 @@ class TrainIqFlowSmokeInstrumentedTest {
         ActivityScenario.launch<MainActivity>(
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         ).use { scenario ->
-            waitForText("Start", checkpoint = "initial Start tab")
+            skipFirstRunSetup()
 
-            tapNavigationItem("Meer")
-            waitForText("Instellingen", checkpoint = "Meer before Progress")
-            tap("Voortgang openen")
-            waitForText("Voortgang", checkpoint = "Progress opened from Meer")
+            tapNavigationItem("Coach")
+            tap("Lichaamsmetingen openen")
+            waitForText("Lichaam & voortgang", checkpoint = "Progress opened from Coach")
 
             scenario.recreate()
-            waitForText("Voortgang", checkpoint = "Progress after activity recreation")
-            assertVisible("Voortgang")
+            waitForText("Lichaam & voortgang", checkpoint = "Progress after activity recreation")
+            assertVisible("Lichaam & voortgang")
 
             scenario.onActivity { activity ->
                 activity.onBackPressedDispatcher.onBackPressed()
             }
             compose.waitForIdle()
-            waitForText("Start", checkpoint = "back to start after top-level recreation")
-            assertVisible("Start")
+            waitForText("Lichaamsmetingen openen", checkpoint = "back to Coach after recreation")
+            assertVisible("Lichaamsmetingen openen")
 
             tapNavigationItem("Training")
-            waitForText("Routine maken", checkpoint = "Training after recreation/back")
-            assertAnyVisible("Routine maken", "Start met een lege template")
+            waitForText("Train", checkpoint = "Training after recreation/back")
+            assertVisible("Nieuwe routine")
 
             scenario.recreate()
-            waitForText("Training", checkpoint = "Training after second recreation")
-            assertAnyVisible("Routine maken", "Start met een lege template")
+            waitForText("Train", checkpoint = "Training after second recreation")
+            assertVisible("Nieuwe routine")
         }
     }
 
-    private fun deleteAppLocalFile(relativePath: String) {
-        val dataRoot = context.filesDir.parentFile ?: return
-        val target = File(dataRoot, relativePath).canonicalFile
-        val root = dataRoot.canonicalFile
-        assertTrue(target.path.startsWith(root.path))
-        if (target.exists()) {
-            target.delete()
+    private fun skipFirstRunSetup() {
+        waitForText("Welkom bij TrainIQ")
+        tap("Later afronden")
+        waitForText("Stap 1 van 6")
+        compose.onNodeWithText("Later afronden").performClick()
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(navigationItem("Start")).fetchSemanticsNodes().isNotEmpty()
         }
     }
 
@@ -125,15 +128,11 @@ class TrainIqFlowSmokeInstrumentedTest {
     }
 
     private fun tapNavigationItem(text: String) {
-        compose.onAllNodes(hasText(text, substring = false).and(hasClickAction()))[0].performClick()
+        compose.onNode(navigationItem(text)).performClick()
     }
 
-    private fun tapLast(text: String) {
-        scrollUntilText(text)
-        val matches = compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes()
-        check(matches.isNotEmpty()) { "Text not found for tap: $text" }
-        compose.onAllNodesWithText(text, substring = true)[matches.lastIndex].performClick()
-    }
+    private fun navigationItem(text: String) =
+        (hasText(if (text == "Instellingen") "Meer" else text) or hasContentDescription(text)) and hasClickAction()
 
     private fun assertVisible(text: String) {
         scrollUntilText(text)
@@ -141,7 +140,7 @@ class TrainIqFlowSmokeInstrumentedTest {
     }
 
     private fun assertNavigationItemVisible(text: String) {
-        compose.onAllNodes(hasText(text, substring = false).and(hasClickAction()))[0].assertIsDisplayed()
+        compose.onNode(navigationItem(text)).assertIsDisplayed()
     }
 
     private fun assertExists(text: String) {

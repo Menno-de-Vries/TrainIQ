@@ -34,12 +34,14 @@ import javax.inject.Singleton
 const val SleepChannelId = "trainiq_sleep_alarm_v2"
 private const val LegacySleepChannelId = "trainiq_sleep_preparation"
 internal const val SleepNotificationId = 2010
+internal const val SleepCancelledPlaybackNotificationId = 2011
 
 @Singleton
 class SleepRoutineScheduler @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val workManager: WorkManager,
 ) : SleepAlarmDelivery {
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val alarms get() = context.getSystemService(AlarmManager::class.java)
     private val notifications get() = context.getSystemService(NotificationManager::class.java)
     fun exactAllowed() = Build.VERSION.SDK_INT < 31 || alarms.canScheduleExactAlarms()
@@ -89,15 +91,19 @@ class SleepRoutineScheduler @Inject constructor(
     @SuppressLint("MissingPermission")
     override fun showReminder(escalated: Boolean) {
         if (!notificationsAllowed()) return
-        revision.incrementAndGet()
+        val requestedRevision = revision.incrementAndGet()
         try {
             ContextCompat.startForegroundService(context, Intent(context, SleepAlarmPlaybackService::class.java)
-                .putExtra("revision", playbackRevision).putExtra("escalated", escalated))
+                .putExtra("revision", requestedRevision).putExtra("escalated", escalated))
         } catch (_: IllegalStateException) {
             // Recovery workers/inexact deliveries may lack the background-start exemption.
-            notifications.notify(SleepNotificationId, reminderNotification(escalated, silent = false))
+            postForRevision(requestedRevision) {
+                notifications.notify(SleepNotificationId, reminderNotification(escalated, silent = false))
+            }
         } catch (_: SecurityException) {
-            notifications.notify(SleepNotificationId, reminderNotification(escalated, silent = false))
+            postForRevision(requestedRevision) {
+                notifications.notify(SleepNotificationId, reminderNotification(escalated, silent = false))
+            }
         }
     }
 
@@ -111,23 +117,38 @@ class SleepRoutineScheduler @Inject constructor(
             .apply { if (fullScreenAllowed()) setFullScreenIntent(screenIntent(), true) }
             .build()
 
+    // A queued foreground start still needs acknowledgement after cancellation. Use a
+    // separate, silent notification so it cannot replace the confirmed countdown.
+    internal fun cancelledPlaybackNotification(): Notification {
+        ensureChannel()
+        return builder().setSilent(true).setContentTitle("Slaapalarm gestopt").build()
+    }
+
     @SuppressLint("MissingPermission")
     override fun showCountdown(state: SleepRoutine) {
         if (!notificationsAllowed()) return
-        val end = state.confirmedAt + SleepCountdownMillis
-        val remaining = end - System.currentTimeMillis()
-        if (remaining <= 0) return
-        notifications.notify(SleepNotificationId, builder()
-            .setContentTitle("Bevestigd: binnen 2 minuten slapen")
-            .setContentText("Je voorbereiding is na de countdown afgehandeld.")
-            .setSilent(true).setWhen(end).setUsesChronometer(true).setChronometerCountDown(true)
-            .setTimeoutAfter(remaining).build())
+        // Serialize notification replacement with the service's foreground handshake.
+        postForRevision(playbackRevision) {
+            val end = state.confirmedAt + SleepCountdownMillis
+            val remaining = end - System.currentTimeMillis()
+            if (remaining > 0) notifications.notify(SleepNotificationId, builder()
+                .setContentTitle("Bevestigd: binnen 2 minuten slapen")
+                .setContentText("Je voorbereiding is na de countdown afgehandeld.")
+                .setSilent(true).setWhen(end).setUsesChronometer(true).setChronometerCountDown(true)
+                .setTimeoutAfter(remaining).build())
+        }
     }
 
     override fun cancelNotification() {
-        revision.incrementAndGet()
-        context.stopService(Intent(context, SleepAlarmPlaybackService::class.java))
-        notifications.cancel(SleepNotificationId)
+        val cancelledRevision = revision.incrementAndGet()
+        postForRevision(cancelledRevision) {
+            SleepAlarmPlaybackService.cancelActivePlayback(cancelledRevision)
+            notifications.cancel(SleepNotificationId)
+        }
+    }
+
+    private fun postForRevision(expected: Long, action: () -> Unit) {
+        mainHandler.post { if (playbackRevision == expected) action() }
     }
 
     internal fun alarmSound() = notifications.getNotificationChannel(SleepChannelId)?.sound

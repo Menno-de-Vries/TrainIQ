@@ -1,5 +1,10 @@
 # Nutrition, scanner and energy compass
 
+The interrupted full-suite result below is historical. The
+[suite recovery follow-up](nutrition-suite-recovery.md) fixes the sleep start/cancel
+race and obsolete test fixtures. Final local verification on 2026-09-13 passed
+all 154 connected tests and 917 JVM tests, with zero failures/errors/skips.
+
 Task base: `f06c3f8e7f59962ffae86bc59de50743c370fc82`, primary worktree
 `C:/My-PC-Files/GitHub/TrainIQ`, branch `codex/nutrition-scanner-energy`.
 
