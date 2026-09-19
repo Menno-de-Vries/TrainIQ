@@ -65,7 +65,8 @@ Use Kotlin, Compose, Hilt, Room, Health Connect, CameraX, and Gemini with `MVVM 
 
 ## Git, safety, and completion
 
-- Start clean-`main` write work on `codex/<slug>`; continue an existing task branch. With unrelated changes use an isolated worktree without moving them; stop if changes overlap.
+- Prefer ordinary Git branches in the existing primary project directory. Start clean-`main` write work on `codex/<slug>` using `git switch -c`; continue an existing task branch. Do not create a separate folder/worktree for each task, branch, APK build, or verification run. Reuse the primary checkout and its build caches when safe.
+- Create an additional worktree only when independent tasks genuinely need simultaneous checkouts, unrelated local changes require isolation, or the user explicitly requests one. Inspect active tasks and status before switching branches; never switch a checkout used by another active task, move unrelated changes, or overwrite user work. Stop if changes overlap. Keep any necessary temporary worktree bounded to its task and apply the verified cleanup rules below.
 - Add dependencies or change services, permissions, config, schemas, or formats only after understanding purpose, migration, impact, and safer alternatives. Never expose secrets, health data, photos, telemetry, credentials, or signing material.
 - Stage exact task paths; never `git add -A`. Review scoped staged diff and risk, then create complete revertible Conventional Commits (`feat|fix|test|docs|refactor|perf|build|chore|style|revert`).
 - Never force-push, rewrite shared history, bypass protections, destructively clean, or delete data, branches, tags, releases, AVDs, or unmerged work without separate exact authorization and verified targets.
