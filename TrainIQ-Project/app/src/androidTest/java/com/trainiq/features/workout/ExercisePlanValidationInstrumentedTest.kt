@@ -37,7 +37,7 @@ class ExercisePlanValidationInstrumentedTest {
             ExercisePickerSheet(exercises = listOf(bench), showDefaults = true,
                 targetSets = sets.value, repRange = "8-12", restSeconds = "90", targetWeightKg = "", targetRpe = "",
                 onTargetSetsChange = { sets.value = it }, onRepRangeChange = {}, onRestSecondsChange = {},
-                onTargetWeightChange = {}, onTargetRpeChange = {}, onCustomExercise = {},
+                onTargetWeightChange = {}, onCustomExercise = {},
                 onSelect = { selected = it }, onDismiss = {})
         } }
         onNode(hasSetTextAction() and hasText("Oefening zoeken")).performTextReplacement("bench")
@@ -59,7 +59,7 @@ class ExercisePlanValidationInstrumentedTest {
         setContent { TrainIqTheme {
             CustomExerciseDialog(targetSets = sets.value, repRange = "8-12", restSeconds = "90", targetWeightKg = "", targetRpe = "",
                 onTargetSetsChange = { sets.value = it }, onRepRangeChange = {}, onRestSecondsChange = {},
-                onTargetWeightChange = {}, onTargetRpeChange = {},
+                onTargetWeightChange = {},
                 onConfirm = { entered, _, _ -> name = entered }, onDismiss = {})
         } }
         onNode(hasSetTextAction() and hasText("Oefening")).performScrollTo().performTextReplacement("Eigen press")

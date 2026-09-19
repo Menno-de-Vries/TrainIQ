@@ -36,7 +36,7 @@ class ExerciseEditorRecoveryInstrumentedTest {
                     exercises = listOf(bench), showDefaults = false,
                     targetSets = "3", repRange = "8-12", restSeconds = "90", targetWeightKg = "", targetRpe = "",
                     onTargetSetsChange = {}, onRepRangeChange = {}, onRestSecondsChange = {},
-                    onTargetWeightChange = {}, onTargetRpeChange = {}, onCustomExercise = {},
+                    onTargetWeightChange = {}, onCustomExercise = {},
                     onSelect = { selected = it }, onDismiss = { dismissed = true },
                 )
             }
@@ -62,7 +62,7 @@ class ExerciseEditorRecoveryInstrumentedTest {
                 CustomExerciseDialog(
                     targetSets = "3", repRange = "8-12", restSeconds = "90", targetWeightKg = "", targetRpe = "",
                     onTargetSetsChange = {}, onRepRangeChange = {}, onRestSecondsChange = {},
-                    onTargetWeightChange = {}, onTargetRpeChange = {},
+                    onTargetWeightChange = {},
                     onConfirm = { name, muscle, equipment -> submitted = listOf(name, muscle, equipment) }, onDismiss = {},
                 )
             }
@@ -88,7 +88,7 @@ class ExerciseEditorRecoveryInstrumentedTest {
                 if (open.value) CustomExerciseDialog(
                     targetSets = "3", repRange = "8-12", restSeconds = "90", targetWeightKg = "", targetRpe = "",
                     onTargetSetsChange = {}, onRepRangeChange = {}, onRestSecondsChange = {},
-                    onTargetWeightChange = {}, onTargetRpeChange = {},
+                    onTargetWeightChange = {},
                     onConfirm = { _, _, _ -> submitted = true }, onDismiss = { open.value = false },
                 )
             }

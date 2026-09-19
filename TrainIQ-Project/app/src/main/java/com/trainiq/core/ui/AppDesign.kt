@@ -184,9 +184,10 @@ fun Modifier.clearFocusOnTapOutside(): Modifier {
     val keyboardController = LocalSoftwareKeyboardController.current
     return pointerInput(focusManager, keyboardController) {
         awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-            val drag = awaitTouchSlopOrCancellation(down.id) { _, _ -> }
-            if (drag == null) {
+            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            // Child controls own consumed gestures; cancellation is not an outside tap.
+            val up = waitForUpOrCancellation()
+            if (up != null) {
                 focusManager.clearFocus(force = true)
                 keyboardController?.hide()
             }

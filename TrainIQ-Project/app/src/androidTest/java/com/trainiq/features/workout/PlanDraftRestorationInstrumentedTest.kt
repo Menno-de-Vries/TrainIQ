@@ -25,12 +25,12 @@ class PlanDraftRestorationInstrumentedTest {
         restore.setContent { TrainIqTheme {
             EditSetBottomSheet(RoutineSet(9L, 4L, 0, targetReps = 5, targetWeightKg = 20.0), 1, {}, {})
         } }
-        onNode(hasSetTextAction() and hasText("Gewicht")).performTextReplacement("42.5")
+        onNode(hasSetTextAction() and hasText("Gewicht (kg)")).performTextReplacement("42.5")
         onNodeWithText("Warm-up").performScrollTo().performClick()
         onNodeWithText("Warm-up").assertIsSelected()
         restore.emulateSaveAndRestore()
         onNodeWithText("Warm-up").assertIsSelected()
-        onNode(hasSetTextAction() and hasText("Gewicht")).assertTextContains("42.5")
+        onNode(hasSetTextAction() and hasText("Gewicht (kg)")).assertTextContains("42.5")
     }
     @Test fun planDraftKeepsInvalidInputAcrossRestoration() = runComposeUiTest {
         val restore = StateRestorationTester(this)

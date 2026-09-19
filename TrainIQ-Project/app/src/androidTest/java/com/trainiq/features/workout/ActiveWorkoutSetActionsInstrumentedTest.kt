@@ -13,6 +13,9 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasClickAction
@@ -136,6 +139,7 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             compose.waitForText("QA Upper")
             compose.onNodeWithText("Training starten").performClick()
             compose.waitForText("Actieve training")
+            capture("normal")
 
             compose.waitForText("N")
             compose.onNodeWithText("N")
@@ -151,36 +155,42 @@ class ActiveWorkoutSetActionsInstrumentedTest {
                 .performSemanticsAction(SemanticsActions.OnClick) { it() }
             compose.waitForText("Wijzig loggen")
 
-            metricInput("Kg, kg")
+            metricInput("Gewicht in kilogram")
                 .performScrollTo()
                 .performTextReplacement("9999999999999999999999999999999999999999")
             compose.onNodeWithText("Wijzig loggen").performScrollTo()
             compose.onNodeWithText("Wijzig loggen").performSemanticsAction(SemanticsActions.OnClick) { it() }
-            compose.onNodeWithContentDescription("Kg, kg").assert(
+            compose.onNodeWithContentDescription("Gewicht in kilogram").assert(
                 SemanticsMatcher.expectValue(SemanticsProperties.Error, "Voer een gewicht tussen 0 en 1000 kg in."),
             )
             assertEquals(80.0, readActiveWorkoutSet().weight, 0.0)
+            compose.onAllNodesWithText("Geschatte 1RM:", substring = true).assertCountEquals(0)
+            capture("error")
 
-            metricInput("Kg, kg").performScrollTo().performClick().performTextReplacement("")
-            metricInput("Kg, kg").assertTextEquals("")
-            metricInput("Kg, kg").performTextInput("82.")
-            metricInput("Kg, kg").assertTextEquals("82.")
-            metricInput("Kg, kg").performTextInput("5")
-            metricInput("Kg, kg").assertTextEquals("82.5")
-            val capture = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
-                .executeShellCommand("screencap -p /data/local/tmp/trainiq-workout-input.png")
-            android.os.ParcelFileDescriptor.AutoCloseInputStream(capture).use { it.readBytes() }
+            metricInput("Gewicht in kilogram").performScrollTo().performClick().performTextReplacement("")
+            metricInput("Gewicht in kilogram").assertTextEquals("")
+            metricInput("Gewicht in kilogram").performTextInput("82.")
+            metricInput("Gewicht in kilogram").assertTextEquals("82.")
+            metricInput("Gewicht in kilogram").performTextInput("5")
+            metricInput("Gewicht in kilogram").assertTextEquals("82.5")
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("Voer een gewicht tussen 0 en 1000 kg in.").fetchSemanticsNodes().isEmpty()
+            }
+            compose.onNodeWithContentDescription("Gewicht in kilogram").performScrollTo()
+            capture("input")
 
             metricInput("Herh.").performClick().performTextReplacement("")
             metricInput("Herh.").assertTextEquals("")
-            metricInput("Kg, kg").performClick()
+            metricInput("Gewicht in kilogram").performClick()
             metricInput("Herh.").assertTextEquals("5")
             metricInput("Herh.")
                 .performScrollTo()
                 .performTextReplacement("6")
-            metricInput("RPE")
-                .performScrollTo()
-                .performTextReplacement("8.5")
+            metricInput("Herh.").performImeAction()
+            metricInput("Gewicht in kilogram").assertIsFocused().performImeAction()
+            metricInput("Rust in seconden").assertIsFocused().performImeAction()
+            assertEquals(80.0, readActiveWorkoutSet().weight, 0.0)
+            compose.onNodeWithText("RPE").assertDoesNotExist()
             compose.onNodeWithText("Wijzig loggen").performScrollTo()
             compose.onNodeWithText("Wijzig loggen").performSemanticsAction(SemanticsActions.OnClick) { it() }
 
@@ -189,7 +199,8 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             assertEquals("WARM_UP", updatedSet.setType)
             assertEquals(82.5, updatedSet.weight, 0.0)
             assertEquals(6, updatedSet.reps)
-            assertEquals(8.5, updatedSet.rpe, 0.0)
+            assertEquals(8.0, updatedSet.rpe, 0.0)
+            capture("completed")
             scenario.recreate()
             compose.waitForText("Actieve training")
             assertEquals(82.5, readActiveWorkoutSet().weight, 0.0)
@@ -204,7 +215,49 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             compose.onNodeWithText("Verwijderen").performClick()
             compose.waitForNoActiveWorkoutSets()
             compose.waitForText("0 sets gelogd")
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("Set verwijderd.").fetchSemanticsNodes().isEmpty()
+            }
+            capture("empty")
+            metricInput("Gewicht in kilogram").performScrollTo().performTextReplacement("80")
+            metricInput("Herh.").performTextReplacement("5")
+            val logButton = compose.onNodeWithText("Set loggen")
+            logButton.performScrollTo()
+            var bounds = logButton.fetchSemanticsNode().boundsInRoot
+            var stableSince = android.os.SystemClock.elapsedRealtime()
+            compose.waitUntil(5_000) {
+                val next = logButton.fetchSemanticsNode().boundsInRoot
+                if (next != bounds) {
+                    bounds = next
+                    stableSince = android.os.SystemClock.elapsedRealtime()
+                }
+                android.os.SystemClock.elapsedRealtime() - stableSince >= 500
+            }
+            logButton.assertIsDisplayed().performClick()
+            compose.waitUntil(15_000) {
+                runBlocking { database.dao().observeActiveWorkoutSets().first().size == 1 }
+            }
+            assertEquals(0.0, readActiveWorkoutSet().rpe, 0.0)
+            assertEquals(null, readActiveWorkoutSet().repsInReserve)
         }
+    }
+
+    private fun capture(state: String) {
+        compose.waitForIdle()
+        // Compose idleness alone does not wait for platform IME/layout animations.
+        var bounds = compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().map { it.boundsInRoot }
+        var stableSince = android.os.SystemClock.elapsedRealtime()
+        compose.waitUntil(5_000) {
+            val next = compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().map { it.boundsInRoot }
+            if (next != bounds) {
+                bounds = next
+                stableSince = android.os.SystemClock.elapsedRealtime()
+            }
+            android.os.SystemClock.elapsedRealtime() - stableSince >= 500
+        }
+        val descriptor = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
+            .executeShellCommand("screencap -p /data/local/tmp/trainiq-workout-$state.png")
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { it.readBytes() }
     }
 
     private fun androidx.compose.ui.test.junit4.ComposeTestRule.waitForText(text: String) {

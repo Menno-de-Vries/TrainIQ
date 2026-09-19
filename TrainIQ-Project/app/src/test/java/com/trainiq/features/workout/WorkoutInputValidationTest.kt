@@ -714,8 +714,8 @@ class WorkoutInputValidationTest {
 
     @Test
     fun `planned performance target uses safe separator text`() {
-        assertEquals("80 kg - RPE 8", plannedPerformanceTargetText(80.0, 8.0))
-        assertEquals(false, plannedPerformanceTargetText(80.0, 8.0).contains("Â"))
+        assertEquals("80 kg", plannedPerformanceTargetText(80.0))
+        assertEquals(false, plannedPerformanceTargetText(80.0).contains("Â"))
     }
 
     @Test
@@ -724,11 +724,10 @@ class WorkoutInputValidationTest {
             setCount = 3,
             repRange = "8-10",
             restSeconds = 90,
-            rpe = "RPE 8",
             supersetGroupId = 12,
         )
 
-        assertEquals("3 sets - 8-10 herh. - 90s rust - RPE 8 - Superset 12", text)
+        assertEquals("3 sets - 8-10 herh. - 90s rust - Superset 12", text)
         assertEquals(false, text.contains("Â"))
     }
 
@@ -774,7 +773,7 @@ class WorkoutInputValidationTest {
         )
 
         assertEquals(
-            listOf("8", "80 kg", "-", "-"),
+            listOf("8", "80", "-"),
             routineSetMetricCells(set).map { it.value },
         )
     }
@@ -792,7 +791,7 @@ class WorkoutInputValidationTest {
         )
 
         assertEquals(
-            listOf("Herh.", "Kg", "Rust", "RPE"),
+            listOf("Herh.", "Kg", "Rust (s)"),
             routineSetMetricCells(set).map { it.label },
         )
     }
@@ -818,7 +817,7 @@ class WorkoutInputValidationTest {
         )
 
         assertEquals(
-            listOf("Herh." to "12", "Kg" to "50 kg", "Rust" to "90s", "RPE" to "6.5"),
+            listOf("Herh." to "12", "Kg" to "50", "Rust (s)" to "90"),
             activeSetMetricCells(repRange = "8-12", plannedSet = null, loggedSet = loggedSet, activeRestSeconds = 120)
                 .map { it.label to it.value },
         )
@@ -837,7 +836,7 @@ class WorkoutInputValidationTest {
         )
 
         assertEquals(
-            listOf("12", "-", "120s", "-"),
+            listOf("12", "-", "120"),
             activeSetMetricCells(repRange = "8-12", plannedSet = plannedSet, loggedSet = null, activeRestSeconds = 120)
                 .map { it.value },
         )
@@ -989,6 +988,16 @@ class WorkoutInputValidationTest {
         assertEquals(fallback, commitActiveSetDraft(SetInputDraft(), fallback))
         val typing = fallback.copy(weight = "80.")
         assertEquals(typing, commitActiveSetDraft(typing, fallback))
+    }
+
+    @Test
+    fun `planned intensity is never recorded as perceived effort`() {
+        val fallback = SetInputDraft(weight = "80", reps = "8", restSeconds = "120", rpe = "8")
+        val committed = commitActiveSetDraft(fallback.copy(rpe = "invalid legacy draft"), fallback)
+        assertEquals("", committed.rpe)
+        val valid = validateSetInput(committed) as SetLogValidationResult.Valid
+        assertEquals(0.0, valid.rpe, 0.0)
+        assertEquals(null, com.trainiq.domain.model.StrengthCalculator.estimateRepsInReserve(valid.rpe))
     }
 
     @Test
