@@ -4,6 +4,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ExercisePlanValidationTest {
+    @Test fun liveStrengthPreviewRequiresValidObjectiveInput() {
+        assertEquals(com.trainiq.domain.model.StrengthCalculator.estimateOneRepMax(82.5, 5),
+            activeSetOneRepMaxPreview(SetInputDraft(weight = "82,5", reps = "5"))!!, 0.0)
+        listOf("", "0", "bad", "1e99", "Infinity", "NaN", "1001", "-1").forEach {
+            assertNull(activeSetOneRepMaxPreview(SetInputDraft(weight = it, reps = "5")))
+        }
+        listOf("", "0", "101", "bad").forEach {
+            assertNull(activeSetOneRepMaxPreview(SetInputDraft(weight = "80", reps = it)))
+        }
+    }
+
     @Test fun blanksRetainDefaultsAndCommaDecimalsRemainSupported() {
         assertEquals(ExercisePlanInput(3, "8-12", 90, 0.0, 0.0), parseExercisePlanInput(" ", "", "", "", ""))
         assertEquals(ExercisePlanInput(20, "AMRAP", 900, 1000.0, 10.0), parseExercisePlanInput("20", "AMRAP", "900", "1000", "10"))

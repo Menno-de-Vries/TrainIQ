@@ -36,6 +36,60 @@ class BarcodeMealFlowInstrumentedTest {
     private var savedFoods = 0
     private var lookupCalls = 0
 
+    @Test fun firstAddAfterDayChangeUsesTodayAndNotRestoredYesterday() {
+        var today = java.time.LocalDate.of(2026, 9, 19)
+        val dates = mutableListOf<java.time.LocalDate>()
+        val restoration = showFlow(currentDate = { today }, saveEntries = { _, entries ->
+            dates += java.time.Instant.ofEpochMilli(requireNotNull(entries.single().loggedAt))
+                .atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+        })
+        today = today.plusDays(1)
+        restoration.emulateSavedInstanceStateRestore()
+        openMealScanner("Middag")
+        compose.onNodeWithText("Herken barcode").performClick()
+        compose.onNodeWithText("Alleen aan maaltijd toevoegen").performScrollTo().performClick()
+        compose.onNodeWithText("Maaltijd opslaan").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(listOf(today), dates) }
+    }
+
+    @Test fun midnightWhileDraftIsOpenUsesTodayButExplicitDateSurvivesRestoration() {
+        var today = java.time.LocalDate.of(2026, 9, 19)
+        val dates = mutableListOf<java.time.LocalDate>()
+        val restoration = showFlow(currentDate = { today }, saveEntries = { _, entries ->
+            dates += java.time.Instant.ofEpochMilli(requireNotNull(entries.single().loggedAt))
+                .atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+        })
+        openMealScanner("Middag")
+        compose.onNodeWithText("Herken barcode").performClick()
+        compose.onNodeWithText("Alleen aan maaltijd toevoegen").performScrollTo().performClick()
+        today = today.plusDays(1)
+        compose.onNodeWithText("Maaltijd opslaan").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(listOf(today), dates) }
+
+        openMealScanner("Middag")
+        compose.onNodeWithText("Herken barcode").performClick()
+        compose.onNodeWithText("Alleen aan maaltijd toevoegen").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Datum (jjjj-mm-dd)").performScrollTo().performTextReplacement("2026-09-10")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNodeWithText("Maaltijd opslaan").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(listOf(today, java.time.LocalDate.of(2026, 9, 10)), dates) }
+    }
+
+    @Test fun firstManualAddWithKeyboardAddsExactlyOneItem() {
+        showFlow()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasContentDescription("Toevoegen aan Middag"))
+        compose.onNodeWithContentDescription("Toevoegen aan Middag").performClick()
+        compose.onNodeWithText("Handmatig product maken").performClick()
+        listOf("Productnaam" to "Eerste product", "kcal / 100g" to "100", "Eiwit / 100g" to "10",
+            "Kh / 100g" to "10", "Vet / 100g" to "2", "Standaard hoeveelheid (gram)" to "150").forEach { (label, value) ->
+            compose.onNodeWithContentDescription(label).performScrollTo().performTextReplacement(value)
+        }
+        compose.onNodeWithText("Alleen aan maaltijd toevoegen").performScrollTo().performTouchInput { click() }
+        compose.onNodeWithText("Maaltijd opslaan").performScrollTo().performTouchInput { click() }
+        compose.runOnIdle { assertEquals(listOf(MealType.LUNCH), savedMeals) }
+    }
+
     @Test fun scannedDrinkReachesPersistentHydrationTotal() {
         val db = androidx.room.Room.inMemoryDatabaseBuilder(
             androidx.test.core.app.ApplicationProvider.getApplicationContext(),
@@ -193,6 +247,7 @@ class BarcodeMealFlowInstrumentedTest {
     }
 
     private fun showFlow(found: Boolean = true, failFirstLookup: Boolean = false, stallFirstLookup: Boolean = false, failFoodSave: Boolean = false,
+        currentDate: () -> java.time.LocalDate = { java.time.LocalDate.now() },
         drink: Boolean = false, hydrationContent: @androidx.compose.runtime.Composable () -> Unit = {},
         saveEntries: (Long, List<MealEntryRequest>) -> Unit = { _, _ -> },
     ): StateRestorationTester {
@@ -206,6 +261,7 @@ class BarcodeMealFlowInstrumentedTest {
                     composable<Nutrition> { entry ->
                         val barcode by entry.savedStateHandle.getStateFlow(BarcodeScanResultKey, "").collectAsStateWithLifecycle()
                         NutritionScreen(
+                            currentDate = currentDate,
                             hydrationContent = hydrationContent,
                             uiState = state,
                             onSaveFood = { _, name, code, kcal, protein, carbs, fat, grams, source, done, failed ->

@@ -649,6 +649,7 @@ fun NutritionRoute(
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun NutritionScreen(
+    currentDate: () -> java.time.LocalDate = { java.time.LocalDate.now() },
     hydrationContent: @Composable () -> Unit = {},
     mealDetail: MealType? = null,
     onOpenMeal: ((MealType) -> Unit)? = null,
@@ -767,7 +768,9 @@ fun NutritionScreen(
 
     var mealType by rememberSaveable { mutableStateOf(MealType.LUNCH) }
     var mealName by rememberSaveable { mutableStateOf("") }
-    var mealDate by rememberSaveable { mutableStateOf(java.time.LocalDate.now().toString()) }
+    // Only persist an explicit date. A restored default must still mean today.
+    var mealDateOverride by rememberSaveable { mutableStateOf<String?>(null) }
+    val mealDate = mealDateOverride ?: currentDate().toString()
     var mealNotes by rememberSaveable { mutableStateOf("") }
     var editingMealId by rememberSaveable { mutableStateOf<Long?>(null) }
     var mealSaveId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -801,7 +804,7 @@ fun NutritionScreen(
         mealSaveId = null
         mealName = ""
         mealNotes = ""
-        mealDate = java.time.LocalDate.now().toString()
+        mealDateOverride = null
         mealDraft.clear()
         mealErrors = MealFieldErrors()
         selectedTab = 0
@@ -1265,7 +1268,7 @@ fun NutritionScreen(
                                         showAddToMealActions = true
                                     },
                                     onEditMeal = { meal ->
-                                        mealDate = java.time.Instant.ofEpochMilli(meal.timestamp).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString()
+                                        mealDateOverride = java.time.Instant.ofEpochMilli(meal.timestamp).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString()
                                         editingMealId = meal.id
                                         mealType = meal.mealType
                                         mealName = meal.name
@@ -1305,7 +1308,7 @@ fun NutritionScreen(
                                 MealDraftReviewCard(
                                     mealType = mealType,
                                     mealDate = mealDate,
-                                    onMealDateChange = { mealDate = it },
+                                    onMealDateChange = { mealDateOverride = it },
                                     mealName = mealName,
                                     mealNotes = mealNotes,
                                     mealDraft = mealDraft.toList(),
@@ -1340,7 +1343,7 @@ fun NutritionScreen(
                                     },
                                     onRemoveDraftItem = { index -> mealDraft.removeAt(index) },
                                     onSave = {
-                                        val loggedAt = runCatching { java.time.LocalDate.parse(mealDate).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli() }.getOrNull()
+                                        val loggedAt = runCatching { java.time.LocalDate.parse(mealDateOverride ?: currentDate().toString()).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli() }.getOrNull()
                                         if (loggedAt == null) { mealErrors = MealFieldErrors(items = "Vul een geldige datum in (jjjj-mm-dd)."); return@MealDraftReviewCard }
                                         val requests = mealDraft.toMealEntryRequestsOrNull()?.map { it.copy(loggedAt = loggedAt) }
                                         val errors = if (requests == null) {
@@ -1355,7 +1358,7 @@ fun NutritionScreen(
                                         onSaveMeal(stableId, mealType, mealName, mealNotes, requests.orEmpty()) {
                                             mealSaveId = null
                                             editingMealId = null
-                                            mealDate = java.time.LocalDate.now().toString()
+                                            mealDateOverride = null
                                             mealName = ""
                                             mealNotes = ""
                                             mealDraft.clear()

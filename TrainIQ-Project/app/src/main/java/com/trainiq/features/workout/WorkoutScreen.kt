@@ -1,4 +1,4 @@
-﻿@file:OptIn(
+@file:OptIn(
     androidx.compose.foundation.ExperimentalFoundationApi::class,
     androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
 )
@@ -824,8 +824,9 @@ class WorkoutViewModel @Inject constructor(
             sourceWorkoutExerciseId = correctionSet?.sourceWorkoutExerciseId ?: plan.id,
             weight = validInput.weight,
             reps = validInput.reps,
-            rpe = validInput.rpe,
-            repsInReserve = StrengthCalculator.estimateRepsInReserve(validInput.rpe),
+            // Preserve recorded historical effort on corrections; never turn a plan into reported effort.
+            rpe = correctionSet?.rpe ?: 0.0,
+            repsInReserve = correctionSet?.repsInReserve,
             setType = draft.setType,
             restSeconds = validInput.restSeconds,
             orderIndex = correctionSet?.orderIndex ?: 0,
@@ -2358,7 +2359,7 @@ private fun RoutineCard(
     var starterRepRange by rememberSaveable(routine.id) { mutableStateOf("8-12") }
     var starterRestSeconds by rememberSaveable(routine.id) { mutableStateOf("90") }
     var starterTargetWeight by rememberSaveable(routine.id) { mutableStateOf("") }
-    var starterTargetRpe by rememberSaveable(routine.id) { mutableStateOf("") }
+    val starterTargetRpe by rememberSaveable(routine.id) { mutableStateOf("") }
     var showStarterExercisePicker by rememberSaveable(routine.id) { mutableStateOf(false) }
     var showStarterCustomExerciseDialog by rememberSaveable(routine.id) { mutableStateOf(false) }
     var showDeleteRoutineConfirm by remember(routine.id) { mutableStateOf(false) }
@@ -2377,7 +2378,6 @@ private fun RoutineCard(
             onRepRangeChange = { starterRepRange = it },
             onRestSecondsChange = { starterRestSeconds = it },
             onTargetWeightChange = { starterTargetWeight = it },
-            onTargetRpeChange = { starterTargetRpe = it },
             onSelect = { exercise ->
                 onAddExerciseToRoutine(
                     routine.id,
@@ -2410,7 +2410,6 @@ private fun RoutineCard(
             onRepRangeChange = { starterRepRange = it },
             onRestSecondsChange = { starterRestSeconds = it },
             onTargetWeightChange = { starterTargetWeight = it },
-            onTargetRpeChange = { starterTargetRpe = it },
             onConfirm = { name, muscleGroup, equipment ->
                 onAddExerciseToRoutine(routine.id, name, muscleGroup, equipment, starterTargetSets, starterRepRange, starterRestSeconds, starterTargetWeight, starterTargetRpe)
                 showStarterCustomExerciseDialog = false
@@ -2735,7 +2734,7 @@ private fun WorkoutDayEditor(
     var repRange by rememberSaveable(day.id) { mutableStateOf("8-12") }
     var restSeconds by rememberSaveable(day.id) { mutableStateOf("90") }
     var targetWeight by rememberSaveable(day.id) { mutableStateOf("") }
-    var targetRpe by rememberSaveable(day.id) { mutableStateOf("") }
+    val targetRpe by rememberSaveable(day.id) { mutableStateOf("") }
     var showExercisePicker by rememberSaveable(day.id) { mutableStateOf(false) }
     var showCustomExerciseDialog by rememberSaveable(day.id) { mutableStateOf(false) }
     var showRemoveDayConfirm by remember(day.id) { mutableStateOf(false) }
@@ -2757,7 +2756,6 @@ private fun WorkoutDayEditor(
             onRepRangeChange = { repRange = it },
             onRestSecondsChange = { restSeconds = it },
             onTargetWeightChange = { targetWeight = it },
-            onTargetRpeChange = { targetRpe = it },
             onSelect = { exercise ->
                 onAddExercise(day.id, exercise.name, exercise.muscleGroup, exercise.equipment, targetSets, repRange, restSeconds, targetWeight, targetRpe)
                 showExercisePicker = false
@@ -2780,7 +2778,6 @@ private fun WorkoutDayEditor(
             onRepRangeChange = { repRange = it },
             onRestSecondsChange = { restSeconds = it },
             onTargetWeightChange = { targetWeight = it },
-            onTargetRpeChange = { targetRpe = it },
             onConfirm = { name, muscleGroup, equipment ->
                 onAddExercise(day.id, name, muscleGroup, equipment, targetSets, repRange, restSeconds, targetWeight, targetRpe)
                 showCustomExerciseDialog = false
@@ -2802,7 +2799,6 @@ private fun WorkoutDayEditor(
             onRepRangeChange = {},
             onRestSecondsChange = {},
             onTargetWeightChange = {},
-            onTargetRpeChange = {},
             onSelect = { exercise ->
                 replacingPlan = null
                 onReplaceExercise(plan.id, exercise)
@@ -3234,7 +3230,7 @@ private fun RoutineSetHeaderRow() {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 HeaderLabel("Setconfiguratie")
                 Text(
-                    "${RepetitionsMetricLabel} - Kg - Rust - RPE",
+                    "${RepetitionsMetricLabel} - Kg - Rust (s)",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.trainIqColors.mutedText,
                     maxLines = 1,
@@ -3411,9 +3407,8 @@ internal fun routineSetMetricLayoutForWidth(availableWidth: Dp): RoutineSetMetri
 
 internal fun routineSetMetricCells(set: RoutineSet): List<RoutineSetMetricCell> = listOf(
     RoutineSetMetricCell(RepetitionsMetricLabel, set.targetReps.takeIf { it > 0 }?.toString() ?: "-"),
-    RoutineSetMetricCell("Kg", set.targetWeightKg.takeIf { it > 0.0 }?.let { "${formatWeight(it)} kg" } ?: "-"),
-    RoutineSetMetricCell("Rust", set.restSeconds.takeIf { it > 0 }?.let { "${it}s" } ?: "-"),
-    RoutineSetMetricCell("RPE", set.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight) ?: "-"),
+    RoutineSetMetricCell("Kg", set.targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight) ?: "-"),
+    RoutineSetMetricCell("Rust (s)", set.restSeconds.takeIf { it > 0 }?.toString() ?: "-"),
 )
 
 internal fun activeSetMetricCells(
@@ -3425,55 +3420,17 @@ internal fun activeSetMetricCells(
     val reps = loggedSet?.reps?.takeIf { it > 0 }?.toString()
         ?: plannedSet?.targetReps?.takeIf { it > 0 }?.toString()
         ?: repRange.ifBlank { "-" }
-    val weight = loggedSet?.weight?.takeIf { it > 0.0 }?.let { "${formatWeight(it)} kg" }
-        ?: plannedSet?.targetWeightKg?.takeIf { it > 0.0 }?.let { "${formatWeight(it)} kg" }
+    val weight = loggedSet?.weight?.takeIf { it >= 0.0 }?.let(::formatWeight)
+        ?: plannedSet?.targetWeightKg?.takeIf { it > 0.0 }?.let(::formatWeight)
         ?: "-"
-    val rest = loggedSet?.restSeconds?.takeIf { it > 0 }?.let { "${it}s" }
-        ?: activeRestSeconds.takeIf { it > 0 }?.let { "${it}s" }
-        ?: "-"
-    val rpe = loggedSet?.rpe?.takeIf { it > 0.0 }?.let(::formatWeight)
-        ?: plannedSet?.targetRpe?.takeIf { it > 0.0 }?.let(::formatWeight)
+    val rest = loggedSet?.restSeconds?.takeIf { it >= 0 }?.toString()
+        ?: activeRestSeconds.takeIf { it >= 0 }?.toString()
         ?: "-"
     return listOf(
         RoutineSetMetricCell(RepetitionsMetricLabel, reps),
         RoutineSetMetricCell("Kg", weight),
-        RoutineSetMetricCell("Rust", rest),
-        RoutineSetMetricCell("RPE", rpe),
+        RoutineSetMetricCell("Rust (s)", rest),
     )
-}
-
-@Composable
-private fun RpeInfoButton(
-    compactText: Boolean = false,
-    modifier: Modifier = Modifier,
-) {
-    var showInfo by remember { mutableStateOf(false) }
-    if (showInfo) {
-        AlertDialog(
-            onDismissRequest = { showInfo = false },
-            title = { Text("RPE") },
-            text = {
-                Text(
-                    "RPE staat voor Rate of Perceived Exertion: hoe zwaar een set voelde op een schaal van 1 tot 10. RPE 10 betekent maximaal, geen reps meer over. Dit veld is optioneel.",
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { showInfo = false }) { Text("Begrepen") }
-            },
-        )
-    }
-    TextButton(
-        onClick = { showInfo = true },
-        modifier = modifier.defaultMinSize(minHeight = 36.dp),
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-    ) {
-        Icon(Icons.Rounded.Info, contentDescription = null, modifier = Modifier.size(16.dp))
-        if (!compactText) {
-            Text("RPE uitleg", maxLines = 1)
-        } else {
-            Text("RPE?", maxLines = 1)
-        }
-    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -3488,7 +3445,6 @@ internal fun EditSetBottomSheet(
     var reps by rememberSaveable(set.id) { mutableStateOf(set.targetReps.takeIf { it > 0 }?.toString().orEmpty()) }
     var weight by rememberSaveable(set.id) { mutableStateOf(set.targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
     var rest by rememberSaveable(set.id) { mutableStateOf(set.restSeconds.takeIf { it > 0 }?.toString().orEmpty()) }
-    var rpe by rememberSaveable(set.id) { mutableStateOf(set.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
     val scrollState = rememberScrollState()
     val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
     val density = LocalDensity.current
@@ -3532,6 +3488,7 @@ internal fun EditSetBottomSheet(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .padding(top = 72.dp)
                             .navigationBarsPadding()
                             .onGloballyPositioned { coordinates ->
                                 scrollViewportBounds = coordinates.boundsInRoot()
@@ -3541,23 +3498,6 @@ internal fun EditSetBottomSheet(
                             .padding(horizontal = 24.dp, vertical = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.CenterHorizontally)
-                                .fillMaxWidth()
-                                .height(32.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .width(44.dp)
-                                    .height(5.dp)
-                                    .background(
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
-                                        shape = RoundedCornerShape(999.dp),
-                                    ),
-                            )
-                        }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -3623,18 +3563,6 @@ internal fun EditSetBottomSheet(
                             visibleViewportBottomProvider = visibleViewportBottomProvider,
                             onValueChange = { rest = it },
                         )
-                        SheetNumberField(
-                            value = rpe,
-                            label = "RPE",
-                            revealKey = "${set.id}:rpe",
-                            keyboardType = KeyboardType.Decimal,
-                            step = 0.5,
-                            modifier = Modifier.weight(1f),
-                            scrollState = scrollState,
-                            scrollViewportBoundsProvider = { scrollViewportBounds },
-                            visibleViewportBottomProvider = visibleViewportBottomProvider,
-                            onValueChange = { rpe = it },
-                        )
                     }
                     PrimaryActionButton(
                         onClick = {
@@ -3643,7 +3571,6 @@ internal fun EditSetBottomSheet(
                                 targetReps = reps.toIntOrNull() ?: -1,
                                 targetWeightKg = weight.normalizedDecimal().takeIf { it.isNotBlank() }?.toDoubleOrNull() ?: 0.0,
                                 restSeconds = rest.toIntOrNull() ?: -1,
-                                targetRpe = rpe.normalizedDecimal().takeIf { it.isNotBlank() }?.toDoubleOrNull() ?: 0.0,
                             )
                             onSave(nextSet)
                         },
@@ -3682,7 +3609,15 @@ internal fun EditSetBottomSheet(
                             .semantics {
                                 contentDescription = "Set editor handle"
                             },
-                    )
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            Modifier.width(44.dp).height(5.dp).background(
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+                                RoundedCornerShape(999.dp),
+                            ),
+                        )
+                    }
                 }
             }
         }
@@ -3842,7 +3777,7 @@ private fun SheetNumberField(
     val focusManager = LocalFocusManager.current
     val filterInput: (String) -> String = { input ->
         if (keyboardType == KeyboardType.Decimal) {
-            filterDecimalInput(input, maxDecimals = if (label == "RPE") 1 else 2)
+            filterDecimalInput(input, maxDecimals = 2)
         } else {
             filterIntegerInput(input)
         }
@@ -3851,8 +3786,7 @@ private fun SheetNumberField(
         TapOnlyOutlinedTextField(
             value = value,
             onValueChange = { onValueChange(filterInput(it)) },
-            label = { Text(label) },
-            suffix = suffix?.let { { Text(it) } },
+            label = { Text(if (suffix == null) label else "$label ($suffix)") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(force = true) }),
@@ -3951,9 +3885,8 @@ private fun CompactSetNumberField(
     TapOnlyOutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        label = { Text(label) },
+        label = { Text(if (suffix == null) label else "$label ($suffix)") },
         placeholder = { Text("0") },
-        suffix = suffix?.let { { Text(it, style = MaterialTheme.typography.labelSmall) } },
         isError = isError,
         singleLine = true,
         textStyle = MaterialTheme.typography.bodyMedium,
@@ -3982,7 +3915,6 @@ private fun ExercisePrescriptionChips(plan: WorkoutExercisePlan) {
         SuggestionChip(onClick = {}, label = { Text("${plan.repRange} reps") })
         SuggestionChip(onClick = {}, label = { Text("${plan.restSeconds}s rest") })
         if (plan.targetWeightKg > 0.0) SuggestionChip(onClick = {}, label = { Text("${formatWeight(plan.targetWeightKg)} kg") })
-        if (plan.targetRpe > 0.0) SuggestionChip(onClick = {}, label = { Text("RPE ${formatWeight(plan.targetRpe)}") })
         SuggestionChip(onClick = {}, label = { Text(plan.setType.label()) })
     }
 }
@@ -4003,7 +3935,6 @@ internal fun ExercisePickerSheet(
     onRepRangeChange: (String) -> Unit,
     onRestSecondsChange: (String) -> Unit,
     onTargetWeightChange: (String) -> Unit,
-    onTargetRpeChange: (String) -> Unit,
     onSelect: (Exercise) -> Unit,
     onCustomExercise: () -> Unit,
     onDismiss: () -> Unit,
@@ -4129,7 +4060,6 @@ internal fun ExercisePickerSheet(
                                             )
                                         }
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            RpeInfoButton(compactText = true)
                                             IconButton(onClick = { defaultsExpanded = !defaultsExpanded }) {
                                                 Icon(
                                                     if (defaultsExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
@@ -4153,7 +4083,6 @@ internal fun ExercisePickerSheet(
                                             CompactSetNumberField(repRange, "Reps", null, KeyboardType.Text, Modifier.weight(1f), onValueChange = onRepRangeChange)
                                             CompactSetNumberField(restSeconds, "Rust", "sec", KeyboardType.Number, Modifier.weight(1f), onValueChange = onRestSecondsChange)
                                             CompactSetNumberField(targetWeightKg, "Gewicht", "kg", KeyboardType.Decimal, Modifier.weight(1f), onValueChange = onTargetWeightChange)
-                                            CompactSetNumberField(targetRpe, "RPE", null, KeyboardType.Decimal, Modifier.weight(1f), onValueChange = onTargetRpeChange)
                                         }
                                     }
                                 }
@@ -4221,7 +4150,6 @@ internal fun CustomExerciseDialog(
     onRepRangeChange: (String) -> Unit,
     onRestSecondsChange: (String) -> Unit,
     onTargetWeightChange: (String) -> Unit,
-    onTargetRpeChange: (String) -> Unit,
     onConfirm: (String, String, String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -4254,7 +4182,6 @@ internal fun CustomExerciseDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
             Text("Standaardwaarden", style = MaterialTheme.typography.labelLarge)
-                    RpeInfoButton(compactText = true)
                 }
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -4265,7 +4192,6 @@ internal fun CustomExerciseDialog(
                     CompactSetNumberField(repRange, "Reps", null, KeyboardType.Text, Modifier.weight(1f), onValueChange = onRepRangeChange)
                     CompactSetNumberField(restSeconds, "Rust", "sec", KeyboardType.Number, Modifier.weight(1f), onValueChange = onRestSecondsChange)
                     CompactSetNumberField(targetWeightKg, "Gewicht", "kg", KeyboardType.Decimal, Modifier.weight(1f), onValueChange = onTargetWeightChange)
-                    CompactSetNumberField(targetRpe, "RPE", null, KeyboardType.Decimal, Modifier.weight(1f), onValueChange = onTargetRpeChange)
                 }
                 Spacer(
                     modifier = Modifier.height(
@@ -4296,7 +4222,7 @@ internal fun ExercisePlanEditDialog(
     var repRange by rememberSaveable(plan.id) { mutableStateOf(plan.repRange) }
     var restSeconds by rememberSaveable(plan.id) { mutableStateOf(plan.restSeconds.toString()) }
     var targetWeightKg by rememberSaveable(plan.id) { mutableStateOf(plan.targetWeightKg.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
-    var targetRpe by rememberSaveable(plan.id) { mutableStateOf(plan.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
+    val targetRpe by rememberSaveable(plan.id) { mutableStateOf(plan.targetRpe.takeIf { it > 0.0 }?.let(::formatWeight).orEmpty()) }
     var setType by rememberSaveable(plan.id) { mutableStateOf(plan.setType) }
     val validInput = parseExercisePlanInput(targetSets, repRange, restSeconds, targetWeightKg, targetRpe) != null
     val scrollState = rememberScrollState()
@@ -4321,7 +4247,6 @@ internal fun ExercisePlanEditDialog(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     TapOnlyOutlinedTextField(restSeconds, { restSeconds = it }, label = { Text("Rest s") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).bringIntoViewOnFocus())
                     TapOnlyOutlinedTextField(targetWeightKg, { targetWeightKg = it }, label = { Text("Kg") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f).bringIntoViewOnFocus())
-                    TapOnlyOutlinedTextField(targetRpe, { targetRpe = it }, label = { Text("RPE") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f).bringIntoViewOnFocus())
                 }
                 if (!validInput) Text(PlanValidationMessage, color = MaterialTheme.colorScheme.error)
                 SetTypeSelector(
@@ -5358,7 +5283,6 @@ fun ActiveWorkoutScreen(
             onRepRangeChange = {},
             onRestSecondsChange = {},
             onTargetWeightChange = {},
-            onTargetRpeChange = {},
             onSelect = { exercise ->
                 replacingActivePlan = null
                 if (uiState.loggedSetsThisSession[plan.activeKey].orEmpty().isNotEmpty()) {
@@ -5386,7 +5310,6 @@ fun ActiveWorkoutScreen(
             onRepRangeChange = {},
             onRestSecondsChange = {},
             onTargetWeightChange = {},
-            onTargetRpeChange = {},
             onConfirm = { name, muscleGroup, equipment ->
                 creatingActiveReplacementId = null
                 onReplaceActiveExerciseWithCustom(plan.id, name, muscleGroup, equipment)
@@ -6014,11 +5937,7 @@ private fun ActiveExerciseCard(
         targetWeight?.let { StrengthCalculator.calculatePlates(it) }.orEmpty()
     }
     val liveOneRepMax by remember(draft) {
-        derivedStateOf {
-            val weight = draft.weight.replace(',', '.').toDoubleOrNull() ?: 0.0
-            val reps = draft.reps.toIntOrNull() ?: 0
-            if (weight > 0.0 && reps > 0) StrengthCalculator.estimateOneRepMax(weight, reps) else null
-        }
+        derivedStateOf { activeSetOneRepMaxPreview(draft) }
     }
     var menuExpanded by remember(plan.id) { mutableStateOf(false) }
     AppCard(
@@ -6159,7 +6078,6 @@ private fun ActiveExerciseCard(
                         }
                     },
                     onDraftChange = onDraftChange,
-                    onSubmit = onLogSet,
                     onEdit = { loggedSetForRow?.let { onEditSet(it.id) } },
                     onDelete = { loggedSetForRow?.let { onDeleteSet(it.id) } },
                     canRemovePlanned = !isSessionFinished &&
@@ -6465,7 +6383,7 @@ private fun SetTypePill(
     val color = setTypeColor(setType)
     Surface(
         modifier = Modifier
-            .defaultMinSize(minWidth = 34.dp, minHeight = 28.dp)
+            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
             .clickable(
                 enabled = enabled,
                 role = Role.Button,
@@ -6489,7 +6407,6 @@ private fun ActiveSetInputMetrics(
     errors: SetInputFieldErrors,
     lastSession: SetInputDraft?,
     onDraftChange: (SetInputDraft) -> Unit,
-    onSubmit: () -> Unit,
 ) {
     val cells = listOf<@Composable (Modifier) -> Unit>(
         { modifier ->
@@ -6502,7 +6419,7 @@ private fun ActiveSetInputMetrics(
                 errorText = errors.reps,
                 modifier = modifier,
                 onValueChange = { onDraftChange(draft.copy(reps = filterIntegerInput(it))) },
-                onSubmit = onSubmit,
+                imeAction = ImeAction.Next,
             )
         },
         { modifier ->
@@ -6516,12 +6433,12 @@ private fun ActiveSetInputMetrics(
                 decimalPlaces = 2,
                 modifier = modifier,
                 onValueChange = { onDraftChange(draft.copy(weight = filterDecimalInput(it, maxDecimals = 2))) },
-                onSubmit = onSubmit,
+                imeAction = ImeAction.Next,
             )
         },
         { modifier ->
             ActiveSetInputMetricValue(
-                label = "Rust",
+                label = "Rust (s)",
                 value = draft.restSeconds,
                 suffix = "s",
                 keyboardType = KeyboardType.Number,
@@ -6529,21 +6446,6 @@ private fun ActiveSetInputMetrics(
                 errorText = errors.restSeconds,
                 modifier = modifier,
                 onValueChange = { onDraftChange(draft.copy(restSeconds = filterIntegerInput(it))) },
-                onSubmit = onSubmit,
-            )
-        },
-        { modifier ->
-            ActiveSetInputMetricValue(
-                label = "RPE",
-                value = draft.rpe,
-                suffix = "",
-                keyboardType = KeyboardType.Decimal,
-                fallback = lastSession?.rpe,
-                errorText = errors.rpe,
-                decimalPlaces = 1,
-                modifier = modifier,
-                onValueChange = { onDraftChange(draft.copy(rpe = filterDecimalInput(it, maxDecimals = 1))) },
-                onSubmit = onSubmit,
             )
         },
     )
@@ -6586,13 +6488,17 @@ private fun ActiveSetInputMetricValue(
     errorText: String?,
     modifier: Modifier = Modifier,
     decimalPlaces: Int = 0,
+    imeAction: ImeAction = ImeAction.Done,
     onValueChange: (String) -> Unit,
-    onSubmit: () -> Unit,
 ) {
     val focusManager = LocalFocusManager.current
     var focused by remember { mutableStateOf(false) }
     var valueBeforeFocus by remember { mutableStateOf(value) }
-    val content = if (suffix.isBlank()) label else "$label, $suffix"
+    val content = when (suffix) {
+        "kg" -> "Gewicht in kilogram"
+        "s" -> "Rust in seconden"
+        else -> label
+    }
     val textStyle = MaterialTheme.typography.labelMedium.copy(
         fontWeight = FontWeight.SemiBold,
         color = MaterialTheme.colorScheme.onSurface,
@@ -6632,16 +6538,17 @@ private fun ActiveSetInputMetricValue(
             singleLine = true,
             textStyle = textStyle,
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-            keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
             keyboardActions = KeyboardActions(
+                onNext = { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Next) },
                 onDone = {
-                    onSubmit()
+                    // Finishing an edit must not accidentally log an entire set.
                     focusManager.clearFocus(force = true)
                 },
             ),
             modifier = Modifier
                 .fillMaxWidth()
-                .defaultMinSize(minHeight = 24.dp)
+                .defaultMinSize(minHeight = 48.dp)
                 .onFocusChanged { state ->
                     if (state.isFocused && !focused) valueBeforeFocus = value
                     if (!state.isFocused && focused && value.isBlank()) onValueChange(valueBeforeFocus)
@@ -6665,13 +6572,6 @@ private fun ActiveSetInputMetricValue(
                         Box(modifier = Modifier.weight(1f)) {
                             innerTextField()
                         }
-                        if (suffix.isNotBlank() && value.isNotBlank()) {
-                            Text(
-                                suffix,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
                     }
                 }
             },
@@ -6694,7 +6594,6 @@ private fun SetRow(
     lastSession: SetInputDraft?,
     onSetTypeSelected: (SetType) -> Unit,
     onDraftChange: (SetInputDraft) -> Unit,
-    onSubmit: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     canRemovePlanned: Boolean,
@@ -6710,7 +6609,9 @@ private fun SetRow(
     } else {
         MaterialTheme.colorScheme.surfaceVariant
     }
-    val rpeColor = loggedSet?.let { intensityContainerColor(it.rpe) } ?: background
+    val rowColor = if (loggedSet?.completed == true && !isCorrecting) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else background
     val metricCells = activeSetMetricCells(
         repRange = repRange,
         plannedSet = plannedSet,
@@ -6736,7 +6637,7 @@ private fun SetRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(rpeColor, MaterialTheme.shapes.medium)
+            .background(rowColor, MaterialTheme.shapes.medium)
             .clickable(
                 enabled = loggedSet == null,
                 role = Role.Button,
@@ -6792,17 +6693,17 @@ private fun SetRow(
                 overflow = TextOverflow.Ellipsis,
             )
             if (loggedSet != null) {
-                IconButton(onClick = onRelog, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onRelog, modifier = Modifier.size(48.dp)) {
                     Icon(Icons.Rounded.Replay, contentDescription = relogSetContentDescription())
                 }
-                IconButton(onClick = onEdit, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onEdit, modifier = Modifier.size(48.dp)) {
                     Icon(Icons.Rounded.Edit, contentDescription = "Gelogde set corrigeren")
                 }
-                IconButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.size(48.dp)) {
                     Icon(Icons.Rounded.Delete, contentDescription = "Set verwijderen")
                 }
             } else if (canRemovePlanned) {
-                IconButton(onClick = onRemovePlanned, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onRemovePlanned, modifier = Modifier.size(48.dp)) {
                     Icon(Icons.Rounded.DeleteOutline, contentDescription = "Geplande set uit deze training verwijderen")
                 }
             }
@@ -6815,7 +6716,6 @@ private fun SetRow(
                     errors = draftErrors,
                     lastSession = lastSession,
                     onDraftChange = onDraftChange,
-                    onSubmit = onSubmit,
                 )
             } else when (routineSetMetricLayoutForWidth(maxWidth)) {
                 RoutineSetMetricLayout.OneRow -> {
@@ -6900,11 +6800,11 @@ private fun CompactPreviousPerformance(suggestion: ProgressionSuggestion) {
 
 @Composable
 private fun PlannedPerformanceFallback(plan: WorkoutExercisePlan) {
-    val target = plannedPerformanceTargetText(plan.targetWeightKg, plan.targetRpe)
-    Row(
+    val target = plannedPerformanceTargetText(plan.targetWeightKg)
+    FlowRow(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(
             "Nog geen vorige prestatie",
@@ -6930,7 +6830,7 @@ private fun SuggestedNextSetRow(suggestion: ProgressionSuggestion) {
         ReadinessLevel.MAINTAIN -> "Behouden"
     }
     Text(
-        "Aanbevolen: ${formatWeight(suggestion.suggestedWeightKg)} kg x ${displayRepTarget(suggestion.suggestedReps)} bij RPE 7-8 - $action",
+        "Aanbevolen: ${formatWeight(suggestion.suggestedWeightKg)} kg x ${displayRepTarget(suggestion.suggestedReps)} - $action",
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.primary,
     )
@@ -6963,7 +6863,6 @@ private fun WorkoutDebriefCard(result: WorkoutDebrief, uiState: ActiveWorkoutUiS
             setCount = sets.size,
             volume = sets.sumOf { it.weight * it.reps },
             topSet = sets.maxByOrNull { it.weight * it.reps },
-            highestRpe = sets.maxOfOrNull { it.rpe } ?: 0.0,
         )
     }
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -6972,7 +6871,6 @@ private fun WorkoutDebriefCard(result: WorkoutDebrief, uiState: ActiveWorkoutUiS
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 StatusMetric("Volume", "${summary.volume.toInt()} kg")
                 StatusMetric("Sets", summary.setCount.toString())
-                StatusMetric("Hoogste RPE", if (summary.highestRpe > 0.0) formatWeight(summary.highestRpe) else "-")
             }
             summary.topSet?.let {
                 Text("Top set: ${formatWeight(it.weight)} kg x ${it.reps}", style = MaterialTheme.typography.labelMedium)
@@ -7008,7 +6906,6 @@ private data class WorkoutDebriefUiSummary(
     val setCount: Int,
     val volume: Double,
     val topSet: LoggedSet?,
-    val highestRpe: Double,
 )
 
 private fun previousWeight(suggestion: ProgressionSuggestion): Double = when (suggestion.readinessSignal) {
@@ -7093,23 +6990,18 @@ internal fun copyPreviousSetContentDescription(): String = "Vorige set kopiëren
 internal fun cleanCompletionBulletText(item: String): String =
     item.trim().trimStart('-', '•', '*').trim()
 
-internal fun plannedPerformanceTargetText(targetWeightKg: Double, targetRpe: Double): String =
-    buildList {
-        if (targetWeightKg > 0.0) add("${formatWeight(targetWeightKg)} kg")
-        if (targetRpe > 0.0) add("RPE ${formatWeight(targetRpe)}")
-    }.joinToString(" - ")
+internal fun plannedPerformanceTargetText(targetWeightKg: Double): String =
+    if (targetWeightKg > 0.0) "${formatWeight(targetWeightKg)} kg" else ""
 
 internal fun exerciseSummaryMetaText(
     setCount: Int,
     repRange: String,
     restSeconds: Int,
-    rpe: String,
     supersetGroupId: Long?,
 ): String = buildList {
     add("$setCount sets")
     add("$repRange herh.")
     add("${restSeconds}s rust")
-    add(rpe)
     supersetGroupId?.let { add("Superset $it") }
 }.joinToString(" - ")
 
@@ -7369,6 +7261,11 @@ internal fun activeSetLogButtonLabel(
     else -> "Set loggen"
 }
 
+internal fun activeSetOneRepMaxPreview(draft: SetInputDraft): Double? {
+    val input = validateSetInput(draft.copy(rpe = "")) as? SetLogValidationResult.Valid ?: return null
+    return if (input.weight > 0.0) StrengthCalculator.estimateOneRepMax(input.weight, input.reps) else null
+}
+
 internal fun validateSetInput(draft: SetInputDraft): SetLogValidationResult {
     val parsedWeight = draft.weight.normalizedDecimal().toDoubleOrNull()
     val parsedReps = draft.reps.trim().toIntOrNull()
@@ -7400,9 +7297,9 @@ private const val MaxReps = 100
 private const val MaxRestSeconds = 900
 private const val MaxWeightKg = StrengthCalculator.MaxWeightKg
 internal const val PlanValidationMessage =
-    "Gebruik geldige waarden: sets 1-20, rust 0-900s, gewicht 0-1000kg en RPE 0-10."
+    "Gebruik geldige waarden: sets 1-20, rust 0-900s, gewicht 0-1000kg."
 private const val RoutineSetValidationMessage =
-    "Set niet opgeslagen. Gebruik reps 1-100, rust 0-900s, gewicht 0-1000kg en RPE 0-10."
+    "Set niet opgeslagen. Gebruik reps 1-100, rust 0-900s, gewicht 0-1000kg."
 
 internal fun parseExercisePlanInput(
     targetSets: String,
@@ -7537,14 +7434,6 @@ private fun adjustNumberText(value: String, delta: Double): String {
 }
 
 @Composable
-private fun intensityContainerColor(rpe: Double): Color = when {
-    rpe >= 9.5 -> MaterialTheme.colorScheme.errorContainer
-    rpe >= 8.0 -> MaterialTheme.colorScheme.tertiaryContainer
-    rpe > 0.0 -> MaterialTheme.colorScheme.primaryContainer
-    else -> MaterialTheme.colorScheme.surfaceVariant
-}
-
-@Composable
 private fun intensityContentColor(signal: String): Color = when (signal.uppercase(Locale.US)) {
     "DELOAD" -> MaterialTheme.colorScheme.error
     "INCREASE" -> MaterialTheme.colorScheme.primary
@@ -7574,12 +7463,10 @@ private fun ActiveWorkoutSetDraft.toUiDraft() = SetInputDraft(
 )
 
 private fun exerciseSummaryMeta(plan: WorkoutExercisePlan): String {
-    val rpe = plan.targetRpe.takeIf { it > 0.0 }?.let { "RPE ${formatWeight(it)}" } ?: "RPE -"
     return exerciseSummaryMetaText(
         setCount = plan.plannedSetCount(),
         repRange = plan.repRange,
         restSeconds = plan.restSeconds,
-        rpe = rpe,
         supersetGroupId = plan.supersetGroupId,
     )
 }
@@ -7639,7 +7526,7 @@ internal fun commitActiveSetDraft(draft: SetInputDraft, fallback: SetInputDraft)
     weight = draft.weight.ifBlank { fallback.weight },
     reps = draft.reps.ifBlank { fallback.reps },
     restSeconds = draft.restSeconds.ifBlank { fallback.restSeconds },
-    rpe = draft.rpe.ifBlank { fallback.rpe },
+    rpe = "",
 )
 
 private fun ProgressionSuggestion.toLastSessionDraft(): SetInputDraft? {
