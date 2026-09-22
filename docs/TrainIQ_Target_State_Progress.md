@@ -1,5 +1,9 @@
 # TrainIQ Target-State Progress
 
+## 2026-09-22 Existing-app readability and recovery
+
+POLISH-01 through POLISH-10 address readable persistent status messages, wrapping screen explanations, complete section labels, labeled portrait navigation, a scrollable landscape rail, an ineffective history close action, retry after failed sleep observation, the immediate-completion race in nutrition submit guards, and countdown ownership during foreground-service shutdown. Existing product rules, typed route shapes, Room formats, providers and permissions are preserved. The [audit, fresh local evidence and prepared PR text](qa/TrainIQ_App_Polish_2026-09-22.md) records baseline failures, corrections, passing final local gates (919 JVM, 169 Android and 7 gateway tests), runtime checks and device limits. Branch: `codex/app-polish-stability`, base `178116cb3ff7918ba3969eaa5c996a720f03ebf9`. Global alignment is not reassessed. The requested PR is prepared locally because the user withheld additional push authorization; no push, remote PR, merge or release was performed.
+
 ## 2026-09-06 Twenty further findings after PR #20
 
 NEXT20-01 through NEXT20-20 implement the [new audit selection](qa/TrainIQ_Twenty_Next_Findings_2026-09-06.md) on `codex/twenty-next-audit-fixes` from `8526478b34674e4035d6e014fc919bfdeb5b7022`. The batch addresses existing persistence, editing and recovery behavior. The linked record and new PR carry local verification and remaining device limits. No schema/dependency upgrade, release, new-PR merge or unrelated worktree cleanup.

@@ -26,6 +26,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.trainiq.core.sleep.SleepChannelId
 import com.trainiq.core.sleep.SleepRoutineScheduler
+import com.trainiq.core.ui.reloadableObservation
 import com.trainiq.data.sleep.SleepRoutineRepository
 import com.trainiq.domain.sleep.SleepCountdownMillis
 import com.trainiq.domain.sleep.SleepRoutine
@@ -64,6 +65,7 @@ class SleepRoutineViewModel @Inject constructor(
     private val busy = MutableStateFlow(false)
     private val message = MutableStateFlow<String?>(null)
     private val refresh = MutableStateFlow(0)
+    private val reloads = MutableStateFlow(0)
     private val capabilities = refresh.map {
         SleepAlarmCapabilities(scheduler.notificationsAllowed(), scheduler.exactAllowed(),
             scheduler.soundEnabled(), scheduler.fullScreenAllowed())
@@ -71,16 +73,25 @@ class SleepRoutineViewModel @Inject constructor(
     private val ticks = flow {
         while (true) { emit(System.currentTimeMillis()); delay(1_000) }
     }
-    val uiState: StateFlow<SleepRoutineUiState> = combine(repository.routine, ticks, busy, message, capabilities) {
-        state, now, saving, error, access ->
-        SleepRoutineUiState.Success(state, sleepRoutineStatus(state, now), saving, error,
-            access.notifications, access.exact, access.sound, access.fullScreen) as SleepRoutineUiState
-    }.catch { emit(SleepRoutineUiState.Error("Slaaproutine laden mislukt. Open dit scherm opnieuw om te proberen.")) }
+    val uiState: StateFlow<SleepRoutineUiState> = reloadableObservation(reloads) {
+        combine(repository.routine, ticks, busy, message, capabilities) {
+            state, now, saving, error, access ->
+            SleepRoutineUiState.Success(state, sleepRoutineStatus(state, now), saving, error,
+                access.notifications, access.exact, access.sound, access.fullScreen) as SleepRoutineUiState
+        }
+    }.map { result ->
+        result?.getOrElse { SleepRoutineUiState.Error("Slaaproutine laden mislukt. Probeer opnieuw.") }
+            ?: SleepRoutineUiState.Loading
+    }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SleepRoutineUiState.Loading)
 
     fun configure(enabled: Boolean, minute: Int) = action { repository.configure(enabled, minute) }
     fun confirm() = action { repository.confirm() }
-    fun refresh() = action { repository.reconcile(); refresh.value++ }
+    fun refresh() {
+        // A terminal observation cannot recover just by updating capability state.
+        if (uiState.value is SleepRoutineUiState.Error) reloads.update { it + 1 }
+        action { repository.reconcile(); refresh.value++ }
+    }
     fun permissionResult() { refresh.value++ }
     private fun action(block: suspend () -> Unit) {
         if (busy.value) return
@@ -164,7 +175,10 @@ fun SleepRoutineScreen(
                 Text("Slaapvoorbereiding", style = MaterialTheme.typography.headlineMedium)
                 when (val state = uiState) {
                     SleepRoutineUiState.Loading -> Text("Slaaproutine laden…")
-                    is SleepRoutineUiState.Error -> Text(state.message)
+                    is SleepRoutineUiState.Error -> {
+                        Text(state.message)
+                        OutlinedButton(onClick = onRetry) { Text("Opnieuw proberen") }
+                    }
                     is SleepRoutineUiState.Success -> {
                         Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -485,16 +485,12 @@ fun AppScreenHeader(
                 style = titleStyle,
                 fontWeight = FontWeight.ExtraBold,
                 color = MaterialTheme.colorScheme.onBackground,
-                maxLines = if (compactShortScreen) 1 else Int.MAX_VALUE,
-                overflow = TextOverflow.Ellipsis,
             )
             subtitle?.let {
                 Text(
                     text = it,
                     style = subtitleStyle,
                     color = MaterialTheme.trainIqColors.mutedText,
-                    maxLines = if (compactShortScreen) 1 else Int.MAX_VALUE,
-                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -565,12 +561,12 @@ fun CompactSectionTabs(
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
     ) {
-        Row(
+        FlowRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(6.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             val chipColors = FilterChipDefaults.filterChipColors(
                 containerColor = MaterialTheme.colorScheme.surface,
@@ -586,17 +582,13 @@ fun CompactSectionTabs(
                 }
                 FilterChip(
                     modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 42.dp),
+                        .heightIn(min = 48.dp),
                     selected = selectedKey == tab.key,
                     onClick = { onSelectTab(tab) },
                     label = {
                         Text(
                             text = tab.label,
-                            modifier = Modifier.fillMaxWidth(),
                             style = labelStyle,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
                             textAlign = TextAlign.Center,
                         )
                     },

@@ -14,6 +14,9 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isEnabled
 import androidx.work.WorkManager
 import com.trainiq.core.sleep.SleepRoutineScheduler
 import com.trainiq.domain.sleep.SleepRoutine
@@ -58,8 +61,9 @@ class SleepNotificationInstrumentedTest {
             // Observe beyond Android's foreground-start deadline: early stopSelf used to
             // appear successful and only crash the process several seconds afterwards.
             compose.waitUntil(10_000) {
-                manager.activeNotifications.any { it.id == 2010 &&
-                    it.notification.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER) }
+                manager.activeNotifications.filter { it.id == 2010 }.let { visible ->
+                    visible.size == 1 && visible.single().notification.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER)
+                }
             }
             val deadline = android.os.SystemClock.elapsedRealtime() + 10_000
             compose.waitUntil(15_000) {
@@ -94,6 +98,40 @@ class SleepNotificationInstrumentedTest {
                 it.audioAttributes.usage == android.media.AudioAttributes.USAGE_ALARM
             } }
         } finally { scheduler.cancelNotification(); audio.ringerMode = originalMode }
+    }
+
+    @Test fun activePlaybackHandsOffToExactlyOneCountdown() {
+        compose.setContent { androidx.compose.material3.Text("Active playback handoff") }
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        if (Build.VERSION.SDK_INT >= 33) InstrumentationRegistry.getInstrumentation().uiAutomation
+            .grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
+        val scheduler = SleepRoutineScheduler(context, WorkManager.getInstance(context))
+        val manager = context.getSystemService(NotificationManager::class.java)
+        val audio = context.getSystemService(android.media.AudioManager::class.java)
+        try {
+            repeat(3) {
+                scheduler.showReminder(true)
+                compose.waitUntil(10_000) {
+                    manager.activeNotifications.any { it.id == 2010 &&
+                        it.notification.flags and Notification.FLAG_FOREGROUND_SERVICE != 0 } &&
+                        audio.activePlaybackConfigurations.any { it.audioAttributes.usage == android.media.AudioAttributes.USAGE_ALARM }
+                }
+                compose.runOnIdle {
+                    scheduler.cancelNotification()
+                    scheduler.showCountdown(SleepRoutine(enabled = true, routineDay = "2026-09-22",
+                        confirmedAt = System.currentTimeMillis()))
+                }
+                compose.waitUntil(10_000) {
+                    val visible = manager.activeNotifications.filter { it.id == 2010 }
+                    visible.size == 1 && visible.single().notification.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER) &&
+                        audio.activePlaybackConfigurations.none { it.audioAttributes.usage == android.media.AudioAttributes.USAGE_ALARM }
+                }
+                assertNotNull("Countdown must not share the foreground service's untagged key",
+                    manager.activeNotifications.single { it.id == 2010 }.tag)
+                scheduler.cancelNotification()
+                compose.waitUntil(10_000) { manager.activeNotifications.none { it.id == 2010 || it.id == 2011 } }
+            }
+        } finally { scheduler.cancelNotification() }
     }
 
     @Test fun reminderEscalatesAndNotificationOpensRealSleepScreen() {
@@ -141,8 +179,26 @@ class SleepNotificationInstrumentedTest {
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Ik ga binnen 2 minuten slapen").fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
             compose.onNodeWithText("Ik ga binnen 2 minuten slapen").performScrollTo()
             captureSleepEvidence("sleep-active")
-            compose.onNodeWithText("Ik ga binnen 2 minuten slapen").performClick()
-            compose.waitUntil(10_000) { manager.activeNotifications.any { it.id == 2010 && it.notification.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER) } }
+            // Resume reconciliation can temporarily disable confirmation after the
+            // screen first appears. A visible label alone is not an actionable button.
+            compose.waitUntil(10_000) {
+                compose.onAllNodes(hasText("Ik ga binnen 2 minuten slapen") and isEnabled())
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("Ik ga binnen 2 minuten slapen").assertIsEnabled().performClick()
+            try {
+                compose.waitUntil(10_000) { runBlocking { (database.dao().getSleepRoutine()?.confirmedAt ?: 0) > 0 } }
+                compose.waitUntil(10_000) {
+                    manager.activeNotifications.filter { it.id == 2010 }.let { visible ->
+                        visible.size == 1 && visible.single().notification.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER)
+                    }
+                }
+            } catch (error: Throwable) {
+                System.err.println("Synthetic sleep confirmation state: " + runBlocking { database.dao().getSleepRoutine() })
+                System.err.println("Sleep notification titles: " + manager.activeNotifications.map { it.notification.extras.getString(Notification.EXTRA_TITLE) })
+                captureSleepEvidence("sleep-confirmation-failure")
+                throw error
+            }
             val countdown = manager.activeNotifications.single { it.id == 2010 }.notification
             assertEquals(0, countdown.flags and Notification.FLAG_INSISTENT)
             assertTrue(countdown.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))

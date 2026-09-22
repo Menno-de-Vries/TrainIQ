@@ -115,6 +115,9 @@ class MealDetailPersistenceTest {
         compose.onNode(navigation).performClick()
         compose.onNodeWithContentDescription("Voeding secties openen").performClick()
         compose.onNodeWithText("Recepten").performClick()
+        // Materialize the recipe's lazy item before addressing its input field.
+        compose.onNode(hasScrollToIndexAction())
+            .performScrollToNode(hasContentDescription("Gram voor Test bereid recept"))
     }
 
     private fun openMealCategory() {

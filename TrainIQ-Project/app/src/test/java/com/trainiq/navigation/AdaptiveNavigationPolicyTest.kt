@@ -50,9 +50,10 @@ class AdaptiveNavigationPolicyTest {
     }
 
     @Test
-    fun compactShortScreensUseCondensedBottomNavigation() {
-        assertTrue(shouldUseCompactShortBottomBar(TrainIqWindowWidthClass.Compact, screenHeightDp = 640))
-        assertFalse(shouldUseCompactShortBottomBar(TrainIqWindowWidthClass.Compact, screenHeightDp = 641))
+    fun onlyShortLandscapeWindowsCondenseNavigationWhilePortraitKeepsLabels() {
+        assertTrue(shouldUseCompactShortBottomBar(TrainIqWindowWidthClass.Compact, screenHeightDp = 480))
+        assertFalse(shouldUseCompactShortBottomBar(TrainIqWindowWidthClass.Compact, screenHeightDp = 481))
+        assertFalse(shouldUseCompactShortBottomBar(TrainIqWindowWidthClass.Compact, screenHeightDp = 640))
         assertFalse(shouldUseCompactShortBottomBar(TrainIqWindowWidthClass.Medium, screenHeightDp = 640))
     }
 

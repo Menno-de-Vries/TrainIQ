@@ -32,7 +32,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -41,13 +40,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.trainiq.core.theme.spacing
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
-import kotlinx.coroutines.delay
 
 @Composable
 fun ScreenHeader(
@@ -68,27 +68,21 @@ fun ScreenHeader(
 
 @Composable
 fun MessageCard(message: String, onDismiss: (() -> Unit)? = null) {
-    LaunchedEffect(message, onDismiss) {
-        if (onDismiss != null) {
-            delay(2_000L)
-            onDismiss()
-        }
-    }
+    // Status and recovery instructions stay readable until explicitly dismissed.
+    // Short success feedback belongs in the existing Material snackbars.
     AppCard(accent = MaterialTheme.colorScheme.tertiary) {
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
         ) {
             Text(
                 message,
-                modifier = Modifier.weight(1f),
-                color = MaterialTheme.trainIqColors.mutedText,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
             )
             if (onDismiss != null) {
-                TextButton(onClick = onDismiss) { Text("Sluiten") }
+                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Sluiten") }
             }
         }
     }

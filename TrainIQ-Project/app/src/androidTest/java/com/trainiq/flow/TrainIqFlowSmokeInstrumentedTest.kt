@@ -112,6 +112,28 @@ class TrainIqFlowSmokeInstrumentedTest {
         }
     }
 
+    @Test
+    fun landscapeRailKeepsSettingsReachable() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            skipFirstRunSetup()
+            try {
+                scenario.onActivity {
+                    it.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                }
+                compose.waitUntil(10_000) {
+                    context.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                }
+                compose.onNode(navigationItem("Instellingen"))
+                    .performScrollTo().assertIsDisplayed().performClick()
+                waitForText("Health Connect, AI en voorkeuren", checkpoint = "Settings reached from short landscape rail")
+            } finally {
+                scenario.onActivity {
+                    it.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                }
+            }
+        }
+    }
+
     private fun skipFirstRunSetup() {
         waitForText("Welkom bij TrainIQ")
         tap("Later afronden")

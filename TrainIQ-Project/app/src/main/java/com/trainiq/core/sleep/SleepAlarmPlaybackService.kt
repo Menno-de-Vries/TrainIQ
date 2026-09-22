@@ -24,7 +24,7 @@ class SleepAlarmPlaybackService : Service() {
         private var active: SleepAlarmPlaybackService? = null
         @androidx.annotation.MainThread
         internal fun cancelActivePlayback(revision: Long) {
-            active?.takeIf { it.scheduler.playbackRevision == revision }?.finishPlayback()
+            active?.takeIf { it.scheduler.playbackRevision == revision }?.finishPlayback(removeNotification = true)
         }
     }
     @Inject lateinit var scheduler: SleepRoutineScheduler
@@ -42,7 +42,7 @@ class SleepAlarmPlaybackService : Service() {
                 scheduler.cancelledPlaybackNotification(),
                 if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK else 0)
             stopForeground(STOP_FOREGROUND_REMOVE)
-            finishPlayback(startId)
+            finishPlayback(startId, removeNotification = true)
             return START_NOT_STICKY
         }
         ServiceCompat.startForeground(this, SleepNotificationId,
@@ -51,7 +51,7 @@ class SleepAlarmPlaybackService : Service() {
         active = this
         // Cancellation may have arrived from a worker during the foreground handshake.
         if (intent.getLongExtra("revision", -1) != scheduler.playbackRevision) {
-            finishPlayback(startId)
+            finishPlayback(startId, removeNotification = true)
             return START_NOT_STICKY
         }
         releaseAudio()
@@ -85,13 +85,13 @@ class SleepAlarmPlaybackService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun finishPlayback(startId: Int? = null) {
+    private fun finishPlayback(startId: Int? = null, removeNotification: Boolean = false) {
         if (active === this) active = null
         handler.removeCallbacks(expire)
         releaseAudio()
-        // Detach before a queued countdown replaces the same notification ID. Letting
-        // Android stop the foreground service first can remove that newer notification.
-        stopForeground(STOP_FOREGROUND_DETACH)
+        // Explicit cancellation removes the service-owned warning. The tagged
+        // countdown is independent; ordinary audio failure still retains the warning.
+        stopForeground(if (removeNotification) STOP_FOREGROUND_REMOVE else STOP_FOREGROUND_DETACH)
         if (startId == null) stopSelf() else stopSelf(startId)
     }
 

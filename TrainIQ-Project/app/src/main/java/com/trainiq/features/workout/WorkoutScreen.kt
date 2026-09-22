@@ -4635,7 +4635,6 @@ private fun PerformedSetRow(index: Int, set: com.trainiq.domain.model.ExerciseHi
 private fun EmptyExerciseHistoryState() {
     MessageCard(
         message = "Nog geen uitgevoerde sets voor deze oefening. Voltooi een training om progressie op te bouwen.",
-        onDismiss = {},
     )
 }
 
