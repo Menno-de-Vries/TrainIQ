@@ -34,6 +34,7 @@ import javax.inject.Singleton
 const val SleepChannelId = "trainiq_sleep_alarm_v2"
 private const val LegacySleepChannelId = "trainiq_sleep_preparation"
 internal const val SleepNotificationId = 2010
+private const val SleepCountdownNotificationTag = "sleep_countdown"
 internal const val SleepCancelledPlaybackNotificationId = 2011
 
 @Singleton
@@ -127,11 +128,12 @@ class SleepRoutineScheduler @Inject constructor(
     @SuppressLint("MissingPermission")
     override fun showCountdown(state: SleepRoutine) {
         if (!notificationsAllowed()) return
-        // Serialize notification replacement with the service's foreground handshake.
+        // Android also updates the service's untagged notification asynchronously.
+        // Keep the confirmed status on a separate key from that foreground lifecycle.
         postForRevision(playbackRevision) {
             val end = state.confirmedAt + SleepCountdownMillis
             val remaining = end - System.currentTimeMillis()
-            if (remaining > 0) notifications.notify(SleepNotificationId, builder()
+            if (remaining > 0) notifications.notify(SleepCountdownNotificationTag, SleepNotificationId, builder()
                 .setContentTitle("Bevestigd: binnen 2 minuten slapen")
                 .setContentText("Je voorbereiding is na de countdown afgehandeld.")
                 .setSilent(true).setWhen(end).setUsesChronometer(true).setChronometerCountDown(true)
@@ -144,6 +146,7 @@ class SleepRoutineScheduler @Inject constructor(
         postForRevision(cancelledRevision) {
             SleepAlarmPlaybackService.cancelActivePlayback(cancelledRevision)
             notifications.cancel(SleepNotificationId)
+            notifications.cancel(SleepCountdownNotificationTag, SleepNotificationId)
         }
     }
 
