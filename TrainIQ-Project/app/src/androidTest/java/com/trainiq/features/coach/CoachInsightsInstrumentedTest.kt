@@ -4,14 +4,14 @@ import android.content.Context
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -140,8 +140,9 @@ class CoachInsightsInstrumentedTest {
             val coach = (hasText("Coach") or hasContentDescription("Coach")) and hasClickAction()
             compose.waitUntil(30_000) { compose.onAllNodes(coach).fetchSemanticsNodes().isNotEmpty() }
             compose.onNode(coach).performClick()
-            compose.waitForText("Weekrapport maken")
-            compose.onNodeWithText("Weekrapport maken").performScrollTo().performClick()
+            // On compact/large-font screens this lazy item is below the first viewport.
+            compose.scrollUntilText("Weekrapport maken")
+            compose.onNodeWithText("Weekrapport maken").performScrollTo().assertIsDisplayed().performClick()
             compose.waitForText("AI staat uit.")
             compose.waitForText("Lokale analyse")
             compose.waitForText("Hoogtepunten")
@@ -161,13 +162,7 @@ class CoachInsightsInstrumentedTest {
     }
 
     private fun androidx.compose.ui.test.junit4.ComposeTestRule.scrollUntilText(text: String) {
-        repeat(8) {
-            if (onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty()) {
-                return
-            }
-            onRoot().performTouchInput { swipeUp() }
-            waitForIdle()
-        }
-        waitForText(text)
+        // Root swipes can start on the fixed navigation bar instead of this list.
+        onNode(hasScrollToIndexAction()).performScrollToNode(hasText(text, substring = true))
     }
 }

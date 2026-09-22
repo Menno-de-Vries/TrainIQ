@@ -2,6 +2,8 @@ package com.trainiq.features.workout
 
 import android.content.Context
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -239,6 +241,43 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             }
             assertEquals(0.0, readActiveWorkoutSet().rpe, 0.0)
             assertEquals(null, readActiveWorkoutSet().repsInReserve)
+        }
+    }
+
+    @Test
+    fun finishConfirmationPersistsOneSessionAndSurvivesRecreation() {
+        runBlocking {
+            UserPreferencesRepository(context).setAiEnabled(false)
+            // An unfinished planned set is required for the existing confirmation policy.
+            database.dao().insertRoutineSets(listOf(
+                RoutineSetEntity(id = 11L, workoutExerciseId = 4L, orderIndex = 1, setType = "NORMAL", targetReps = 5),
+            ))
+        }
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            val trainingNavigation = (hasContentDescription("Training") or hasText("Training")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(trainingNavigation).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(trainingNavigation).performClick()
+            compose.waitForText("QA Upper")
+            compose.onNodeWithText("Training starten").performClick()
+            compose.waitForText("Actieve training")
+            compose.onNodeWithContentDescription("Training afronden").performClick()
+            compose.onNodeWithText("Training afronden?").assertIsDisplayed()
+            compose.onNodeWithText("Opslaan").performTouchInput { doubleClick() }
+            compose.waitForText("Voltooid")
+            // Inspect the persisted result, not merely the success screen.
+            fun assertSavedOnce() = runBlocking {
+                val dao = trainIqAndroidTestDatabase(context).dao()
+                val sessions = dao.readWorkoutSessionsForExport()
+                assertEquals(1, sessions.size)
+                assertEquals(12L, sessions.single().id)
+                assertEquals(true, sessions.single().completed)
+                assertEquals(1, dao.readWorkoutSetsForExport().size)
+                assertEquals(0, dao.observeActiveWorkoutSets().first().size)
+            }
+            assertSavedOnce()
+            scenario.recreate()
+            compose.waitForText("Voltooid")
+            assertSavedOnce()
         }
     }
 

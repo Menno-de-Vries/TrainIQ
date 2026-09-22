@@ -184,15 +184,15 @@ class WorkoutInputValidationTest {
     }
 
     @Test
-    fun `critical headers and set labels allow wrapping except short screen header condensation`() {
+    fun `critical headers and set labels wrap while compact typography stays condensed`() {
         val appDesign = testSourceFile("core/ui/AppDesign.kt").readText()
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
         val appScreenHeaderBody = appDesign.substringAfter("fun AppScreenHeader(").substringBefore("fun AppCard(")
         val routineSetRowBody = workoutScreen.substringAfter("private fun RoutineSetRow(").substringBefore("BoxWithConstraints")
 
         assertTrue(appScreenHeaderBody.contains("compactShortScreen"))
-        assertTrue(appScreenHeaderBody.contains("maxLines = if (compactShortScreen) 1 else Int.MAX_VALUE"))
-        assertTrue(appScreenHeaderBody.contains("overflow = TextOverflow.Ellipsis"))
+        assertFalse(appScreenHeaderBody.contains("maxLines = if (compactShortScreen) 1 else Int.MAX_VALUE"))
+        assertFalse(appScreenHeaderBody.contains("overflow = TextOverflow.Ellipsis"))
         assertFalse(routineSetRowBody.contains("softWrap = false"))
     }
 

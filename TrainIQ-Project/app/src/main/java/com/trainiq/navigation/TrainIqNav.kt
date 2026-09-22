@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.animateDpAsState
@@ -238,6 +241,7 @@ fun TrainIqApp(
                     shadowElevation = 0.dp,
                 ) {
                     NavigationRail(
+                        modifier = Modifier.fillMaxHeight().verticalScroll(rememberScrollState()),
                         containerColor = MaterialTheme.colorScheme.background,
                     ) {
                         items.forEach { screen ->
@@ -288,7 +292,7 @@ fun TrainIqApp(
                         shape = RoundedCornerShape(2.dp),
                     ) {
                         NavigationBar(
-                            modifier = Modifier.height(if (useCompactShortBottomBar) 50.dp else 62.dp),
+                            modifier = if (useCompactShortBottomBar) Modifier.height(50.dp) else Modifier.heightIn(min = 80.dp),
                             tonalElevation = 0.dp,
                             containerColor = androidx.compose.ui.graphics.Color.Transparent,
                         ) {
@@ -323,7 +327,16 @@ fun TrainIqApp(
                                         }
                                     },
                                     label = if (useCompactShortBottomBar) null else {
-                                        { Text(screen.bottomLabel, maxLines = 1) }
+                                        {
+                                            Text(
+                                                screen.bottomLabel,
+                                                modifier = Modifier
+                                                    .wrapContentWidth(unbounded = true)
+                                                    .widthIn(max = (configuration.screenWidthDp / navigationItems.size - 8).dp),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                maxLines = 2,
+                                            )
+                                        }
                                     },
                                     alwaysShowLabel = !useCompactShortBottomBar,
                                     colors = NavigationBarItemDefaults.colors(
@@ -428,7 +441,7 @@ internal fun shouldUseCompactShortBottomBar(
     widthClass: TrainIqWindowWidthClass,
     screenHeightDp: Int,
 ): Boolean =
-    widthClass == TrainIqWindowWidthClass.Compact && screenHeightDp <= 640
+    widthClass == TrainIqWindowWidthClass.Compact && screenHeightDp <= 480
 
 internal fun guidedTourBottomPaddingDp(
     useNavigationRail: Boolean,
@@ -436,7 +449,7 @@ internal fun guidedTourBottomPaddingDp(
 ): Int = when {
     useNavigationRail -> 20
     useCompactShortBottomBar -> 58
-    else -> 70
+    else -> 88
 }
 
 private fun bottomNavigationDestinations(

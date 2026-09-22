@@ -62,7 +62,7 @@ class OnboardingNavigationTest {
         assertTrue(overlay.contains("maxLines = 1"))
         assertTrue(guidedTourBottomPaddingDp(useNavigationRail = true, useCompactShortBottomBar = false) == 20)
         assertTrue(guidedTourBottomPaddingDp(useNavigationRail = false, useCompactShortBottomBar = true) == 58)
-        assertTrue(guidedTourBottomPaddingDp(useNavigationRail = false, useCompactShortBottomBar = false) == 70)
+        assertTrue(guidedTourBottomPaddingDp(useNavigationRail = false, useCompactShortBottomBar = false) == 88)
     }
 
     @Test

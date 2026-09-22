@@ -9,6 +9,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasClickAction
@@ -61,7 +64,13 @@ class NutritionLongFormImeInstrumentedTest {
             val nutritionNavigation = (hasContentDescription("Voeding") or hasText("Voeding")) and hasClickAction()
             compose.waitUntil(30_000) { compose.onAllNodes(nutritionNavigation).fetchSemanticsNodes().isNotEmpty() }
             compose.onNode(nutritionNavigation).performClick()
-            compose.waitForText("Voedingsdag")
+            compose.onNodeWithContentDescription("Voeding secties openen").performClick()
+            compose.onNodeWithText("Vandaag").performClick()
+            // Hydration precedes the diary and can fill the viewport at 150% font.
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Voedingsdag"))
+            compose.onNodeWithText("Voedingsdag").assertIsDisplayed()
+            compose.onNode(hasScrollToIndexAction())
+                .performScrollToNode(hasContentDescription("Toevoegen aan Ochtend"))
             compose.onNodeWithContentDescription("Toevoegen aan Ochtend").performScrollTo().performClick()
             compose.waitForText("Toevoegen aan Ochtend")
 
