@@ -416,7 +416,7 @@ class NutritionViewModel @Inject constructor(
         if (usesFoodGuard) {
             ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits + NutritionSubmitKey.Food, message = null) }
         }
-        viewModelScope.launch {
+        viewModelScope.launchNutritionSubmit {
             performNutritionWrite(
                 save = { saveFoodItemUseCase(id, name.trim(), barcode?.trim()?.ifBlank { null }, parsedCalories, parsedProtein, parsedCarbs, parsedFat, parsedDefaultServingGrams, sourceType) },
                 onSaved = { item ->
@@ -453,7 +453,7 @@ class NutritionViewModel @Inject constructor(
             return
         }
         ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits + NutritionSubmitKey.Recipe, message = null) }
-        viewModelScope.launch {
+        viewModelScope.launchNutritionSubmit {
             performNutritionWrite(
                 save = { saveRecipeUseCase(id, name.trim(), notes.trim(), parsedCookedGrams, ingredients) },
                 onSaved = {
@@ -477,7 +477,7 @@ class NutritionViewModel @Inject constructor(
             return
         }
         ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits + NutritionSubmitKey.Meal, message = null) }
-        viewModelScope.launch {
+        viewModelScope.launchNutritionSubmit {
             performMealSave(
                 save = { saveMealUseCase(id, mealType, name.trim(), notes.trim(), items) },
                 onSaved = onSaved,
