@@ -23,7 +23,15 @@ class ExercisePlanValidationInstrumentedTest {
         }
         onNode(hasSetTextAction() and hasText("Sets")).performTextReplacement("oops")
         onNodeWithText("Opslaan").assertIsNotEnabled()
-        onNodeWithText(PlanValidationMessage).performScrollTo().assertIsDisplayed()
+        // A semantic scroll leaves Sets focused and can race its delayed
+        // bring-into-view request. Follow the user's drag, which clears focus.
+        Espresso.closeSoftKeyboard()
+        onNode(hasScrollAction() and !hasSetTextAction()).performTouchInput { swipeUp() }
+        onNode(hasSetTextAction() and hasText("Sets")).assertIsNotFocused()
+        onNodeWithText(PlanValidationMessage).performScrollTo()
+        // Android's IME/window layout is not driven by the Compose test clock.
+        waitUntil(timeoutMillis = 5_000) { onNodeWithText(PlanValidationMessage).isDisplayed() }
+        onNodeWithText(PlanValidationMessage).assertIsDisplayed()
         runOnIdle { assertNull(submitted) }
         onNode(hasSetTextAction() and hasText("Sets")).performScrollTo().performTextReplacement("4")
         onNodeWithText("Opslaan").assertIsEnabled().performClick()

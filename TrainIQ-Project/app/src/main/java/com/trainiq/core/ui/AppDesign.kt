@@ -206,12 +206,16 @@ fun Modifier.clearFocusOnScrollOrDrag(): Modifier {
     return pointerInput(focusManager, keyboardController) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-            val drag = awaitTouchSlopOrCancellation(down.id) { _, _ ->
-                clearInputFocus()
-            }
-            if (drag != null) {
-                clearInputFocus()
-                waitForUpOrCancellation(pass = PointerEventPass.Final)
+            // Observe before a child scrollable consumes movement in Main pass.
+            // Consumption must not prevent this non-consuming focus observer.
+            while (true) {
+                val change = awaitPointerEvent(PointerEventPass.Initial).changes
+                    .firstOrNull { it.id == down.id } ?: break
+                if (!change.pressed) break
+                if ((change.position - down.position).getDistance() > viewConfiguration.touchSlop) {
+                    clearInputFocus()
+                    break
+                }
             }
         }
     }
