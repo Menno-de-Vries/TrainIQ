@@ -15,7 +15,10 @@ data class OpenAiResponseRequest(
     val model: String,
     val input: List<OpenAiInputMessage>,
     val text: OpenAiTextConfig,
+    val reasoning: OpenAiReasoningConfig? = null,
 )
+
+data class OpenAiReasoningConfig(val effort: String)
 
 data class OpenAiInputMessage(
     val role: String,

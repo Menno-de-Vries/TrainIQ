@@ -8,6 +8,7 @@ object AiJsonSchemas {
                     properties = listOf(
                         "name" to stringSchema(maxLength = MaxMealScanNameChars),
                         "estimatedGrams" to numberSchema(),
+                        "nutritionBasis" to stringSchema(enum = listOf("PORTION", "PER_100_G")),
                         "calories" to numberSchema(),
                         "protein" to numberSchema(),
                         "carbs" to numberSchema(),

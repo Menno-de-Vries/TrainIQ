@@ -170,6 +170,10 @@ class OpenAiModelClient @Inject constructor(
                 request = com.trainiq.data.model.OpenAiResponseRequest(
                     model = model,
                     input = listOf(com.trainiq.data.model.OpenAiInputMessage(role = "user", content = inputContent)),
+                    reasoning = when (request.feature) {
+                        AiFeature.MEAL_SCAN, AiFeature.ROUTINE_GENERATION -> com.trainiq.data.model.OpenAiReasoningConfig("medium")
+                        else -> null
+                    },
                     text = com.trainiq.data.model.OpenAiTextConfig(
                         format = com.trainiq.data.model.OpenAiTextFormat(
                             name = request.schemaName,

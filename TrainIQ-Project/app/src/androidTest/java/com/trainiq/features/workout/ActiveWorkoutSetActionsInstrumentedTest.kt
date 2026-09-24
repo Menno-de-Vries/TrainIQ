@@ -2,12 +2,15 @@ package com.trainiq.features.workout
 
 import android.content.Context
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
@@ -60,6 +63,42 @@ class ActiveWorkoutSetActionsInstrumentedTest {
 
     private lateinit var context: Context
     private lateinit var database: TrainIqDatabase
+
+    @Test
+    fun collapsingExerciseHidesSetDetailsWithoutChangingLoggedSet() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            val trainingNavigation = (hasContentDescription("Training") or hasText("Training")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(trainingNavigation).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(trainingNavigation).performClick()
+            compose.waitForText("QA Upper")
+            compose.onNodeWithText("Training starten").performClick()
+            compose.waitForText("Actieve training")
+            compose.onNodeWithContentDescription("Gelogde set corrigeren").assertExists()
+            compose.onNodeWithContentDescription("Klap oefening in").performScrollTo()
+                .performSemanticsAction(SemanticsActions.OnClick) { it() }
+            compose.waitUntil(10_000) { runBlocking { database.dao().readActiveWorkoutCollapsedExercisesForExport().isNotEmpty() } }
+            compose.waitUntil(10_000) { compose.onAllNodes(hasContentDescription("Open oefening")).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithContentDescription("Open oefening").assertExists()
+            compose.onAllNodes(hasContentDescription("Gelogde set corrigeren")).assertCountEquals(0)
+            compose.onRoot().performTouchInput {
+                swipe(start = Offset(width * 0.5f, height * 0.7f), end = Offset(width * 0.5f, height * 0.3f))
+            }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Actieve training hersteld.").fetchSemanticsNodes().isEmpty() }
+            capture("collapsed")
+            assertEquals(1, runBlocking { database.dao().readActiveWorkoutSetsForExport().size })
+            scenario.recreate()
+            compose.waitForText("Actieve training")
+            compose.onNodeWithContentDescription("Open oefening").performScrollTo()
+                .performSemanticsAction(SemanticsActions.OnClick) { it() }
+            compose.waitUntil(10_000) { compose.onAllNodes(hasContentDescription("Gelogde set corrigeren")).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithContentDescription("Gelogde set corrigeren").assertExists()
+            compose.onRoot().performTouchInput {
+                swipe(start = Offset(width * 0.5f, height * 0.7f), end = Offset(width * 0.5f, height * 0.3f))
+            }
+            capture("expanded")
+            assertEquals(1, runBlocking { database.dao().readActiveWorkoutSetsForExport().size })
+        }
+    }
 
     @Before
     fun seedActiveWorkout() = runBlocking {

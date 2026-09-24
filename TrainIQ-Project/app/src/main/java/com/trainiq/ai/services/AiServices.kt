@@ -104,7 +104,7 @@ class MealAnalysisService internal constructor(
         val scanContext = buildString {
             append("De gebruiker nam deze foto om $captureTime. ")
             append("Voorgesteld maaltijdtype: ${suggestedMealType.promptLabel()}. ")
-            append(sanitizedUserContext.ifBlank { "Herken de voeding, schat porties en geef exacte macro's terug." })
+            append(sanitizedUserContext.ifBlank { "Herken de voeding en schat porties en voedingswaarden met passende onzekerheid." })
         }
         val imageBytes = imageBytesProvider(file) ?: return fallbackMealScan()
         val routed = runCatching {
@@ -155,6 +155,7 @@ class MealAnalysisService internal constructor(
                 val obj = element.asJsonObject
                 val name = obj.get("name").boundedString(MaxMealScanNameChars).orEmpty()
                 if (name.isBlank()) return@mapNotNull null
+                if (listOf("estimatedGrams", "calories", "protein", "carbs", "fat").any { !obj.has(it) || obj.get(it).isJsonNull }) return@mapNotNull null
                 val estimatedGrams = obj.safeNumber("estimatedGrams", default = 100.0, min = 1.0, max = MaxMealScanGrams)
                     ?: return@mapNotNull null
                 val calories = obj.safeNumber("calories", default = 0.0, min = 0.0, max = MaxMealScanCalories)
@@ -165,15 +166,13 @@ class MealAnalysisService internal constructor(
                     ?: return@mapNotNull null
                 val fat = obj.safeNumber("fat", default = 0.0, min = 0.0, max = MaxMealScanMacro)
                     ?: return@mapNotNull null
+                val basis = obj.get("nutritionBasis")?.takeIf { !it.isJsonNull }?.asString ?: "PORTION"
+                if (basis !in setOf("PORTION", "PER_100_G")) return@mapNotNull null
+                val reportedNutrition = NutritionFacts(calories, protein, carbs, fat)
                 MealScanItem(
                     name = name,
                     estimatedGrams = estimatedGrams,
-                    nutrition = NutritionFacts(
-                        calories = calories,
-                        protein = protein,
-                        carbs = carbs,
-                        fat = fat,
-                    ),
+                    nutrition = if (basis == "PER_100_G") scaleNutritionToGrams(reportedNutrition, 100.0, estimatedGrams) else reportedNutrition,
                     confidence = obj.get("confidence").boundedString(MaxMealScanMetaChars),
                     notes = obj.get("notes").boundedString(MaxMealScanNotesChars),
                 )
@@ -310,6 +309,9 @@ internal data class MealContextOverrides(
     val totalGrams: Double? = null,
     val itemGramsByName: Map<String, Double> = emptyMap(),
     val itemDisplayNamesByName: Map<String, String> = emptyMap(),
+    val unresolvedVolumesByName: Map<String, Double> = emptyMap(),
+    val hasServingOrPackageScope: Boolean = false,
+    val hasRawOrCookedScope: Boolean = false,
 )
 
 private data class MealContextItemOverride(
@@ -326,34 +328,37 @@ internal data class BodyMeasurementContextOverrides(
 
 internal fun parseMealContextOverrides(context: String): MealContextOverrides {
     if (context.isBlank()) return MealContextOverrides()
-    val total = Regex("""(?i)\b(?:totaal|total)\s*[:=]?\s*(\d+(?:[,.]\d+)?)\s*(?:g|gram|grams)\b""")
-        .find(context)
-        ?.groupValues
-        ?.getOrNull(1)
-        ?.toAiDoubleOrNull()
-        ?.takeIf { it in 1.0..MaxMealScanGrams }
-    val itemOverrides = Regex("""(?i)\b([a-zA-ZÀ-ÿ][a-zA-ZÀ-ÿ0-9 '\-]{1,40}?)\s*[:=]?\s*(\d+(?:[,.]\d+)?)\s*(?:g|gram|grams|ml|milliliter|milliliters)\b""")
-        .findAll(context)
-        .mapNotNull { match ->
-            val name = match.groupValues.getOrNull(1)?.trim().orEmpty()
-            val grams = match.groupValues.getOrNull(2)?.toAiDoubleOrNull()
-            val normalized = normalizeAiContextName(name)
-            if (
-                normalized.isNotBlank() &&
-                normalized !in setOf("totaal", "total") &&
-                grams != null &&
-                grams in 1.0..MaxMealScanGrams
-            ) {
-                MealContextItemOverride(normalized = normalized, displayName = name, grams = grams)
-            } else {
-                null
-            }
+    val quantity = """(\d+(?:[,.]\d+)?)\s*(kg|kilogram|g|gram|grams|ml|milliliter|milliliters)\b"""
+    val name = """([a-zA-ZÀ-ÿ][a-zA-ZÀ-ÿ0-9 '\-]{0,40}?)"""
+    val before = Regex("""(?i)^\s*$name\s*[:=]?\s*$quantity\s*$""")
+    val after = Regex("""(?i)^\s*$quantity\s+$name\s*$""")
+    var total: Double? = null
+    val itemOverrides = mutableListOf<MealContextItemOverride>()
+    val volumes = mutableMapOf<String, Double>()
+    context.split(Regex("""(?<!\d)[,;\n]|[,;\n](?!\d)""")).forEach { segment ->
+        val matchBefore = before.matchEntire(segment)
+        val matchAfter = if (matchBefore == null) after.matchEntire(segment) else null
+        val displayName = (matchBefore?.groupValues?.get(1) ?: matchAfter?.groupValues?.get(3))?.trim().orEmpty()
+        val amount = (matchBefore?.groupValues?.get(2) ?: matchAfter?.groupValues?.get(1))?.toAiDoubleOrNull() ?: return@forEach
+        val unit = (matchBefore?.groupValues?.get(3) ?: matchAfter?.groupValues?.get(2)).orEmpty().lowercase(Locale.ROOT)
+        val normalized = normalizeAiContextName(displayName)
+        if (normalized.isBlank()) return@forEach
+        if (unit in setOf("ml", "milliliter", "milliliters")) {
+            if (normalized !in setOf("totaal", "total")) volumes[normalized] = amount
+            return@forEach
         }
-        .toList()
+        val grams = amount * if (unit in setOf("kg", "kilogram")) 1_000.0 else 1.0
+        if (grams !in 1.0..MaxMealScanGrams) return@forEach
+        if (normalized in setOf("totaal", "total")) total = grams
+        else itemOverrides += MealContextItemOverride(normalized, displayName, grams)
+    }
     return MealContextOverrides(
         totalGrams = total,
         itemGramsByName = itemOverrides.associate { it.normalized to it.grams },
         itemDisplayNamesByName = itemOverrides.associate { it.normalized to it.displayName },
+        unresolvedVolumesByName = volumes,
+        hasServingOrPackageScope = Regex("""(?i)\b(?:portie|porties|serving|servings|gegeten|opgegeten|aandeel|recept|verpakking|etiket)\b""").containsMatchIn(context),
+        hasRawOrCookedScope = Regex("""(?i)\b(?:rauw|rauwe|ongekookt|ongekookte|bereid|bereide|gekookt|gekookte)\b""").containsMatchIn(context),
     )
 }
 internal fun parseBodyMeasurementContextOverrides(context: String): BodyMeasurementContextOverrides {
@@ -379,21 +384,20 @@ private fun applyMealContextOverrides(
     overrides: MealContextOverrides,
 ): List<MealScanItem> {
     if (items.isEmpty()) return items
-    if (overrides.itemGramsByName.size > 1) {
-        return applyLockedMealContextItems(items, overrides)
-    }
-    return items.map { item ->
-        val itemOverride = overrides.itemGramsByName.entries.firstOrNull { (name, _) ->
-            val normalizedItem = normalizeAiContextName(item.name)
-            normalizedItem == name || normalizedItem.contains(name) || name.contains(normalizedItem)
-        }?.value
-        val targetGrams = itemOverride ?: overrides.totalGrams?.takeIf { items.size == 1 } ?: return@map item
-        item.copy(
-            estimatedGrams = targetGrams,
-            nutrition = scaleNutritionToGrams(item.nutrition, item.estimatedGrams, targetGrams),
-            notes = listOfNotNull(item.notes, "Gebruikerscontext gebruikte ${formatAiOneDecimal(targetGrams)} g als vaste hoeveelheid.")
-                .joinToString(" ")
-                .ifBlank { null },
+    val locked = applyLockedMealContextItems(items, overrides)
+    val total = overrides.totalGrams ?: return locked
+    val fixedNames = overrides.itemGramsByName.keys
+    val fixedGrams = locked.filter { item -> fixedNames.any { namesMatch(it, item.name) } }.sumOf { it.estimatedGrams }
+    val unknown = locked.filterNot { item -> fixedNames.any { namesMatch(it, item.name) } }
+    val unknownGrams = unknown.sumOf { it.estimatedGrams }
+    if (unknown.isEmpty() || total <= fixedGrams || unknownGrams <= 0.0) return locked
+    val ratio = (total - fixedGrams) / unknownGrams
+    return locked.map { item ->
+        if (fixedNames.any { namesMatch(it, item.name) }) item
+        else item.copy(
+            estimatedGrams = item.estimatedGrams * ratio,
+            nutrition = scaleNutritionToGrams(item.nutrition, item.estimatedGrams, item.estimatedGrams * ratio),
+            notes = listOfNotNull(item.notes, "Hoeveelheid verdeeld uit opgegeven totaalgewicht.").joinToString(" "),
         )
     }
 }
@@ -403,31 +407,30 @@ private fun applyLockedMealContextItems(
     overrides: MealContextOverrides,
 ): List<MealScanItem> {
     val remaining = items.toMutableList()
-    return overrides.itemGramsByName.entries.mapIndexed { index, (contextName, grams) ->
+    val matchedPredictions = mutableListOf<MealScanItem>()
+    val locked = overrides.itemGramsByName.entries.mapNotNull { (contextName, grams) ->
         val matchedIndex = remaining.indexOfFirst { item ->
-            val normalizedItem = normalizeAiContextName(item.name)
-            normalizedItem == contextName || normalizedItem.contains(contextName) || contextName.contains(normalizedItem)
-        }.takeIf { it >= 0 } ?: index.takeIf { it in remaining.indices }
-        val matched = matchedIndex?.let { remaining.removeAt(it) }
+            namesMatch(contextName, item.name)
+        }.takeIf { it >= 0 } ?: return@mapNotNull null
+        val matched = remaining.removeAt(matchedIndex)
+        matchedPredictions += matched
         val displayName = overrides.itemDisplayNamesByName[contextName] ?: contextName
-        val base = matched ?: MealScanItem(
+        matched.copy(
             name = displayName,
             estimatedGrams = grams,
-            nutrition = NutritionFacts.Zero,
-            confidence = "low",
-            notes = "Gebruikerscontext genoemd; AI leverde geen apart betrouwbaar component terug.",
-        )
-        base.copy(
-            name = displayName,
-            estimatedGrams = grams,
-            nutrition = scaleNutritionToGrams(base.nutrition, base.estimatedGrams, grams),
-            confidence = base.confidence ?: if (matched == null) "low" else null,
+            nutrition = scaleNutritionToGrams(matched.nutrition, matched.estimatedGrams, grams),
             notes = listOfNotNull(
-                base.notes,
+                matched.notes,
                 "Gebruikerscontext vergrendelde dit component op ${formatAiOneDecimal(grams)} g.",
             ).joinToString(" ").ifBlank { null },
         )
     }
+    return locked + remaining.filterNot { candidate -> candidate in matchedPredictions }
+}
+
+private fun namesMatch(contextName: String, itemName: String): Boolean {
+    val normalizedItem = normalizeAiContextName(itemName)
+    return normalizedItem.replace(" ", "") == contextName.replace(" ", "")
 }
 
 private fun buildMealScanReviewNotes(
@@ -440,12 +443,28 @@ private fun buildMealScanReviewNotes(
             add("Controleer deze scan: meerdere onderdelen lijken samengevoegd of overschreven.")
         }
         val missingContextNames = overrides.itemGramsByName.keys
-            .filterNot { contextName -> normalizedItems.any { normalizeAiContextName(it.name) == contextName } }
+            .filterNot { contextName -> normalizedItems.any { namesMatch(contextName, it.name) } }
         if (missingContextNames.isNotEmpty()) {
-            add("Controleer deze scan: niet alle contextproducten kwamen betrouwbaar uit de AI-output.")
+            add("Controleer en voeg handmatig toe: ${missingContextNames.joinToString()} ontbreken in de scan; voedingswaarden zijn onbekend.")
         }
-        if (overrides.itemGramsByName.size > 1) {
-            add("Expliciete gebruikerscontext is als vaste componentlijst gebruikt.")
+        if (overrides.itemGramsByName.isNotEmpty()) {
+            add("Expliciete gebruikerscontext is voor de overeenkomende componenten vastgezet.")
+        }
+        if (overrides.unresolvedVolumesByName.isNotEmpty()) {
+            add("Volume in ml is niet automatisch naar gram omgerekend; controleer ${overrides.unresolvedVolumesByName.keys.joinToString()}.")
+        }
+        if (overrides.hasServingOrPackageScope) {
+            add("Controleer of de voedingswaarden gelden voor de gegeten portie en niet voor het hele recept of de verpakking; er is geen automatische portieomrekening toegepast.")
+        }
+        if (overrides.hasRawOrCookedScope) {
+            add("Controleer of gewichten en voedingswaarden dezelfde rauwe of bereide toestand beschrijven; er is geen omrekening tussen die toestanden toegepast.")
+        }
+        overrides.totalGrams?.let { total ->
+            val lockedGrams = normalizedItems.filter { item -> overrides.itemGramsByName.keys.any { namesMatch(it, item.name) } }.sumOf { it.estimatedGrams }
+            if (lockedGrams > total) add("Opgegeven componentgewichten overschrijden het totaalgewicht. Corrigeer de hoeveelheden voordat je opslaat.")
+            else if (normalizedItems.sumOf { it.estimatedGrams } > total * 1.01 || normalizedItems.sumOf { it.estimatedGrams } < total * 0.99) {
+                add("Opgegeven totaalgewicht en componenten komen niet overeen. Controleer de ontbrekende of geschatte hoeveelheden.")
+            }
         }
     }
     return notes.joinToString(" ").ifBlank { null }

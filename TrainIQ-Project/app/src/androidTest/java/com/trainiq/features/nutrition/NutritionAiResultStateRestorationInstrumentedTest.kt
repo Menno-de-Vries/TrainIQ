@@ -80,6 +80,7 @@ class NutritionAiResultStateRestorationInstrumentedTest {
         }
 
         onNodeWithText("Aan maaltijd toevoegen").performScrollTo().assertIsDisplayed()
+        captureAiReview()
         onNodeWithContentDescription("Naam").performTextReplacement("Bewerkte bowl")
         onNodeWithContentDescription("Grammen").performTextReplacement("180")
         onNodeWithContentDescription("Vet").performTextReplacement("-4")
@@ -118,6 +119,12 @@ class NutritionAiResultStateRestorationInstrumentedTest {
 
         onNodeWithText("Receptingrediënten scannen").assertIsDisplayed()
         onNodeWithText("Aan maaltijd toevoegen").assertDoesNotExist()
+    }
+
+    private fun captureAiReview() {
+        val descriptor = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
+            .executeShellCommand("screencap -p /data/local/tmp/trainiq-ai-meal-review.png")
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { it.readBytes() }
     }
 }
 

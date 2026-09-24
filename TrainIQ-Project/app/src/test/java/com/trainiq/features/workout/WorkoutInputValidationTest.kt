@@ -216,7 +216,7 @@ class WorkoutInputValidationTest {
         val dialogBody = workoutScreen.substringAfter("private fun RoutineGeneratorDialog(")
             .substringBefore("private fun RoutineDetailHeader(")
 
-        assertTrue(dialogBody.contains("Text(\"Dagen per week\")"))
+        assertTrue(dialogBody.contains("Text(\"Dagen per week (1-7)\")"))
         assertTrue(dialogBody.contains("Text(\"Beschikbaar materiaal\")"))
         assertTrue(dialogBody.contains("Text(\"Ervaringsniveau\""))
         assertTrue(dialogBody.contains("Text(\"Sessieduur:"))

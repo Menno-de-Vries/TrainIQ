@@ -127,7 +127,7 @@ class TrainIqRepositoryTest {
     }
 
     @Test
-    fun generatedExerciseMatcher_prefersExistingExerciseId() {
+    fun generatedExerciseMatcher_rejectsExistingExerciseIdWithDifferentEquipment() {
         val exercises = listOf(
             ExerciseEntity(id = 3L, name = "Bench Press", muscleGroup = "Chest", equipment = "Barbell"),
             ExerciseEntity(id = 9L, name = "Incline Press", muscleGroup = "Chest", equipment = "Dumbbell"),
@@ -142,7 +142,7 @@ class TrainIqRepositoryTest {
             existingExerciseId = 9L,
         )
 
-        assertEquals(9L, exercises.findBestGeneratedExerciseMatch(generated)?.id)
+        assertEquals(null, exercises.findBestGeneratedExerciseMatch(generated)?.id)
     }
 
     @Test

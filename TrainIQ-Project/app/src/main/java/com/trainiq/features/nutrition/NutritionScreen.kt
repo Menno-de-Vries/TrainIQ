@@ -86,6 +86,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.trainiq.ai.services.AiUsageGate
 import com.trainiq.ai.services.hasAnyReadyProvider
+import com.trainiq.ai.services.parseMealContextOverrides
 import com.trainiq.ai.services.toAiUserMessage
 import com.trainiq.core.datastore.AiPreferences
 import com.trainiq.core.datastore.UserPreferencesRepository
@@ -1383,6 +1384,7 @@ fun NutritionScreen(
                                 },
                                 aiContext = if (aiResultTarget == NutritionScanDestination.RecipeDraft) recipeAiContext else aiContext,
                                 editableItems = editableAiItems.toList(),
+                                scanNotes = scanResult?.notes,
                                 itemErrors = aiItemErrors,
                                 isSaving = isAiSaving,
                                 isAnalyzing = isAnalyzing,
@@ -1414,6 +1416,13 @@ fun NutritionScreen(
                                     val batchItems = buildValidAiBatchItems(editableAiItems.toList())
                                     if (batchItems == null || batchItems.isEmpty()) {
                                         aiItemErrors = aiBatchNutritionErrors(editableAiItems.size)
+                                        return@AiMealAnalysisCard
+                                    }
+                                    val enteredContext = if (aiResultTarget == NutritionScanDestination.RecipeDraft) recipeAiContext else aiContext
+                                    if (aiItemsExceedDeclaredMealTotal(enteredContext, batchItems.map { it.item })) {
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar("De hoeveelheden overschrijden je opgegeven totaal. Pas de porties of context aan voordat je toevoegt.")
+                                        }
                                         return@AiMealAnalysisCard
                                     }
                                     when (aiResultTarget) {
@@ -3370,6 +3379,7 @@ private fun AiMealAnalysisCard(
     primaryLabel: String,
     aiContext: String,
     editableItems: List<EditableAiItem>,
+    scanNotes: String?,
     itemErrors: Map<Int, AiItemFieldErrors>,
     isSaving: Boolean,
     isAnalyzing: Boolean,
@@ -3418,6 +3428,10 @@ private fun AiMealAnalysisCard(
                 repeat(3) {
                     ShimmerCardPlaceholder(lineCount = 2)
                 }
+            }
+            scanNotes?.takeIf { it.isNotBlank() }?.let { notes ->
+                Text("Controleer de inschatting", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                Text(notes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             editableItems.forEachIndexed { index, item ->
                 EditableAiItemCard(item = item, errors = itemErrors[index] ?: AiItemFieldErrors(), onChange = { onChangeItem(index, it) }, onDelete = { onDeleteItem(index) })
@@ -3684,8 +3698,8 @@ private fun EditableAiItemCard(item: EditableAiItem, errors: AiItemFieldErrors, 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 NutritionNumberField(value = item.protein, onValueChange = { onChange(item.copy(protein = it)) }, label = "Eiwit", modifier = Modifier.weight(1f), error = errors.protein)
                 NutritionNumberField(value = item.carbs, onValueChange = { onChange(item.copy(carbs = it)) }, label = "Koolhydraten", modifier = Modifier.weight(1f), error = errors.carbs)
-                NutritionNumberField(value = item.fat, onValueChange = { onChange(item.copy(fat = it)) }, label = "Vet", modifier = Modifier.weight(1f), error = errors.fat)
             }
+            NutritionNumberField(value = item.fat, onValueChange = { onChange(item.copy(fat = it)) }, label = "Vet", modifier = Modifier.fillMaxWidth(), error = errors.fat)
             item.confidence?.let { Text("Zekerheid: ${it.toDutchConfidenceLabel()}") }
             item.notes?.let { Text(it) }
             Text("Per 100g: ${per100Value(item.calories, item.grams.toNutritionNumberOrNull(max = 100_000.0) ?: 100.0)} kcal", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.trainIqColors.mutedText)
@@ -3876,6 +3890,12 @@ private fun buildValidAiBatchItems(items: List<EditableAiItem>): List<AiBatchIte
         AiBatchItem(item, grams)
     }
     return batchItems.takeIf { it.size == items.size }
+}
+
+internal fun aiItemsExceedDeclaredMealTotal(context: String, items: List<EditableAiItem>): Boolean {
+    val total = parseMealContextOverrides(context).totalGrams ?: return false
+    val grams = items.map { it.grams.toNutritionNumberOrNull(max = 100_000.0) ?: return false }
+    return grams.sum() > total * 1.01
 }
 
 private fun aiBatchNutritionErrors(itemCount: Int): Map<Int, AiItemFieldErrors> =

@@ -139,6 +139,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -194,6 +195,7 @@ import com.trainiq.domain.model.ExerciseStats
 import com.trainiq.domain.model.Exercise
 import com.trainiq.domain.model.GeneratedRoutine
 import com.trainiq.domain.model.GeneratedRoutineSource
+import com.trainiq.domain.model.RoutineGenerationOptions
 import com.trainiq.domain.model.LoggedSet
 import com.trainiq.domain.model.ProgressionSuggestion
 import com.trainiq.domain.model.ReadinessLevel
@@ -472,7 +474,45 @@ private data class RoutineGenerationRequest(
     val experienceLevel: String,
     val sessionDurationMinutes: Int,
     val includeDeload: Boolean,
+    val options: RoutineGenerationOptions,
 )
+
+private fun String.normalizedRoutineEquipment(): String = when (trim().lowercase()) {
+    "barbell", "halterstang" -> "halterstang"
+    "dumbbell", "dumbbells" -> "dumbbells"
+    "cable", "kabel" -> "kabel"
+    "bodyweight", "lichaamsgewicht" -> "lichaamsgewicht"
+    "mixed", "gemengd" -> "gemengd"
+    else -> trim().lowercase()
+}
+
+private fun com.trainiq.domain.model.GeneratedDay.withUpdatedDuration(): com.trainiq.domain.model.GeneratedDay = copy(
+    estimatedDurationMinutes = kotlin.math.ceil(exercises.sumOf { it.targetSets * (it.restSeconds + 45) + 60 }.toDouble() / 60.0).toInt(),
+)
+
+internal fun GeneratedRoutine.withReplacedExercise(dayIndex: Int, exerciseIndex: Int, replacement: Exercise): GeneratedRoutine {
+    val day = days.getOrNull(dayIndex) ?: return this
+    val original = day.exercises.getOrNull(exerciseIndex) ?: return this
+    val updated = original.copy(
+        exerciseName = replacement.name,
+        muscleGroup = replacement.muscleGroup,
+        equipment = replacement.equipment,
+        existingExerciseId = replacement.id,
+    )
+    val newDays = days.mapIndexed { index, value ->
+        if (index == dayIndex) value.copy(exercises = value.exercises.toMutableList().also { it[exerciseIndex] = updated }).withUpdatedDuration() else value
+    }
+    return copy(days = newDays, estimatedDurationMinutes = newDays.maxOf { it.estimatedDurationMinutes })
+}
+
+internal fun GeneratedRoutine.withRemovedExercise(dayIndex: Int, exerciseIndex: Int): GeneratedRoutine? {
+    val day = days.getOrNull(dayIndex) ?: return null
+    if (day.exercises.size <= 1 || exerciseIndex !in day.exercises.indices) return null
+    val newDays = days.mapIndexed { index, value ->
+        if (index == dayIndex) value.copy(exercises = value.exercises.filterIndexed { itemIndex, _ -> itemIndex != exerciseIndex }).withUpdatedDuration() else value
+    }
+    return copy(days = newDays, estimatedDurationMinutes = newDays.maxOf { it.estimatedDurationMinutes })
+}
 
 @HiltViewModel
 class WorkoutViewModel @Inject constructor(
@@ -971,6 +1011,7 @@ class WorkoutViewModel @Inject constructor(
         experienceLevel: String,
         sessionDurationMinutes: Int,
         includeDeload: Boolean,
+        options: RoutineGenerationOptions = RoutineGenerationOptions(),
     ) {
         if (_isGeneratingAiRoutine.value) return
         lastGenerationRequest = RoutineGenerationRequest(
@@ -980,6 +1021,7 @@ class WorkoutViewModel @Inject constructor(
             experienceLevel = experienceLevel,
             sessionDurationMinutes = sessionDurationMinutes,
             includeDeload = includeDeload,
+            options = options,
         )
         _isGeneratingAiRoutine.value = true
         _message.value = "AI-routine maken..."
@@ -992,6 +1034,7 @@ class WorkoutViewModel @Inject constructor(
                     experienceLevel = experienceLevel,
                     sessionDurationMinutes = sessionDurationMinutes,
                     includeDeload = includeDeload,
+                    options = options,
                 ).also { generated ->
                     _pendingGeneratedRoutine.value = generated
                     _message.value = generatedRoutineResultMessage(generated)
@@ -1007,6 +1050,7 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun retryGeneratedRoutine() {
+        if (_isSavingGeneratedRoutine.value || _isGeneratingAiRoutine.value) return
         val request = lastGenerationRequest ?: return
         _pendingGeneratedRoutine.value = null
         generateAiRoutine(
@@ -1016,6 +1060,7 @@ class WorkoutViewModel @Inject constructor(
             experienceLevel = request.experienceLevel,
             sessionDurationMinutes = request.sessionDurationMinutes,
             includeDeload = request.includeDeload,
+            options = request.options,
         )
     }
 
@@ -1031,7 +1076,37 @@ class WorkoutViewModel @Inject constructor(
         }
     }
 
+    fun replacePendingGeneratedExercise(dayIndex: Int, exerciseIndex: Int, replacement: Exercise) {
+        if (_isSavingGeneratedRoutine.value || _isGeneratingAiRoutine.value) return
+        val request = lastGenerationRequest ?: return
+        val available = request.equipment.split(',', ';').map { it.normalizedRoutineEquipment() }.toSet()
+        if (replacement.equipment.normalizedRoutineEquipment() != "lichaamsgewicht" &&
+            "gemengd" !in available && replacement.equipment.normalizedRoutineEquipment() !in available
+        ) {
+            _message.value = "Deze oefening vraagt ander materiaal dan je hebt opgegeven."
+            return
+        }
+        if (request.options.excludedExercises.any { it.equals(replacement.name, ignoreCase = true) }) {
+            _message.value = "Deze oefening staat bij je uitsluitingen."
+            return
+        }
+        val current = _pendingGeneratedRoutine.value ?: return
+        val day = current.days.getOrNull(dayIndex) ?: return
+        if (day.exercises.withIndex().any { (index, exercise) -> index != exerciseIndex && (exercise.existingExerciseId == replacement.id || exercise.exerciseName.equals(replacement.name, ignoreCase = true)) }) {
+            _message.value = "Deze oefening staat al op deze dag."
+            return
+        }
+        _pendingGeneratedRoutine.value = current.withReplacedExercise(dayIndex, exerciseIndex, replacement)
+    }
+
+    fun removePendingGeneratedExercise(dayIndex: Int, exerciseIndex: Int) {
+        if (_isSavingGeneratedRoutine.value || _isGeneratingAiRoutine.value) return
+        val current = _pendingGeneratedRoutine.value ?: return
+        _pendingGeneratedRoutine.value = current.withRemovedExercise(dayIndex, exerciseIndex) ?: return
+    }
+
     fun dismissPendingGeneratedRoutine() {
+        if (_isSavingGeneratedRoutine.value) return
         _pendingGeneratedRoutine.value = null
     }
 
@@ -1463,6 +1538,8 @@ fun WorkoutRoute(
         onCreateRoutine = viewModel::createRoutine,
         onGenerateAiRoutine = viewModel::generateAiRoutine,
         onSaveGeneratedRoutine = viewModel::savePendingGeneratedRoutine,
+        onReplaceGeneratedExercise = viewModel::replacePendingGeneratedExercise,
+        onRemoveGeneratedExercise = viewModel::removePendingGeneratedExercise,
         onRetryGeneratedRoutine = viewModel::retryGeneratedRoutine,
         onDismissGeneratedRoutine = viewModel::dismissPendingGeneratedRoutine,
         onUpdateRoutine = viewModel::updateRoutine,
@@ -1507,8 +1584,10 @@ fun WorkoutScreen(
     onOpenExerciseHistory: (Long) -> Unit,
     onDetailModeChanged: (Boolean) -> Unit = {},
     onCreateRoutine: (String, String) -> Unit,
-    onGenerateAiRoutine: (Int, String, String, String, Int, Boolean) -> Unit,
+    onGenerateAiRoutine: (Int, String, String, String, Int, Boolean, RoutineGenerationOptions) -> Unit,
     onSaveGeneratedRoutine: () -> Unit,
+    onReplaceGeneratedExercise: (Int, Int, Exercise) -> Unit,
+    onRemoveGeneratedExercise: (Int, Int) -> Unit,
     onRetryGeneratedRoutine: () -> Unit,
     onDismissGeneratedRoutine: () -> Unit,
     onUpdateRoutine: (Long, String, String) -> Boolean,
@@ -1576,8 +1655,11 @@ fun WorkoutScreen(
     pendingGeneratedRoutine?.let { routine ->
         GeneratedRoutinePreviewDialog(
             routine = routine,
+            availableExercises = overview?.exercises.orEmpty(),
             isSaving = isSavingGeneratedRoutine,
             onSave = onSaveGeneratedRoutine,
+            onReplaceExercise = onReplaceGeneratedExercise,
+            onRemoveExercise = onRemoveGeneratedExercise,
             onRetry = {
                 showAiDialog = true
                 onRetryGeneratedRoutine()
@@ -1598,8 +1680,8 @@ fun WorkoutScreen(
         RoutineGeneratorDialog(
             isLoading = isGeneratingAiRoutine,
             onDismiss = { if (!isGeneratingAiRoutine) showAiDialog = false },
-            onGenerate = { days, equipment, focus, level, duration, includeDeload ->
-                onGenerateAiRoutine(days, equipment, focus, level, duration, includeDeload)
+            onGenerate = { days, equipment, focus, level, duration, includeDeload, options ->
+                onGenerateAiRoutine(days, equipment, focus, level, duration, includeDeload, options)
             },
         )
     }
@@ -2190,7 +2272,7 @@ private fun HistoryDebriefBlock(title: String, body: String) {
 private fun RoutineGeneratorDialog(
     isLoading: Boolean,
     onDismiss: () -> Unit,
-    onGenerate: (Int, String, String, String, Int, Boolean) -> Unit,
+    onGenerate: (Int, String, String, String, Int, Boolean, RoutineGenerationOptions) -> Unit,
 ) {
     var focus by rememberSaveable { mutableStateOf("") }
     var daysPerWeek by rememberSaveable { mutableStateOf("3") }
@@ -2198,6 +2280,10 @@ private fun RoutineGeneratorDialog(
     var experienceLevel by rememberSaveable { mutableStateOf("intermediate") }
     var sessionDuration by rememberSaveable { mutableFloatStateOf(60f) }
     var includeDeload by rememberSaveable { mutableStateOf(true) }
+    var showMoreOptions by rememberSaveable { mutableStateOf(false) }
+    var musclePriorities by rememberSaveable { mutableStateOf("") }
+    var preferredExercises by rememberSaveable { mutableStateOf("") }
+    var excludedExercises by rememberSaveable { mutableStateOf("") }
     val focusSuggestions = remember { listOf("Push/pull/legs", "Upper/lower", "Volledig lichaam", "Onderlichaam", "Kracht") }
 
     AlertDialog(
@@ -2229,7 +2315,7 @@ private fun RoutineGeneratorDialog(
                 TapOnlyOutlinedTextField(
                     value = daysPerWeek,
                     onValueChange = { daysPerWeek = it },
-                    label = { Text("Dagen per week") },
+                    label = { Text("Dagen per week (1-7)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -2243,14 +2329,30 @@ private fun RoutineGeneratorDialog(
                 ExperienceLevelSelector(experienceLevel, onSelected = { experienceLevel = it })
                 SessionDurationSlider(durationMinutes = sessionDuration.toInt(), onValueChange = { sessionDuration = it })
                 IncludeDeloadRow(enabled = includeDeload, onCheckedChange = { includeDeload = it })
+                TextButton(onClick = { showMoreOptions = !showMoreOptions }) {
+                    Text(if (showMoreOptions) "Minder opties" else "Meer opties")
+                }
+                if (showMoreOptions) {
+                    TapOnlyOutlinedTextField(musclePriorities, { musclePriorities = it }, label = { Text("Spiergroepprioriteiten") }, modifier = Modifier.fillMaxWidth())
+                    TapOnlyOutlinedTextField(preferredExercises, { preferredExercises = it }, label = { Text("Gewenste oefeningen") }, modifier = Modifier.fillMaxWidth())
+                    TapOnlyOutlinedTextField(excludedExercises, { excludedExercises = it }, label = { Text("Uitgesloten oefeningen") }, modifier = Modifier.fillMaxWidth())
+                    Text("Scheid meerdere namen met een komma.", style = MaterialTheme.typography.bodySmall)
+                }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    onGenerate(daysPerWeek.toIntOrNull() ?: 3, equipment, focus, experienceLevel, sessionDuration.toInt(), includeDeload)
+                    onGenerate(
+                        daysPerWeek.toInt(), equipment, focus, experienceLevel, sessionDuration.toInt(), includeDeload,
+                        RoutineGenerationOptions(
+                            priorityMuscleGroups = parseRoutineOptionNames(musclePriorities),
+                            preferredExercises = parseRoutineOptionNames(preferredExercises),
+                            excludedExercises = parseRoutineOptionNames(excludedExercises),
+                        ),
+                    )
                 },
-                enabled = !isLoading,
+                enabled = !isLoading && daysPerWeek.toIntOrNull() in 1..7,
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -2262,6 +2364,12 @@ private fun RoutineGeneratorDialog(
         dismissButton = { TextButton(onClick = onDismiss, enabled = !isLoading) { Text("Annuleren") } },
     )
 }
+
+internal fun parseRoutineOptionNames(input: String): List<String> = input.split(',', ';')
+    .map { it.trim().take(80) }
+    .filter { it.isNotBlank() }
+    .distinctBy { it.lowercase() }
+    .take(8)
 
 @Composable
 private fun ExperienceLevelSelector(experienceLevel: String, onSelected: (String) -> Unit) {
@@ -5920,6 +6028,7 @@ private fun ActiveExerciseCard(
     onReplaceExercise: () -> Unit,
     onRemoveExercise: () -> Unit,
 ) {
+    val focusManager = LocalFocusManager.current
     var activeSetTargetDelta by rememberSaveable(plan.id) { mutableIntStateOf(0) }
     val plannedSetCount = plan.plannedSetCount()
     val activeSetTargetCount = (plannedSetCount + activeSetTargetDelta).coerceAtLeast(loggedSets.size)
@@ -5940,7 +6049,9 @@ private fun ActiveExerciseCard(
     }
     var menuExpanded by remember(plan.id) { mutableStateOf(false) }
     AppCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().semantics {
+            stateDescription = if (collapsed) "Ingeklapt" else "Uitgeklapt"
+        },
         accent = when {
             isAutoAdvanceTarget -> MaterialTheme.colorScheme.secondary
             loggedSets.size >= plannedSetCount -> MaterialTheme.trainIqColors.mint
@@ -5984,7 +6095,10 @@ private fun ActiveExerciseCard(
                     horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    IconButton(onClick = onToggleCollapsed) {
+                    IconButton(onClick = {
+                        if (!collapsed) focusManager.clearFocus(force = true)
+                        onToggleCollapsed()
+                    }) {
                         Icon(
                             if (collapsed) Icons.Rounded.ExpandMore else Icons.Rounded.ExpandLess,
                             contentDescription = if (collapsed) "Open oefening" else "Klap oefening in",
@@ -6038,6 +6152,7 @@ private fun ActiveExerciseCard(
                     }
                 }
             }
+            if (collapsed) return@Column
             suggestion?.let { CompactPreviousPerformance(it) } ?: PlannedPerformanceFallback(plan)
             val visibleSetRows = visibleActiveSetRows(
                 plannedSetCount = activeSetTargetCount,
@@ -6089,7 +6204,6 @@ private fun ActiveExerciseCard(
                     },
                 )
             }
-            if (collapsed) return@Column
             if (platePlan.isNotEmpty()) {
                 PlateBarDiagram(
                     plates = platePlan,

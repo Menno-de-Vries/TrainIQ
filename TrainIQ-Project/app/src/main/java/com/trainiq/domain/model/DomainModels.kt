@@ -286,6 +286,12 @@ data class GeneratedRoutine(
     val days: List<GeneratedDay>,
 )
 
+data class RoutineGenerationOptions(
+    val priorityMuscleGroups: List<String> = emptyList(),
+    val preferredExercises: List<String> = emptyList(),
+    val excludedExercises: List<String> = emptyList(),
+)
+
 enum class GeneratedRoutineSource {
     GEMINI_2_5_FLASH,
     OPENAI,

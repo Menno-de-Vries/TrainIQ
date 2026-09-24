@@ -8,9 +8,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -38,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import com.trainiq.core.ui.TapOnlyOutlinedTextField
 import com.trainiq.core.ui.clearFocusOnScrollOrDrag
 import com.trainiq.domain.model.GeneratedRoutine
+import com.trainiq.domain.model.Exercise
 import com.trainiq.domain.model.GeneratedRoutineSource
 
 @Composable
@@ -92,17 +96,22 @@ fun CreateRoutineDialog(
 @Composable
 fun GeneratedRoutinePreviewDialog(
     routine: GeneratedRoutine,
+    availableExercises: List<Exercise>,
     isSaving: Boolean,
     onSave: () -> Unit,
     onRetry: () -> Unit,
+    onReplaceExercise: (Int, Int, Exercise) -> Unit,
+    onRemoveExercise: (Int, Int) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var editTarget by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var exerciseQuery by remember { mutableStateOf("") }
 
     ModalBottomSheet(
         modifier = modifier,
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isSaving) onDismiss() },
         sheetState = sheetState,
     ) {
         Column(
@@ -153,7 +162,7 @@ fun GeneratedRoutinePreviewDialog(
                         }
                     }
                 }
-                routine.days.forEach { day ->
+                routine.days.forEachIndexed { dayIndex, day ->
                     Card(
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -185,7 +194,7 @@ fun GeneratedRoutinePreviewDialog(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            day.exercises.take(4).forEach { exercise ->
+                            day.exercises.forEachIndexed { exerciseIndex, exercise ->
                                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     Text(
                                         text = "${exercise.exerciseName} - ${exercise.targetSets} x ${exercise.repRange}",
@@ -199,14 +208,11 @@ fun GeneratedRoutinePreviewDialog(
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                     }
+                                    TextButton(
+                                        onClick = { editTarget = dayIndex to exerciseIndex; exerciseQuery = "" },
+                                        enabled = !isSaving,
+                                    ) { Text("Oefening aanpassen") }
                                 }
-                            }
-                            if (day.exercises.size > 4) {
-                                Text(
-                                    text = "+${day.exercises.size - 4} meer",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
                             }
                         }
                     }
@@ -219,14 +225,46 @@ fun GeneratedRoutinePreviewDialog(
                 Button(onClick = onSave, enabled = !isSaving, modifier = Modifier.fillMaxWidth()) {
                     Text(if (isSaving) "Opslaan..." else "Opslaan")
                 }
-                TextButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
+                TextButton(onClick = onRetry, enabled = !isSaving, modifier = Modifier.fillMaxWidth()) {
                     Text("Opnieuw proberen")
                 }
-                TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                TextButton(onClick = onDismiss, enabled = !isSaving, modifier = Modifier.fillMaxWidth()) {
                     Text("Annuleren")
                 }
             }
         }
+    }
+    editTarget?.let { (dayIndex, exerciseIndex) ->
+        val exercise = routine.days.getOrNull(dayIndex)?.exercises?.getOrNull(exerciseIndex)
+        if (exercise != null) AlertDialog(
+            onDismissRequest = { editTarget = null },
+            title = { Text("${exercise.exerciseName} vervangen") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TapOnlyOutlinedTextField(
+                        value = exerciseQuery,
+                        onValueChange = { exerciseQuery = it },
+                        label = { Text("Zoek bestaande oefening") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
+                        items(availableExercises.filter { exerciseQuery.isBlank() || it.name.contains(exerciseQuery, ignoreCase = true) }.take(40), key = { it.id }) { replacement ->
+                            TextButton(
+                                onClick = { onReplaceExercise(dayIndex, exerciseIndex, replacement); editTarget = null },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text("${replacement.name} · ${replacement.equipment}") }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                if (routine.days[dayIndex].exercises.size > 1) TextButton(onClick = {
+                    onRemoveExercise(dayIndex, exerciseIndex)
+                    editTarget = null
+                }) { Text("Verwijderen") }
+            },
+            dismissButton = { TextButton(onClick = { editTarget = null }) { Text("Sluiten") } },
+        )
     }
 }
 
