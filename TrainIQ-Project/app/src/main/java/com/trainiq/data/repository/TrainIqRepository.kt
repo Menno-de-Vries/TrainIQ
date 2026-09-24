@@ -906,6 +906,7 @@ class TrainIqDataCoordinator @Inject constructor(
         experienceLevel: String,
         sessionDurationMinutes: Int,
         includeDeload: Boolean,
+        options: com.trainiq.domain.model.RoutineGenerationOptions = com.trainiq.domain.model.RoutineGenerationOptions(),
     ): GeneratedRoutine = withContext(Dispatchers.IO) {
         val profile = snapshotState.value.profile
             ?: error(missingProfileForAiRoutineMessage())
@@ -917,6 +918,7 @@ class TrainIqDataCoordinator @Inject constructor(
             experienceLevel = experienceLevel,
             sessionDurationMinutes = sessionDurationMinutes,
             includeDeload = includeDeload,
+            options = options,
             existingExercises = snapshotState.value.exercises
                 .sortedBy { it.name }
                 .take(80)
@@ -2254,7 +2256,7 @@ internal fun TrainIqStorageState.withExerciseAddedToDay(
 
 internal fun List<ExerciseEntity>.findBestGeneratedExerciseMatch(generatedExercise: GeneratedExercise): ExerciseEntity? {
     generatedExercise.existingExerciseId
-        ?.let { id -> firstOrNull { it.id == id } }
+        ?.let { id -> firstOrNull { it.id == id && it.equipment.normalizedExerciseKey() == generatedExercise.equipment.normalizedExerciseKey() } }
         ?.let { return it }
 
     val targetName = generatedExercise.exerciseName.normalizedExerciseKey()
@@ -2262,10 +2264,11 @@ internal fun List<ExerciseEntity>.findBestGeneratedExerciseMatch(generatedExerci
     val targetMuscle = generatedExercise.muscleGroup.normalizedExerciseKey()
 
     firstOrNull { exercise ->
-        exercise.name.normalizedExerciseKey() == targetName
+        exercise.name.normalizedExerciseKey() == targetName && exercise.equipment.normalizedExerciseKey() == targetEquipment
     }?.let { return it }
 
     return mapNotNull { exercise ->
+        if (exercise.equipment.normalizedExerciseKey() != targetEquipment) return@mapNotNull null
         val nameScore = exercise.name.normalizedExerciseKey().exerciseSimilarityScore(targetName)
         val equipmentScore = if (exercise.equipment.normalizedExerciseKey() == targetEquipment) 1 else 0
         val muscleScore = if (exercise.muscleGroup.normalizedExerciseKey() == targetMuscle) 1 else 0

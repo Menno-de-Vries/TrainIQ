@@ -19,6 +19,15 @@ import org.junit.Test
 
 class NutritionInputValidationTest {
     @Test
+    fun scannedItemsCannotExceedDeclaredMealTotalUntilUserCorrectsAmounts() {
+        fun item(grams: String) = EditableAiItem("Rijst", grams, "100", "2", "20", "1", null, null)
+
+        assertTrue(aiItemsExceedDeclaredMealTotal("totaal 300 g", listOf(item("200"), item("200"))))
+        assertFalse(aiItemsExceedDeclaredMealTotal("totaal 300 g", listOf(item("100"), item("200"))))
+        assertFalse(aiItemsExceedDeclaredMealTotal("", listOf(item("200"), item("200"))))
+    }
+
+    @Test
     fun nutritionDrafts_useSaveableStateAcrossActivityRecreation() {
         val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
         val draftState = source.substringAfter("var selectedTab by rememberSaveable")

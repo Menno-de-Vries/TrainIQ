@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.trainiq.core.theme.TrainIqTheme
 import com.trainiq.domain.model.GeneratedDay
@@ -32,15 +33,21 @@ class GeneratedRoutinePreviewInstrumentedTest {
             TrainIqTheme {
                 GeneratedRoutinePreviewDialog(
                     routine = sampleGeneratedRoutine(),
+                    availableExercises = emptyList(),
                     isSaving = false,
                     onSave = { saveClicks += 1 },
                     onRetry = { retryClicks += 1 },
+                    onReplaceExercise = { _, _, _ -> },
+                    onRemoveExercise = { _, _ -> },
                     onDismiss = { dismissClicks += 1 },
                 )
             }
         }
 
         compose.onNodeWithText("QA hypertrofie blok").assertIsDisplayed()
+        capture("initial")
+        compose.onNodeWithText("Oefening 1.6 - 3 x 8-12").performScrollTo().assertIsDisplayed()
+        capture("scrolled")
         compose.onNodeWithText("Opslaan")
             .assertIsDisplayed()
             .assertIsEnabled()
@@ -60,7 +67,7 @@ class GeneratedRoutinePreviewInstrumentedTest {
     }
 
     @Test
-    fun generatedRoutinePreviewDisablesSaveOnlyWhileSaving() {
+    fun generatedRoutinePreviewBlocksConflictingActionsWhileSaving() {
         var retryClicks = 0
         var dismissClicks = 0
 
@@ -68,9 +75,12 @@ class GeneratedRoutinePreviewInstrumentedTest {
             TrainIqTheme {
                 GeneratedRoutinePreviewDialog(
                     routine = sampleGeneratedRoutine(),
+                    availableExercises = emptyList(),
                     isSaving = true,
                     onSave = {},
                     onRetry = { retryClicks += 1 },
+                    onReplaceExercise = { _, _, _ -> },
+                    onRemoveExercise = { _, _ -> },
                     onDismiss = { dismissClicks += 1 },
                 )
             }
@@ -81,15 +91,13 @@ class GeneratedRoutinePreviewInstrumentedTest {
             .assertIsNotEnabled()
         compose.onNodeWithText("Opnieuw proberen")
             .assertIsDisplayed()
-            .assertIsEnabled()
-            .performClick()
+            .assertIsNotEnabled()
         compose.onNodeWithText("Annuleren")
             .assertIsDisplayed()
-            .assertIsEnabled()
-            .performClick()
+            .assertIsNotEnabled()
 
-        assertEquals(1, retryClicks)
-        assertEquals(1, dismissClicks)
+        assertEquals(0, retryClicks)
+        assertEquals(0, dismissClicks)
     }
 
     private fun sampleGeneratedRoutine(): GeneratedRoutine =
@@ -117,4 +125,11 @@ class GeneratedRoutinePreviewInstrumentedTest {
                 )
             },
         )
+
+    private fun capture(state: String) {
+        compose.waitForIdle()
+        val descriptor = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
+            .executeShellCommand("screencap -p /data/local/tmp/trainiq-routine-preview-$state.png")
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { it.readBytes() }
+    }
 }

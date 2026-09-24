@@ -33,7 +33,7 @@ class WorkoutAiRoutineGenerationStateRestorationInstrumentedTest {
     @OptIn(ExperimentalTestApi::class)
     @Test fun failedGenerationKeepsDraftForRetryAndUnrelatedErrorsDoNotDismissIt() = runComposeUiTest {
         var message by mutableStateOf<String?>(null)
-        setContent { SyntheticWorkoutScreen(message, {}, { _, _, _, _, _, _ -> }) }
+        setContent { SyntheticWorkoutScreen(message, {}, { _, _, _, _, _, _, _ -> }) }
         onNodeWithContentDescription("Met AI genereren").performScrollTo().performClick()
         onAllNodes(hasSetTextAction())[0].performTextReplacement("Mijn herstelplan")
         runOnIdle { message = "Routine genereren is mislukt." }
@@ -51,7 +51,7 @@ class WorkoutAiRoutineGenerationStateRestorationInstrumentedTest {
             SyntheticWorkoutScreen(
                 message = null,
                 onCreateRoutine = { createdRoutineName = it },
-                onGenerate = { _, _, _, _, _, _ -> },
+                onGenerate = { _, _, _, _, _, _, _ -> },
             )
         }
 
@@ -80,8 +80,8 @@ class WorkoutAiRoutineGenerationStateRestorationInstrumentedTest {
             SyntheticWorkoutScreen(
                 message = null,
                 onCreateRoutine = {},
-                onGenerate = { days, equipment, focus, level, duration, includeDeload ->
-                    generatedRequest = GeneratedRoutineRequest(days, equipment, focus, level, duration, includeDeload)
+                onGenerate = { days, equipment, focus, level, duration, includeDeload, options ->
+                    generatedRequest = GeneratedRoutineRequest(days, equipment, focus, level, duration, includeDeload, options)
                 },
             )
         }
@@ -101,6 +101,9 @@ class WorkoutAiRoutineGenerationStateRestorationInstrumentedTest {
             .performScrollTo()
             .performClick()
         onNodeWithContentDescription("Deload-richtlijn opnemen").assertIsOff()
+        onNodeWithText("Meer opties").performScrollTo().performClick()
+        onNode(hasSetTextAction() and hasText("Spiergroepprioriteiten")).performTextReplacement("Benen")
+        onNode(hasSetTextAction() and hasText("Uitgesloten oefeningen")).performTextReplacement("Plank")
 
         restorationTester.emulateSaveAndRestore()
 
@@ -117,6 +120,10 @@ class WorkoutAiRoutineGenerationStateRestorationInstrumentedTest {
                 experienceLevel = "advanced",
                 sessionDuration = 75,
                 includeDeload = false,
+                options = com.trainiq.domain.model.RoutineGenerationOptions(
+                    priorityMuscleGroups = listOf("Benen"),
+                    excludedExercises = listOf("Plank"),
+                ),
             ),
             generatedRequest,
         )
@@ -132,7 +139,7 @@ class WorkoutAiRoutineGenerationStateRestorationInstrumentedTest {
             SyntheticWorkoutScreen(
                 message = message,
                 onCreateRoutine = {},
-                onGenerate = { _, _, _, _, _, _ -> message = "AI-routine maken..." },
+                onGenerate = { _, _, _, _, _, _, _ -> message = "AI-routine maken..." },
             )
         }
 
@@ -153,7 +160,7 @@ class WorkoutAiRoutineGenerationStateRestorationInstrumentedTest {
 private fun SyntheticWorkoutScreen(
     message: String?,
     onCreateRoutine: (String) -> Unit,
-    onGenerate: (Int, String, String, String, Int, Boolean) -> Unit,
+    onGenerate: (Int, String, String, String, Int, Boolean, com.trainiq.domain.model.RoutineGenerationOptions) -> Unit,
 ) {
     TrainIqTheme(dynamicColor = false) {
         WorkoutScreen(
@@ -173,6 +180,8 @@ private fun SyntheticWorkoutScreen(
             onCreateRoutine = { name, _ -> onCreateRoutine(name) },
             onGenerateAiRoutine = onGenerate,
             onSaveGeneratedRoutine = {},
+            onReplaceGeneratedExercise = { _, _, _ -> },
+            onRemoveGeneratedExercise = { _, _ -> },
             onRetryGeneratedRoutine = {},
             onDismissGeneratedRoutine = {},
             onUpdateRoutine = { _, _, _ -> true },
@@ -203,4 +212,5 @@ private data class GeneratedRoutineRequest(
     val experienceLevel: String,
     val sessionDuration: Int,
     val includeDeload: Boolean,
+    val options: com.trainiq.domain.model.RoutineGenerationOptions,
 )

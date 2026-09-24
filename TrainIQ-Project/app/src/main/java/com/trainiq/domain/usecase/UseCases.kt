@@ -384,6 +384,7 @@ class GenerateAiRoutineUseCase @Inject constructor(private val repository: Worko
         experienceLevel: String,
         sessionDurationMinutes: Int,
         includeDeload: Boolean,
+        options: com.trainiq.domain.model.RoutineGenerationOptions = com.trainiq.domain.model.RoutineGenerationOptions(),
     ) = repository.generateAiRoutine(
         daysPerWeek = daysPerWeek,
         equipment = equipment,
@@ -391,6 +392,7 @@ class GenerateAiRoutineUseCase @Inject constructor(private val repository: Worko
         experienceLevel = experienceLevel,
         sessionDurationMinutes = sessionDurationMinutes,
         includeDeload = includeDeload,
+        options = options,
     )
 }
 

@@ -29,6 +29,23 @@ import retrofit2.Response
 
 class OpenAiModelClientTest {
     @Test
+    fun mealAndRoutineRequests_useExplicitMediumReasoningWithGpt6Luna() = runTest {
+        listOf(AiFeature.MEAL_SCAN, AiFeature.ROUTINE_GENERATION).forEach { feature ->
+            val api = FakeOpenAiApi(
+                response = Response.success(OpenAiResponse(status = "completed", outputText = "{}")),
+                modelResponses = listOf(Response.success(OpenAiModelsResponse(data = listOf(OpenAiModelDescriptor(id = "gpt-6-luna"))))),
+            )
+            val request = featureContracts().first { it.request.feature == feature }.request
+
+            OpenAiModelClient(api).generateJson("synthetic-secret", request)
+
+            val json = JsonParser.parseString(Gson().toJson(api.lastRequest)).asJsonObject
+            assertEquals("gpt-6-luna", json["model"].asString)
+            assertEquals("medium", json["reasoning"].asJsonObject["effort"].asString)
+        }
+    }
+
+    @Test
     fun generateJson_modelAccessFailureRefreshesDiscoveryAndRetriesOneDifferentAllowedModel() = runTest {
         val api = FakeOpenAiApi(
             response = errorResponse(403, "model_not_found", "req_model"),

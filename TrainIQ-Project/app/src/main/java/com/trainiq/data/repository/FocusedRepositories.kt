@@ -115,6 +115,8 @@ class RoomWorkoutRepository @Inject constructor(
     override suspend fun deleteWorkoutSession(sessionId: Long) = delegate.deleteWorkoutSession(sessionId)
     override suspend fun generateAiRoutine(daysPerWeek: Int, equipment: String, targetFocus: String, experienceLevel: String, sessionDurationMinutes: Int, includeDeload: Boolean): GeneratedRoutine =
         delegate.generateAiRoutine(daysPerWeek, equipment, targetFocus, experienceLevel, sessionDurationMinutes, includeDeload)
+    override suspend fun generateAiRoutine(daysPerWeek: Int, equipment: String, targetFocus: String, experienceLevel: String, sessionDurationMinutes: Int, includeDeload: Boolean, options: com.trainiq.domain.model.RoutineGenerationOptions): GeneratedRoutine =
+        delegate.generateAiRoutine(daysPerWeek, equipment, targetFocus, experienceLevel, sessionDurationMinutes, includeDeload, options)
     override suspend fun saveGeneratedRoutine(routine: GeneratedRoutine) = delegate.saveGeneratedRoutine(routine)
 }
 

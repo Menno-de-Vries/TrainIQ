@@ -10,9 +10,9 @@ import retrofit2.Response
 
 internal object OpenAiModelSelectionPolicy {
     // Candidates are deliberately pinned IDs, verified for Responses, structured output, and image input.
-    private val budgetCandidates = listOf("gpt-5.6-luna", "gpt-5.4-mini")
+    private val budgetCandidates = listOf("gpt-6-luna", "gpt-5.6-luna", "gpt-5.4-mini")
 
-    val fingerprint: String = budgetCandidates.joinToString(",", prefix = "runtime-model-policy-v1:")
+    val fingerprint: String = budgetCandidates.joinToString(",", prefix = "runtime-model-policy-v2-medium-meal-routine:")
 
     fun select(models: List<OpenAiModelDescriptor>, excluded: Set<String> = emptySet()): String? {
         val available = models

@@ -13,6 +13,13 @@ import retrofit2.Response
 
 class OpenAiModelCatalogTest {
     @Test
+    fun select_prefersGpt6LunaWhenAccountListsIt() = runTest {
+        val api = CatalogApi(listOf(models("gpt-5.4-mini", "gpt-5.6-luna", "gpt-6-luna")))
+
+        assertEquals("gpt-6-luna", OpenAiModelCatalog(api).select("synthetic-secret"))
+    }
+
+    @Test
     fun select_prefersTheFirstAvailableBudgetCandidateAndCachesTheDiscovery() = runTest {
         val api = CatalogApi(
             listOf(

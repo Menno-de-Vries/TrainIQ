@@ -2,7 +2,6 @@ package com.trainiq.navigation
 
 import com.trainiq.features.settings.settingsOverflowSectionBody
 import com.trainiq.features.settings.settingsOverflowSectionTitle
-import java.io.File
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -30,11 +29,12 @@ class AdaptiveNavigationPolicyTest {
     }
 
     @Test
-    fun topLevelNavigationDoesNotAttachScreenWideSwipeGesture() {
-        val source = File("src/main/java/com/trainiq/navigation/TrainIqNav.kt").readText()
-
-        assertFalse(source.contains(".topLevelTabSwipeNavigation("))
-        assertFalse(source.contains("private fun Modifier.topLevelTabSwipeNavigation("))
+    fun topLevelSwipeStopsAtEndsAndMovesOneVisibleDestination() {
+        assertEquals(null, topLevelSwipeTargetIndex(0, -1, 5))
+        assertEquals(1, topLevelSwipeTargetIndex(0, 1, 5))
+        assertEquals(3, topLevelSwipeTargetIndex(4, -1, 5))
+        assertEquals(null, topLevelSwipeTargetIndex(4, 1, 5))
+        assertEquals(null, topLevelSwipeTargetIndex(-1, 1, 5))
     }
 
     @Test

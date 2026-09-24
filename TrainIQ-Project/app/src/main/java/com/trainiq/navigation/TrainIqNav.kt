@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.animateDpAsState
@@ -60,6 +62,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -92,6 +96,7 @@ import com.trainiq.core.theme.radii
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.core.ui.AppScaffold
 import kotlin.reflect.KClass
+import kotlin.math.abs
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -193,6 +198,9 @@ fun TrainIqApp(
         items
     } else {
         bottomNavigationDestinations(items = items, windowWidthClass = windowWidthClass)
+    }
+    val currentSwipeIndex = navigationItems.indexOfFirst { screen ->
+        currentDestination?.hierarchy?.any { it.hasRoute(screen.routeClass) } == true
     }
     var navVisible by remember { mutableStateOf(true) }
     var trainDetailMode by remember { mutableStateOf(false) }
@@ -360,7 +368,15 @@ fun TrainIqApp(
                 onboardingPreferences = onboardingPreferences,
                 onTrainDetailModeChanged = { trainDetailMode = it },
                 modifier = Modifier
-                    .padding(padding),
+                    .padding(padding)
+                    .then(
+                        if (currentSwipeIndex >= 0 && !imeVisible && !trainDetailMode && !showGuidedTour) {
+                            Modifier.topLevelTabSwipeNavigation(currentSwipeIndex, navigationItems.size) { direction ->
+                                val target = topLevelSwipeTargetIndex(currentSwipeIndex, direction, navigationItems.size)
+                                target?.let { navController.navigateTopLevel(navigationItems[it]) }
+                            }
+                        } else Modifier,
+                    ),
             )
         }
         }
@@ -390,6 +406,39 @@ fun TrainIqApp(
                         ).dp,
                     ),
             )
+        }
+    }
+}
+
+internal fun topLevelSwipeTargetIndex(currentIndex: Int, direction: Int, itemCount: Int): Int? =
+    (currentIndex + direction).takeIf { currentIndex in 0 until itemCount && it in 0 until itemCount && direction in setOf(-1, 1) }
+
+private fun Modifier.topLevelTabSwipeNavigation(
+    currentIndex: Int,
+    itemCount: Int,
+    onSwipe: (Int) -> Unit,
+): Modifier = pointerInput(currentIndex, itemCount) {
+    val edgeGuard = 24.dp.toPx()
+    val threshold = 64.dp.toPx()
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Final)
+        if (down.position.x < edgeGuard || down.position.x > size.width - edgeGuard) return@awaitEachGesture
+        var horizontal = 0f
+        var vertical = 0f
+        var consumedByChild = false
+        while (true) {
+            val change = awaitPointerEvent(PointerEventPass.Final).changes.firstOrNull { it.id == down.id } ?: break
+            if (change.pressed && change.position != change.previousPosition) {
+                consumedByChild = consumedByChild || change.isConsumed
+            }
+            horizontal += change.position.x - change.previousPosition.x
+            vertical += change.position.y - change.previousPosition.y
+            if (!change.pressed) {
+                if (!consumedByChild && abs(horizontal) >= threshold && abs(horizontal) > abs(vertical) * 1.5f) {
+                    onSwipe(if (horizontal < 0f) 1 else -1)
+                }
+                break
+            }
         }
     }
 }

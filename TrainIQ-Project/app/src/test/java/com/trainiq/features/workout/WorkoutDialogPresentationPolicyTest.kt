@@ -7,12 +7,12 @@ import org.junit.Test
 
 class WorkoutDialogPresentationPolicyTest {
     @Test
-    fun generatedRoutinePreviewUsesAdaptiveSheetInsteadOfDenseAlertDialog() {
+    fun generatedRoutinePreviewUsesAdaptiveSheetAndTargetedReplacementDialog() {
         val source = File("src/main/java/com/trainiq/features/workout/RoutineDialogs.kt").readText()
         val body = source.substringAfter("fun GeneratedRoutinePreviewDialog").substringBefore("private fun GeneratedRoutineSource.label")
 
         assertTrue(body.contains("ModalBottomSheet"))
-        assertFalse(body.contains("AlertDialog"))
+        assertTrue(body.contains("AlertDialog"))
         assertTrue(body.contains("verticalScroll"))
     }
 
@@ -39,8 +39,8 @@ class WorkoutDialogPresentationPolicyTest {
 
         assertFalse(actionArea.contains("Row("))
         assertFalse(actionArea.contains("Modifier.weight(1f)"))
-        assertTrue(actionArea.contains("TextButton(onClick = onRetry, modifier = Modifier.fillMaxWidth())"))
-        assertTrue(actionArea.contains("TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth())"))
+        assertTrue(actionArea.contains("TextButton(onClick = onRetry, enabled = !isSaving, modifier = Modifier.fillMaxWidth())"))
+        assertTrue(actionArea.contains("TextButton(onClick = onDismiss, enabled = !isSaving, modifier = Modifier.fillMaxWidth())"))
     }
 
     @Test

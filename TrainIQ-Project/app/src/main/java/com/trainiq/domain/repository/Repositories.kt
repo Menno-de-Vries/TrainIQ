@@ -125,6 +125,15 @@ interface WorkoutRepository {
         sessionDurationMinutes: Int,
         includeDeload: Boolean,
     ): GeneratedRoutine
+    suspend fun generateAiRoutine(
+        daysPerWeek: Int,
+        equipment: String,
+        targetFocus: String,
+        experienceLevel: String,
+        sessionDurationMinutes: Int,
+        includeDeload: Boolean,
+        options: com.trainiq.domain.model.RoutineGenerationOptions,
+    ): GeneratedRoutine = generateAiRoutine(daysPerWeek, equipment, targetFocus, experienceLevel, sessionDurationMinutes, includeDeload)
     suspend fun saveGeneratedRoutine(routine: GeneratedRoutine)
 }
 

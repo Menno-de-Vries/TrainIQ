@@ -490,7 +490,81 @@ class AiServicesTest {
     }
 
     @Test
-    fun analyzeMealImage_withKipRolladeAndKaasContext_keepsSeparateItemIdentity() = runTest {
+    fun parseMealContextOverrides_handlesAmountBeforeNameKgAndKeepsMlOutOfGrams() {
+        val overrides = parseMealContextOverrides("totaal 0,5 kg; 0,2 kg kip; 30 ml olie")
+
+        assertEquals(500.0, overrides.totalGrams ?: 0.0, 0.01)
+        assertEquals(200.0, overrides.itemGramsByName["kip"] ?: 0.0, 0.01)
+        assertFalse(overrides.itemGramsByName.containsKey("olie"))
+    }
+
+    @Test
+    fun parseMealContextOverrides_flagsServingAndPreparationScopesWithoutInventingConversions() {
+        val overrides = parseMealContextOverrides("100 g rauwe rijst; 2 porties recept, 1 gegeten")
+
+        assertEquals(100.0, overrides.itemGramsByName["rauwe rijst"] ?: 0.0, 0.01)
+        assertTrue(overrides.hasServingOrPackageScope)
+        assertTrue(overrides.hasRawOrCookedScope)
+        assertEquals(null, overrides.totalGrams)
+    }
+
+    @Test
+    fun analyzeMealImage_partialContextAndTotalOnlyRescalesUnknownPortion() = runTest {
+        val api = FakeGeminiApi(response = mealScanResponse("""{
+            "items":[
+              {"name":"Kip","estimatedGrams":100,"calories":165,"protein":31,"carbs":0,"fat":4},
+              {"name":"Rijst","estimatedGrams":100,"calories":130,"protein":3,"carbs":28,"fat":0},
+              {"name":"Groente","estimatedGrams":100,"calories":30,"protein":2,"carbs":5,"fat":0}
+            ],"suggestedMealType":"DINNER"} """.trimIndent()))
+        val service = MealAnalysisService(api = api, isAiReady = { true }, apiKeyProvider = { "key" }, imageBytesProvider = { byteArrayOf(1) })
+
+        val result = service.analyzeMealImage(tempImagePath(), "kip 200g, totaal 500g", 72_000_000L)
+
+        assertEquals(listOf("kip", "Rijst", "Groente"), result.items.map { it.name })
+        assertEquals(listOf(200.0, 150.0, 150.0), result.items.map { it.estimatedGrams })
+        assertEquals(330.0, result.items.first().nutrition.calories, 0.01)
+    }
+
+    @Test
+    fun analyzeMealImage_per100gBasisIsNormalizedToPortionOnce() = runTest {
+        val api = FakeGeminiApi(response = mealScanResponse("""{
+            "items":[{"name":"Rijst","estimatedGrams":200,"nutritionBasis":"PER_100_G","calories":130,"protein":3,"carbs":28,"fat":0}],
+            "suggestedMealType":"DINNER"} """.trimIndent()))
+        val service = MealAnalysisService(api = api, isAiReady = { true }, apiKeyProvider = { "key" }, imageBytesProvider = { byteArrayOf(1) })
+
+        val result = service.analyzeMealImage(tempImagePath(), "", 72_000_000L)
+
+        assertEquals(260.0, result.items.single().nutrition.calories, 0.01)
+    }
+
+    @Test
+    fun analyzeMealImage_conflictingWeightsAndMlRequireVisibleReviewWithoutSilentConversion() = runTest {
+        val api = FakeGeminiApi(response = mealScanResponse("""{
+            "items":[
+              {"name":"Kip","estimatedGrams":100,"calories":165,"protein":31,"carbs":0,"fat":4},
+              {"name":"Rijst","estimatedGrams":100,"calories":130,"protein":3,"carbs":28,"fat":0}
+            ],"suggestedMealType":"DINNER"} """.trimIndent()))
+        val service = MealAnalysisService(api = api, isAiReady = { true }, apiKeyProvider = { "key" }, imageBytesProvider = { byteArrayOf(1) })
+
+        val result = service.analyzeMealImage(tempImagePath(), "kip 200g, rijst 200g, totaal 300g, olie 30ml", 72_000_000L)
+
+        assertEquals(listOf(200.0, 200.0), result.items.map { it.estimatedGrams })
+        assertTrue(result.notes.orEmpty().contains("overschrijden"))
+        assertTrue(result.notes.orEmpty().contains("Volume in ml"))
+    }
+
+    @Test
+    fun analyzeMealImage_missingNutritionFieldCannotBecomeZeroValuedFood() = runTest {
+        val api = FakeGeminiApi(response = mealScanResponse("""{
+            "items":[{"name":"Onbekend","estimatedGrams":100,"calories":100,"protein":3,"carbs":10}],
+            "suggestedMealType":"LUNCH"} """.trimIndent()))
+        val service = MealAnalysisService(api = api, isAiReady = { true }, apiKeyProvider = { "key" }, imageBytesProvider = { byteArrayOf(1) })
+
+        assertTrue(service.analyzeMealImage(tempImagePath(), "", 43_200_000L).items.isEmpty())
+    }
+
+    @Test
+    fun analyzeMealImage_withKipRolladeAndKaasContext_doesNotAssignCheeseNutritionToMissingChicken() = runTest {
         val api = FakeGeminiApi(
             response = mealScanResponse(
                 """
@@ -532,14 +606,13 @@ class AiServicesTest {
             43_200_000L,
         )
 
-        assertEquals(listOf("kip rollade", "kaas"), result.items.map { it.name })
-        assertEquals(80.0, result.items[0].estimatedGrams, 0.0)
-        assertEquals(30.0, result.items[1].estimatedGrams, 0.0)
-        assertTrue(result.notes.orEmpty().contains("Expliciete gebruikerscontext"))
+        assertEquals(listOf("kaas"), result.items.map { it.name })
+        assertEquals(30.0, result.items.single().estimatedGrams, 0.0)
+        assertTrue(result.notes.orEmpty().contains("kip rollade ontbreken"))
     }
 
     @Test
-    fun analyzeMealImage_withFiveContextComponents_preservesFiveComponents() = runTest {
+    fun analyzeMealImage_withFiveContextComponents_excludesUnmatchedZeroNutritionItems() = runTest {
         val api = FakeGeminiApi(
             response = mealScanResponse(
                 """
@@ -570,17 +643,16 @@ class AiServicesTest {
         )
 
         assertEquals(
-            listOf("kip rollade", "kaas", "wrap", "saus", "sla"),
+            listOf("kip rollade", "kaas", "wrap"),
             result.items.map { it.name },
         )
-        assertEquals(5, result.items.size)
+        assertEquals(3, result.items.size)
         assertTrue(result.notes.orEmpty().contains("meerdere onderdelen lijken samengevoegd"))
-        assertTrue(result.items[3].notes.orEmpty().contains("Gebruikerscontext"))
-        assertTrue(result.items[4].notes.orEmpty().contains("Gebruikerscontext"))
+        assertTrue(result.notes.orEmpty().contains("saus, sla ontbreken"))
     }
 
     @Test
-    fun analyzeMealImage_whenContextItemMissing_addsLowConfidenceReviewItem() = runTest {
+    fun analyzeMealImage_whenContextItemMissing_requiresReviewWithoutInventedNutrition() = runTest {
         val api = FakeGeminiApi(
             response = mealScanResponse(
                 """
@@ -606,9 +678,8 @@ class AiServicesTest {
             43_200_000L,
         )
 
-        assertEquals(listOf("kip rollade", "kaas"), result.items.map { it.name })
-        assertEquals("low", result.items[1].confidence)
-        assertTrue(result.items[1].notes.orEmpty().contains("AI leverde geen apart betrouwbaar component terug"))
+        assertEquals(listOf("kaas"), result.items.map { it.name })
+        assertTrue(result.notes.orEmpty().contains("kip rollade ontbreken"))
     }
 
     @Test
