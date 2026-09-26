@@ -144,6 +144,10 @@ class BarcodeMealFlowInstrumentedTest {
         compose.onNodeWithText("Producten").assertIsDisplayed().performClick()
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Aan maaltijd toevoegen"))
         compose.onNodeWithText("Test kwark").assertExists()
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithText("Product aan de maaltijd toegevoegd en opgeslagen bij mijn producten.")
+                .fetchSemanticsNodes().isEmpty()
+        }
         compose.onNodeWithText("Aan maaltijd toevoegen").performScrollTo().performClick()
         compose.onNodeWithText("Maaltijd opslaan").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(2, savedMeals.size); assertEquals(1, savedFoods); assertEquals(1, lookupCalls) }

@@ -66,7 +66,8 @@ class TrainIqFlowSmokeInstrumentedTest {
             assertAnyVisible("Voedingsdag", "Maaltijdconcept", "Maaltijd scannen")
             tapNavigationItem("Coach")
             waitForText("Coach", checkpoint = "Coach tab content")
-            assertVisible("Profiel instellen")
+            compose.onNode(hasText("Profiel instellen") and hasClickAction())
+                .performScrollTo().assertIsDisplayed()
 
             tapNavigationItem("Instellingen")
             waitForText("Instellingen", checkpoint = "Settings tab content")
