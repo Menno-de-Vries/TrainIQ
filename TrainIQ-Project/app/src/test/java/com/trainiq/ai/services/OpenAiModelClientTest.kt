@@ -29,6 +29,23 @@ import retrofit2.Response
 
 class OpenAiModelClientTest {
     @Test
+    fun generateJson_whenDiscoveryListsGpt6AndGpt56_firstRequestUsesGpt6() = runTest {
+        val api = FakeOpenAiApi(
+            response = Response.success(OpenAiResponse(status = "completed", outputText = "{}")),
+            modelResponses = listOf(Response.success(OpenAiModelsResponse(data = listOf(
+                OpenAiModelDescriptor(id = "gpt-5.6-luna"),
+                OpenAiModelDescriptor(id = "gpt-6-luna"),
+            )))),
+        )
+
+        val result = OpenAiModelClient(api).generateJson("synthetic-secret", weeklyRequest())
+
+        assertEquals("gpt-6-luna", result.model)
+        assertEquals(listOf("gpt-6-luna"), api.requestedModels)
+        assertEquals(1, api.modelCalls)
+    }
+
+    @Test
     fun mealAndRoutineRequests_useExplicitMediumReasoningWithGpt6Luna() = runTest {
         listOf(AiFeature.MEAL_SCAN, AiFeature.ROUTINE_GENERATION).forEach { feature ->
             val api = FakeOpenAiApi(
@@ -65,6 +82,52 @@ class OpenAiModelClientTest {
         assertEquals(2, api.calls)
         assertEquals(2, api.modelCalls)
         assertEquals(listOf("gpt-5.6-luna", "gpt-5.4-mini"), api.requestedModels)
+    }
+
+    @Test
+    fun generateJson_gpt6ModelAccessRefreshesOnceAndTemporarilyUsesGpt56() = runTest {
+        val listedModels = Response.success(OpenAiModelsResponse(data = listOf(
+            OpenAiModelDescriptor(id = "gpt-6-luna"),
+            OpenAiModelDescriptor(id = "gpt-5.6-luna"),
+        )))
+        val api = FakeOpenAiApi(
+            response = errorResponse(403, "model_not_found", "req_model"),
+            responseSequence = listOf(
+                errorResponse(403, "model_not_found", "req_model"),
+                Response.success(OpenAiResponse(status = "completed", outputText = "{}")),
+            ),
+            modelResponses = listOf(listedModels, listedModels),
+        )
+        val client = OpenAiModelClient(api)
+
+        assertEquals("gpt-5.6-luna", client.generateJson("synthetic-secret", weeklyRequest()).model)
+        assertEquals("gpt-5.6-luna", client.generateJson("synthetic-secret", weeklyRequest()).model)
+        assertEquals(listOf("gpt-6-luna", "gpt-5.6-luna", "gpt-5.6-luna"), api.requestedModels)
+        assertEquals(2, api.modelCalls)
+    }
+
+    @Test
+    fun generateJson_secondModelAccessFailureStopsAfterOneFallback() = runTest {
+        val listedModels = Response.success(OpenAiModelsResponse(data = listOf(
+            OpenAiModelDescriptor(id = "gpt-6-luna"),
+            OpenAiModelDescriptor(id = "gpt-5.6-luna"),
+        )))
+        val api = FakeOpenAiApi(
+            response = errorResponse(403, "model_not_found", "req_model"),
+            responseSequence = listOf(
+                errorResponse(403, "model_not_found", "req_model"),
+                errorResponse(403, "model_not_found", "req_model"),
+            ),
+            modelResponses = listOf(listedModels, listedModels),
+        )
+
+        val error = runCatching {
+            OpenAiModelClient(api).generateJson("synthetic-secret", weeklyRequest())
+        }.exceptionOrNull()
+
+        assertFailure(error, "MODEL_ACCESS", 403, "model_not_found", "req_model")
+        assertEquals(listOf("gpt-6-luna", "gpt-5.6-luna"), api.requestedModels)
+        assertEquals(2, api.modelCalls)
     }
 
     @Test

@@ -470,17 +470,17 @@ fun AppScreenHeader(
     actionContentDescription: String? = null,
     onActionClick: (() -> Unit)? = null,
 ) {
-    val compactShortScreen = LocalConfiguration.current.screenHeightDp <= 640
-    val titleStyle = if (compactShortScreen) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium
-    val subtitleStyle = if (compactShortScreen) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleMedium
+    val compactPhone = LocalConfiguration.current.screenWidthDp < 600
+    val titleStyle = if (compactPhone) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium
+    val subtitleStyle = if (compactPhone) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleMedium
     Row(
         modifier = modifier
             .fillMaxWidth()
             .padding(
-                top = if (compactShortScreen) 8.dp else 22.dp,
-                bottom = if (compactShortScreen) 8.dp else 18.dp,
+                top = if (compactPhone) 8.dp else 22.dp,
+                bottom = if (compactPhone) 8.dp else 18.dp,
             ),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -502,7 +502,7 @@ fun AppScreenHeader(
             SecondaryActionButton(
                 modifier = Modifier.semantics { contentDescription = actionContentDescription },
                 onClick = onActionClick,
-                contentPadding = PaddingValues(if (compactShortScreen) 8.dp else 12.dp),
+                contentPadding = PaddingValues(if (compactPhone) 8.dp else 12.dp),
             ) {
                 Icon(actionIcon, contentDescription = actionContentDescription, modifier = Modifier.size(20.dp))
             }

@@ -62,7 +62,7 @@ class WarmFuturisticScreenPolishSourceTest {
 
         val scrollIndex = homeScrollModifier.indexOf("verticalScroll(rememberScrollState())")
         assertTrue(scrollIndex >= 0)
-        assertTrue(scrollIndex < homeScrollModifier.indexOf("navigationBarsPadding()"))
+        assertFalse("Scaffold already owns the bottom system inset.", homeScrollModifier.contains("navigationBarsPadding()"))
         assertTrue(scrollIndex < homeScrollModifier.indexOf("imePadding()"))
         assertTrue(scrollIndex < homeScrollModifier.indexOf(".padding("))
     }

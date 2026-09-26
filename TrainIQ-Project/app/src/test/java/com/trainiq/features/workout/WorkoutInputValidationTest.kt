@@ -13,6 +13,7 @@ import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutExercisePlan
 import com.trainiq.domain.model.WorkoutRoutine
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -55,8 +56,17 @@ class WorkoutInputValidationTest {
     }
 
     @Test
-    fun `active workout keeps bottom space for snackbar feedback above action bar`() {
-        assertTrue(activeWorkoutBottomContentPaddingForFeedback() >= 144.dp)
+    fun `active workout uses Scaffold action and snackbar placement without fixed dead space`() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val activeScreen = workoutScreen.substringAfter("fun ActiveWorkoutScreen(")
+            .substringBefore("private fun ActiveWorkoutSessionSummary(")
+        val bottomBar = workoutScreen.substringAfter("private fun ActiveWorkoutBottomBar(")
+            .substringBefore("private fun ActiveWorkoutPlanCard(")
+
+        assertTrue(activeWorkoutBottomContentPaddingForFeedback() <= 24.dp)
+        assertTrue(activeScreen.contains("snackbarHost = { SnackbarHost(snackbarHostState) }"))
+        assertTrue(activeScreen.contains(".consumeWindowInsets(padding)"))
+        assertTrue(bottomBar.contains("modifier = Modifier.navigationBarsPadding()"))
     }
 
     @Test
@@ -190,8 +200,8 @@ class WorkoutInputValidationTest {
         val appScreenHeaderBody = appDesign.substringAfter("fun AppScreenHeader(").substringBefore("fun AppCard(")
         val routineSetRowBody = workoutScreen.substringAfter("private fun RoutineSetRow(").substringBefore("BoxWithConstraints")
 
-        assertTrue(appScreenHeaderBody.contains("compactShortScreen"))
-        assertFalse(appScreenHeaderBody.contains("maxLines = if (compactShortScreen) 1 else Int.MAX_VALUE"))
+        assertTrue(appScreenHeaderBody.contains("compactPhone"))
+        assertFalse(appScreenHeaderBody.contains("maxLines = if (compactPhone) 1 else Int.MAX_VALUE"))
         assertFalse(appScreenHeaderBody.contains("overflow = TextOverflow.Ellipsis"))
         assertFalse(routineSetRowBody.contains("softWrap = false"))
     }
@@ -896,11 +906,14 @@ class WorkoutInputValidationTest {
         assertTrue(workoutScreen.contains("state = activeWorkoutListState"))
         assertTrue(activeExerciseCard.contains("DropdownMenuItem("))
         assertTrue(activeExerciseCard.contains("text = { Text(\"Set toevoegen\") }"))
-        assertTrue(activeExerciseCard.contains("onActivate ="))
-        assertTrue(activeExerciseCard.contains("activeInputIndex = index"))
+        assertTrue(activeExerciseCard.contains("index == loggedSets.size"))
+        assertFalse(activeExerciseCard.contains("activeInputIndex = index"))
         assertFalse(activeExerciseCard.contains("Card(\n                        modifier = Modifier.fillMaxWidth(),\n                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)"))
         assertTrue(setRow.contains("isInputExpanded: Boolean"))
         assertTrue(setRow.contains("ActiveSetInputMetrics("))
+        assertTrue(setRow.contains("if (isInputExpanded && submitLabel != null)"))
+        assertTrue(setRow.contains("onClick = onLogSet"))
+        assertFalse(setRow.contains(".clickable("))
         assertFalse(setRow.contains("SetLoggerFields("))
         assertTrue(setRow.contains("enabled = loggedSet != null || isInputExpanded"))
         assertTrue(workoutScreen.contains("private fun ActiveSetInputMetricValue("))
@@ -941,6 +954,27 @@ class WorkoutInputValidationTest {
         assertTrue(started is SetLogStartResult.Started)
         started as SetLogStartResult.Started
         assertEquals(SetLogStartResult.AlreadyPending, tryStartSetLog(started.pendingExerciseIds, exerciseId = 10L))
+    }
+
+    @Test
+    fun `field commit normalizes draft without becoming a submit action`() {
+        assertEquals("82.5", normalizeActiveMetricInput(" 82,5 ", "80", KeyboardType.Decimal))
+        assertEquals("5", normalizeActiveMetricInput("", "5", KeyboardType.Number))
+        assertEquals("6", normalizeActiveMetricInput(" 6 ", "5", KeyboardType.Number))
+
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val fieldBody = workoutScreen.substringAfter("private fun ActiveSetInputMetricValue(")
+            .substringBefore("private fun SetRow(")
+        assertFalse(fieldBody.contains("onLogSet"))
+        assertTrue(fieldBody.contains("onDone = {"))
+        assertTrue(fieldBody.contains("commitEdit()"))
+    }
+
+    @Test
+    fun `rapid accepted set submit is ignored while later intentional submit remains possible`() {
+        assertFalse(isRapidRepeatSetSubmit(1_000L, null))
+        assertTrue(isRapidRepeatSetSubmit(1_250L, 1_000L))
+        assertFalse(isRapidRepeatSetSubmit(1_350L, 1_000L))
     }
 
     @Test

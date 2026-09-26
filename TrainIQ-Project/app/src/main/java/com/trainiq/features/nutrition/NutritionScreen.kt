@@ -1230,13 +1230,12 @@ fun NutritionScreen(
             state = nutritionListState,
             modifier = Modifier
                 .fillMaxSize()
-                .navigationBarsPadding()
                 .imePadding(),
             contentPadding = PaddingValues(
                 start = MaterialTheme.spacing.medium,
                 top = MaterialTheme.spacing.medium,
                 end = MaterialTheme.spacing.medium,
-                bottom = 132.dp,
+                bottom = MaterialTheme.spacing.medium,
             ),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
         ) {

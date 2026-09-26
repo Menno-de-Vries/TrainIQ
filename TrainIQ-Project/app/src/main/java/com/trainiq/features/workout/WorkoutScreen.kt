@@ -6,6 +6,7 @@
 package com.trainiq.features.workout
 
 import android.app.Activity
+import android.os.SystemClock
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -16,6 +17,7 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -26,6 +28,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -452,8 +455,10 @@ private val ActiveSetActionWidth = 104.dp
 private val ActiveSetLeadingWidth = 76.dp
 private val ActiveSetHeaderMinHeight = 56.dp
 private val ActiveSetStackedActionBreakpoint = 320.dp
-private val TopLevelBottomContentPadding = 132.dp
-private val ActiveWorkoutBottomContentPadding = 156.dp
+private val TopLevelBottomContentPadding = 16.dp
+private val ActiveWorkoutBottomContentPadding = 16.dp
+// Cover a double tap while allowing the next deliberate set promptly after persistence finishes.
+private const val MinSetLogTapIntervalMillis = 350L
 private val ExercisePickerHandleDismissThreshold = 96.dp
 private val SetEditorHandleDismissThreshold = 96.dp
 private const val SetEditorSurfaceMaxHeightFraction = 0.92f
@@ -587,6 +592,7 @@ class WorkoutViewModel @Inject constructor(
     private val _loggingSummary = MutableStateFlow(WorkoutLoggingSummary())
     private val _activeFocusTarget = MutableStateFlow<ActiveWorkoutFocusTarget?>(null)
     private val _pendingLoggingExerciseIds = MutableStateFlow<Set<Long>>(emptySet())
+    private val lastAcceptedSetLogAt = mutableMapOf<Long, Long>()
     private val _pendingCorrectionSetIds = MutableStateFlow<Map<Long, Long>>(emptyMap())
     private val _exerciseRestOverrides = MutableStateFlow<Map<Long, Int>>(emptyMap())
 
@@ -847,6 +853,8 @@ class WorkoutViewModel @Inject constructor(
         }
         clearSetInputError(key)
         val dayId = _activeWorkout.value?.id ?: return false
+        val now = SystemClock.elapsedRealtime()
+        if (isRapidRepeatSetSubmit(now, lastAcceptedSetLogAt[key])) return false
         when (val start = tryStartSetLog(_pendingLoggingExerciseIds.value, key)) {
             is SetLogStartResult.AlreadyPending -> {
                 _message.value = "Deze set wordt al opgeslagen."
@@ -854,6 +862,7 @@ class WorkoutViewModel @Inject constructor(
             }
             is SetLogStartResult.Started -> {
                 _pendingLoggingExerciseIds.value = start.pendingExerciseIds
+                lastAcceptedSetLogAt[key] = now
             }
         }
         val validInput = validation as SetLogValidationResult.Valid
@@ -926,6 +935,7 @@ class WorkoutViewModel @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
+                lastAcceptedSetLogAt.remove(key)
                 _message.value = "Set loggen is mislukt. Probeer opnieuw."
             } finally {
                 _pendingLoggingExerciseIds.value = finishSetLog(_pendingLoggingExerciseIds.value, key)
@@ -1693,7 +1703,6 @@ fun WorkoutScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .clearFocusOnScrollOrDrag()
-                .navigationBarsPadding()
                 .imePadding(),
             contentPadding = PaddingValues(
                 start = MaterialTheme.spacing.medium,
@@ -4882,7 +4891,7 @@ private fun WorkoutProcessingScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .navigationBarsPadding()
+                .consumeWindowInsets(padding)
                 .padding(MaterialTheme.spacing.large),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -4986,7 +4995,7 @@ internal fun WorkoutCompletionScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .navigationBarsPadding()
+                .consumeWindowInsets(padding)
                 .pointerInput(Unit) {
                     awaitPointerEventScope {
                         while (true) {
@@ -5001,7 +5010,7 @@ internal fun WorkoutCompletionScreen(
                 start = MaterialTheme.spacing.medium,
                 top = MaterialTheme.spacing.medium,
                 end = MaterialTheme.spacing.medium,
-                bottom = 160.dp,
+                bottom = MaterialTheme.spacing.medium,
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -5272,9 +5281,35 @@ private fun CompletionActions(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.trainIqColors.mutedText,
         )
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            SecondaryActionButton(onClick = onBackToTraining, modifier = Modifier.weight(1f)) { Text("Terug naar krachttraining") }
-            PrimaryActionButton(onClick = onHome, modifier = Modifier.weight(1f)) { Text("Naar start") }
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val stackActions = maxWidth < 280.dp || (LocalDensity.current.fontScale >= 1.3f && maxWidth < 400.dp)
+            if (stackActions) {
+                val actionHeight = if (LocalDensity.current.fontScale >= 1.5f) 96.dp else 80.dp
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SecondaryActionButton(
+                        onClick = onBackToTraining,
+                        modifier = Modifier.fillMaxWidth().height(actionHeight),
+                    ) { Text("Terug naar krachttraining", textAlign = TextAlign.Center) }
+                    PrimaryActionButton(
+                        onClick = onHome,
+                        modifier = Modifier.fillMaxWidth().height(actionHeight),
+                    ) { Text("Naar start", textAlign = TextAlign.Center) }
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    SecondaryActionButton(
+                        onClick = onBackToTraining,
+                        modifier = Modifier.weight(1f).fillMaxHeight().defaultMinSize(minHeight = 56.dp),
+                    ) { Text("Terug naar krachttraining", textAlign = TextAlign.Center) }
+                    PrimaryActionButton(
+                        onClick = onHome,
+                        modifier = Modifier.weight(1f).fillMaxHeight().defaultMinSize(minHeight = 56.dp),
+                    ) { Text("Naar start", textAlign = TextAlign.Center) }
+                }
+            }
         }
     }
 }
@@ -5450,7 +5485,7 @@ fun ActiveWorkoutScreen(
                     .fillMaxSize()
                     .clearFocusOnScrollOrDrag()
                     .padding(padding)
-                    .navigationBarsPadding()
+                    .consumeWindowInsets(padding)
                     .imePadding(),
                 contentPadding = PaddingValues(
                     start = MaterialTheme.spacing.medium,
@@ -5747,7 +5782,11 @@ private fun ActiveWorkoutBottomBar(
     onFinishClick: () -> Unit,
 ) {
     val clock by clockState
-    Surface(color = MaterialTheme.colorScheme.background, tonalElevation = 0.dp) {
+    Surface(
+        modifier = Modifier.navigationBarsPadding(),
+        color = MaterialTheme.colorScheme.background,
+        tonalElevation = 0.dp,
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -6040,7 +6079,6 @@ private fun ActiveExerciseCard(
         hasPendingCorrection = hasPendingCorrection,
     )
     val targetWeight = platePreviewWeight(draft.weight, suggestion?.suggestedWeightKg)
-    var activeInputIndex by rememberSaveable(plan.id) { mutableIntStateOf(-1) }
     val platePlan = remember(targetWeight) {
         targetWeight?.let { StrengthCalculator.calculatePlates(it) }.orEmpty()
     }
@@ -6168,7 +6206,7 @@ private fun ActiveExerciseCard(
                     !collapsed &&
                     (
                         pendingCorrectionSetId?.let { loggedSetForRow?.id == it } == true ||
-                            (loggedSetForRow == null && (index == loggedSets.size || activeInputIndex == index))
+                            (!hasPendingCorrection && loggedSetForRow == null && index == loggedSets.size)
                     )
                 SetRow(
                     index = index + 1,
@@ -6199,9 +6237,14 @@ private fun ActiveExerciseCard(
                         activeSetTargetCount > loggedSets.size,
                     onRemovePlanned = { activeSetTargetDelta -= 1 },
                     onRelog = { loggedSetForRow?.let { onRelogSet(it.id) } },
-                    onActivate = {
-                        if (loggedSetForRow == null && showLogger && !collapsed) activeInputIndex = index
-                    },
+                    submitLabel = if (rowIsActiveInput) activeSetLogButtonLabel(
+                        isLogPending = isLogPending,
+                        hasPendingCorrection = hasPendingCorrection,
+                        loggedSetCount = loggedSets.size,
+                        plannedSetCount = plannedSetCount,
+                    ) else null,
+                    isLogPending = isLogPending,
+                    onLogSet = onLogSet,
                 )
             }
             if (platePlan.isNotEmpty()) {
@@ -6221,12 +6264,6 @@ private fun ActiveExerciseCard(
                     )
                 }
                 BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                    val primaryLabel = activeSetLogButtonLabel(
-                        isLogPending = isLogPending,
-                        hasPendingCorrection = hasPendingCorrection,
-                        loggedSetCount = loggedSets.size,
-                        plannedSetCount = plannedSetCount,
-                    )
                     when (activeSetActionLayoutForWidth(maxWidth)) {
                         ActiveSetActionLayout.Stacked -> {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -6257,15 +6294,6 @@ private fun ActiveExerciseCard(
                                         Text("Zelfde opnieuw", maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
                                     }
                                 }
-                                PrimaryActionButton(
-                                    onClick = onLogSet,
-                                    enabled = !isLogPending,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .defaultMinSize(minHeight = 48.dp),
-                                ) {
-                                    Text(primaryLabel, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-                                }
                             }
                         }
                         ActiveSetActionLayout.Wrapped -> {
@@ -6289,15 +6317,6 @@ private fun ActiveExerciseCard(
                                     modifier = Modifier.defaultMinSize(minHeight = 48.dp),
                                 ) {
                                     Text("Zelfde opnieuw", maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-                                }
-                                PrimaryActionButton(
-                                    onClick = onLogSet,
-                                    enabled = !isLogPending,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .defaultMinSize(minHeight = 48.dp),
-                                ) {
-                                    Text(primaryLabel, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
                                 }
                             }
                         }
@@ -6607,6 +6626,16 @@ private fun ActiveSetInputMetricValue(
     val focusManager = LocalFocusManager.current
     var focused by remember { mutableStateOf(false) }
     var valueBeforeFocus by remember { mutableStateOf(value) }
+    var latestEdit by remember { mutableStateOf(value) }
+    var lastCommittedEdit by remember { mutableStateOf<String?>(null) }
+    val commitEdit = {
+        val committed = normalizeActiveMetricInput(latestEdit, valueBeforeFocus, keyboardType)
+        latestEdit = committed
+        if (committed != value && committed != lastCommittedEdit) {
+            lastCommittedEdit = committed
+            onValueChange(committed)
+        }
+    }
     val content = when (suffix) {
         "kg" -> "Gewicht in kilogram"
         "s" -> "Rust in seconden"
@@ -6646,6 +6675,8 @@ private fun ActiveSetInputMetricValue(
                 } else {
                     filterIntegerInput(raw)
                 }
+                latestEdit = filtered
+                lastCommittedEdit = null
                 onValueChange(filtered)
             },
             singleLine = true,
@@ -6653,9 +6684,12 @@ private fun ActiveSetInputMetricValue(
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
             keyboardActions = KeyboardActions(
-                onNext = { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Next) },
+                onNext = {
+                    commitEdit()
+                    focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Next)
+                },
                 onDone = {
-                    // Finishing an edit must not accidentally log an entire set.
+                    commitEdit()
                     focusManager.clearFocus(force = true)
                 },
             ),
@@ -6663,8 +6697,12 @@ private fun ActiveSetInputMetricValue(
                 .fillMaxWidth()
                 .defaultMinSize(minHeight = 48.dp)
                 .onFocusChanged { state ->
-                    if (state.isFocused && !focused) valueBeforeFocus = value
-                    if (!state.isFocused && focused && value.isBlank()) onValueChange(valueBeforeFocus)
+                    if (state.isFocused && !focused) {
+                        valueBeforeFocus = value
+                        latestEdit = value
+                        lastCommittedEdit = null
+                    }
+                    if (!state.isFocused && focused) commitEdit()
                     focused = state.isFocused
                 },
             decorationBox = { innerTextField ->
@@ -6712,7 +6750,9 @@ private fun SetRow(
     canRemovePlanned: Boolean,
     onRemovePlanned: () -> Unit,
     onRelog: () -> Unit,
-    onActivate: () -> Unit,
+    submitLabel: String?,
+    isLogPending: Boolean,
+    onLogSet: () -> Unit,
 ) {
     var showDeleteConfirm by remember(index, loggedSet) { mutableStateOf(false) }
     var setTypeMenuExpanded by remember(index, loggedSet?.id, plannedSet?.id) { mutableStateOf(false) }
@@ -6751,12 +6791,6 @@ private fun SetRow(
         modifier = Modifier
             .fillMaxWidth()
             .background(rowColor, MaterialTheme.shapes.medium)
-            .clickable(
-                enabled = loggedSet == null,
-                role = Role.Button,
-                onClickLabel = "Set $index invullen",
-                onClick = onActivate,
-            )
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -6863,6 +6897,17 @@ private fun SetRow(
                         }
                     }
                 }
+            }
+        }
+        if (isInputExpanded && submitLabel != null) {
+            PrimaryActionButton(
+                onClick = onLogSet,
+                enabled = !isLogPending,
+                modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp),
+            ) {
+                Icon(Icons.Default.Check, contentDescription = null)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(submitLabel, textAlign = TextAlign.Center)
             }
         }
     }
@@ -7290,6 +7335,11 @@ private fun List<WorkoutExercisePlan>.focusLabel(): String {
 
 private fun String.normalizedDecimal(): String = trim().replace(',', '.')
 
+internal fun normalizeActiveMetricInput(value: String, previous: String, keyboardType: KeyboardType): String {
+    val committed = if (keyboardType == KeyboardType.Decimal) value.normalizedDecimal() else value.trim()
+    return committed.ifBlank { previous }
+}
+
 internal fun filterDecimalInput(input: String, maxDecimals: Int): String {
     val decimals = maxDecimals.coerceAtLeast(0)
     val builder = StringBuilder()
@@ -7343,6 +7393,10 @@ internal fun tryStartSetLog(pendingExerciseIds: Set<Long>, exerciseId: Long): Se
     } else {
         SetLogStartResult.Started(pendingExerciseIds + exerciseId)
     }
+
+internal fun isRapidRepeatSetSubmit(nowMillis: Long, lastAcceptedMillis: Long?): Boolean =
+    lastAcceptedMillis != null && nowMillis >= lastAcceptedMillis &&
+        nowMillis - lastAcceptedMillis < MinSetLogTapIntervalMillis
 
 internal fun finishSetLog(pendingExerciseIds: Set<Long>, exerciseId: Long): Set<Long> =
     pendingExerciseIds - exerciseId

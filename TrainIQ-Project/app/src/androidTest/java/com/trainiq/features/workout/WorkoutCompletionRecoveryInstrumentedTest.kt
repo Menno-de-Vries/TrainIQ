@@ -1,7 +1,9 @@
 package com.trainiq.features.workout
 
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
+import androidx.compose.ui.unit.Density
 import com.trainiq.core.theme.TrainIqTheme
 import com.trainiq.domain.model.*
 import org.junit.Assert.assertEquals
@@ -56,6 +58,22 @@ class WorkoutCompletionRecoveryInstrumentedTest {
         assertEquals(0, homes)
         mainClock.advanceTimeBy(2_000)
         runOnIdle { assertEquals(1, homes) }
+    }
+
+    @Test fun completionActionsHaveEqualBoundsAtLargeFontScale() = runComposeUiTest {
+        setContent {
+            TrainIqTheme {
+                CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 1.5f)) {
+                    WorkoutCompletionScreen(WorkoutCompletionUiState.Success(summary()), {}, {})
+                }
+            }
+        }
+        onNode(hasScrollToIndexAction()).performScrollToIndex(4)
+        onNodeWithText("Terug naar krachttraining").performScrollTo()
+        val training = onNodeWithText("Terug naar krachttraining").fetchSemanticsNode().boundsInRoot
+        val home = onNodeWithText("Naar start").fetchSemanticsNode().boundsInRoot
+        assertEquals(training.width, home.width, 1f)
+        assertEquals(training.height, home.height, 1f)
     }
 
     private fun summary() = WorkoutCompletionSummary(

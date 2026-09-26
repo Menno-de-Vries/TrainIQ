@@ -1,5 +1,7 @@
 package com.trainiq.core.ui
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -54,13 +56,22 @@ class ScreenChromeReadabilityInstrumentedTest {
             val density = LocalDensity.current.density
             CompositionLocalProvider(LocalDensity provides Density(density, fontScale = 1.5f)) {
                 TrainIqTheme {
-                    Column(Modifier.width(240.dp).safeDrawingPadding()) { AppScreenHeader(title, subtitle) }
+                    Column(Modifier.width(240.dp).safeDrawingPadding()) {
+                        AppScreenHeader(
+                            title = title,
+                            subtitle = subtitle,
+                            actionIcon = Icons.Default.Settings,
+                            actionContentDescription = "Instellingen openen",
+                            onActionClick = {},
+                        )
+                    }
                 }
             }
         }
         capture("header")
         assertCompleteText(title)
         assertCompleteText(subtitle)
+        compose.onNodeWithContentDescription("Instellingen openen", substring = true).assertIsDisplayed()
     }
 
     @Test fun sectionTabsKeepFullLabelsAndSelectionAtLargeFont() {
