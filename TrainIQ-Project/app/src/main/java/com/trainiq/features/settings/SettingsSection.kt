@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -724,13 +723,12 @@ internal enum class PendingDestructiveSettingsAction {
 private fun SettingsLoadingScreen() {
     LazyColumn(
         modifier = Modifier
-            .fillMaxSize()
-            .navigationBarsPadding(),
+            .fillMaxSize(),
         contentPadding = PaddingValues(
             start = MaterialTheme.spacing.medium,
             top = MaterialTheme.spacing.medium,
             end = MaterialTheme.spacing.medium,
-            bottom = 132.dp,
+            bottom = MaterialTheme.spacing.medium,
         ),
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.large),
     ) {
@@ -745,13 +743,12 @@ private fun SettingsLoadingScreen() {
 private fun SettingsErrorScreen(message: String, onRetry: () -> Unit) {
     LazyColumn(
         modifier = Modifier
-            .fillMaxSize()
-            .navigationBarsPadding(),
+            .fillMaxSize(),
         contentPadding = PaddingValues(
             start = MaterialTheme.spacing.medium,
             top = MaterialTheme.spacing.medium,
             end = MaterialTheme.spacing.medium,
-            bottom = 132.dp,
+            bottom = MaterialTheme.spacing.medium,
         ),
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.large),
     ) {
@@ -841,13 +838,12 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .clearFocusOnScrollOrDrag()
                 .verticalScroll(scrollState)
-                .navigationBarsPadding()
                 .imePadding()
                 .padding(
                     start = MaterialTheme.spacing.medium,
                     top = MaterialTheme.spacing.small,
                     end = MaterialTheme.spacing.medium,
-                    bottom = 132.dp,
+                    bottom = MaterialTheme.spacing.medium,
                 ),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
         ) {

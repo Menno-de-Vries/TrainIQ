@@ -4,7 +4,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -48,6 +50,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -64,6 +67,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -97,6 +101,7 @@ import com.trainiq.core.theme.trainIqColors
 import com.trainiq.core.ui.AppScaffold
 import kotlin.reflect.KClass
 import kotlin.math.abs
+import kotlin.math.max
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -287,75 +292,76 @@ fun TrainIqApp(
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .offset(y = navOffset)
-                            .padding(
-                                horizontal = 0.dp,
-                                vertical = 0.dp,
-                            )
-                            .navigationBarsPadding(),
+                            .offset(y = navOffset),
                         color = MaterialTheme.trainIqColors.card,
                         tonalElevation = 0.dp,
                         shadowElevation = 0.dp,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.trainIqColors.cardBorder),
-                        shape = RoundedCornerShape(2.dp),
                     ) {
-                        NavigationBar(
-                            modifier = if (useCompactShortBottomBar) Modifier.height(50.dp) else Modifier.heightIn(min = 80.dp),
-                            tonalElevation = 0.dp,
-                            containerColor = androidx.compose.ui.graphics.Color.Transparent,
-                        ) {
-                            navigationItems.forEach { screen ->
-                                val isCurrentRoute = currentDestination?.hierarchy?.any { it.hasRoute(screen.routeClass) } == true
-                                val selected = compactSelectedRouteClass == screen.routeClass
-                                NavigationBarItem(
-                                    selected = selected,
-                                    onClick = {
-                                        diagnosticsTracker.tap("Nav:${screen.label}")
-                                        haptics.performHapticFeedback(
-                                            if (screen.routeClass == Coach::class) HapticFeedbackType.LongPress else HapticFeedbackType.TextHandleMove,
-                                        )
-                                        if (isCurrentRoute) return@NavigationBarItem
-                                        navController.navigateTopLevel(screen)
-                                    },
-                                    icon = {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(width = 42.dp, height = if (useCompactShortBottomBar) 30.dp else 28.dp)
-                                                .background(
-                                                    color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f) else Color.Transparent,
-                                                    shape = CircleShape,
-                                                ),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            Icon(
-                                                imageVector = screen.icon,
-                                                contentDescription = if (useCompactShortBottomBar) screen.label else null,
-                                                modifier = Modifier.size(24.dp),
+                        Column {
+                            HorizontalDivider(
+                                thickness = 1.dp,
+                                color = MaterialTheme.trainIqColors.cardBorder.copy(alpha = 0.55f),
+                            )
+                            NavigationBar(
+                                modifier = if (useCompactShortBottomBar) Modifier.height(50.dp) else Modifier.height(72.dp),
+                                tonalElevation = 0.dp,
+                                containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                                windowInsets = WindowInsets(0, 0, 0, 0),
+                            ) {
+                                navigationItems.forEach { screen ->
+                                    val isCurrentRoute = currentDestination?.hierarchy?.any { it.hasRoute(screen.routeClass) } == true
+                                    val selected = compactSelectedRouteClass == screen.routeClass
+                                    NavigationBarItem(
+                                        selected = selected,
+                                        onClick = {
+                                            diagnosticsTracker.tap("Nav:${screen.label}")
+                                            haptics.performHapticFeedback(
+                                                if (screen.routeClass == Coach::class) HapticFeedbackType.LongPress else HapticFeedbackType.TextHandleMove,
                                             )
-                                        }
-                                    },
-                                    label = if (useCompactShortBottomBar) null else {
-                                        {
-                                            Text(
-                                                screen.bottomLabel,
+                                            if (isCurrentRoute) return@NavigationBarItem
+                                            navController.navigateTopLevel(screen)
+                                        },
+                                        icon = {
+                                            Box(
                                                 modifier = Modifier
-                                                    .wrapContentWidth(unbounded = true)
-                                                    .widthIn(max = (configuration.screenWidthDp / navigationItems.size - 8).dp),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                maxLines = 2,
-                                            )
-                                        }
-                                    },
-                                    alwaysShowLabel = !useCompactShortBottomBar,
-                                    colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = MaterialTheme.colorScheme.primary,
-                                        selectedTextColor = MaterialTheme.colorScheme.primary,
-                                        indicatorColor = Color.Transparent,
-                                        unselectedIconColor = MaterialTheme.trainIqColors.mutedText,
-                                        unselectedTextColor = MaterialTheme.trainIqColors.mutedText,
-                                    ),
-                                )
+                                                    .size(width = 42.dp, height = if (useCompactShortBottomBar) 30.dp else 28.dp)
+                                                    .background(
+                                                        color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f) else Color.Transparent,
+                                                        shape = CircleShape,
+                                                    ),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                Icon(
+                                                    imageVector = screen.icon,
+                                                    contentDescription = if (useCompactShortBottomBar) screen.label else null,
+                                                    modifier = Modifier.size(24.dp),
+                                                )
+                                            }
+                                        },
+                                        label = if (useCompactShortBottomBar) null else {
+                                            {
+                                                Text(
+                                                    screen.bottomLabel,
+                                                    modifier = Modifier
+                                                        .wrapContentWidth(unbounded = true)
+                                                        .widthIn(max = (configuration.screenWidthDp / navigationItems.size - 8).dp),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    maxLines = 2,
+                                                )
+                                            }
+                                        },
+                                        alwaysShowLabel = !useCompactShortBottomBar,
+                                        colors = NavigationBarItemDefaults.colors(
+                                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                                            indicatorColor = Color.Transparent,
+                                            unselectedIconColor = MaterialTheme.trainIqColors.mutedText,
+                                            unselectedTextColor = MaterialTheme.trainIqColors.mutedText,
+                                        ),
+                                    )
+                                }
                             }
+                            Spacer(Modifier.fillMaxWidth().navigationBarsPadding())
                         }
                     }
                 }
@@ -369,8 +375,9 @@ fun TrainIqApp(
                 onTrainDetailModeChanged = { trainDetailMode = it },
                 modifier = Modifier
                     .padding(padding)
+                    .consumeWindowInsets(padding)
                     .then(
-                        if (currentSwipeIndex >= 0 && !imeVisible && !trainDetailMode && !showGuidedTour) {
+                        if (shouldEnableTopLevelSwipe(useNavigationRail, currentSwipeIndex, imeVisible, trainDetailMode, showGuidedTour)) {
                             Modifier.topLevelTabSwipeNavigation(currentSwipeIndex, navigationItems.size) { direction ->
                                 val target = topLevelSwipeTargetIndex(currentSwipeIndex, direction, navigationItems.size)
                                 target?.let { navController.navigateTopLevel(navigationItems[it]) }
@@ -413,28 +420,56 @@ fun TrainIqApp(
 internal fun topLevelSwipeTargetIndex(currentIndex: Int, direction: Int, itemCount: Int): Int? =
     (currentIndex + direction).takeIf { currentIndex in 0 until itemCount && it in 0 until itemCount && direction in setOf(-1, 1) }
 
-private fun Modifier.topLevelTabSwipeNavigation(
+internal fun shouldEnableTopLevelSwipe(
+    useNavigationRail: Boolean,
+    currentSwipeIndex: Int,
+    imeVisible: Boolean,
+    trainDetailMode: Boolean,
+    showGuidedTour: Boolean,
+): Boolean = !useNavigationRail && currentSwipeIndex >= 0 && !imeVisible && !trainDetailMode && !showGuidedTour
+
+internal fun Modifier.topLevelTabSwipeNavigation(
     currentIndex: Int,
     itemCount: Int,
     onSwipe: (Int) -> Unit,
 ): Modifier = pointerInput(currentIndex, itemCount) {
-    val edgeGuard = 24.dp.toPx()
-    val threshold = 64.dp.toPx()
+    val edgeGuard = 28.dp.toPx()
+    val travelThreshold = max(48.dp.toPx(), size.width * 0.12f)
+    val flickTravel = 28.dp.toPx()
+    val flickVelocity = 550.dp.toPx()
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Final)
         if (down.position.x < edgeGuard || down.position.x > size.width - edgeGuard) return@awaitEachGesture
-        var horizontal = 0f
-        var vertical = 0f
-        var consumedByChild = false
+        val tracker = VelocityTracker().apply { addPosition(down.uptimeMillis, down.position) }
+        var horizontalLocked = false
+        var rejected = false
         while (true) {
-            val change = awaitPointerEvent(PointerEventPass.Final).changes.firstOrNull { it.id == down.id } ?: break
-            if (change.pressed && change.position != change.previousPosition) {
-                consumedByChild = consumedByChild || change.isConsumed
+            val changes = awaitPointerEvent(PointerEventPass.Final).changes
+            if (changes.size != 1) {
+                rejected = true
             }
-            horizontal += change.position.x - change.previousPosition.x
-            vertical += change.position.y - change.previousPosition.y
+            val change = changes.firstOrNull { it.id == down.id } ?: break
+            tracker.addPosition(change.uptimeMillis, change.position)
+            val horizontal = change.position.x - down.position.x
+            val vertical = change.position.y - down.position.y
+            if (!horizontalLocked && !rejected && max(abs(horizontal), abs(vertical)) > viewConfiguration.touchSlop) {
+                when {
+                    abs(horizontal) > abs(vertical) * 1.3f -> horizontalLocked = true
+                    abs(vertical) > abs(horizontal) * 1.3f -> rejected = true
+                    max(abs(horizontal), abs(vertical)) > viewConfiguration.touchSlop * 2f -> rejected = true
+                }
+            }
+            // A horizontal child (slider, carousel, sheet) owns its consumed drag.
+            // Small vertical jitter before axis lock must not cancel a tab swipe.
+            if (horizontalLocked && change.isConsumed && abs(change.position.x - change.previousPosition.x) >
+                abs(change.position.y - change.previousPosition.y)) {
+                rejected = true
+            }
             if (!change.pressed) {
-                if (!consumedByChild && abs(horizontal) >= threshold && abs(horizontal) > abs(vertical) * 1.5f) {
+                val velocity = tracker.calculateVelocity().x
+                if (!rejected && horizontalLocked &&
+                    (abs(horizontal) >= travelThreshold || (abs(horizontal) >= flickTravel && abs(velocity) >= flickVelocity))
+                ) {
                     onSwipe(if (horizontal < 0f) 1 else -1)
                 }
                 break

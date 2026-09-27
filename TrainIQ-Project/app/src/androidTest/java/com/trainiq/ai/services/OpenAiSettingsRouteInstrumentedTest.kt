@@ -35,7 +35,16 @@ import retrofit2.Response
 @RunWith(AndroidJUnit4::class)
 class OpenAiSettingsRouteInstrumentedTest {
     @Test
-    fun storedOpenAiSettings_surviveGateReconstructionAndRouteGoalAdviceToOpenAi() = runBlocking {
+    fun storedOpenAiSettings_routeGoalAdviceToGpt6WhenListed() = runBlocking {
+        assertSettingsRoute(listOf("gpt-5.6-luna", "gpt-6-luna"), "gpt-6-luna")
+    }
+
+    @Test
+    fun storedOpenAiSettings_routeGoalAdviceToGpt56WhenOnlyFallbackIsListed() = runBlocking {
+        assertSettingsRoute(listOf("gpt-5.6-luna"), "gpt-5.6-luna")
+    }
+
+    private suspend fun assertSettingsRoute(modelIds: List<String>, expectedModel: String) {
         val isolatedContext = InstrumentationRegistry.getInstrumentation()
             .targetContext
             .createDeviceProtectedStorageContext()
@@ -53,7 +62,7 @@ class OpenAiSettingsRouteInstrumentedTest {
                 preferences = preferences,
                 openAiKeys = OpenAiKeyStore(AndroidKeystoreOpenAiKeyStore(isolatedContext)),
             )
-            val api = FakeOpenAiApi()
+            val api = FakeOpenAiApi(modelIds)
             val router = AiProviderRouter(
                 geminiClient = GeminiModelClient(UnusedGeminiApi),
                 openAiClient = OpenAiModelClient(api),
@@ -83,7 +92,7 @@ class OpenAiSettingsRouteInstrumentedTest {
             assertEquals(1, api.modelDiscoveryCalls)
             assertEquals(1, api.responseCalls)
             assertEquals("Bearer $syntheticKey", api.lastAuthorization)
-            assertEquals("gpt-5.6-luna", api.lastRequest?.model)
+            assertEquals(expectedModel, api.lastRequest?.model)
             assertEquals("goal_advice", api.lastRequest?.text?.format?.name)
             assertEquals(GoalAdviceSource.OPENAI, advice.source)
             assertEquals("OpenAI-testadvies in het Nederlands.", advice.summary)
@@ -121,7 +130,7 @@ class OpenAiSettingsRouteInstrumentedTest {
         ): GeminiResponse = error("Gemini must not be called by the OpenAI route test")
     }
 
-    private class FakeOpenAiApi : OpenAiApi {
+    private class FakeOpenAiApi(private val modelIds: List<String>) : OpenAiApi {
         var modelDiscoveryCalls = 0
         var responseCalls = 0
         var lastAuthorization: String? = null
@@ -132,7 +141,7 @@ class OpenAiSettingsRouteInstrumentedTest {
             lastAuthorization = authorization
             return Response.success(
                 OpenAiModelsResponse(
-                    data = listOf(OpenAiModelDescriptor(id = "gpt-5.6-luna")),
+                    data = modelIds.map { OpenAiModelDescriptor(id = it) },
                 ),
             )
         }

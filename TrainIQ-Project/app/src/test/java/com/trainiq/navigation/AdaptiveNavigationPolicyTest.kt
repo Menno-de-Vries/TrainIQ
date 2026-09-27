@@ -35,6 +35,26 @@ class AdaptiveNavigationPolicyTest {
         assertEquals(3, topLevelSwipeTargetIndex(4, -1, 5))
         assertEquals(null, topLevelSwipeTargetIndex(4, 1, 5))
         assertEquals(null, topLevelSwipeTargetIndex(-1, 1, 5))
+        assertEquals(null, topLevelSwipeTargetIndex(2, 2, 5))
+        assertEquals(null, topLevelSwipeTargetIndex(2, 0, 5))
+    }
+
+    @Test
+    fun swipeIsAvailableOnlyOnCompactUnobstructedTopLevelContent() {
+        fun enabled(
+            rail: Boolean = false,
+            index: Int = 2,
+            ime: Boolean = false,
+            detail: Boolean = false,
+            tour: Boolean = false,
+        ) = shouldEnableTopLevelSwipe(rail, index, ime, detail, tour)
+
+        assertTrue(enabled())
+        assertFalse(enabled(rail = true))
+        assertFalse(enabled(index = -1))
+        assertFalse(enabled(ime = true))
+        assertFalse(enabled(detail = true))
+        assertFalse(enabled(tour = true))
     }
 
     @Test

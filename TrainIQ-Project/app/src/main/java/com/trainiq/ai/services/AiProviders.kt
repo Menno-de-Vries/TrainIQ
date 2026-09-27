@@ -129,7 +129,7 @@ class OpenAiModelClient @Inject constructor(
             generateJsonForModel(apiKey, request, inputContent, selectedModel)
         } catch (error: AiProviderRequestException) {
             if (error.category != AiFailureCategory.MODEL_ACCESS) throw error
-            modelCatalog.invalidate(apiKey)
+            modelCatalog.invalidate(apiKey, rejectedModel = selectedModel)
             val fallbackModel = try {
                 selectModel(apiKey, request, excluded = setOf(selectedModel))
             } catch (fallbackError: AiProviderRequestException) {

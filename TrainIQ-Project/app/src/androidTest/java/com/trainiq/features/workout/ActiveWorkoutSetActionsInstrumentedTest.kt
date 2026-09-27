@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.doubleClick
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -51,6 +52,7 @@ import com.trainiq.testing.trainIqAndroidTestDatabase
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -317,6 +319,57 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             scenario.recreate()
             compose.waitForText("Voltooid")
             assertSavedOnce()
+        }
+    }
+
+    @Test
+    fun editingFieldsOnlyChangesDraftAndDoubleTapLogsExactlyOneSet() {
+        runBlocking {
+            database.dao().insertRoutineSets(
+                listOf(
+                    RoutineSetEntity(id = 11L, workoutExerciseId = 4L, orderIndex = 1, setType = "NORMAL", targetReps = 5),
+                    RoutineSetEntity(id = 12L, workoutExerciseId = 4L, orderIndex = 2, setType = "NORMAL", targetReps = 5),
+                ),
+            )
+        }
+        ActivityScenario.launch(MainActivity::class.java).use {
+            val trainingNavigation = (hasContentDescription("Training") or hasText("Training")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(trainingNavigation).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(trainingNavigation).performClick()
+            compose.waitForText("QA Upper")
+            compose.onNodeWithText("Training starten").performClick()
+            compose.waitForText("Actieve training")
+
+            metricInput("Gewicht in kilogram").performScrollTo().performClick()
+                .performTextReplacement("82,5")
+            metricInput("Herh.").performClick().performTextReplacement("6")
+            assertEquals(1, runBlocking { database.dao().observeActiveWorkoutSets().first().size })
+
+            compose.onNodeWithText("Set 2").performScrollTo().performTouchInput { click() }
+            assertEquals(1, runBlocking { database.dao().observeActiveWorkoutSets().first().size })
+
+            metricInput("Rust in seconden").performScrollTo().performClick()
+            metricInput("Rust in seconden").performTextReplacement("90")
+            metricInput("Rust in seconden").performImeAction()
+            compose.onRoot().performTouchInput {
+                swipe(start = Offset(width * 0.5f, height * 0.7f), end = Offset(width * 0.5f, height * 0.3f))
+            }
+            assertEquals(1, runBlocking { database.dao().observeActiveWorkoutSets().first().size })
+
+            val submit = compose.onNodeWithText("Set loggen")
+            submit.performScrollTo().assertIsDisplayed()
+            compose.onAllNodesWithText("Set loggen").assertCountEquals(1)
+            submit.performTouchInput { doubleClick() }
+            compose.waitUntil(15_000) {
+                runBlocking { database.dao().observeActiveWorkoutSets().first().size == 2 }
+            }
+            compose.waitForIdle()
+            assertEquals(2, runBlocking { database.dao().observeActiveWorkoutSets().first().size })
+            val finish = compose.onNodeWithContentDescription("Training afronden").assertIsDisplayed()
+                .fetchSemanticsNode().boundsInRoot
+            val snackbar = compose.onNodeWithText("Set 2 gelogd", substring = true).assertIsDisplayed()
+                .fetchSemanticsNode().boundsInRoot
+            assertTrue("Snackbar moet boven de bereikbare actiebalk blijven.", snackbar.bottom <= finish.top)
         }
     }
 

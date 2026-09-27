@@ -3,6 +3,7 @@ package com.trainiq.navigation
 import android.content.Context
 import androidx.compose.ui.test.*
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -26,19 +27,42 @@ class TopLevelSwipeNavigationInstrumentedTest {
 
     @Test fun tapAndSwipeShareVisibleDestinationAndStopAtEnds() {
         ActivityScenario.launch(MainActivity::class.java).use {
-            val training = (hasText("Training") or hasContentDescription("Training")) and hasClickAction()
-            val nutrition = (hasText("Voeding") or hasContentDescription("Voeding")) and hasClickAction()
+            val navigationItem = SemanticsMatcher.keyIsDefined(SemanticsProperties.Selected) and hasClickAction()
+            val home = (hasText("Start") or hasContentDescription("Start")) and navigationItem
+            val training = (hasText("Training") or hasContentDescription("Training")) and navigationItem
+            val nutrition = (hasText("Voeding") or hasContentDescription("Voeding")) and navigationItem
+            val coach = (hasText("Coach") or hasContentDescription("Coach")) and navigationItem
+            val more = (hasText("Meer") or hasContentDescription("Instellingen")) and navigationItem
             compose.waitUntil(30_000) { compose.onAllNodes(training).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(home).assertIsSelected()
+            swipeAcross(fromRight = false)
+            compose.onNode(home).assertIsSelected()
             compose.onNode(training).performClick()
             compose.onNode(training).assertIsSelected()
-            compose.onRoot().performTouchInput {
-                swipe(start = Offset(width * 0.8f, height * 0.5f), end = Offset(width * 0.2f, height * 0.5f))
-            }
+            swipeAcross(fromRight = true)
             compose.onNode(nutrition).assertIsSelected()
-            compose.onRoot().performTouchInput {
-                swipe(start = Offset(width * 0.2f, height * 0.5f), end = Offset(width * 0.8f, height * 0.5f))
-            }
+            swipeAcross(fromRight = false)
             compose.onNode(training).assertIsSelected()
+            swipeAcross(fromRight = true)
+            compose.onNode(nutrition).assertIsSelected()
+            swipeAcross(fromRight = true)
+            compose.onNode(coach).assertIsSelected()
+            swipeAcross(fromRight = true)
+            compose.onNode(more).assertIsSelected()
+            swipeAcross(fromRight = true)
+            compose.onNode(more).assertIsSelected()
+            swipeAcross(fromRight = false)
+            compose.onNode(coach).assertIsSelected()
+            swipeAcross(fromRight = false)
+            compose.onNode(nutrition).assertIsSelected()
+        }
+    }
+
+    private fun swipeAcross(fromRight: Boolean) {
+        compose.onRoot().performTouchInput {
+            val startX = if (fromRight) width * .8f else width * .2f
+            val endX = if (fromRight) width * .2f else width * .8f
+            swipe(start = Offset(startX, height * .5f), end = Offset(endX, height * .5f))
         }
     }
 }

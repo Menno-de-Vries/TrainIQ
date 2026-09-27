@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -284,13 +283,12 @@ fun HomeScreen(
                         .fillMaxSize()
                         .clearFocusOnScrollOrDrag()
                         .verticalScroll(rememberScrollState())
-                        .navigationBarsPadding()
                         .imePadding()
                         .padding(
                             start = MaterialTheme.spacing.medium,
                             top = MaterialTheme.spacing.medium,
                             end = MaterialTheme.spacing.medium,
-                            bottom = 132.dp,
+                            bottom = MaterialTheme.spacing.medium,
                         ),
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                 ) {
@@ -322,13 +320,12 @@ fun HomeScreen(
                         .fillMaxSize()
                         .clearFocusOnScrollOrDrag()
                         .verticalScroll(rememberScrollState())
-                        .navigationBarsPadding()
                         .imePadding()
                         .padding(
                             start = MaterialTheme.spacing.medium,
                             top = MaterialTheme.spacing.medium,
                             end = MaterialTheme.spacing.medium,
-                            bottom = 132.dp,
+                            bottom = MaterialTheme.spacing.medium,
                         ),
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                 ) {
