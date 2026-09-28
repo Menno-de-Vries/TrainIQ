@@ -32,7 +32,7 @@ import androidx.room.RoomDatabase
         WorkoutLogEventSetEntity::class,
         BodyMeasurementEntity::class,
     ],
-    version = 18,
+    version = 19,
     autoMigrations = [AutoMigration(from = 16, to = 17), AutoMigration(from = 17, to = 18)],
     exportSchema = true,
 )

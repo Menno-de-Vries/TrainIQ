@@ -2,6 +2,8 @@ package com.trainiq.features.workout
 
 import android.content.Context
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -9,10 +11,12 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasContentDescription
-import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -30,6 +34,8 @@ import com.trainiq.core.database.WorkoutSessionEntity
 import com.trainiq.core.database.WorkoutSetEntity
 import com.trainiq.testing.resetTrainIqAndroidTestDatabase
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -42,6 +48,7 @@ class ExerciseHistoryInstrumentedTest {
 
     private lateinit var context: Context
     private lateinit var database: TrainIqDatabase
+    private val longExerciseName = "Custom movement " + "with a deliberately long name ".repeat(8)
 
     @Before
     fun seedExerciseHistory() = runBlocking {
@@ -57,7 +64,7 @@ class ExerciseHistoryInstrumentedTest {
 
         dao.insertRoutines(listOf(WorkoutRoutineEntity(id = 1L, name = "QA History Routine", description = "Seeded exercise history QA", active = true)))
         dao.insertWorkoutDays(listOf(WorkoutDayEntity(id = 7L, routineId = 1L, name = "Push", orderIndex = 0)))
-        dao.insertExercises(listOf(ExerciseEntity(id = 3L, name = "Bench Press", muscleGroup = "Chest", equipment = "Barbell")))
+        dao.insertExercises(listOf(ExerciseEntity(id = 3L, name = longExerciseName, muscleGroup = "Chest", equipment = "Barbell")))
         dao.insertWorkoutExercises(
             listOf(
                 WorkoutExerciseEntity(
@@ -130,12 +137,26 @@ class ExerciseHistoryInstrumentedTest {
                 .performScrollTo()
                 .performClick()
             compose.waitForText("Actieve training")
-            compose.onNodeWithContentDescription("Open geschiedenis voor Bench Press")
+            compose.onNodeWithContentDescription("Open geschiedenis voor $longExerciseName")
                 .performScrollTo()
                 .performClick()
 
-            compose.waitForText("Bench Press")
+            compose.waitForText(longExerciseName)
+            val historyTitleNodes = compose.onAllNodesWithText(longExerciseName, useUnmergedTree = true)
+            historyTitleNodes.assertCountEquals(2)
+            val titleLayouts = (0..1).map { index ->
+                val layouts = mutableListOf<TextLayoutResult>()
+                historyTitleNodes[index].performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+                assertEquals(1, layouts.size)
+                layouts.single()
+            }
+            val statsTitleLayout = titleLayouts.maxBy { it.lineCount }
+            assertTrue("Stats title should wrap beyond two lines: ${titleLayouts.map { it.lineCount }}", statsTitleLayout.lineCount > 2)
+            assertTrue((0 until statsTitleLayout.lineCount).none(statsTitleLayout::isLineEllipsized))
+            assertTrue(statsTitleLayout.multiParagraph.height <= statsTitleLayout.size.height + 1)
             compose.waitForText("Sessies")
+            compose.waitForText("score")
+            compose.onAllNodes(hasText("score", substring = true) and hasClickAction()).assertCountEquals(0)
             compose.waitForText("2")
             compose.waitForText("Beste kg")
             compose.waitForText("90")
@@ -143,6 +164,8 @@ class ExerciseHistoryInstrumentedTest {
             // list to compose it instead of waiting for an off-screen node to exist.
             compose.onNode(hasScrollAction()).performScrollToNode(hasText("Volume per sessie"))
             compose.onNodeWithText("Volume per sessie").assertIsDisplayed()
+            compose.onNode(hasScrollAction()).performScrollToNode(hasText("Normaal"))
+            compose.onAllNodes(hasText("Normaal") and hasClickAction()).assertCountEquals(0)
         }
     }
 

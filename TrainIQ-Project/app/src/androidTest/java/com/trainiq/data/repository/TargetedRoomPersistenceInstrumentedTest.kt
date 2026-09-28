@@ -430,6 +430,7 @@ class TargetedRoomPersistenceInstrumentedTest {
 
         val updatedRows = dao.updateWorkoutSessionDebrief(
             sessionId = 51L,
+            generationId = "",
             summary = "AI samenvatting",
             progressionFeedback = "Meer volume dan vorige sessie.",
             recommendation = "Behoud belasting.",
@@ -444,6 +445,7 @@ class TargetedRoomPersistenceInstrumentedTest {
         )
         val ignoredRows = dao.updateWorkoutSessionDebrief(
             sessionId = 52L,
+            generationId = "",
             summary = "Mag niet landen",
             progressionFeedback = "Draft",
             recommendation = "Draft",

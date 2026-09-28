@@ -116,14 +116,14 @@ class HomeDashboardRefreshTest {
     }
 
     @Test
-    fun buildHomeRecoverySubtitle_whenStepsUnavailable_namesOfflineState() {
+    fun buildHomeRecoverySubtitle_whenStepsAreUnavailable_usesNeutralCopy() {
         val result = buildHomeRecoverySubtitle(
             stepsToday = null,
             averageHeartRateBpm = null,
             todaysWorkoutCalories = 180,
         )
 
-        assertTrue(result == "Stappen offline - Training 180 kcal")
+        assertEquals("Stappen niet beschikbaar - Training 180 kcal", result)
     }
 
     @Test
@@ -142,16 +142,54 @@ class HomeDashboardRefreshTest {
     }
 
     @Test
-    fun homeMomentumCopy_formatsEmptyAndOfflineStates() {
-        val status = HealthConnectStatus(
-            state = HealthConnectState.PERMISSION_REQUIRED,
-            message = "Toegang nodig",
-        )
-
+    fun homeMomentumCopy_formatsEmptyAndAccessRequiredStates() {
+        val status = HealthConnectStatus(state = HealthConnectState.PERMISSION_REQUIRED, message = "Toegang nodig")
         assertEquals("0 dagen", homeStreakValue(0))
         assertEquals("Start vandaag", homeStreakSubtitle(0))
-        assertEquals("Offline", homeStepsValue(status))
+        assertEquals("Toegang nodig", homeStepsValue(status))
         assertTrue(homeMomentumEncouragement(0, status).contains("Begin lokaal"))
+    }
+
+    @Test
+    fun homeMomentumCopy_doesNotPresentCachedStepsAsCurrent() {
+        val stale = HealthConnectStatus(
+            state = HealthConnectState.CONNECTED,
+            message = "Sync mislukt",
+            metrics = HealthConnectMetrics(stepsToday = 7200),
+            stepDataFreshness = HealthConnectStepDataFreshness.STALE_CACHE,
+        )
+        val staleCopy = homeMomentumEncouragement(0, stale)
+        assertTrue(staleCopy.contains("Laatst bekend"))
+        assertFalse(staleCopy.contains("Je beweging staat erin"))
+        listOf(
+            HealthConnectStepDataFreshness.PERMISSION_MISSING,
+            HealthConnectStepDataFreshness.UNAVAILABLE,
+            HealthConnectStepDataFreshness.ERROR,
+            HealthConnectStepDataFreshness.UNKNOWN,
+        ).forEach { freshness ->
+            assertFalse(
+                "$freshness must not present a cached step count as current.",
+                homeMomentumEncouragement(0, stale.copy(stepDataFreshness = freshness))
+                    .contains("Je beweging staat erin"),
+            )
+        }
+    }
+
+    @Test
+    fun homeStepsValueNamesProviderSupportAndErrorStates() {
+        val expectedByState = mapOf(
+            HealthConnectState.PROVIDER_MISSING to "Bijwerken",
+            HealthConnectState.UNSUPPORTED to "Niet ondersteund",
+            HealthConnectState.ERROR to "Fout",
+        )
+
+        expectedByState.forEach { (state, expectedValue) ->
+            assertEquals(
+                "Momentum should describe $state instead of calling it offline.",
+                expectedValue,
+                homeStepsValue(HealthConnectStatus(state = state, message = state.name)),
+            )
+        }
     }
 
     @Test
@@ -161,6 +199,7 @@ class HomeDashboardRefreshTest {
             message = "Nog geen data",
         )
 
+        assertEquals("Geen data", homeStepsValue(status))
         val encouragement = homeMomentumEncouragement(0, status)
 
         assertTrue(encouragement.contains("Start klein"))
@@ -180,33 +219,59 @@ class HomeDashboardRefreshTest {
     }
 
     @Test
-    fun homeStepsValueDoesNotPresentMissingOrFailedPermissionAsMeasuredZero() {
+    fun homeStepsValueDoesNotPresentCachedZeroAsCurrentWhenFreshnessIsUnproven() {
         val base = HealthConnectStatus(
             state = HealthConnectState.NO_DATA,
             message = "Geen bewezen stappenmeting",
             metrics = HealthConnectMetrics(stepsToday = 0),
         )
+        val expectedByFreshness = mapOf(
+            HealthConnectStepDataFreshness.PERMISSION_MISSING to "Toegang nodig",
+            HealthConnectStepDataFreshness.UNAVAILABLE to "Niet beschikbaar",
+            HealthConnectStepDataFreshness.ERROR to "Fout",
+            HealthConnectStepDataFreshness.UNKNOWN to "Laden...",
+        )
 
         listOf(HealthConnectState.NO_DATA, HealthConnectState.CONNECTED).forEach { state ->
-            assertEquals(
-                "Geen data",
-                homeStepsValue(
-                    base.copy(
-                        state = state,
-                        stepDataFreshness = HealthConnectStepDataFreshness.PERMISSION_MISSING,
-                    ),
-                ),
-            )
-            assertEquals(
-                "Geen data",
-                homeStepsValue(
-                    base.copy(
-                        state = state,
-                        stepDataFreshness = HealthConnectStepDataFreshness.ERROR,
-                    ),
-                ),
-            )
+            expectedByFreshness.forEach { (freshness, expectedValue) ->
+                assertEquals(
+                    "$state with $freshness must not present cached zero as current data.",
+                    expectedValue,
+                    homeStepsValue(base.copy(state = state, stepDataFreshness = freshness)),
+                )
+            }
         }
+    }
+
+    @Test
+    fun homeStepsValueNamesFreshnessStatesInsteadOfShowingStaleCount() {
+        val status = HealthConnectStatus(
+            state = HealthConnectState.CONNECTED,
+            message = "Verbonden",
+            metrics = HealthConnectMetrics(stepsToday = 7200),
+        )
+        val expectedByFreshness = mapOf(
+            HealthConnectStepDataFreshness.PERMISSION_MISSING to "Toegang nodig",
+            HealthConnectStepDataFreshness.UNAVAILABLE to "Niet beschikbaar",
+            HealthConnectStepDataFreshness.ERROR to "Fout",
+            HealthConnectStepDataFreshness.UNKNOWN to "Laden...",
+        )
+
+        expectedByFreshness.forEach { (freshness, expectedValue) ->
+            assertEquals(expectedValue, homeStepsValue(status.copy(stepDataFreshness = freshness)))
+        }
+    }
+
+    @Test
+    fun homeStepsValueRetainsCountOnlyWhenFreshOrStaleCache() {
+        val status = HealthConnectStatus(
+            state = HealthConnectState.CONNECTED,
+            message = "Verbonden",
+            metrics = HealthConnectMetrics(stepsToday = 7200),
+        )
+
+        assertEquals("7200", homeStepsValue(status.copy(stepDataFreshness = HealthConnectStepDataFreshness.FRESH)))
+        assertEquals("7200", homeStepsValue(status.copy(stepDataFreshness = HealthConnectStepDataFreshness.STALE_CACHE)))
     }
 
     @Test

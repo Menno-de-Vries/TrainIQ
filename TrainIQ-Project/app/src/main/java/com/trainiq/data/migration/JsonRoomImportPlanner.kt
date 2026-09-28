@@ -206,6 +206,7 @@ class JsonRoomImportPlanner(
         debriefNextLoadTarget = stringOrDefault(debriefNextLoadTarget),
         debriefRecoveryAdvice = stringOrDefault(debriefRecoveryAdvice),
         debriefSource = stringOrDefault(debriefSource, "LOCAL_FALLBACK"),
+        debriefGenerationId = stringOrDefault(debriefGenerationId),
     )
 
     private fun WorkoutSetEntity.normalized(): WorkoutSetEntity = copy(
@@ -457,7 +458,7 @@ fun JsonRoomImportPlan.importedRowCount(): Int =
         workoutLogEventSets.size +
         measurements.size
 
-private const val TrainIqDatabaseVersion = 18
+private const val TrainIqDatabaseVersion = 19
 internal const val TrainIqJsonExportFormat = "trainiq-json-export"
 
 sealed interface JsonRoomImportOutcome {

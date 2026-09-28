@@ -13,6 +13,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -100,7 +101,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.AssistChip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
@@ -1863,7 +1863,7 @@ fun WorkoutScreen(
                     item { EmptyCard("Nog geen trainingsgeschiedenis", "Voltooi een training en je sessiegeschiedenis verschijnt hier.") }
                 } else {
                     items(overview.history, key = { workoutHistoryListKey(it.id) }) { session ->
-                        HistoryCard(session, onDeleteWorkoutSession)
+                        WorkoutHistoryCard(session, onDeleteWorkoutSession)
                     }
                 }
             }
@@ -2200,7 +2200,8 @@ private fun ExerciseLibraryCard(item: ExerciseLibraryItem) {
 }
 
 @Composable
-private fun HistoryCard(session: WorkoutSessionSummary, onDelete: (Long) -> Unit) {
+internal fun WorkoutHistoryCard(session: WorkoutSessionSummary, onDelete: (Long) -> Unit) {
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
     AppCard(modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.blue) {
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -2215,7 +2216,7 @@ private fun HistoryCard(session: WorkoutSessionSummary, onDelete: (Long) -> Unit
                     Text(session.workoutName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                     Text(formatHistoryDate(session.date), color = MaterialTheme.trainIqColors.mutedText)
                 }
-                TextButton(onClick = { onDelete(session.id) }) { Text("Verwijderen") }
+                TextButton(onClick = { showDeleteConfirmation = true }) { Text("Verwijderen") }
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 HistoryMetricTile("Duur", "${session.duration / 60} min", MaterialTheme.trainIqColors.blue)
@@ -2239,6 +2240,33 @@ private fun HistoryCard(session: WorkoutSessionSummary, onDelete: (Long) -> Unit
                 HistoryDebriefBlock(title = "Volgende focus", body = it)
             }
         }
+    }
+    if (showDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text("Training verwijderen?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+                    Text("Weet je zeker dat je ‘${session.workoutName}’ van ${formatHistoryDate(session.date)} wilt verwijderen?")
+                    Text("De bijbehorende oefen- en setgegevens worden ook verwijderd. Een nog niet verstuurd AI-verslag wordt geannuleerd.")
+                    Text("Een al naar de AI-provider verstuurd verzoek kan niet worden teruggehaald.")
+                    Text(
+                        "Deze actie kan niet ongedaan worden gemaakt.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteConfirmation = false
+                    onDelete(session.id)
+                }) { Text("Ja, verwijderen") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmation = false }) { Text("Annuleren") }
+            },
+        )
     }
 }
 
@@ -4028,11 +4056,30 @@ private fun ExercisePrescriptionChips(plan: WorkoutExercisePlan) {
         verticalArrangement = Arrangement.spacedBy(4.dp),
         modifier = Modifier.padding(top = 4.dp),
     ) {
-        SuggestionChip(onClick = {}, label = { Text("${plan.plannedSetCount()} sets") })
-        SuggestionChip(onClick = {}, label = { Text("${plan.repRange} reps") })
-        SuggestionChip(onClick = {}, label = { Text("${plan.restSeconds}s rest") })
-        if (plan.targetWeightKg > 0.0) SuggestionChip(onClick = {}, label = { Text("${formatWeight(plan.targetWeightKg)} kg") })
-        SuggestionChip(onClick = {}, label = { Text(plan.setType.label()) })
+        ReadOnlyInfoChip("${plan.plannedSetCount()} sets")
+        ReadOnlyInfoChip("${plan.repRange} reps")
+        ReadOnlyInfoChip("${plan.restSeconds}s rest")
+        if (plan.targetWeightKg > 0.0) ReadOnlyInfoChip("${formatWeight(plan.targetWeightKg)} kg")
+        ReadOnlyInfoChip(plan.setType.label())
+    }
+}
+
+@Composable
+internal fun ReadOnlyInfoChip(label: String) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+    ) {
+        Box(
+            modifier = Modifier
+                .defaultMinSize(minHeight = 32.dp)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(label, style = MaterialTheme.typography.labelLarge)
+        }
     }
 }
 
@@ -4501,8 +4548,6 @@ private fun ExerciseStatsHeader(history: ExerciseHistory) {
                     history.exercise?.name ?: "Onbekende oefening",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
                 )
                 val subtitle = exerciseHistorySubtitleText(
                     muscleGroup = history.exercise?.muscleGroup.orEmpty(),
@@ -4577,10 +4622,7 @@ private fun ExerciseRankCard(rank: ExerciseRankProgress) {
                     Text("Rank", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(rank.rank.label, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 }
-                AssistChip(
-                    onClick = {},
-                    label = { Text("${formatWeight(rank.score)} score") },
-                )
+                ReadOnlyInfoChip("${formatWeight(rank.score)} score")
             }
             LinearProgressIndicator(
                 progress = { rank.progressToNext.coerceIn(0f, 1f) },
@@ -4729,7 +4771,7 @@ private fun PerformedSetRow(index: Int, set: com.trainiq.domain.model.ExerciseHi
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(index.toString(), style = MaterialTheme.typography.labelLarge, modifier = Modifier.width(24.dp))
-        AssistChip(onClick = {}, label = { Text(set.setType.label()) })
+        ReadOnlyInfoChip(set.setType.label())
         Text(
             "${set.reps} reps",
             style = MaterialTheme.typography.bodyMedium,

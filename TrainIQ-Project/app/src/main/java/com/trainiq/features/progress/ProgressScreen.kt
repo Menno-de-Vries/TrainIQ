@@ -18,9 +18,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -341,6 +342,7 @@ fun ProgressScreen(
     var bodyFatTouched by rememberSaveable { mutableStateOf(false) }
     var muscleMassTouched by rememberSaveable { mutableStateOf(false) }
     var selectedProgressTab by rememberSaveable { mutableStateOf(ProgressSectionTab.Body.key) }
+    var pendingDeleteMeasurementId by rememberSaveable { mutableStateOf<Long?>(null) }
     var scalePhotoNote by rememberSaveable { mutableStateOf<String?>(null) }
 
     val weightError = validateProgressMeasurementField(weight, weightSpec).takeIf { weightTouched }
@@ -583,7 +585,7 @@ fun ProgressScreen(
                             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Column {
                                     Text(
-                                        "${measurement.date.toReadableDate()}: ${measurement.weight} kg, ${measurement.bodyFat}% vet, ${measurement.muscleMass} kg spier",
+                                        measurementIdentificationText(measurement),
                                         color = MaterialTheme.trainIqColors.mutedText,
                                     )
                                     previous?.let {
@@ -594,7 +596,7 @@ fun ProgressScreen(
                                         )
                                     }
                                 }
-                                TextButton(onClick = { onDeleteMeasurement(measurement.id) }, modifier = Modifier.fillMaxWidth()) { Text(deleteMeasurementActionLabel()) }
+                                TextButton(onClick = { pendingDeleteMeasurementId = measurement.id }, modifier = Modifier.fillMaxWidth()) { Text(deleteMeasurementActionLabel()) }
                             }
                         }
                     }
@@ -606,6 +608,34 @@ fun ProgressScreen(
                 item { ChartComposable("Spiermassa", overview.muscleMassTrend, Modifier.fillMaxWidth()) }
             }
             }
+        }
+    }
+    pendingDeleteMeasurementId?.let { measurementId ->
+        overview?.measurements?.firstOrNull { it.id == measurementId }?.let { measurement ->
+            AlertDialog(
+                onDismissRequest = { pendingDeleteMeasurementId = null },
+                title = { Text("Meting verwijderen?") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+                        Text("Weet je zeker dat je deze meting wilt verwijderen?")
+                        Text(measurementIdentificationText(measurement))
+                        Text(
+                            "Deze actie kan niet ongedaan worden gemaakt.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        pendingDeleteMeasurementId = null
+                        onDeleteMeasurement(measurementId)
+                    }) { Text("Ja, verwijderen") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingDeleteMeasurementId = null }) { Text("Annuleren") }
+                },
+            )
         }
     }
 }
@@ -683,6 +713,9 @@ internal fun estimatedOneRepMaxText(value: Double): String = "${String.format(Lo
 
 internal fun sortedMeasurementsForHistory(measurements: List<BodyMeasurement>): List<BodyMeasurement> =
     measurements.sortedByDescending { it.date }
+
+internal fun measurementIdentificationText(measurement: BodyMeasurement): String =
+    "${measurement.date.toReadableDate()}: ${measurement.weight} kg, ${measurement.bodyFat}% vet, ${measurement.muscleMass} kg spier"
 
 internal fun deleteMeasurementActionLabel(): String = "Verwijderen"
 

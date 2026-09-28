@@ -12,6 +12,7 @@ import com.trainiq.core.sleep.SleepRoutineScheduler
 import com.trainiq.data.sleep.SleepRoutineRepository
 import com.trainiq.domain.sleep.SleepRoutine
 import com.trainiq.domain.sleep.SleepAlarmDelivery
+import com.trainiq.domain.sleep.SleepRepeatMillis
 import com.trainiq.testing.trainIqAndroidTestDatabase
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
@@ -53,13 +54,15 @@ class SleepAlarmRegressionTest {
         try {
             dao.saveSleepRoutine(SleepRoutine(enabled = true, nextAt = System.currentTimeMillis() - 1000).toEntity())
             repeat(3) {
-                val before = System.currentTimeMillis()
                 repository.reconcile()
                 val state = dao.getSleepRoutine()!!
                 assertTrue(state.routineDay.isNotEmpty())
                 assertEquals(0L, state.confirmedAt)
-                assertTrue("Next alert must be ten minutes away: ${state.nextAt - before}",
-                    state.nextAt in (before + 600_000)..(System.currentTimeMillis() + 600_000))
+                val remainingMillis = state.nextAt - System.currentTimeMillis()
+                assertTrue(
+                    "Next alert should remain about ten minutes away: $remainingMillis",
+                    remainingMillis in (SleepRepeatMillis - 5_000L)..(SleepRepeatMillis + 5_000L),
+                )
                 repository.reconcile()
                 assertEquals(state.nextAt, dao.getSleepRoutine()!!.nextAt)
                 assertEquals("Reconciliation must not duplicate or lose the OS alarm", 1, pendingSleepAlarms())

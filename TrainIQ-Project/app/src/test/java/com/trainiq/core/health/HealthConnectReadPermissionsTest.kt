@@ -25,9 +25,20 @@ class HealthConnectReadPermissionsTest {
     @Test
     fun readPermissionsDoNotRequestWeightByDefault() {
         val manifest = File("src/main/AndroidManifest.xml").readText()
+        val releaseEvidence = File("../docs/play-privacy-release-evidence.md").readText()
+        val privacyPolicyDraft = File("../docs/release/privacy-policy-draft.md").readText()
+        val dataSafetyWorksheet = File("../docs/release/play-console-data-safety-worksheet.md").readText()
 
         assertFalse(HealthPermission.getReadPermission(WeightRecord::class) in HealthConnectReadPermissions)
         assertFalse(manifest.contains("android.permission.health.READ_WEIGHT"))
+        assertFalse(releaseEvidence.contains("android.permission.health.READ_WEIGHT"))
+        assertFalse(privacyPolicyDraft.contains("Health Connect data after permission is granted: steps, heart rate, sleep, active calories, weight"))
+        assertFalse(dataSafetyWorksheet.contains("| Health Connect weight |"))
+        assertFalse(releaseEvidence.contains("Workouts, routines, exercises, sets | Room entities and repositories | Training log, active workout, history, progress | Local only |"))
+        assertFalse(releaseEvidence.contains("Local only except user-triggered Gemini meal scan request"))
+        assertTrue(releaseEvidence.contains("deferred workout-debrief details"))
+        assertTrue(releaseEvidence.contains("smart-scale/body-measurement photo"))
+        assertTrue(releaseEvidence.contains("weekly report"))
         assertFalse(HealthConnectPermissionCopyBySignal.any { it.label == "Gewicht" })
         assertFalse(HealthConnectRationaleReasons.any { it.title == "Gewicht" })
     }

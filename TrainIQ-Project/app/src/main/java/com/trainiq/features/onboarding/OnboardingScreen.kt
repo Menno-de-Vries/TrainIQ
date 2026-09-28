@@ -76,7 +76,7 @@ enum class OnboardingStep(val title: String, val subtitle: String) {
     WELCOME("Welkom bij TrainIQ", "Een rustige coachlaag boven je Health Connect-, training- en voedingsdata."),
     GOAL_TRAINING("Doel en training", "Kies context voor je eerste training, coaching en voedingsdoelen."),
     HEALTH_CONNECT("Health Connect", "Stappen blijven Health Connect-first en worden live ververst zodra Home opent."),
-    AI_PRIVACY("AI en privacy", "AI blijft opt-in, lokaal beheerd en alleen actief na jouw expliciete actie."),
+    AI_PRIVACY("AI en privacy", "AI blijft opt-in. Met ingeschakelde AI en een opgeslagen providersleutel kan een workoutdebrief later op de achtergrond worden verwerkt."),
     REMINDERS("Afronden", "Kies reminders en rond af; open setup-taken blijven later zichtbaar."),
 }
 
@@ -226,7 +226,7 @@ fun onboardingSetupItems(preferences: OnboardingPreferences): List<OnboardingSet
         add(OnboardingSetupItem("Health Connect koppelen", "Lees stappen, slaap en training wanneer jij toestemming geeft."))
     }
     if (preferences.aiSkipped || !preferences.aiAccepted) {
-        add(OnboardingSetupItem("AI-coach instellen", "Schakel Gemini/OpenAI alleen in als je expliciete AI-acties wilt gebruiken."))
+        add(OnboardingSetupItem("AI-coach instellen", "Jij start maaltijdanalyse, routinegeneratie, doeladvies en weekrapport. Na afronden van een workout kan een terugblik later op de achtergrond worden verwerkt als AI aanstaat en een providersleutel is opgeslagen."))
     }
     if (!preferences.remindersEnabled) {
         add(OnboardingSetupItem("Herinneringen kiezen", "Laat TrainIQ je rustig herinneren aan food-logs en trainingen."))
@@ -580,7 +580,7 @@ private fun HealthConnectStep(
 }
 
 @Composable
-private fun AiPrivacyStep(
+internal fun AiPrivacyStep(
     draft: OnboardingDraft,
     onEvent: (OnboardingEvent) -> Unit,
 ) {
@@ -590,7 +590,7 @@ private fun AiPrivacyStep(
         subtitle = OnboardingStep.AI_PRIVACY.subtitle,
         accent = MaterialTheme.colorScheme.tertiary,
     ) {
-        Text("AI staat standaard uit. Als je later in Instellingen een sleutel opslaat, starten verzoeken alleen door expliciete acties zoals advies, rapporten of scans.")
+        Text("AI staat standaard uit. Als je AI in Instellingen inschakelt en een providersleutel opslaat, starten advies, rapporten en scans op jouw verzoek. Na afronden van een workout plant TrainIQ een AI-terugblik in. Als AI aanstaat en een providersleutel is opgeslagen, kan die later op de achtergrond worden verwerkt.")
         Text("TrainIQ gebruikt JSON-contracten en lokale fallback wanneer AI uitstaat, offline is of geen geldige output geeft.")
         PrimaryActionButton(onClick = { onEvent(OnboardingEvent.DeferAiSetup) }, modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.tertiary) {
             Text(if (draft.aiSetupDeferred) "Later in Instellingen gekozen" else "Later in Instellingen instellen")

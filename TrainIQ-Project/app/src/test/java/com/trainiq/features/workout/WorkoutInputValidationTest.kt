@@ -98,9 +98,27 @@ class WorkoutInputValidationTest {
     }
 
     @Test
+    fun readOnlyWorkoutMetadataUsesNonInteractiveChips() {
+        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
+        val prescription = workoutScreen.substringAfter("private fun ExercisePrescriptionChips(")
+            .substringBefore("internal fun ReadOnlyInfoChip(")
+        val rankCard = workoutScreen.substringAfter("private fun ExerciseRankCard(")
+            .substringBefore("private fun ExerciseProgressChart(")
+        val performedSetRow = workoutScreen.substringAfter("private fun PerformedSetRow(")
+            .substringBefore("private fun EmptyExerciseHistoryState(")
+
+        assertTrue(prescription.contains("ReadOnlyInfoChip("))
+        assertTrue(rankCard.contains("ReadOnlyInfoChip("))
+        assertTrue(performedSetRow.contains("ReadOnlyInfoChip("))
+        assertFalse(prescription.contains("onClick = {}"))
+        assertFalse(rankCard.contains("onClick = {}"))
+        assertFalse(performedSetRow.contains("onClick = {}"))
+    }
+
+    @Test
     fun workoutHistoryCardShowsStoredDebriefFeedback() {
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
-        val historyCard = workoutScreen.substringAfter("private fun HistoryCard(").substringBefore("@OptIn(ExperimentalMaterial3Api::class)")
+        val historyCard = workoutScreen.substringAfter("internal fun WorkoutHistoryCard(").substringBefore("private fun HistoryMetricTile(")
 
         assertTrue(historyCard.contains("session.workoutName"))
         assertTrue(historyCard.contains("session.strongestSetLabel"))
@@ -180,7 +198,7 @@ class WorkoutInputValidationTest {
     @Test
     fun workoutHistoryCardUsesReadableMetricTilesAndSeparateAdviceSections() {
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
-        val historyCard = workoutScreen.substringAfter("private fun HistoryCard(").substringBefore("@OptIn(ExperimentalMaterial3Api::class)")
+        val historyCard = workoutScreen.substringAfter("internal fun WorkoutHistoryCard(").substringBefore("private fun HistoryMetricTile(")
 
         assertTrue(historyCard.contains("HistoryMetricTile("))
         assertTrue(historyCard.contains("Duur"))

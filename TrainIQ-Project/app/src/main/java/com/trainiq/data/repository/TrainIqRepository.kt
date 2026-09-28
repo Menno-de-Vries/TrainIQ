@@ -108,9 +108,11 @@ import com.trainiq.domain.repository.NutritionRepository
 import com.trainiq.domain.repository.ProgressRepository
 import com.trainiq.domain.repository.WorkoutRepository
 import com.trainiq.domain.repository.WorkoutDebriefRefreshOutcome
+import com.trainiq.domain.repository.WorkoutDebriefScheduler
 import javax.inject.Inject
 import javax.inject.Singleton
 import java.util.Locale
+import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -141,6 +143,7 @@ class TrainIqDataCoordinator @Inject constructor(
     private val barcodeProductLookupService: BarcodeProductLookupService,
     private val bodyMeasurementPhotoService: BodyMeasurementPhotoService,
     private val workoutDebriefService: WorkoutDebriefService,
+    private val workoutDebriefScheduler: WorkoutDebriefScheduler,
     private val goalAdvisorService: GoalAdvisorService,
     private val weeklyReportService: WeeklyReportService,
     private val routineGeneratorService: RoutineGeneratorService,
@@ -534,6 +537,7 @@ class TrainIqDataCoordinator @Inject constructor(
         val current = runtimeStore.state.value
         val now = System.currentTimeMillis()
         val sessionId = activeSessionId?.takeIf { it > 0L } ?: ((current.sessions.maxOfOrNull { it.id } ?: 0L) + 1L)
+        val generationId = UUID.randomUUID().toString()
         val startedAt = activeStartedAt?.takeIf { it > 0L } ?: (now - durationSeconds * 1_000L).coerceAtLeast(0L)
         val newSession = WorkoutSessionEntity(
             id = sessionId,
@@ -546,6 +550,7 @@ class TrainIqDataCoordinator @Inject constructor(
             endedAt = now,
             status = "COMPLETED",
             completed = true,
+            debriefGenerationId = generationId,
         )
         val performedExercises = current.ensurePerformedExercisesForCompletedSets(dayId, sessionId, loggedSets)
         val newSets = loggedSets.mapIndexed { index, set ->
@@ -614,12 +619,18 @@ class TrainIqDataCoordinator @Inject constructor(
             sets = newSets,
             activeSessionId = activeSessionId,
         )
-        return WorkoutCompletionResult(sessionId = sessionId, debrief = localDebrief)
+        return WorkoutCompletionResult(sessionId = sessionId, debrief = localDebrief, generationId = generationId)
     }
 
-    suspend fun refreshWorkoutDebrief(sessionId: Long): WorkoutDebriefRefreshOutcome = withContext(Dispatchers.IO) {
+    suspend fun refreshWorkoutDebrief(
+        sessionId: Long,
+        generationId: String? = null,
+    ): WorkoutDebriefRefreshOutcome = withContext(Dispatchers.IO) {
         val refreshSnapshot = runtimeStore.getWorkoutDebriefRefreshSnapshot(sessionId)
         val session = refreshSnapshot.session ?: return@withContext WorkoutDebriefRefreshOutcome.SESSION_MISSING
+        if (!workoutDebriefGenerationMatches(session.debriefGenerationId, generationId)) {
+            return@withContext WorkoutDebriefRefreshOutcome.SESSION_MISSING
+        }
         if (session.debriefSource != WorkoutDebriefSource.LOCAL_FALLBACK.name) {
             return@withContext WorkoutDebriefRefreshOutcome.ALREADY_ENRICHED
         }
@@ -677,7 +688,14 @@ class TrainIqDataCoordinator @Inject constructor(
             }
             .ifBlank { workoutDebriefEmptyTopSetsText() }
         val sevenDaysAgo = System.currentTimeMillis() - (7 * 86_400_000L)
-        val refreshed = workoutDebriefService.generateWorkoutDebriefOrThrow(
+        val refreshed = runWorkoutDebriefForCurrentGeneration(
+            currentGeneration = session.debriefGenerationId,
+            expectedGeneration = generationId,
+            isGenerationCurrent = {
+                runtimeStore.getWorkoutSessionDebriefGenerationId(sessionId) == session.debriefGenerationId
+            },
+        ) {
+            workoutDebriefService.generateWorkoutDebriefOrThrow(
             totalVolume = currentVolume,
             progression = comparison?.progressionPercent,
             comparisonSummary = comparison?.summary ?: "Nog geen eerdere vergelijkbare training gevonden.",
@@ -689,14 +707,27 @@ class TrainIqDataCoordinator @Inject constructor(
                 .map { normalizeToDay(it.date) }
                 .distinct()
                 .count(),
-        )
+            )
+        } ?: return@withContext WorkoutDebriefRefreshOutcome.SESSION_MISSING
         if (refreshed.source == WorkoutDebriefSource.LOCAL_FALLBACK || refreshed.summary.isBlank()) {
             return@withContext WorkoutDebriefRefreshOutcome.INVALID_RESULT
         }
-        if (runtimeStore.updateWorkoutSessionDebrief(sessionId = sessionId, debrief = refreshed) > 0) {
+        val updatedRows = runtimeStore.updateWorkoutSessionDebrief(
+            sessionId = sessionId,
+            generationId = session.debriefGenerationId,
+            debrief = refreshed,
+        )
+        if (updatedRows > 0) {
             WorkoutDebriefRefreshOutcome.UPDATED
         } else {
-            WorkoutDebriefRefreshOutcome.ALREADY_ENRICHED
+            val current = runtimeStore.getWorkoutDebriefRefreshSnapshot(sessionId).session
+            if (current?.debriefGenerationId == session.debriefGenerationId &&
+                current.debriefSource != WorkoutDebriefSource.LOCAL_FALLBACK.name
+            ) {
+                WorkoutDebriefRefreshOutcome.ALREADY_ENRICHED
+            } else {
+                WorkoutDebriefRefreshOutcome.SESSION_MISSING
+            }
         }
     }
 
@@ -896,7 +927,12 @@ class TrainIqDataCoordinator @Inject constructor(
     }
 
     suspend fun deleteWorkoutSession(sessionId: Long) {
-        runtimeStore.deleteWorkoutSession(sessionId)
+        cancelWorkoutDebriefBeforeSessionDelete(
+            sessionId = sessionId,
+            generationId = runtimeStore.getWorkoutSessionDebriefGenerationId(sessionId),
+            cancel = workoutDebriefScheduler::cancel,
+            delete = runtimeStore::deleteWorkoutSession,
+        )
     }
 
     suspend fun generateAiRoutine(

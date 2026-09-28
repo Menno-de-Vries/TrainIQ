@@ -623,6 +623,7 @@ enum class WorkoutDebriefSource {
 data class WorkoutCompletionResult(
     val sessionId: Long,
     val debrief: WorkoutDebrief,
+    val generationId: String = "",
 )
 
 sealed interface WorkoutCompletionUiState {

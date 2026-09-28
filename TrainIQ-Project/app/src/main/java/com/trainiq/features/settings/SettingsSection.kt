@@ -292,7 +292,7 @@ class SettingsViewModel @Inject constructor(
             preferencesRepository.setAiEnabled(enabled)
             apiKeyRefreshes.update { it + 1 }
             emitMessage(if (enabled) {
-                "AI-functies ingeschakeld. Verzoeken starten alleen na jouw expliciete actie."
+                "AI-functies ingeschakeld. Jij start AI-acties; na afronden van een workout kan de terugblik later op de achtergrond worden verwerkt."
             } else {
                 "AI-functies uitgeschakeld. TrainIQ blijft handmatig werken."
             })
@@ -851,7 +851,7 @@ fun SettingsScreen(
         SectionCard(title = settingsOverflowSectionTitle()) {
                 Text(settingsOverflowSectionBody())
                 Text("Thema: ${themeMode.displayLabel()}")
-                Text("AI: ${if (aiStatus.enabled && (aiStatus.hasGeminiKey || aiStatus.hasOpenAiKey)) "Geconfigureerd voor expliciet gebruik" else "Alleen handmatig"}")
+                Text("AI: ${aiSettingsOverviewLabel(aiStatus)}")
                 Text("Health Connect: ${healthStatusLabel(healthStatus)}")
         }
         SectionCard(title = "Onboarding") {
@@ -961,8 +961,8 @@ fun SettingsScreen(
                 )
         }
         SectionCard(title = "AI / Providers") {
-                Text("AI wordt alleen gebruikt nadat jij het inschakelt. TrainIQ doet geen AI-aanvragen op de achtergrond.")
-                Text("Bij een expliciete AI-actie stuurt TrainIQ de benodigde prompt, context en eventueel gekozen foto naar je gekozen provider met jouw lokaal opgeslagen API-sleutel.")
+                Text("AI blijft uit totdat jij het inschakelt. TrainIQ stuurt alleen de gegevens die nodig zijn voor de betreffende AI-functie, eventueel met jouw gekozen maaltijd- of slimme-weegschaalfoto, naar de eerste provider in jouw volgorde waarvoor een sleutel is opgeslagen.")
+                Text("Na afronden van een workout plant TrainIQ een AI-terugblik in. Als AI aanstaat en een providersleutel is opgeslagen, kan die later op de achtergrond worden verwerkt.")
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -970,7 +970,7 @@ fun SettingsScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("AI-functies inschakelen", fontWeight = FontWeight.SemiBold)
-                        Text("Alleen expliciete acties zoals maaltijdanalyse, doeladvies, AI-rapport en workoutterugblik kunnen verzoeken starten.")
+                        Text("Jij start maaltijdanalyse, routinegeneratie, doeladvies en weekrapport. Na afronden van een workout wordt een terugblik ingepland en kan later op de achtergrond worden verwerkt.")
                     }
                     Switch(
                         checked = aiStatus.enabled,
@@ -1565,6 +1565,12 @@ internal fun AiPreferences.toSettingsAiStatus(
         maskedOpenAiKey = maskedSettingsApiKey(openAiApiKey),
         openAiVerification = openAiVerification.takeIf { openAiApiKey.isNotBlank() },
     )
+
+internal fun aiSettingsOverviewLabel(aiStatus: SettingsAiStatus): String = when {
+    !aiStatus.enabled -> "Uitgeschakeld"
+    !aiStatus.hasGeminiKey && !aiStatus.hasOpenAiKey -> "Ingeschakeld; API-sleutel nodig"
+    else -> "Ingeschakeld; workoutterugblik kan later op de achtergrond"
+}
 
 internal fun aiProviderStatusLabel(aiStatus: SettingsAiStatus): String = when {
     !aiStatus.enabled -> "Uitgeschakeld"

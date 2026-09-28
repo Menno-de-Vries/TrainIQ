@@ -60,7 +60,7 @@ interface WorkoutRepository {
     suspend fun setActiveWorkoutCollapsed(exerciseId: Long, collapsed: Boolean): ActiveWorkoutSession?
     suspend fun updateActiveWorkoutRestTimer(endsAt: Long?, totalSeconds: Int): ActiveWorkoutSession?
     suspend fun finishActiveWorkout(dayId: Long): WorkoutCompletionResult
-    suspend fun refreshWorkoutDebrief(sessionId: Long): WorkoutDebriefRefreshOutcome
+    suspend fun refreshWorkoutDebrief(sessionId: Long, generationId: String? = null): WorkoutDebriefRefreshOutcome
     suspend fun getWorkoutCompletionSummary(sessionId: Long): WorkoutCompletionSummary?
     suspend fun discardActiveWorkout(dayId: Long)
     suspend fun discardActiveWorkoutSession(sessionId: Long)
@@ -198,7 +198,8 @@ enum class WorkoutDebriefRefreshOutcome {
 }
 
 interface WorkoutDebriefScheduler {
-    fun enqueue(sessionId: Long)
+    fun enqueue(sessionId: Long, generationId: String)
+    suspend fun cancel(sessionId: Long, generationId: String)
 }
 
 data class MealEntrySnapshot(

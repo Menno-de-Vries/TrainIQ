@@ -1,16 +1,39 @@
 package com.trainiq.core.health
 
+import androidx.work.ListenableWorker
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
 import com.trainiq.domain.model.HealthMetricStatus
 import com.trainiq.domain.model.HealthMetricSyncState
 import com.trainiq.domain.model.HealthMetricType
 import java.io.IOException
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HealthConnectBackgroundSyncWorkerTest {
+    @Test
+    fun runSkipsHealthReadWhenBackgroundPermissionIsRevoked() = runBlocking {
+        var backgroundReadPermissionGranted = true
+        backgroundReadPermissionGranted = false
+        var healthStatusRead = false
+
+        val result = runHealthConnectBackgroundSync(
+            canReadInBackground = { backgroundReadPermissionGranted },
+            getStatus = {
+                healthStatusRead = true
+                HealthConnectStatus(HealthConnectState.CONNECTED, message = "Connected.")
+            },
+        )
+
+        assertTrue(
+            "A revoked background permission should stop this run successfully.",
+            result is ListenableWorker.Result.Success,
+        )
+        assertFalse("Health data must not be read after background access is revoked.", healthStatusRead)
+    }
+
     @Test
     fun backgroundSyncRetriesGlobalOrPerMetricFailuresOnly() {
         val connectedWithFailedMetric = HealthConnectStatus(

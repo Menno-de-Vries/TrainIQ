@@ -2,7 +2,7 @@
 
 > Release scope update (2026-09-06): [itch.io release policy](release/itch-release-policy.md) supersedes the owner-approval and mandatory certification release gates below. LEGAL-001, PERF-001, A11Y-001, and AI-001 are retired for this personal itch.io project. Older BLOCKED/OPEN statements are historical or refer to optional certification/future Play submission, not current itch.io delivery. Preserve actual test results and technical findings; do not claim missing evidence passed.
 
-Last updated: 2026-05-08
+Last updated: 2026-09-28
 
 This file is a local evidence pack. It does not claim Play Console submission, legal approval, or published policy verification.
 
@@ -10,12 +10,12 @@ This file is a local evidence pack. It does not claim Play Console submission, l
 
 | Data area | Local storage / path | Purpose | Sharing / upload status |
 |---|---|---|---|
-| Profile and goals | Room entities via `app/src/main/java/com/trainiq/core/database/Entities.kt` | Coaching, nutrition targets, dashboard context | Local only unless future backend is added |
-| Workouts, routines, exercises, sets | Room entities and repositories | Training log, active workout, history, progress | Local only |
-| Nutrition, foods, recipes, meal logs | Room entities and nutrition screens | Meal logging, macros, reusable products/recipes | Local only except user-triggered Gemini meal scan request |
-| Progress measurements | Room entities and progress screen | Body metrics and trend display | Local only |
+| Profile and goals | Room entities via `app/src/main/java/com/trainiq/core/database/Entities.kt` | Coaching, nutrition targets, dashboard context | Stored locally; selected profile fields may go to the first configured AI provider for goal advice or routine generation when requested |
+| Workouts, routines, exercises, sets | Room entities and repositories | Training log, active workout, history, progress | Stored locally; routine-generation inputs and deferred workout-debrief details may go to the first configured AI provider when AI is enabled and its key is available |
+| Nutrition, foods, recipes, meal logs | Room entities and nutrition screens | Meal logging, macros, reusable products/recipes | Stored locally; selected meal-scan image and context may go to the first configured provider, and meal timestamps are reduced locally to the adherence value in a user-requested weekly report. Saved foods, recipes, and meal notes are not sent in current AI requests |
+| Progress measurements | Room entities and progress screen | Body metrics and trend display | Stored locally; a selected smart-scale/body-measurement photo and supplied context may go to the first configured AI provider, and a locally derived weight trend may be included in a user-requested weekly report |
 | Health Connect cache and sync tokens | DataStore via `UserPreferencesRepository` | Incremental sync, recent health metrics, token validity | Local only |
-| Gemini/OpenAI API keys | Android Keystore-backed encrypted SharedPreferences via provider-specific key stores | BYOK AI calls | Stored locally; Gemini sent only as `x-goog-api-key`, OpenAI sent only as `Authorization` header, and only when user-triggered AI is enabled |
+| Gemini/OpenAI API keys | Android Keystore-backed encrypted SharedPreferences via provider-specific key stores | BYOK AI calls | Stored locally; the corresponding key authenticates a request to that provider (`x-goog-api-key` for Gemini, `Authorization` for OpenAI) when AI is enabled and the user starts an action or a queued workout debrief runs |
 | Telemetry preference | DataStore | Opt-in state | Default off |
 | Technical telemetry queue | In-memory queue in `TelemetryExport.kt` | Privacy-safe diagnostics when enabled | Upload disabled by default; no static API token in `BuildConfig` |
 
@@ -27,7 +27,6 @@ Requested permissions declared locally:
 - `android.permission.health.READ_HEART_RATE`
 - `android.permission.health.READ_SLEEP`
 - `android.permission.health.READ_ACTIVE_CALORIES_BURNED`
-- `android.permission.health.READ_WEIGHT`
 - `android.permission.health.READ_EXERCISE`
 - `android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND`
 
@@ -60,18 +59,18 @@ Data Safety answers require owner confirmation for:
 - Whether telemetry endpoint will be enabled in a production build.
 - Whether uploaded telemetry is considered diagnostics/performance data only.
 - Whether any future backend receives profile, nutrition, workout, or Health Connect data.
-- Whether the published privacy policy URL covers BYOK Gemini requests and Health Connect permissions.
+- Whether the published privacy policy URL covers Gemini/OpenAI BYOK requests, action-specific inputs, deferred workout debriefs, and Health Connect permissions.
 
 ## Privacy Policy Requirements
 
 A published policy should cover:
 
 - Health Connect data types requested and why.
-- Local-only storage for profile, workouts, nutrition, progress, and Health Connect cache.
-- User-triggered Gemini/OpenAI requests and BYOK behavior.
+- Local storage for profile, workouts, nutrition, progress, and Health Connect cache, plus action-specific profile, workout, meal, and progress inputs sent to Gemini/OpenAI as described below.
+- Opt-in Gemini/OpenAI BYOK routing and action-specific inputs, including meal/smart-scale photos and deferred workout debriefs.
 - API keys stored locally with Android Keystore-backed encryption.
 - Telemetry opt-in, categories, endpoint owner, retention, and opt-out.
-- Local data deletion behavior and Health Connect permission revocation path through Android settings.
+- Local data deletion behavior, workout-debrief cancellation on workout deletion, and Health Connect permission revocation through Android settings.
 - Contact channel for privacy requests.
 
 ## AI Boundary Evidence

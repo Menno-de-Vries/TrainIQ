@@ -485,6 +485,9 @@ interface TrainIqDao {
     @Query("SELECT * FROM workout_sessions WHERE id = :sessionId AND completed = 1 AND status = 'COMPLETED' LIMIT 1")
     suspend fun getCompletedWorkoutSession(sessionId: Long): WorkoutSessionEntity?
 
+    @Query("SELECT debrief_generation_id FROM workout_sessions WHERE id = :sessionId LIMIT 1")
+    suspend fun getWorkoutSessionDebriefGenerationId(sessionId: Long): String?
+
     @Query("SELECT * FROM workout_sessions ORDER BY date DESC")
     suspend fun getWorkoutSessions(): List<WorkoutSessionEntity>
 
@@ -873,6 +876,7 @@ interface TrainIqDao {
             debrief_recovery_advice = :recoveryAdvice,
             debrief_source = :source
         WHERE id = :sessionId
+            AND debrief_generation_id = :generationId
             AND completed = 1
             AND status = 'COMPLETED'
             AND debrief_source = 'LOCAL_FALLBACK'
@@ -880,6 +884,7 @@ interface TrainIqDao {
     )
     suspend fun updateWorkoutSessionDebrief(
         sessionId: Long,
+        generationId: String,
         summary: String,
         progressionFeedback: String,
         recommendation: String,
