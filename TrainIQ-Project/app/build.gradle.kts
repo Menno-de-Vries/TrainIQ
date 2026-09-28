@@ -278,17 +278,17 @@ fun registerRoomMigrationChainVerificationMarkerTask(
     )
 
     doLast {
-        val marker = "trainiq-room-migration-chain-v2-to-v18"
+        val marker = "trainiq-room-migration-chain-v2-to-v19"
         val testTask = "connectedDebugAndroidTest"
-        val currentRoomVersion = 18
+        val currentRoomVersion = 19
         val requiredStartVersion = 2
-        val requiredEndVersion = 18
+        val requiredEndVersion = 19
         val coveredStartVersion = 2
-        val coveredEndVersion = 18
+        val coveredEndVersion = 19
         val verifiedAtMillis = verifiedAtMillisProperty
             .map(String::toLong)
             .getOrElse(System.currentTimeMillis())
-        val migrationCount = 13
+        val migrationCount = 14
         val payloadForHash = listOf(
             marker,
             buildVariant,
@@ -343,6 +343,22 @@ val generateProfileableRoomMigrationChainVerificationMarker = registerRoomMigrat
     buildVariant = "profileable",
     taskName = "generateProfileableRoomMigrationChainVerificationMarker",
 )
+
+// The marker directory is also a static Android asset source. When lint and marker
+// verification are requested together, order lint after marker generation without
+// making standalone lint pull in the connected-device test dependency.
+tasks.configureEach {
+    val markerTask = when {
+        name.contains("Debug", ignoreCase = true) && name.contains("lint", ignoreCase = true) ->
+            generateDebugRoomMigrationChainVerificationMarker
+        name.contains("Release", ignoreCase = true) && name.contains("lint", ignoreCase = true) ->
+            generateReleaseRoomMigrationChainVerificationMarker
+        name.contains("Profileable", ignoreCase = true) && name.contains("lint", ignoreCase = true) ->
+            generateProfileableRoomMigrationChainVerificationMarker
+        else -> null
+    }
+    markerTask?.let { mustRunAfter(it) }
+}
 
 tasks.register("generateCiRoomMigrationChainVerificationMarkers") {
     group = "verification"

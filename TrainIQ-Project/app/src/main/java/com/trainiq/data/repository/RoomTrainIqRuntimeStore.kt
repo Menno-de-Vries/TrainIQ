@@ -819,10 +819,18 @@ class RoomTrainIqRuntimeStore internal constructor(
             )
         }
 
-    suspend fun updateWorkoutSessionDebrief(sessionId: Long, debrief: WorkoutDebrief): Int =
+    suspend fun getWorkoutSessionDebriefGenerationId(sessionId: Long): String? =
+        dao.getWorkoutSessionDebriefGenerationId(sessionId)
+
+    suspend fun updateWorkoutSessionDebrief(
+        sessionId: Long,
+        generationId: String,
+        debrief: WorkoutDebrief,
+    ): Int =
         mutex.withLock {
             dao.updateWorkoutSessionDebrief(
                 sessionId = sessionId,
+                generationId = generationId,
                 summary = debrief.summary,
                 progressionFeedback = debrief.progressionFeedback,
                 recommendation = debrief.recommendation,

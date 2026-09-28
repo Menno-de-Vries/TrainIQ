@@ -62,7 +62,8 @@ class TopLevelSwipeNavigationInstrumentedTest {
         compose.onRoot().performTouchInput {
             val startX = if (fromRight) width * .8f else width * .2f
             val endX = if (fromRight) width * .2f else width * .8f
-            swipe(start = Offset(startX, height * .5f), end = Offset(endX, height * .5f))
+            // Stay clear of central action buttons; their click targets intentionally own gestures.
+            swipe(start = Offset(startX, height * .15f), end = Offset(endX, height * .15f))
         }
     }
 }

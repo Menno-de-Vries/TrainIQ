@@ -8,6 +8,7 @@ import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.await
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.trainiq.ai.services.AiFeatureThrottledException
@@ -35,10 +36,15 @@ import retrofit2.HttpException
 class WorkManagerWorkoutDebriefScheduler @Inject constructor(
     private val workManager: WorkManager,
 ) : WorkoutDebriefScheduler {
-    override fun enqueue(sessionId: Long) {
-        if (sessionId <= 0L) return
+    override fun enqueue(sessionId: Long, generationId: String) {
+        if (sessionId <= 0L || generationId.isBlank()) return
         val request = OneTimeWorkRequestBuilder<WorkoutDebriefWorker>()
-            .setInputData(Data.Builder().putLong(WorkoutDebriefSessionIdKey, sessionId).build())
+            .setInputData(
+                Data.Builder()
+                    .putLong(WorkoutDebriefSessionIdKey, sessionId)
+                    .putString(WorkoutDebriefGenerationIdKey, generationId)
+                    .build(),
+            )
             .setConstraints(
                 Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -51,10 +57,15 @@ class WorkManagerWorkoutDebriefScheduler @Inject constructor(
             )
             .build()
         workManager.enqueueUniqueWork(
-            workoutDebriefWorkName(sessionId),
+            workoutDebriefWorkName(sessionId, generationId),
             ExistingWorkPolicy.KEEP,
             request,
         )
+    }
+
+    override suspend fun cancel(sessionId: Long, generationId: String) {
+        if (sessionId <= 0L || generationId.isBlank()) return
+        workManager.cancelUniqueWork(workoutDebriefWorkName(sessionId, generationId)).await()
     }
 }
 
@@ -64,13 +75,17 @@ class WorkoutDebriefWorker(
 ) : CoroutineWorker(appContext, workerParams) {
     override suspend fun doWork(): Result {
         val sessionId = inputData.getLong(WorkoutDebriefSessionIdKey, 0L)
+        val generationId = workoutDebriefGenerationIdForWorker(inputData.getString(WorkoutDebriefGenerationIdKey))
         if (sessionId <= 0L) return Result.failure()
+        // Legacy work has only a recyclable session ID, so it cannot safely identify
+        // the original session after an upgrade. Its deterministic local debrief remains.
+        if (shouldSkipUnversionedWorkoutDebriefWork(generationId)) return Result.success()
         val entryPoint = EntryPointAccessors.fromApplication(
             applicationContext,
             WorkoutDebriefWorkerEntryPoint::class.java,
         )
         return try {
-            when (entryPoint.refreshWorkoutDebriefUseCase()(sessionId)) {
+            when (entryPoint.refreshWorkoutDebriefUseCase()(sessionId, generationId)) {
                 WorkoutDebriefRefreshOutcome.UPDATED,
                 WorkoutDebriefRefreshOutcome.ALREADY_ENRICHED,
                 WorkoutDebriefRefreshOutcome.SESSION_MISSING,
@@ -87,6 +102,12 @@ class WorkoutDebriefWorker(
     }
 }
 
+internal fun workoutDebriefGenerationIdForWorker(generationId: String?): String? =
+    generationId?.takeIf(String::isNotBlank)
+
+internal fun shouldSkipUnversionedWorkoutDebriefWork(generationId: String?): Boolean =
+    generationId.isNullOrBlank()
+
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 interface WorkoutDebriefWorkerEntryPoint {
@@ -95,8 +116,10 @@ interface WorkoutDebriefWorkerEntryPoint {
 
 internal const val WorkoutDebriefMaxAttempts = 3
 internal const val WorkoutDebriefSessionIdKey = "session_id"
+internal const val WorkoutDebriefGenerationIdKey = "generation_id"
 internal val WorkoutDebriefBackoff: Duration = Duration.ofMinutes(15)
-internal fun workoutDebriefWorkName(sessionId: Long) = "workout_debrief_$sessionId"
+internal fun workoutDebriefWorkName(sessionId: Long, generationId: String) =
+    "workout_debrief_${sessionId}_$generationId"
 
 internal fun shouldRetryWorkoutDebriefFailure(throwable: Throwable): Boolean = when (throwable) {
     is AiProviderRequestException -> throwable.category in setOf(

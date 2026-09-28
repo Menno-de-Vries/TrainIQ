@@ -99,6 +99,26 @@ class OnboardingStateTest {
     }
 
     @Test
+    fun onboardingAiSetupItemExplainsDeferredWorkoutDebrief() {
+        val preferences = OnboardingPreferences(
+            completed = true,
+            goal = "Spieropbouw",
+            healthConnectAccepted = true,
+            aiSkipped = true,
+            remindersEnabled = true,
+            guidedTourCompleted = true,
+        )
+
+        val item = onboardingSetupItems(preferences).single()
+
+        assertEquals("AI-coach instellen", item.title)
+        assertTrue(item.body.contains("Na afronden van een workout"))
+        assertTrue(item.body.contains("op de achtergrond"))
+        assertTrue(item.body.contains("AI aanstaat en een providersleutel is opgeslagen"))
+        assertFalse(item.body.contains("alleen in als je expliciete AI-acties"))
+    }
+
+    @Test
     fun onboardingCompletionStartsGuidedTourUntilItIsCompletedOrSkipped() {
         assertTrue(shouldShowGuidedTour(OnboardingPreferences(completed = true)))
         assertFalse(shouldShowGuidedTour(OnboardingPreferences(completed = true, guidedTourCompleted = true)))

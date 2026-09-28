@@ -1,20 +1,42 @@
 # Automation State: trainiq-cycle
 
-Last run: 2026-07-12
-Mode: polish
-Selected next action: Complete the bounded trust, navigation and Trend recovery batch
-Current target-state alignment: 98%
-Last useful change: Removed hidden top-level swipe navigation, clarified local coach and weekly-load semantics, and made fatal Trend observations retryable through the shared reload path.
+Last run: 2026-09-28
+Mode: qa
+Selected next action: Commit the completed cycle 2 repairs and pause this goal as requested.
+Current target-state alignment: not reassessed; no percentage is claimed for this follow-up.
+Last useful change: Cycle 2 corrected the onboarding and Settings AI disclosure copy and states the provider-request deletion limit in the workout confirmation; focused regressions passed.
 Consecutive no-op runs: 0
 Consecutive blocked runs: 0
 Open findings:
-- P0: none observed in this batch.
-- P1: release-owner/privacy/signing decisions, the intentionally absent hosted CI workflow, physical-device performance/accessibility acceptance, and the remaining Health Connect provider/permission-state matrix.
-- P2: Health Connect refresh single-flight/cancellation, workout-draft write coalescing, duplicated screen timers, Coach draft restoration, weekly-report input semantics, light-theme contrast, onboarding preference reuse, reminders/recovery context and broader adaptive-width polish.
-Next safest action: take Health Connect refresh single-flight and cancellation as a separate small data/performance batch, with focused concurrency guards and the same broad Android gates.
-Stop if: the next change requires a product, medical, privacy, legal, release-owner or credential decision; no safe device/profile exists; or verification cannot distinguish harness instability from an app regression.
-Blockers: hosted-CI policy, release signing/versioning and store declarations remain owner decisions; real-device performance, TalkBack/Switch Access and the complete Health Connect runtime matrix remain external acceptance work.
-Verification summary: PASS focused red/green navigation, repository, Home and Progress contracts; PASS `:app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:compileDebugAndroidTestKotlin`; PASS debug update install; PASS final cold launch with `Status: ok` and `TotalTime: 4836 ms`; PASS Trend render and horizontal-swipe containment; PASS return to Home; PASS empty TrainIQ crash/ANR slices; PASS independent final re-review with no critical or important issue.
+- P0: none confirmed in this follow-up.
+- P1: none confirmed in this follow-up.
+- P2: none currently confirmed open after the cycle 2 fixes and final subsequent A1/A2 review.
+- Closed: CYCLE-009 through CYCLE-023 are recorded as fixed with targeted regression evidence; CYCLE-009 compact Home/More smoke passed and CYCLE-023 workout-delete confirm/cancel UI test passed.
+Next safest action: commit the reviewed cycle 2 scope and pause this goal as requested.
+Stop if: a subsequent full pass finds no new meaningful, reliably solvable issue or improvement; or a specific remaining case is demonstrably blocked by unavailable safe hardware/provider, credentials, or an owner-only product/privacy/legal decision.
+Blockers: no usable Health Connect provider or real AI credentials are confirmed on the emulator, so provider mutation and live AI requests remain unverified. The already-running agent API 36 AVD is available for local UI smoke without clearing app data.
+Verification summary: baseline on isolated branch from `73efc2c65c4a7a7e847bb919bd8644a166dadbc2` passed with 946 JVM tests before edits. The full post-fix gates passed with 967 JVM tests, 188/188 API 36 instrumented tests, lint, Android-test compilation, and Room v2-to-v19 verification. Final copy deltas passed the 967-test JVM suite, lint, assembly, Android-test compilation, and targeted workout-delete UI test. Compact runtime checks covered Home and More at 360×640 dp. Latest progress-deletion and onboarding-copy changes passed focused API 36 Compose regressions; the onboarding setup item also passed its focused JVM regression, and `:app:lintDebug` passed. Final subsequent read-only A1/A2 reviews found no further actionable issue after both repairs. `git diff --check` passed. Evidence is in `docs/TrainIQ_QA_Findings_To_Improve.md` and `docs/TrainIQ_Target_State_Progress.md`.
+
+## 2026-09-28 Follow-up task plan
+
+1. Root preparation (owner: primary agent): use the current committed quality-cycle state, inspect available local devices and relevant app/test surfaces, and capture a fresh baseline without changing user data. Completed; baseline passed 946 tests and broad compile/lint gates.
+2. A1 UI/UX and flow audit (owner: GPT-6 Luna, high; read-only): inspect onboarding, navigation, Home, Training, Nutrition/scanner, Coach, Progress, Settings, responsive/adaptive behavior, states, copy, and accessibility. Completed; found CYCLE-009 with source/test evidence; no edits.
+3. A2 functional and edge-case audit (owner: GPT-6 Luna, high; read-only): inspect domain rules, Room transactions/restoration, Health Connect, camera/barcode, AI boundaries/fallbacks, and navigation/lifecycle behavior. Completed; found CYCLE-010 with source evidence; no edits.
+4. Validate and fix (owner: primary agent, with GPT-6 Luna/high agents only after validation): reproduce candidate findings against the isolated checkout; assign one owner per exclusive feature/component; implement small reversible fixes and regression coverage.
+   - CYCLE-009 A3: Home Momentum mapped permission/provider/unavailable/error Health Connect states to “Offline”, said “Stappen offline” for null values, and described a positive cached step count as current despite `STALE_CACHE`/error freshness. The original correction passed focused/broad tests and a compact runtime smoke; V1 reproduced the remaining positive-cache overclaim at `homeMomentumEncouragement` and `HomeDashboardRefreshTest.kt`. Root owns the follow-up test-first correction in those two Home files.
+   - CYCLE-010 A4: privacy/release drafts described Gemini as the only BYOK AI provider while the app supports OpenAI. A4 updated exactly five release docs, preserving owner-confirmation markers and avoiding legal/compliance claims; source review and `git diff --check` passed.
+   - CYCLE-011 A5 follow-up (owner: GPT-6 Luna, high; isolated scope: `SettingsSection.kt`, `SettingsUiStateTest.kt`, and five release/privacy drafts): source review confirmed profile/routine/workout/report/meal-scan inputs, saved nutrition scope, background debriefs, and provider routing. Those files were updated and their Settings test plus broad gates passed. Post-fix V1 then found the privacy policy and worksheet omit context accompanying smart-scale photos; the live More setup card in `OnboardingScreen.kt` still says Gemini/OpenAI are only for explicit actions. Root owns those exact remaining corrections in `privacy-policy-draft.md`, `play-console-data-safety-worksheet.md`, `OnboardingScreen.kt`, and `OnboardingStateTest.kt`. Keep legal markers and do not make legal conclusions.
+5. Verify and rediscover (owner: primary agent; V1 read-only after all fixes): verify Settings, onboarding, Home, and all privacy disclosures against current code; run affected local gates and safe runtime flows; resolve every regression before proceeding. Then complete fresh broad A1/A2 discovery, a product/user-perspective improvement pass, and a subsequent full A1/A2 pass. Acceptance: no open reliably solvable finding, required checks pass, and the subsequent pass yields no new meaningful repair or in-scope improvement.
+
+## 2026-09-28 Follow-up cycle 2 plan
+
+The prior cycle's full discovery is complete. The following three findings were validated against source and are independent; implement test-first with exclusive file ownership, then integrate and run the shared regression gate.
+
+1. CYCLE-012 Progress measurement deletion (owner: A3, GPT-6 Luna/high): add a dated confirmation step before the existing delete callback; cover confirm and cancel behavior. Own only `features/progress/ProgressScreen.kt` and its directly corresponding Progress UI test(s).
+2. CYCLE-013 Background Health Connect revocation (owner: A4, GPT-6 Luna/high): recheck background-read feature/permission at worker execution time and stop without reading or retrying when unavailable; add deterministic revocation-after-scheduling coverage. Own only `core/health/HealthConnectBackgroundSyncWorker.kt` and its corresponding test(s).
+3. CYCLE-014 Workout debrief session identity (owner: A5, GPT-6 Luna/high): prevent queued/in-flight work for a deleted highest-ID session from applying to a later session that reuses the ID. Inspect persistence/domain/DAO/schema first; choose the smallest robust identity guard, including conditional persistence update, and add collision/race regression coverage. Own only workout-session/debrief domain, repository, DAO, scheduler/worker code and their direct tests.
+4. Integration (owner: primary agent): review each diff for scope and interaction, run focused tests, then the required assemble/unit/lint/android-test compilation gates; verify Progress confirmation on the compact emulator without changing user data. Run sequential read-only V1, then fresh parallel A1/A2 discovery. If that complete pass is clean, do one product/user-perspective review and validate/implement any justified small improvement, followed by a further full discovery pass.
+5. Acceptance: no open reliably solvable findings, no regressions, all required local checks pass, and the final subsequent A1/A2 pass identifies no new meaningful repair or in-scope UX improvement. No push, PR, release, or remote mutation.
 
 ## Historical snapshot (superseded 2026-05-12)
 

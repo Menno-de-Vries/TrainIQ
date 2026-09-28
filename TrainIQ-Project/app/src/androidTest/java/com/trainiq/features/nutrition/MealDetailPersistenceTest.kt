@@ -53,6 +53,9 @@ class MealDetailPersistenceTest {
             compose.onNodeWithText("Test bereid recept").performScrollTo().performClick()
             compose.onNodeWithText("Hoeveelheid wijzigen").performClick()
             compose.onNodeWithContentDescription("Gram per portie").performScrollTo().performTextReplacement("100")
+            // Hide the numeric keyboard so the lower cancel action is reachable.
+            androidx.test.espresso.Espresso.pressBack()
+            compose.waitForIdle()
             compose.onNodeWithText("Annuleren").performScrollTo().performClick()
             assertEquals(original, runBlocking { dao.readMealItemsForExport().single() })
             compose.waitUntil(10_000) {

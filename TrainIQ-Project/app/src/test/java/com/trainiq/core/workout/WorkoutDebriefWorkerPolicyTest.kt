@@ -8,10 +8,27 @@ import com.trainiq.ai.services.AiProviderRequestException
 import java.io.IOException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WorkoutDebriefWorkerPolicyTest {
+    @Test
+    fun legacyWorkWithoutGenerationIsSkippedSafely() {
+        assertNull(workoutDebriefGenerationIdForWorker(null))
+        assertNull(workoutDebriefGenerationIdForWorker(""))
+        assertEquals("generation-19", workoutDebriefGenerationIdForWorker("generation-19"))
+        assertTrue(shouldSkipUnversionedWorkoutDebriefWork(null))
+        assertTrue(shouldSkipUnversionedWorkoutDebriefWork(""))
+        assertFalse(shouldSkipUnversionedWorkoutDebriefWork("generation-19"))
+    }
+
+    @Test
+    fun eachSessionGenerationHasItsOwnCancellableWorkName() {
+        assertEquals("workout_debrief_42_generation-1", workoutDebriefWorkName(42L, "generation-1"))
+        assertTrue(workoutDebriefWorkName(42L, "generation-1") != workoutDebriefWorkName(42L, "generation-2"))
+    }
+
     @Test
     fun transientFailuresRetryOnlyBeforeThirdAttempt() {
         assertTrue(shouldRetryWorkoutDebriefFailure(IOException("offline")))

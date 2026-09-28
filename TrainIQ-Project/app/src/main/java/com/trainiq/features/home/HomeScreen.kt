@@ -420,7 +420,7 @@ internal fun buildHomeRecoverySubtitle(
     todaysWorkoutCalories: Int,
 ): String = buildString {
     if (stepsToday == null) {
-        append("Stappen offline")
+        append("Stappen niet beschikbaar")
         append(" - ")
     }
     averageHeartRateBpm?.let {
@@ -524,24 +524,35 @@ internal fun homeStreakSubtitle(streak: Int): String =
     if (streak > 0) "Ritme staat aan" else "Start vandaag"
 
 internal fun homeStepsValue(status: HealthConnectStatus): String = when (status.state) {
+    HealthConnectState.PERMISSION_REQUIRED -> "Toegang nodig"
+    HealthConnectState.PROVIDER_MISSING -> "Bijwerken"
+    HealthConnectState.UNSUPPORTED -> "Niet ondersteund"
+    HealthConnectState.ERROR -> "Fout"
     HealthConnectState.CONNECTED,
     HealthConnectState.NO_DATA -> when (status.stepDataFreshness) {
         HealthConnectStepDataFreshness.FRESH,
         HealthConnectStepDataFreshness.STALE_CACHE -> status.stepsToday?.toString() ?: "Geen data"
-        else -> "Geen data"
+        HealthConnectStepDataFreshness.PERMISSION_MISSING -> "Toegang nodig"
+        HealthConnectStepDataFreshness.UNAVAILABLE -> "Niet beschikbaar"
+        HealthConnectStepDataFreshness.ERROR -> "Fout"
+        HealthConnectStepDataFreshness.UNKNOWN ->
+            if (status.state == HealthConnectState.NO_DATA && status.stepsToday == null) "Geen data" else "Laden..."
     }
-    else -> "Offline"
 }
 
 internal fun homeMomentumEncouragement(streak: Int, status: HealthConnectStatus): String {
     val stepsToday = status.stepsToday
     return when {
+        stepsToday != null && stepsToday > 0 &&
+            status.stepDataFreshness == HealthConnectStepDataFreshness.FRESH ->
+            "Je beweging staat erin. Houd je voeding en training erbij, dan blijft het beeld compleet."
+        stepsToday != null && stepsToday > 0 &&
+            status.stepDataFreshness == HealthConnectStepDataFreshness.STALE_CACHE ->
+            "Laatst bekend: $stepsToday stappen. Ververs Health Connect voor een actuele dagstand."
         streak <= 0 && status.state == HealthConnectState.NO_DATA ->
             "Start klein: log vandaag een maaltijd of pak je eerste wandeling. Dan wordt je coach direct scherper."
         streak <= 0 && stepsToday == null ->
             "Begin lokaal met een maaltijd of training. Je hoeft niet te wachten op Health Connect-data."
-        stepsToday != null && stepsToday > 0 ->
-            "Je beweging staat erin. Houd je voeding en training erbij, dan blijft het beeld compleet."
         streak > 0 ->
             "Je ritme staat aan. Blijf kleine logs toevoegen zodat je coach scherp blijft."
         else ->

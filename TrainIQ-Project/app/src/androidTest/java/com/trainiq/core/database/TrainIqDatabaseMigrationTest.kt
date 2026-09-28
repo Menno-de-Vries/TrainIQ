@@ -17,6 +17,27 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class TrainIqDatabaseMigrationTest {
     @Test
+    fun migration18To19BackfillsDistinctDebriefGenerationsForExistingWorkouts() {
+        helper.createDatabase(TEST_DB, 18).apply {
+            execSQL("INSERT INTO workout_sessions (id, date, duration, caloriesBurned) VALUES (41, 1000, 60, 0)")
+            execSQL("INSERT INTO workout_sessions (id, date, duration, caloriesBurned) VALUES (42, 2000, 60, 0)")
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            TEST_DB,
+            19,
+            true,
+            TrainIqMigrations.Migration18To19,
+        )
+        migrated.query("SELECT COUNT(DISTINCT debrief_generation_id), COUNT(*) FROM workout_sessions WHERE debrief_generation_id != ''").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(2, cursor.getInt(0))
+            assertEquals(2, cursor.getInt(1))
+        }
+        migrated.close()
+    }
+    @Test
     fun migration17To18PreservesHistoryWithoutHydrationBackfill() {
         helper.createDatabase(TEST_DB, 17).apply { seedVersion11RelationalData(); close() }
         val migrated = helper.runMigrationsAndValidate(TEST_DB, 18, true)

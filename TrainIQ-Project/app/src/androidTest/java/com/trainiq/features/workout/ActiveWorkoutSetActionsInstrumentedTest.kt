@@ -1,6 +1,7 @@
 package com.trainiq.features.workout
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.performTouchInput
@@ -153,6 +154,8 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             }
             compose.mainClock.advanceTimeBy(5_000L)
             compose.waitForIdle()
+            // The duplicate-submit guard uses SystemClock.elapsedRealtime(), not Compose's test clock.
+            SystemClock.sleep(400L)
             compose.onNodeWithText("Extra set loggen").performScrollTo().performClick()
             compose.waitUntil(15_000) {
                 runBlocking { database.dao().observeActiveWorkoutSets().first().size == 2 } ||

@@ -230,6 +230,28 @@ class SettingsUiStateTest {
     }
 
     @Test
+    fun aiSettingsOverviewLabelExplainsDisabledAndDeferredWorkoutDebrief() {
+        val configured = SettingsAiStatus(
+            enabled = true,
+            preferredProvider = AiProviderPreference.GEMINI_FIRST,
+            hasGeminiKey = true,
+            hasOpenAiKey = false,
+            maskedGeminiKey = "abcd****wxyz",
+            maskedOpenAiKey = "Niet ingesteld",
+        )
+
+        assertEquals("Uitgeschakeld", aiSettingsOverviewLabel(configured.copy(enabled = false)))
+        assertEquals(
+            "Ingeschakeld; API-sleutel nodig",
+            aiSettingsOverviewLabel(configured.copy(hasGeminiKey = false)),
+        )
+        assertEquals(
+            "Ingeschakeld; workoutterugblik kan later op de achtergrond",
+            aiSettingsOverviewLabel(configured),
+        )
+    }
+
+    @Test
     fun openAiProviderStatusSeparatesStoredVerifiedAndLatestFailure() {
         val base = SettingsAiStatus(
             enabled = true,
@@ -594,6 +616,26 @@ class SettingsUiStateTest {
         assertFalse(source.contains("SectionCard(title = \"Workoutfeedback\")"))
         assertFalse(source.contains("SectionCard(title = \"Reminders\")"))
         assertFalse(source.contains("SectionCard(title = \"Privacy en telemetrie\")"))
+    }
+
+    @Test
+    fun aiDisclosureExplainsProviderOrderAndDeferredWorkoutDebrief() {
+        val source = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
+        val aiSection = source.substringAfter("SectionCard(title = \"AI / Providers\")")
+            .substringBefore("SectionCard(title = \"Health Connect\")")
+
+        assertTrue(aiSection.contains("AI blijft uit totdat jij het inschakelt"))
+        assertTrue(aiSection.contains("alleen de gegevens die nodig zijn voor de betreffende AI-functie"))
+        assertTrue(aiSection.contains("eerste provider in jouw volgorde waarvoor een sleutel is opgeslagen"))
+        assertTrue(aiSection.contains("Na afronden van een workout plant TrainIQ een AI-terugblik in"))
+        assertTrue(aiSection.contains("kan later op de achtergrond worden verwerkt"))
+        assertTrue(aiSection.contains("Jij start maaltijdanalyse, routinegeneratie, doeladvies en weekrapport"))
+        assertTrue(aiSection.contains("Na afronden van een workout wordt een terugblik ingepland"))
+        assertTrue(source.contains("AI-functies ingeschakeld. Jij start AI-acties; na afronden van een workout kan de terugblik later op de achtergrond worden verwerkt."))
+        assertFalse(source.contains("Verzoeken starten alleen na jouw expliciete actie."))
+        assertFalse(aiSection.contains("geen AI-aanvragen op de achtergrond"))
+        assertFalse(aiSection.contains("Alleen expliciete acties zoals"))
+        assertFalse(aiSection.contains("jouw gekozen provider"))
     }
 
     @Test

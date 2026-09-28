@@ -5,6 +5,7 @@ import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ListenableWorker
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -68,12 +69,11 @@ class HealthConnectBackgroundSyncWorker(
             HealthConnectWorkerEntryPoint::class.java,
         )
         return try {
-            val status = entryPoint.healthConnectDataSource().getStatus()
-            if (shouldRetryHealthConnectBackgroundSync(status)) {
-                Result.retry()
-            } else {
-                Result.success()
-            }
+            val dataSource = entryPoint.healthConnectDataSource()
+            runHealthConnectBackgroundSync(
+                canReadInBackground = dataSource::canReadInBackground,
+                getStatus = dataSource::getStatus,
+            )
         } catch (exception: CancellationException) {
             throw exception
         } catch (throwable: Throwable) {
@@ -82,6 +82,31 @@ class HealthConnectBackgroundSyncWorker(
             } else {
                 Result.failure()
             }
+        }
+    }
+}
+
+internal suspend fun runHealthConnectBackgroundSync(
+    canReadInBackground: suspend () -> Boolean,
+    getStatus: suspend () -> HealthConnectStatus,
+): ListenableWorker.Result {
+    return try {
+        if (!canReadInBackground()) {
+            ListenableWorker.Result.success()
+        } else {
+            if (shouldRetryHealthConnectBackgroundSync(getStatus())) {
+                ListenableWorker.Result.retry()
+            } else {
+                ListenableWorker.Result.success()
+            }
+        }
+    } catch (exception: CancellationException) {
+        throw exception
+    } catch (throwable: Throwable) {
+        if (shouldRetryHealthConnectBackgroundSyncFailure(throwable)) {
+            ListenableWorker.Result.retry()
+        } else {
+            ListenableWorker.Result.failure()
         }
     }
 }

@@ -47,6 +47,7 @@ import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlin.reflect.KClass
 
@@ -100,12 +101,12 @@ class HealthConnectDataSource @Inject constructor(
 
     suspend fun canReadInBackground(): Boolean = withContext(Dispatchers.IO) {
         if (HealthConnectClient.getSdkStatus(context) != HealthConnectClient.SDK_AVAILABLE) return@withContext false
-        runCatching {
+        runHealthConnectSyncCatchingCancellation {
             val client = HealthConnectClient.getOrCreate(context)
             val featureAvailable = client.features.getFeatureStatus(
                 HealthConnectFeatures.FEATURE_READ_HEALTH_DATA_IN_BACKGROUND,
             ) == HealthConnectFeatures.FEATURE_STATUS_AVAILABLE
-            if (!featureAvailable) return@runCatching false
+            if (!featureAvailable) return@runHealthConnectSyncCatchingCancellation false
             HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND in client.permissionController.getGrantedPermissions()
         }.getOrDefault(false)
     }
@@ -143,7 +144,7 @@ class HealthConnectDataSource @Inject constructor(
     }
 
     private suspend fun fetchConnectedStatus(): HealthConnectStatus {
-        return runCatching {
+        return runHealthConnectSyncCatchingCancellation {
             val client = HealthConnectClient.getOrCreate(context)
             val grantedPermissions = client.permissionController.getGrantedPermissions()
             val grantedMetrics = grantedMetrics(grantedPermissions)
@@ -220,7 +221,7 @@ class HealthConnectDataSource @Inject constructor(
             return performFullSync(client = client, metricsToSync = metricsToSync, initialCacheState = cachedState)
         }
 
-        return runCatching {
+        return runHealthConnectSyncCatchingCancellation {
             performIncrementalSync(client, storedState, metricTokens, cachedState)
         }.getOrElse { throwable ->
             cachedIncrementalFailurePayload(
@@ -263,7 +264,7 @@ class HealthConnectDataSource @Inject constructor(
             metricFailures,
             normalizedInitialCacheState.aggregatedStepsToday,
         ) {
-            runCatching { aggregateStepsToday(client, todayRange) }
+            runHealthConnectSyncCatchingCancellation { aggregateStepsToday(client, todayRange) }
                 .onFailure { stepAggregateFailed = true }
                 .getOrThrow()
         } else normalizedInitialCacheState.aggregatedStepsToday
@@ -383,7 +384,7 @@ class HealthConnectDataSource @Inject constructor(
         metricsToSync: Set<HealthMetricType>,
         failures: MutableMap<HealthMetricType, String>,
     ): Map<HealthMetricType, String> = trackedRecordTypesByMetric.filterKeys { it in metricsToSync }.mapNotNull { (metric, recordType) ->
-        runCatching {
+        runHealthConnectSyncCatchingCancellation {
             metric to client.getChangesToken(ChangesTokenRequest(recordTypes = setOf(recordType)))
         }.getOrElse { throwable ->
             failures[metric] = throwable.message ?: "Health Connect ChangesToken kon niet worden opgehaald."
@@ -396,7 +397,7 @@ class HealthConnectDataSource @Inject constructor(
         failures: MutableMap<HealthMetricType, String>,
         default: T,
         block: suspend () -> T,
-    ): T = runCatching { block() }.getOrElse { throwable ->
+    ): T = runHealthConnectSyncCatchingCancellation { block() }.getOrElse { throwable ->
         failures[metric] = throwable.message ?: "Deze Health Connect-metric kan nu niet worden gelezen."
         default
     }
@@ -437,7 +438,7 @@ class HealthConnectDataSource @Inject constructor(
             var tokenExpired = false
             var fullSyncReplacementToken: String? = null
             var hasMore = true
-            val metricResult = runCatching {
+            val metricResult = runHealthConnectSyncCatchingCancellation {
                 while (hasMore) {
                     val changesResponse = client.getChanges(currentToken)
                     if (changesResponse.changesTokenExpired) {
@@ -453,7 +454,7 @@ class HealthConnectDataSource @Inject constructor(
                             .firstOrNull { it.metric == metric && it.state == HealthMetricSyncState.FAILED }
                             ?.message
                             ?.let { metricFailures[metric] = it }
-                        return@runCatching
+                        return@runHealthConnectSyncCatchingCancellation
                     }
                     currentToken = changesResponse.nextChangesToken
                     cacheState = applyChanges(cacheState, changesResponse.changes)
@@ -488,7 +489,7 @@ class HealthConnectDataSource @Inject constructor(
                 failures = metricFailures,
                 default = normalizedCacheState.aggregatedStepsToday,
             ) {
-                runCatching { aggregateStepsToday(client, todayRange) }
+                runHealthConnectSyncCatchingCancellation { aggregateStepsToday(client, todayRange) }
                     .onFailure { stepAggregateFailed = true }
                     .getOrThrow()
             }
@@ -709,7 +710,7 @@ class HealthConnectDataSource @Inject constructor(
     ): Int? {
         if (samsungPackageNames.isEmpty()) return null
         val bestSamsungAggregate = samsungPackageNames.mapNotNull { packageName ->
-            runCatching {
+            runHealthConnectSyncCatchingCancellation {
                 client.aggregate(
                     AggregateRequest(
                         metrics = setOf(StepsRecord.COUNT_TOTAL),
@@ -728,7 +729,7 @@ class HealthConnectDataSource @Inject constructor(
         client: HealthConnectClient,
         exerciseSessionRecords: List<CachedExerciseSessionRecord>,
         todayRange: HealthConnectLocalDateTimeRange,
-    ): StepWorkoutWindowSnapshot = runCatching {
+    ): StepWorkoutWindowSnapshot = runHealthConnectSyncCatchingCancellation {
         val zone = ZoneId.systemDefault()
         val dayStartMillis = todayRange.start.atZone(zone).toInstant().toEpochMilli()
         val dayEndMillis = todayRange.end.atZone(zone).toInstant().toEpochMilli()
@@ -739,7 +740,7 @@ class HealthConnectDataSource @Inject constructor(
             .take(MaxStepWorkoutWindowSessions)
             .toList()
         if (sessions.isEmpty()) {
-            return@runCatching StepWorkoutWindowSnapshot(steps = 0, sessionCount = 0, truncated = false)
+            return@runHealthConnectSyncCatchingCancellation StepWorkoutWindowSnapshot(steps = 0, sessionCount = 0, truncated = false)
         }
         val steps = sessions.sumOf { session ->
             val start = Instant.ofEpochMilli(maxOf(session.startTimeMillis, dayStartMillis))
@@ -769,7 +770,7 @@ class HealthConnectDataSource @Inject constructor(
     private suspend fun readStepSourceSnapshotToday(
         client: HealthConnectClient,
         todayRange: HealthConnectLocalDateTimeRange,
-    ): StepSourceSnapshot = runCatching {
+    ): StepSourceSnapshot = runHealthConnectSyncCatchingCancellation {
         var latestSamsungSeenAt: Long? = null
         val samsungPackageNames = mutableSetOf<String>()
         var samsungRawStepRecordSum = 0L
@@ -795,7 +796,7 @@ class HealthConnectDataSource @Inject constructor(
         )
     }.getOrDefault(StepSourceSnapshot())
 
-    private suspend fun readStepSourceLabelsToday(client: HealthConnectClient): List<String> = runCatching {
+    private suspend fun readStepSourceLabelsToday(client: HealthConnectClient): List<String> = runHealthConnectSyncCatchingCancellation {
         val todayRange = healthConnectTodayLocalDateTimeRange(LocalDateTime.now())
         client.readAllRecords(
             recordType = StepsRecord::class,
@@ -866,7 +867,7 @@ class HealthConnectDataSource @Inject constructor(
      */
     suspend fun getTodayStepsLive(): Int = withContext(Dispatchers.IO) {
         if (HealthConnectClient.getSdkStatus(context) != HealthConnectClient.SDK_AVAILABLE) return@withContext 0
-        runCatching {
+        runHealthConnectSyncCatchingCancellation {
             val client = HealthConnectClient.getOrCreate(context)
             val granted = client.permissionController.getGrantedPermissions()
             if (!hasHealthConnectPermission(
@@ -874,7 +875,7 @@ class HealthConnectDataSource @Inject constructor(
                     requiredPermission = HealthPermission.getReadPermission(StepsRecord::class),
                 )
             ) {
-                return@runCatching 0
+                return@runHealthConnectSyncCatchingCancellation 0
             }
             aggregateStepsToday(client).toInt()
         }.getOrElse { 0 }
@@ -1430,4 +1431,14 @@ internal fun healthConnectProviderInstallIntent(callerPackageName: String): Inte
         putExtra("overlay", true)
         putExtra("callerId", callerPackageName)
     }
+}
+
+internal suspend fun <T> runHealthConnectSyncCatchingCancellation(
+    block: suspend () -> T,
+): Result<T> = try {
+    Result.success(block())
+} catch (exception: CancellationException) {
+    throw exception
+} catch (throwable: Throwable) {
+    Result.failure(throwable)
 }

@@ -4,6 +4,12 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 object TrainIqMigrations {
+    val Migration18To19 = object : Migration(18, 19) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE workout_sessions ADD COLUMN debrief_generation_id TEXT NOT NULL DEFAULT ''")
+            db.execSQL("UPDATE workout_sessions SET debrief_generation_id = lower(hex(randomblob(16)))")
+        }
+    }
     val Migration2To3 = object : Migration(2, 3) {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("ALTER TABLE user_profile ADD COLUMN age INTEGER NOT NULL DEFAULT 30")
@@ -782,6 +788,7 @@ object TrainIqMigrations {
         Migration13To14,
         Migration14To15,
         Migration15To16,
+        Migration18To19,
     )
 
     private fun SupportSQLiteDatabase.recreateTable(

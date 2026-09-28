@@ -23,8 +23,9 @@ class DurableWorkoutDebriefArchitectureTest {
 
         assertFalse(finishBody.contains("scope.launch"))
         assertFalse(finishBody.contains("workoutDebriefService.generateWorkoutDebrief"))
-        assertTrue(finishUseCase.contains("workoutDebriefScheduler.enqueue(result.sessionId)"))
+        assertTrue(finishUseCase.contains("workoutDebriefScheduler.enqueue(result.sessionId, result.generationId)"))
         assertTrue(worker.contains("enqueueUniqueWork("))
+        assertTrue(worker.contains("cancelUniqueWork(workoutDebriefWorkName(sessionId, generationId)).await()"))
         assertTrue(worker.contains("ExistingWorkPolicy.KEEP"))
         assertTrue(worker.contains("NetworkType.CONNECTED"))
         assertTrue(worker.contains("BackoffPolicy.EXPONENTIAL"))
@@ -41,6 +42,10 @@ class DurableWorkoutDebriefArchitectureTest {
         assertTrue(worker.contains("WorkoutDebriefRefreshOutcome.SESSION_MISSING"))
         assertTrue(worker.contains("WorkoutDebriefRefreshOutcome.UPDATED"))
         assertTrue(worker.contains("WorkoutDebriefRefreshOutcome.INVALID_RESULT"))
+        val workerEntry = worker.substringAfter("override suspend fun doWork()")
+            .substringBefore("val entryPoint = EntryPointAccessors.fromApplication")
+        assertTrue(workerEntry.contains("shouldSkipUnversionedWorkoutDebriefWork(generationId)"))
+        assertTrue(workerEntry.contains("return Result.success()"))
     }
 
     @Test

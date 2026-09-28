@@ -26,8 +26,9 @@ Use this checklist with the current owner handoff packet: `docs/release/owner-de
 - [ ] Use `docs/release/play-console-data-safety-worksheet.md` as the input worksheet.
 - [ ] Confirm whether data is collected, shared, processed ephemerally, or local-only under Play definitions.
 - [ ] Confirm telemetry production endpoint and processor before answering diagnostics/performance sharing questions.
-- [ ] Confirm final production AI mode, Gemini request handling, and BYOK/gateway/account behavior under third-party sharing definitions.
-- [ ] Confirm meal photo/barcode handling, retention, and whether images leave the device.
+- [ ] Confirm final production AI mode, Gemini/OpenAI provider-order routing, BYOK/gateway/account behavior, and deferred background workout debrief under third-party sharing definitions.
+- [ ] Confirm which profile, workout, weekly-report, and nutrition-adherence data AI features send to providers.
+- [ ] Confirm meal and smart-scale/body-measurement photo handling, retention, and whether images leave the device.
 - [ ] Recheck answers after any telemetry, backend, analytics, crash reporting, account/auth, or AI-mode change.
 - [ ] OWNER_CONFIRMATION_REQUIRED: submit Data Safety form.
 
@@ -36,7 +37,7 @@ Use this checklist with the current owner handoff packet: `docs/release/owner-de
 - [ ] Legal owner reviews `docs/release/privacy-policy-draft.md`.
 - [ ] Add publisher name, contact, effective date, jurisdiction, and policy URL.
 - [ ] Confirm Health Connect wording matches Play declaration.
-- [ ] Confirm Gemini/BYOK wording matches production AI architecture.
+- [ ] Confirm AI opt-in, provider-order, action-input/photo, and deferred workout-debrief wording matches production AI architecture.
 - [ ] Confirm telemetry wording matches production build config.
 - [ ] OWNER_CONFIRMATION_REQUIRED: publish policy URL and add it to Play Console.
 

@@ -209,6 +209,7 @@ data class WorkoutSessionEntity(
     @ColumnInfo(name = "debrief_next_load_target", defaultValue = "") val debriefNextLoadTarget: String = "",
     @ColumnInfo(name = "debrief_recovery_advice", defaultValue = "") val debriefRecoveryAdvice: String = "",
     @ColumnInfo(name = "debrief_source", defaultValue = "LOCAL_FALLBACK") val debriefSource: String = "LOCAL_FALLBACK",
+    @ColumnInfo(name = "debrief_generation_id", defaultValue = "''") val debriefGenerationId: String = "",
 )
 
 @Entity(
