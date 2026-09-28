@@ -13,7 +13,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
-import androidx.test.espresso.Espresso
 import com.trainiq.core.theme.TrainIqTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -40,7 +39,6 @@ class ScrollFocusInstrumentedTest {
             }
         }
         compose.onNodeWithTag("input").performClick().assertIsFocused()
-        Espresso.closeSoftKeyboard()
         compose.onNodeWithTag("button").performTouchInput { click() }
         compose.runOnIdle { assertEquals(1, clicks) }
         compose.onNodeWithTag("input").assertIsFocused()

@@ -879,6 +879,9 @@ class WorkoutInputValidationTest {
         val activeExerciseCard = workoutScreen
             .substringAfter("private fun ActiveExerciseCard(")
             .substringBefore("private fun ActiveSetInputMetrics(")
+        val activeExerciseTitle = activeExerciseCard
+            .substringAfter("Text(\n                        plan.exercise.name,")
+            .substringBefore("\n                    )")
         val activeWorkoutPlanCard = workoutScreen
             .substringAfter("private fun ActiveWorkoutPlanCard(")
             .substringBefore("private fun activeWorkoutExerciseUiState(")
@@ -899,7 +902,8 @@ class WorkoutInputValidationTest {
         assertTrue(routineExerciseCard.contains("text = { Text(\"Set toevoegen\") }"))
         assertTrue(routineExerciseCard.contains("onAddSet()"))
         assertTrue(activeExerciseCard.contains("modifier = Modifier\n                        .fillMaxWidth()"))
-        assertTrue(activeExerciseCard.contains("maxLines = 3"))
+        assertFalse(activeExerciseTitle.contains("maxLines"))
+        assertFalse(activeExerciseTitle.contains("TextOverflow.Ellipsis"))
         assertTrue(activeExerciseCard.contains("horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)"))
         assertTrue(activeExerciseCard.contains("ActiveExerciseRestControl"))
         assertTrue(workoutScreen.contains("val activeWorkoutListState = rememberLazyListState()"))

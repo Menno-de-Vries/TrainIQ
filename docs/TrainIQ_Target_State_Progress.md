@@ -1,5 +1,11 @@
 # TrainIQ Target-State Progress
 
+## 2026-09-28 Autonomous whole-app quality cycle
+
+- Reproduced and fixed expanded-route width/centering, first-run onboarding actions below the fold, Health Connect full-sync token ordering, long custom exercise-name truncation, instrumentation focus/back harness issues, and the missing cancel action for new scanned products.
+- Final local gates passed: `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug` (937 JVM tests) and `:app:connectedDebugAndroidTest` (175/175 instrumented tests, no failures/errors/skips) on the agent-owned API 36 AVD. Actual compact 360×640 dp and expanded 1440×900 dp UI/runtime captures cover Home, Training, and onboarding; `git diff --check` passed.
+- Independent UI/UX, functional, and regression audits found no further reproducible issue in the exercised scope. No global target-state percentage is claimed or changed.
+- External runtime limit: no usable Health Connect provider was available on the emulator, so live provider mutation/sync was not exercised; deterministic local policy/order/failure tests passed. Physical-device certification and release acceptance are outside this cycle.
 ## 2026-09-22 Existing-app readability and recovery
 
 POLISH-01 through POLISH-10 address readable persistent status messages, wrapping screen explanations, complete section labels, labeled portrait navigation, a scrollable landscape rail, an ineffective history close action, retry after failed sleep observation, the immediate-completion race in nutrition submit guards, and countdown ownership during foreground-service shutdown. Existing product rules, typed route shapes, Room formats, providers and permissions are preserved. The [audit, fresh local evidence and prepared PR text](qa/TrainIQ_App_Polish_2026-09-22.md) records baseline failures, corrections, passing final local gates (919 JVM, 169 Android and 7 gateway tests), runtime checks and device limits. Branch: `codex/app-polish-stability`, base `178116cb3ff7918ba3969eaa5c996a720f03ebf9`. Global alignment is not reassessed. The requested PR is prepared locally because the user withheld additional push authorization; no push, remote PR, merge or release was performed.

@@ -1,5 +1,6 @@
 package com.trainiq.features.nutrition
 
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -18,7 +19,9 @@ class ScannerRecoveryInstrumentedTest {
         var state: CameraScannerUiState by mutableStateOf(CameraScannerUiState.Empty("", "Niet gevonden"))
         var open by mutableStateOf(true)
         var exits = 0
+        lateinit var backDispatcher: androidx.activity.OnBackPressedDispatcher
         setContent { TrainIqTheme {
+            backDispatcher = requireNotNull(LocalOnBackPressedDispatcherOwner.current).onBackPressedDispatcher
             if (!open) androidx.compose.material3.Text("Receptdraft behouden")
             else CameraScannerScreen(uiState = state, scannerMode = ScannerMode.BARCODE, onAnalyze = {},
                 onDismissError = {}, onScanAgain = { state = CameraScannerUiState.Preview("", true) },
@@ -29,9 +32,7 @@ class ScannerRecoveryInstrumentedTest {
         onNodeWithText("Barcodescanner").assertIsDisplayed()
         runOnIdle { state = CameraScannerUiState.Processing }
         onNodeWithText("Product ophalen...").assertIsDisplayed()
-        val back = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
-            .executeShellCommand("input keyevent KEYCODE_BACK")
-        android.os.ParcelFileDescriptor.AutoCloseInputStream(back).use { it.readBytes() }
+        runOnIdle { backDispatcher.onBackPressed() }
         onNodeWithText("Receptdraft behouden").assertIsDisplayed()
         runOnIdle { org.junit.Assert.assertEquals(1, exits) }
     }

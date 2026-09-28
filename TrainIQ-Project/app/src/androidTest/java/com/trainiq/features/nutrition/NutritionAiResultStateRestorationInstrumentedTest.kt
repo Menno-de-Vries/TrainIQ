@@ -24,7 +24,6 @@ import com.trainiq.domain.model.NutritionFacts
 import com.trainiq.domain.model.NutritionOverview
 import org.junit.Test
 import org.junit.Assert.assertTrue
-import androidx.test.espresso.Espresso.pressBack
 import com.trainiq.domain.model.BarcodeProductLookupResult
 
 class NutritionAiResultStateRestorationInstrumentedTest {
@@ -55,9 +54,10 @@ class NutritionAiResultStateRestorationInstrumentedTest {
             SyntheticNutritionScreen(state, pendingBarcode, { pendingBarcode = null }, { clears++ })
         }
         onNodeWithContentDescription("Productnaam").performScrollTo().assertIsDisplayed()
-        pressBack()
+        onNodeWithText("Annuleren").performScrollTo().performClick()
         waitForIdle()
-        assertTrue(clears > 0)
+        assertTrue("The dismissed editor must clear its pending barcode result", clears > 0)
+        onNodeWithContentDescription("Productnaam").assertDoesNotExist()
         runOnIdle {
             state = state.copy(barcodeLookupResult = BarcodeLookupUiResult(
                 BarcodeLookupTarget.FOOD_EDITOR,

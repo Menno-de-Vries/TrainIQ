@@ -6116,8 +6116,6 @@ private fun ActiveExerciseCard(
                         plan.exercise.name,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         "${loggedSets.size}/$plannedSetCount sets - ${plan.repRange} herh.",

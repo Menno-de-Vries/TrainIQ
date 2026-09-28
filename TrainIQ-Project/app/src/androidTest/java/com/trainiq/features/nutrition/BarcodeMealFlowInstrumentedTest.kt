@@ -116,13 +116,16 @@ class BarcodeMealFlowInstrumentedTest {
             compose.onNodeWithText("Volume per portie (ml)").assertDoesNotExist()
             compose.onNodeWithText("Gram per portie").performScrollTo().performTextReplacement("250")
             compose.onNodeWithText("250 ml per portie - gram telt 1-op-1 als vocht").assertExists()
-            androidx.test.espresso.Espresso.closeSoftKeyboard()
             val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
             java.io.File(context.getExternalFilesDir(null), "hydration-draft.png").outputStream().use {
                 compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
             }
             compose.onNodeWithText("Maaltijd opslaan").performScrollTo().performClick()
-            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Geregistreerd vocht: 250 ml"))
+            compose.runOnIdle {
+                assertEquals(listOf(MealType.LUNCH), savedMeals)
+                assertEquals(250.0, total, 0.0)
+            }
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Geregistreerd vocht:", substring = true))
             compose.onNodeWithText("Geregistreerd vocht: 250 ml").assertExists()
         } finally { db.close() }
     }

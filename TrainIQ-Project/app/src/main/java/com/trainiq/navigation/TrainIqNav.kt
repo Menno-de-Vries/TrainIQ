@@ -1,6 +1,7 @@
 package com.trainiq.navigation
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -617,6 +618,31 @@ fun adaptiveContentMaxWidthDp(widthClass: TrainIqWindowWidthClass): Int = when (
     TrainIqWindowWidthClass.Expanded -> 1120
 }
 
+internal fun adaptiveRouteContentWidthDp(
+    widthClass: TrainIqWindowWidthClass,
+    availableWidthDp: Float,
+): Float = minOf(adaptiveContentMaxWidthDp(widthClass).toFloat(), availableWidthDp.coerceAtLeast(0f))
+
+@Composable
+internal fun AdaptiveRouteViewport(
+    widthClass: TrainIqWindowWidthClass,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    BoxWithConstraints(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Box(
+            modifier = Modifier
+                .width(adaptiveRouteContentWidthDp(widthClass, maxWidth.value).dp)
+                .fillMaxHeight(),
+        ) {
+            content()
+        }
+    }
+}
+
 internal fun bottomNavigationLabel(label: String): String = when (label) {
     "Voortgang" -> "Trend"
     "Instellingen" -> "Meer"
@@ -719,11 +745,15 @@ private fun TrainIqNavHost(
     onTrainDetailModeChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    NavHost(
-        navController = navController,
-        startDestination = if (onboardingPreferences.completed) Home else Onboarding,
+    AdaptiveRouteViewport(
+        widthClass = windowWidthClass,
         modifier = modifier,
     ) {
+        NavHost(
+            navController = navController,
+            startDestination = if (onboardingPreferences.completed) Home else Onboarding,
+            modifier = Modifier.fillMaxSize(),
+        ) {
         composable<Onboarding> {
             OnboardingRoute(
                 onFinished = {
@@ -921,6 +951,7 @@ private fun TrainIqNavHost(
                 exerciseId = entry.toRoute<ExerciseHistory>().exerciseId,
                 onBack = { navController.popBackStack() },
             )
+        }
         }
     }
 }

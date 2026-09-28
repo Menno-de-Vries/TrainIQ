@@ -17,6 +17,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performImeAction
@@ -26,6 +28,7 @@ import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.SemanticsMatcher
@@ -99,6 +102,65 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             }
             capture("expanded")
             assertEquals(1, runBlocking { database.dao().readActiveWorkoutSetsForExport().size })
+        }
+    }
+
+    @Test
+    fun longExerciseNameRemainsReadableAndLoggerActionsStayAvailable() {
+        val longExerciseName = "Custom movement " + "with a deliberately long name ".repeat(4)
+        runBlocking {
+            database.dao().deleteActiveWorkoutSet(sessionId = 12L, setId = 1L)
+            database.dao().insertExercise(
+                ExerciseEntity(id = 3L, name = longExerciseName, muscleGroup = "Chest", equipment = "Barbell"),
+            )
+        }
+
+        ActivityScenario.launch(MainActivity::class.java).use {
+            val trainingNavigation = (hasContentDescription("Training") or hasText("Training")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(trainingNavigation).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(trainingNavigation).performClick()
+            compose.waitForText("QA Upper")
+            compose.onNodeWithText("Training starten").performClick()
+            compose.waitForText("Actieve training")
+
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(longExerciseName))
+            val titleNode = compose.onNodeWithText(longExerciseName, useUnmergedTree = true)
+            val titleLayouts = mutableListOf<TextLayoutResult>()
+            titleNode.assertTextEquals(longExerciseName)
+                .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(titleLayouts) }
+            assertEquals(1, titleLayouts.size)
+            assertTrue("Long exercise titles must wrap beyond the former three-line cap", titleLayouts.single().lineCount > 3)
+            assertTrue(
+                "Exercise title must not be ellipsized",
+                (0 until titleLayouts.single().lineCount).none(titleLayouts.single()::isLineEllipsized),
+            )
+            val titleBounds = titleNode.fetchSemanticsNode().boundsInRoot
+            val scrollBounds = compose.onNode(hasScrollToIndexAction()).fetchSemanticsNode().boundsInRoot
+            assertTrue(
+                "Entire exercise title must be inside the visible workout list: title=$titleBounds viewport=$scrollBounds",
+                titleBounds.top >= scrollBounds.top && titleBounds.bottom <= scrollBounds.bottom,
+            )
+            compose.onNodeWithContentDescription("Klap oefening in").assertExists()
+            compose.onNodeWithContentDescription("Actieve oefening acties").performScrollTo().performClick()
+            compose.onNodeWithText("Set toevoegen").performClick()
+            compose.onNodeWithText("Set loggen").performScrollTo().performClick()
+
+            compose.waitUntil(15_000) {
+                runBlocking { database.dao().observeActiveWorkoutSets().first().size == 1 }
+            }
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("Extra set loggen").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.mainClock.advanceTimeBy(5_000L)
+            compose.waitForIdle()
+            compose.onNodeWithText("Extra set loggen").performScrollTo().performClick()
+            compose.waitUntil(15_000) {
+                runBlocking { database.dao().observeActiveWorkoutSets().first().size == 2 } ||
+                    compose.onAllNodesWithText("Set loggen is mislukt", substring = true).fetchSemanticsNodes().isNotEmpty() ||
+                    compose.onAllNodesWithText("Deze set wordt al opgeslagen", substring = true).fetchSemanticsNodes().isNotEmpty()
+            }
+            val loggedSetCount = runBlocking { database.dao().observeActiveWorkoutSets().first().size }
+            assertEquals("Both logger actions must persist a set", 2, loggedSetCount)
         }
     }
 
@@ -182,6 +244,7 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             compose.waitForText("QA Upper")
             compose.onNodeWithText("Training starten").performClick()
             compose.waitForText("Actieve training")
+            compose.onNodeWithText("Bench Press", useUnmergedTree = true).assertIsDisplayed()
             capture("normal")
 
             compose.waitForText("N")

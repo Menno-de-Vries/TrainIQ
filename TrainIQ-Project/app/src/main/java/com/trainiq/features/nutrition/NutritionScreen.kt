@@ -2709,9 +2709,7 @@ private fun FoodEditorCard(
                 }
                 OutlinedButton(onClick = onScanBarcode, modifier = Modifier.fillMaxWidth()) { Text("Barcode scannen") }
             }
-            if (isEditing) {
-                TextButton(onClick = onCancelEdit, modifier = Modifier.fillMaxWidth()) { Text("Annuleren") }
-            }
+            TextButton(onClick = onCancelEdit, modifier = Modifier.fillMaxWidth()) { Text("Annuleren") }
             Text(
                 "Barcode scannen vult productnaam, kcal en macro's in als Open Food Facts het product kent.",
                 style = MaterialTheme.typography.bodySmall,

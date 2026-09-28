@@ -2,6 +2,7 @@ package com.trainiq.navigation
 
 import com.trainiq.features.settings.settingsOverflowSectionBody
 import com.trainiq.features.settings.settingsOverflowSectionTitle
+import java.io.File
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -89,5 +90,35 @@ class AdaptiveNavigationPolicyTest {
         assertTrue(adaptiveContentMaxWidthDp(TrainIqWindowWidthClass.Compact) == Int.MAX_VALUE)
         assertTrue(adaptiveContentMaxWidthDp(TrainIqWindowWidthClass.Medium) == 840)
         assertTrue(adaptiveContentMaxWidthDp(TrainIqWindowWidthClass.Expanded) == 1120)
+    }
+
+    @Test
+    fun routeContentAppliesWidthPolicyInsideRemainingAreaAfterNavigationRail() {
+        val expandedScreenWidthDp = 1440f
+        val navigationRailWidthDp = 92f
+        val remainingContentWidthDp = expandedScreenWidthDp - navigationRailWidthDp
+        val routeWidthDp = adaptiveRouteContentWidthDp(
+            TrainIqWindowWidthClass.Expanded,
+            availableWidthDp = remainingContentWidthDp,
+        )
+
+        assertEquals(1120f, routeWidthDp)
+        assertEquals(114f, (remainingContentWidthDp - routeWidthDp) / 2f)
+        assertEquals(700f, adaptiveRouteContentWidthDp(TrainIqWindowWidthClass.Expanded, 700f))
+        assertEquals(840f, adaptiveRouteContentWidthDp(TrainIqWindowWidthClass.Medium, 900f))
+        assertEquals(360f, adaptiveRouteContentWidthDp(TrainIqWindowWidthClass.Compact, 360f))
+    }
+
+    @Test
+    fun routeViewportFillsParentBeforeCenteringItsCappedContent() {
+        val source = File("src/main/java/com/trainiq/navigation/TrainIqNav.kt").readText()
+        val routeHost = source.substringAfter("private fun TrainIqNavHost(").substringBefore("composable<Onboarding>")
+        val viewport = source.substringAfter("internal fun AdaptiveRouteViewport(")
+            .substringBefore("internal fun bottomNavigationLabel")
+
+        assertTrue(routeHost.contains("AdaptiveRouteViewport("))
+        assertTrue(viewport.contains("modifier = modifier.fillMaxSize()"))
+        assertTrue(viewport.contains("contentAlignment = Alignment.TopCenter"))
+        assertTrue(viewport.contains("adaptiveRouteContentWidthDp(widthClass, maxWidth.value)"))
     }
 }
