@@ -280,14 +280,17 @@ class HealthConnectPermissionPolicyTest {
     }
 
     @Test
-    fun fullSyncClearsRecoveredStepReadFailureBeforeTokenAcquisition() {
+    fun fullSyncAcquiresChangesTokensBeforeReadingMetricSnapshots() {
         val source = File("src/main/java/com/trainiq/data/datasource/HealthConnectDataSource.kt").readText()
         val fullSyncBody = source.substringAfter("private suspend fun performFullSync")
             .substringBefore("private suspend fun readChangesTokensByMetric")
 
+        val changesTokenRead = fullSyncBody.indexOf("readChangesTokensByMetric(client, metricsToSync, tokenFailures)")
+        val firstMetricSnapshot = fullSyncBody.indexOf("aggregateStepsToday(client, todayRange)")
+
         assertTrue(
-            fullSyncBody.indexOf("metricFailures.clearRecoveredStepFailure(") <
-                fullSyncBody.indexOf("readChangesTokensByMetric(client, metricsToSync, metricFailures)"),
+            "ChangesTokens must establish the sync boundary before any full snapshot reads.",
+            changesTokenRead >= 0 && firstMetricSnapshot >= 0 && changesTokenRead < firstMetricSnapshot,
         )
     }
 

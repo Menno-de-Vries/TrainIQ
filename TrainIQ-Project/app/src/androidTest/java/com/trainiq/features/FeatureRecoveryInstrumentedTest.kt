@@ -140,9 +140,8 @@ class FeatureRecoveryInstrumentedTest {
         onNodeWithText("Opnieuw proberen").performScrollTo().performClick()
         assertEquals(1, finishes)
         runOnIdle { state = OnboardingUiState.Success(OnboardingContentState(), isCompleting = true) }
-        onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Setup opslaan..."))
-        onNodeWithText("Setup opslaan...").performScrollTo().assertIsNotEnabled()
-        onNodeWithText("Later afronden").assertIsNotEnabled()
+        onNodeWithText("Setup opslaan...").assertIsDisplayed().assertIsNotEnabled()
+        onNodeWithText("Later afronden").assertIsDisplayed().assertIsNotEnabled()
     }
 
     @Test

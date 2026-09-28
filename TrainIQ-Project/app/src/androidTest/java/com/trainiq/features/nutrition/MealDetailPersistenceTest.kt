@@ -55,6 +55,9 @@ class MealDetailPersistenceTest {
             compose.onNodeWithContentDescription("Gram per portie").performScrollTo().performTextReplacement("100")
             compose.onNodeWithText("Annuleren").performScrollTo().performClick()
             assertEquals(original, runBlocking { dao.readMealItemsForExport().single() })
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithContentDescription("Maaltijdnaam").fetchSemanticsNodes().isEmpty()
+            }
             compose.onNodeWithText("Test bereid recept").performScrollTo().performClick()
             compose.onNodeWithText("Hoeveelheid wijzigen").performClick()
             compose.onNodeWithContentDescription("Gram per portie").performScrollTo().performTextReplacement("250")

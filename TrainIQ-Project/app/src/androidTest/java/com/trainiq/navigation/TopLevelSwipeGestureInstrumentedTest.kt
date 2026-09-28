@@ -1,8 +1,10 @@
 package com.trainiq.navigation
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -53,6 +55,23 @@ class TopLevelSwipeGestureInstrumentedTest {
             swipe(Offset(width * .8f, height * .5f), Offset(width * .2f, height * .5f))
         }
         compose.runOnIdle { assertEquals(emptyList<Int>(), directions) }
+    }
+
+    @Test fun tabSwipeDoesNotTriggerChildClick() {
+        val directions = mutableListOf<Int>()
+        var clicks = 0
+        compose.setContent {
+            Box(Modifier.size(320.dp, 240.dp).topLevelTabSwipeNavigation(2, 5) { directions += it }.testTag("surface")) {
+                Box(Modifier.fillMaxSize().clickable { clicks++ }.testTag("button"))
+            }
+        }
+        compose.onNodeWithTag("surface").performTouchInput {
+            swipe(Offset(width * .8f, height * .5f), Offset(width * .2f, height * .5f))
+        }
+        compose.runOnIdle {
+            assertEquals(listOf(1), directions)
+            assertEquals(0, clicks)
+        }
     }
 
     @Test fun verticalChildScrollKeepsOwnership() {

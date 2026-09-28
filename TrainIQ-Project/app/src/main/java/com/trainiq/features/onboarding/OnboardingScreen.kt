@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -414,55 +415,69 @@ private fun OnboardingContent(
     isCompleting: Boolean,
     onRetry: () -> Unit,
 ) {
-    LazyColumn(
+    Column(
         modifier = Modifier
             .fillMaxSize()
+            .statusBarsPadding()
             .navigationBarsPadding()
             .imePadding(),
-        contentPadding = PaddingValues(
-            start = MaterialTheme.spacing.medium,
-            top = MaterialTheme.spacing.medium,
-            end = MaterialTheme.spacing.medium,
-            bottom = 40.dp,
-        ),
-        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
     ) {
-        item {
-            ScreenHeader(title = "TrainIQ", subtitle = "Eerste setup")
-        }
-        saveError?.let { error ->
+        LazyColumn(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            contentPadding = PaddingValues(
+                start = MaterialTheme.spacing.medium,
+                top = MaterialTheme.spacing.medium,
+                end = MaterialTheme.spacing.medium,
+                bottom = MaterialTheme.spacing.medium,
+            ),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
+        ) {
             item {
-                AppCard(accent = MaterialTheme.colorScheme.error) {
-                    Text(error)
-                    OutlinedButton(onClick = onRetry) { Text("Opnieuw proberen") }
+                ScreenHeader(title = "TrainIQ", subtitle = "Eerste setup")
+            }
+            saveError?.let { error ->
+                item {
+                    AppCard(accent = MaterialTheme.colorScheme.error) {
+                        Text(error)
+                        OutlinedButton(onClick = onRetry) { Text("Opnieuw proberen") }
+                    }
+                }
+            }
+            item {
+                LinearProgressIndicator(
+                    progress = { state.progress },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            item {
+                AnimatedContent(
+                    targetState = state.step,
+                    transitionSpec = {
+                        slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(220)) togetherWith
+                            slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(220))
+                    },
+                    label = "onboarding-step",
+                ) { step ->
+                    when (step) {
+                        OnboardingStep.WELCOME -> WelcomeStep()
+                        OnboardingStep.GOAL_TRAINING -> GoalTrainingStep(state.draft, onEvent)
+                        OnboardingStep.HEALTH_CONNECT -> HealthConnectStep(state.draft, onEvent, onRequestHealthConnect)
+                        OnboardingStep.AI_PRIVACY -> AiPrivacyStep(state.draft, onEvent)
+                        OnboardingStep.REMINDERS -> RemindersStep(state.draft, onEvent)
+                    }
                 }
             }
         }
-        item {
-            LinearProgressIndicator(
-                progress = { state.progress },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        item {
-            AnimatedContent(
-                targetState = state.step,
-                transitionSpec = {
-                    slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(220)) togetherWith
-                        slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(220))
-                },
-                label = "onboarding-step",
-            ) { step ->
-                when (step) {
-                    OnboardingStep.WELCOME -> WelcomeStep()
-                    OnboardingStep.GOAL_TRAINING -> GoalTrainingStep(state.draft, onEvent)
-                    OnboardingStep.HEALTH_CONNECT -> HealthConnectStep(state.draft, onEvent, onRequestHealthConnect)
-                    OnboardingStep.AI_PRIVACY -> AiPrivacyStep(state.draft, onEvent)
-                    OnboardingStep.REMINDERS -> RemindersStep(state.draft, onEvent)
-                }
-            }
-        }
-        item {
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = MaterialTheme.spacing.medium)
+                .padding(bottom = MaterialTheme.spacing.small),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+        ) {
             OnboardingActions(
                 state = state,
                 onEvent = onEvent,

@@ -254,6 +254,8 @@ class HealthConnectDataSource @Inject constructor(
         )
         val normalizedInitialCacheState = initialCacheState.pruneForInstant(now)
         val syncQueriedAt = System.currentTimeMillis()
+        val tokenFailures = mutableMapOf<HealthMetricType, String>()
+        val acquiredChangesTokens = readChangesTokensByMetric(client, metricsToSync, tokenFailures)
         val metricFailures = mutableMapOf<HealthMetricType, String>()
         var stepAggregateFailed = false
         val stepsToday = if (HealthMetricType.STEPS in metricsToSync) readMetricOrDefault(
@@ -352,7 +354,11 @@ class HealthConnectDataSource @Inject constructor(
             shouldRefreshSteps = HealthMetricType.STEPS in metricsToSync,
             stepAggregateFailed = stepAggregateFailed,
         )
-        val acquiredChangesTokens = readChangesTokensByMetric(client, metricsToSync, metricFailures)
+        tokenFailures.forEach { (metric, tokenFailure) ->
+            metricFailures[metric] = metricFailures[metric]
+                ?.let { snapshotFailure -> "$snapshotFailure; $tokenFailure" }
+                ?: tokenFailure
+        }
         val nextChangesTokens = successfulFullSyncTokenUpdates(
             acquiredTokens = acquiredChangesTokens,
             metricFailures = metricFailures,
