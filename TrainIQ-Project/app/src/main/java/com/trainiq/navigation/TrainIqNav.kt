@@ -439,13 +439,13 @@ internal fun Modifier.topLevelTabSwipeNavigation(
     val flickTravel = 28.dp.toPx()
     val flickVelocity = 550.dp.toPx()
     awaitEachGesture {
-        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Final)
+        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
         if (down.position.x < edgeGuard || down.position.x > size.width - edgeGuard) return@awaitEachGesture
         val tracker = VelocityTracker().apply { addPosition(down.uptimeMillis, down.position) }
         var horizontalLocked = false
         var rejected = false
         while (true) {
-            val changes = awaitPointerEvent(PointerEventPass.Final).changes
+            val changes = awaitPointerEvent(PointerEventPass.Initial).changes
             if (changes.size != 1) {
                 rejected = true
             }
@@ -462,18 +462,20 @@ internal fun Modifier.topLevelTabSwipeNavigation(
             }
             // A horizontal child (slider, carousel, sheet) owns its consumed drag.
             // Small vertical jitter before axis lock must not cancel a tab swipe.
-            if (horizontalLocked && change.isConsumed && abs(change.position.x - change.previousPosition.x) >
-                abs(change.position.y - change.previousPosition.y)) {
-                rejected = true
-            }
             if (!change.pressed) {
                 val velocity = tracker.calculateVelocity().x
                 if (!rejected && horizontalLocked &&
                     (abs(horizontal) >= travelThreshold || (abs(horizontal) >= flickTravel && abs(velocity) >= flickVelocity))
                 ) {
+                    change.consume()
                     onSwipe(if (horizontal < 0f) 1 else -1)
                 }
                 break
+            }
+            val finalChange = awaitPointerEvent(PointerEventPass.Final).changes.firstOrNull { it.id == down.id } ?: break
+            if (horizontalLocked && finalChange.isConsumed && abs(finalChange.position.x - finalChange.previousPosition.x) >
+                abs(finalChange.position.y - finalChange.previousPosition.y)) {
+                rejected = true
             }
         }
     }
