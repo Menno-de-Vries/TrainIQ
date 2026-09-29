@@ -163,7 +163,7 @@ interface NutritionRepository {
         ingredients: List<Pair<Long, Double>>,
     ): Recipe
     suspend fun saveMeal(
-        id: Long?,
+        target: MealSaveTarget,
         mealType: MealType,
         name: String,
         notes: String?,

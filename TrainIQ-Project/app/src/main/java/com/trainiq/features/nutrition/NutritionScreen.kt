@@ -117,6 +117,7 @@ import com.trainiq.domain.model.NutritionOverview
 import com.trainiq.domain.model.NutritionFacts
 import com.trainiq.domain.model.Recipe
 import com.trainiq.domain.model.rounded
+import com.trainiq.domain.repository.MealSaveTarget
 import com.trainiq.domain.repository.MealEntryRequest
 import com.trainiq.domain.repository.MealEntrySnapshot
 import com.trainiq.domain.repository.MealEntryType
@@ -462,7 +463,8 @@ class NutritionViewModel @Inject constructor(
                     onSaved()
                 },
                 onFailure = {
-                    ephemeral.update { it.copy(message = "Recept opslaan mislukt. Controleer je invoer en probeer opnieuw.") }
+                    val failureMessage = recipeSaveFailureMessage(it)
+                    ephemeral.update { it.copy(message = failureMessage) }
                 },
                 onFinished = {
                     ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits - NutritionSubmitKey.Recipe) }
@@ -471,7 +473,7 @@ class NutritionViewModel @Inject constructor(
         }
     }
 
-    fun saveMeal(id: Long?, mealType: MealType, name: String, notes: String, items: List<MealEntryRequest>, onSaved: () -> Unit = {}) {
+    fun saveMeal(target: MealSaveTarget, mealType: MealType, name: String, notes: String, items: List<MealEntryRequest>, onSaved: () -> Unit = {}) {
         if (NutritionSubmitKey.Meal in ephemeral.value.pendingSubmits) return
         if (validateMealInput(name, items).hasErrors) {
             ephemeral.update { it.copy(message = "Vul een maaltijdnaam en positieve hoeveelheden in voordat je opslaat.") }
@@ -480,7 +482,7 @@ class NutritionViewModel @Inject constructor(
         ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits + NutritionSubmitKey.Meal, message = null) }
         viewModelScope.launchNutritionSubmit {
             performMealSave(
-                save = { saveMealUseCase(id, mealType, name.trim(), notes.trim(), items) },
+                save = { saveMealUseCase(target, mealType, name.trim(), notes.trim(), items) },
                 onSaved = onSaved,
                 message = { text -> ephemeral.update { it.copy(message = text) } },
                 onFinished = { ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits - NutritionSubmitKey.Meal) } },
@@ -659,7 +661,7 @@ fun NutritionScreen(
     uiState: NutritionUiState,
     onSaveFood: (Long?, String, String?, String, String, String, String, String, FoodSourceType, (FoodItem) -> Unit, (Throwable) -> Unit) -> Unit,
     onSaveRecipe: (Long?, String, String, String, List<Pair<Long, Double>>, () -> Unit) -> Unit,
-    onSaveMeal: (Long?, MealType, String, String, List<MealEntryRequest>, () -> Unit) -> Unit,
+    onSaveMeal: (MealSaveTarget, MealType, String, String, List<MealEntryRequest>, () -> Unit) -> Unit,
     onDeleteMeal: (Long) -> Unit,
     onDeleteFood: (Long) -> Unit,
     onDeleteRecipe: (Long) -> Unit,
@@ -1354,8 +1356,9 @@ fun NutritionScreen(
                                         mealErrors = errors
                                         if (errors.hasErrors || isMealSaving) return@MealDraftReviewCard
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        val stableId = editingMealId ?: mealSaveId ?: System.currentTimeMillis().also { mealSaveId = it }
-                                        onSaveMeal(stableId, mealType, mealName, mealNotes, requests.orEmpty()) {
+                                        val saveTarget = editingMealId?.let { MealSaveTarget.Edit(it) }
+                                            ?: MealSaveTarget.Create(mealSaveId ?: System.currentTimeMillis().also { mealSaveId = it })
+                                        onSaveMeal(saveTarget, mealType, mealName, mealNotes, requests.orEmpty()) {
                                             mealSaveId = null
                                             editingMealId = null
                                             mealDateOverride = null

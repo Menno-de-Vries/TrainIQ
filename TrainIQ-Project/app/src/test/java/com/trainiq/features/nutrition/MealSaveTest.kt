@@ -8,6 +8,29 @@ import org.junit.Test
 import java.io.IOException
 
 class MealSaveTest {
+    @Test fun missingMealEditKeepsDraftAndExplainsCreateRecoveryInsteadOfRetry() = runTest {
+        var saved = false
+        var finished = false
+        var message = ""
+        performMealSave({ throw com.trainiq.domain.repository.MissingMealEditException() },
+            { saved = true }, { message = it }, { finished = true })
+        assertFalse(saved)
+        assertTrue(finished)
+        assertTrue(message.contains("concept blijft behouden"))
+        assertTrue(message.contains("nieuwe maaltijd"))
+        assertFalse(message.contains("Probeer opnieuw"))
+    }
+
+    @Test fun missingRecipeEditExplainsNewRecipeAndDoesNotExposeUnknownFailures() {
+        val missing = recipeSaveFailureMessage(com.trainiq.domain.repository.MissingRecipeEditException())
+        assertTrue(missing.contains("nieuw recept"))
+        assertTrue(missing.contains("concept blijft behouden"))
+        val unknown = recipeSaveFailureMessage(IOException("private disk detail"))
+        assertTrue(unknown.contains("probeer opnieuw"))
+        assertFalse(unknown.contains("private"))
+        assertFalse(unknown.contains("verwijderd"))
+    }
+
     @Test fun storageFailureKeepsDraftAndSuccessfulRetryClosesIt() = runTest {
         var draftOpen = true
         var finished = 0

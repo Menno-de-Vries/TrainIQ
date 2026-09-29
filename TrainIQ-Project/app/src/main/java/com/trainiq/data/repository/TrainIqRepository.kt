@@ -103,6 +103,8 @@ import com.trainiq.domain.repository.CoachRepository
 import com.trainiq.domain.repository.HomeRepository
 import com.trainiq.domain.repository.InvalidMealItemException
 import com.trainiq.domain.repository.UnavailableMealItemException
+import com.trainiq.domain.repository.mealSaveTargetForExistingId
+import com.trainiq.domain.repository.MealSaveTarget
 import com.trainiq.domain.repository.MealEntryRequest
 import com.trainiq.domain.repository.MealEntryType
 import com.trainiq.domain.repository.NutritionRepository
@@ -1147,13 +1149,16 @@ class TrainIqDataCoordinator @Inject constructor(
     }
 
     suspend fun saveMeal(
-        id: Long?,
+        target: MealSaveTarget,
         mealType: MealType,
         name: String,
         notes: String?,
         items: List<MealEntryRequest>,
     ): Long {
-        val mealId = id ?: 0L
+        val mealId = when (target) {
+            is MealSaveTarget.Create -> target.reservedId ?: 0L
+            is MealSaveTarget.Edit -> target.id
+        }
         val mealStorage = LoggedMealStorage(
             dateExplicit = items.firstOrNull()?.loggedAt != null,
             id = mealId,
@@ -1162,7 +1167,7 @@ class TrainIqDataCoordinator @Inject constructor(
             name = name.trim().ifBlank { mealType.label },
             notes = notes?.trim()?.takeIf { it.isNotBlank() },
         )
-        val persistedId = runtimeStore.saveMeal(mealStorage) { foods, recipes, ingredients ->
+        val persistedId = runtimeStore.saveMeal(mealStorage, target) { foods, recipes, ingredients ->
             val mealItems = buildMealItemSnapshots(
                 mealId = mealId,
                 startItemId = 0L,
@@ -1176,6 +1181,10 @@ class TrainIqDataCoordinator @Inject constructor(
         scannedMealResult.value = null
         return persistedId
     }
+
+    // Legacy coordinator callers use null for creation and positive IDs for explicit edits.
+    suspend fun saveMeal(id: Long?, mealType: MealType, name: String, notes: String?, items: List<MealEntryRequest>): Long =
+        saveMeal(mealSaveTargetForExistingId(id), mealType, name, notes, items)
 
     suspend fun deleteMeal(mealId: Long) {
         runtimeStore.deleteMeal(mealId)

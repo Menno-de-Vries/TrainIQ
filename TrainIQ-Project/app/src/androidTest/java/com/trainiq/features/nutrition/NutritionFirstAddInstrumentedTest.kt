@@ -13,6 +13,7 @@ import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.model.MealType
 import com.trainiq.domain.repository.MealEntryRequest
 import com.trainiq.domain.repository.MealEntryType
+import com.trainiq.domain.repository.MealSaveTarget
 import com.trainiq.testing.resetTrainIqAndroidTestDatabase
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -84,7 +85,7 @@ class NutritionFirstAddInstrumentedTest {
             compose.waitUntil(15_000) { (vm.uiState.value as? NutritionUiState.Success)?.overview?.foods?.size == 2 }
             val valid = listOf(MealEntryRequest(MealEntryType.FOOD, foodId, 150.0))
             scenario.onActivity {
-                vm.saveMeal(101L, MealType.LUNCH, "First meal", "",
+                vm.saveMeal(MealSaveTarget.Create(101L), MealType.LUNCH, "First meal", "",
                     listOf(MealEntryRequest(MealEntryType.FOOD, Long.MAX_VALUE, 100.0)))
             }
             compose.waitUntil(15_000) {
@@ -94,7 +95,7 @@ class NutritionFirstAddInstrumentedTest {
             }
             assertTrue(runBlocking { db.dao().readMealsForExport().isEmpty() })
             scenario.onActivity {
-                repeat(2) { vm.saveMeal(101L, MealType.LUNCH, "First meal", "", valid) { mealCallbacks++ } }
+                repeat(2) { vm.saveMeal(MealSaveTarget.Create(101L), MealType.LUNCH, "First meal", "", valid) { mealCallbacks++ } }
             }
             compose.waitUntil(15_000) {
                 (vm.uiState.value as? NutritionUiState.Success)?.overview?.todaysMeals?.any {
@@ -102,7 +103,7 @@ class NutritionFirstAddInstrumentedTest {
                 } == true
             }
             assertEquals(1, mealCallbacks)
-            scenario.onActivity { vm.saveMeal(102L, MealType.LUNCH, "Second meal", "", valid) { mealCallbacks++ } }
+            scenario.onActivity { vm.saveMeal(MealSaveTarget.Create(102L), MealType.LUNCH, "Second meal", "", valid) { mealCallbacks++ } }
             compose.waitUntil(15_000) { (vm.uiState.value as? NutritionUiState.Success)?.overview?.todaysMeals?.size == 2 }
             val saved = runBlocking { db.dao().readMealItemsForExport() }
             assertEquals(2, saved.size)

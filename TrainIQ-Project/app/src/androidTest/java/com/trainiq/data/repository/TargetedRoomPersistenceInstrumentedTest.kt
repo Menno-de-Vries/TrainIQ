@@ -44,6 +44,7 @@ import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.LoggedSet
 import com.trainiq.domain.model.SetType
+import com.trainiq.domain.repository.MealSaveTarget
 import com.trainiq.domain.usecase.ExportAppDataUseCase
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -98,6 +99,75 @@ class TargetedRoomPersistenceInstrumentedTest {
         assertEquals(2, savedItems.map { it.id }.toSet().size)
         assertEquals(120.0, savedItems.single { it.mealId == second }.calories, 0.0)
         assertEquals(200.0, savedItems.single { it.mealId == first }.calories, 0.0)
+    }
+
+    @Test
+    fun reservedMealCreationAndRetryUseOneParentAndItemSnapshotAfterReopen() = runTest {
+        val store = runtimeStore()
+        val target = MealSaveTarget.Create(101L)
+        val meal = LoggedMealStorage(id = 101L, name = "First reserved meal", timestamp = 1234L)
+        val items = listOf(LoggedMealItemStorage(name = "Oats", calories = 120.0))
+        assertEquals(101L, store.saveMeal(meal, items, target))
+        assertEquals(101L, store.saveMeal(meal.copy(timestamp = 9999L), target) { _, _, _ -> items })
+        closeDatabase()
+        database = openDatabase()
+        val savedMeals = database.dao().observeMeals().first()
+        assertEquals(listOf(101L), savedMeals.map { it.id })
+        assertEquals("First reserved meal", savedMeals.single().name)
+        assertEquals(1234L, savedMeals.single().date)
+        val savedItems = database.dao().observeMealItems().first()
+        assertEquals(1, savedItems.size)
+        assertEquals(101L, savedItems.single().mealId)
+        assertEquals(120.0, savedItems.single().calories, 0.0)
+    }
+
+    @Test
+    fun deletedMealEditCannotRecreateParentOrChildrenThroughEitherSaveOverloadAfterReopen() = runTest {
+        val store = runtimeStore()
+        val items = listOf(LoggedMealItemStorage(name = "Oats", calories = 120.0))
+        val deleted = store.saveMeal(LoggedMealStorage(name = "Deleted"), items)
+        val survivor = store.saveMeal(LoggedMealStorage(name = "Survivor", timestamp = 1234L), items)
+        store.deleteMeal(deleted)
+        val staleEdit = LoggedMealStorage(id = deleted, name = "Stale edit")
+        val directFailure = runCatching { store.saveMeal(staleEdit, items) }.exceptionOrNull()
+        assertTrue(directFailure is IllegalArgumentException)
+        assertEquals("Deze maaltijd bestaat niet meer. Maak een nieuwe maaltijd aan.", directFailure?.message)
+        val resolvedFailure = runCatching { store.saveMeal(staleEdit) { _, _, _ -> items } }.exceptionOrNull()
+        assertTrue(resolvedFailure is IllegalArgumentException)
+        closeDatabase()
+        database = openDatabase()
+        val savedMeals = database.dao().observeMeals().first()
+        assertEquals(listOf(survivor), savedMeals.map { it.id })
+        assertEquals("Survivor", savedMeals.single().name)
+        assertEquals(1234L, savedMeals.single().date)
+        val savedItems = database.dao().observeMealItems().first()
+        assertEquals(1, savedItems.size)
+        assertEquals(survivor, savedItems.single().mealId)
+        assertEquals(120.0, savedItems.single().calories, 0.0)
+    }
+
+    @Test
+    fun deletedRecipeEditCannotRecreateParentOrIngredientsAfterReopen() = runTest {
+        val store = runtimeStore()
+        val food = store.saveFood(FoodItemStorage(name = "Oats"))
+        val ingredients = listOf(RecipeIngredientStorage(foodItemId = food.id, gramsUsed = 100.0))
+        val deleted = store.saveRecipe(RecipeStorage(name = "Deleted"), ingredients).recipe
+        val survivor = store.saveRecipe(RecipeStorage(name = "Survivor", createdAt = 1234L), ingredients).recipe
+        store.deleteRecipe(deleted.id)
+        val failure = runCatching { store.saveRecipe(deleted.copy(name = "Stale edit"), ingredients) }.exceptionOrNull()
+        assertTrue(failure is IllegalArgumentException)
+        assertEquals("Dit recept bestaat niet meer. Maak een nieuw recept aan.", failure?.message)
+        closeDatabase()
+        database = openDatabase()
+        val savedRecipes = database.dao().observeRecipes().first()
+        assertEquals(listOf(survivor.id), savedRecipes.map { it.id })
+        assertEquals("Survivor", savedRecipes.single().name)
+        assertEquals(1234L, savedRecipes.single().createdAt)
+        val savedIngredients = database.dao().observeRecipeIngredients().first()
+        assertEquals(1, savedIngredients.size)
+        assertEquals(survivor.id, savedIngredients.single().recipeId)
+        assertEquals(food.id, savedIngredients.single().foodItemId)
+        assertEquals(100.0, savedIngredients.single().gramsUsed, 0.0)
     }
 
     @Test

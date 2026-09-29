@@ -85,11 +85,69 @@ class BarcodeMealFlowInstrumentedTest {
             "Kh / 100g" to "10", "Vet / 100g" to "2", "Standaard hoeveelheid (gram)" to "150").forEach { (label, value) ->
             compose.onNodeWithContentDescription(label).performScrollTo().performTextReplacement(value)
         }
-        compose.onNodeWithText("Alleen aan maaltijd toevoegen").performScrollTo().performTouchInput { click() }
-        compose.onNodeWithText("Maaltijd opslaan").performScrollTo().performTouchInput { click() }
-        compose.runOnIdle { assertEquals(listOf(MealType.LUNCH), savedMeals) }
+        val add = compose.onNodeWithText("Alleen aan maaltijd toevoegen").performScrollTo()
+        add.assertIsEnabled().assertIsDisplayed()
+        add.performTouchInput { click() }
+        assertTrue(compose.onAllNodesWithText("Eerste product", substring = true).fetchSemanticsNodes().isNotEmpty())
+        // Adding closes the editor and its IME; wait for native insets before targeting the next button.
+        // The first physical add tap still occurs with the keyboard open, without a dismissal or retry.
+        compose.waitUntil(timeoutMillis = 5_000) {
+            var imeHidden = false
+            compose.runOnIdle {
+                val activity = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                    .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).singleOrNull()
+                val insets = activity?.window?.decorView?.let { androidx.core.view.ViewCompat.getRootWindowInsets(it) }
+                imeHidden = insets != null && !insets.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) &&
+                    insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime()).bottom == 0
+            }
+            imeHidden
+        }
+        val save = compose.onNodeWithText("Maaltijd opslaan").performScrollTo()
+        save.assertIsEnabled().assertIsDisplayed()
+        val beforeTap = manualSaveWindowSnapshot()
+        save.performTouchInput { click() }
+        try {
+            compose.runOnIdle { assertEquals(listOf(MealType.LUNCH), savedMeals) }
+        } catch (failure: AssertionError) {
+            runCatching { captureManualSaveFailure(beforeTap) }
+            throw failure
+        }
+    }
+    private fun manualSaveWindowSnapshot(): String {
+        var nativeState = "No resumed activity"
+        compose.runOnIdle {
+            val activity = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).singleOrNull()
+            if (activity != null) {
+                val decor = activity.window.decorView
+                val screen = IntArray(2).also(decor::getLocationOnScreen)
+                val window = IntArray(2).also(decor::getLocationInWindow)
+                val insets = androidx.core.view.ViewCompat.getRootWindowInsets(decor)
+                nativeState = "screen=${screen.contentToString()}; window=${window.contentToString()}; " +
+                    "decor=${decor.width}x${decor.height}; translationY=${decor.translationY}; scrollY=${decor.scrollY}; " +
+                    "softInputMode=${activity.window.attributes.softInputMode}; " +
+                    "imeVisible=${insets?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())}; " +
+                    "imeBottom=${insets?.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime())?.bottom}; " +
+                    "uptime=${android.os.SystemClock.uptimeMillis()}"
+            }
+        }
+        val bounds = runCatching {
+            val node = compose.onNodeWithText("Maaltijd opslaan").fetchSemanticsNode()
+            "saveRoot=${node.boundsInRoot}; saveWindow=${node.boundsInWindow}"
+        }.getOrElse { "save absent: ${it.javaClass.simpleName}" }
+        return "$nativeState; $bounds"
     }
 
+    private fun captureManualSaveFailure(beforeTap: String) {
+        android.util.Log.i("TrainIQManualSave", "before=$beforeTap")
+        android.util.Log.i("TrainIQManualSave", "after=${manualSaveWindowSnapshot()}; savedMeals=$savedMeals")
+        val roots = compose.onAllNodes(isRoot())
+        for (index in roots.fetchSemanticsNodes().indices) roots[index].printToLog("TrainIQManualSave")
+        val automation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
+        // Shell-owned output survives the runner uninstall; generated evidence stays off Git.
+        val command = automation.executeShellCommand("screencap -p /data/local/tmp/trainiq-manual-save-failure.png")
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(command).use { it.readBytes() }
+    }
     @Test fun scannedDrinkReachesPersistentHydrationTotal() {
         val db = androidx.room.Room.inMemoryDatabaseBuilder(
             androidx.test.core.app.ApplicationProvider.getApplicationContext(),
@@ -281,9 +339,13 @@ class BarcodeMealFlowInstrumentedTest {
                                 }
                             },
                             onSaveRecipe = { _, _, _, _, _, _ -> },
-                            onSaveMeal = { id, type, _, _, entries, done ->
+                            onSaveMeal = { target, type, _, _, entries, done ->
                                 assertEquals(1, entries.size)
-                                saveEntries(requireNotNull(id), entries)
+                                val id = when (target) {
+                                    is com.trainiq.domain.repository.MealSaveTarget.Create -> requireNotNull(target.reservedId)
+                                    is com.trainiq.domain.repository.MealSaveTarget.Edit -> target.id
+                                }
+                                saveEntries(id, entries)
                                 savedMeals += type
                                 done()
                             },
