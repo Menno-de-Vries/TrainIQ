@@ -138,7 +138,7 @@ class ProgressMeasurementValidationTest {
 
         assertTrue(source.contains("ActivityResultContracts.PickVisualMedia()"))
         assertTrue(source.contains("copyScannerImageFromUri(context, uri)"))
-        assertTrue(source.contains("onAnalyzeImportedScalePhoto(path)"))
+        assertTrue(source.contains("onAnalyzeImportedScalePhoto(token, path)"))
         assertTrue(source.contains("Text(scalePhotoImportLabel())"))
     }
 

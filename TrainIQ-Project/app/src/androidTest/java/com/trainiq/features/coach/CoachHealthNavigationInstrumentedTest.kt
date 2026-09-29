@@ -40,7 +40,7 @@ class CoachHealthNavigationInstrumentedTest {
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Gewicht (kg)").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Gewicht (kg)").performScrollTo().assertExists()
             capture("coach-weight")
-            androidx.test.espresso.Espresso.pressBack()
+            compose.onNodeWithContentDescription("Terug naar Coach").performScrollTo().performClick()
             compose.onNodeWithText("Slaap · alarm en bevestiging").performScrollTo().assertIsDisplayed()
         }
     }

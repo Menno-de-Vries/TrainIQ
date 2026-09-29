@@ -25,7 +25,7 @@ class AdaptiveNavigationPolicyTest {
             navigationRailRouteClasses(),
         )
         assertEquals("Meer", bottomNavigationLabel("Instellingen"))
-        assertEquals(Settings::class, compactSelectedNavigationRouteClass(Progress::class))
+        assertEquals(Coach::class, compactSelectedNavigationRouteClass(Progress::class))
         assertEquals(Home::class, compactSelectedNavigationRouteClass(Home::class))
         assertEquals(Train::class, compactSelectedNavigationRouteClass(Train::class))
         assertEquals(Nutrition::class, compactSelectedNavigationRouteClass(Nutrition::class))
