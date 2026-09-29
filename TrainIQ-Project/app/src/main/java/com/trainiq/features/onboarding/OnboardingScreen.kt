@@ -75,7 +75,7 @@ import kotlinx.coroutines.CancellationException
 enum class OnboardingStep(val title: String, val subtitle: String) {
     WELCOME("Welkom bij TrainIQ", "Een rustige coachlaag boven je Health Connect-, training- en voedingsdata."),
     GOAL_TRAINING("Doel en training", "Kies context voor je eerste training, coaching en voedingsdoelen."),
-    HEALTH_CONNECT("Health Connect", "Stappen blijven Health Connect-first en worden live ververst zodra Home opent."),
+    HEALTH_CONNECT("Health Connect", "Koppel je stappen, slaap en beweging wanneer jij dat wilt."),
     AI_PRIVACY("AI en privacy", "AI blijft opt-in. Met ingeschakelde AI en een opgeslagen providersleutel kan een workoutdebrief later op de achtergrond worden verwerkt."),
     REMINDERS("Afronden", "Kies reminders en rond af; open setup-taken blijven later zichtbaar."),
 }
@@ -591,7 +591,7 @@ internal fun AiPrivacyStep(
         accent = MaterialTheme.colorScheme.tertiary,
     ) {
         Text("AI staat standaard uit. Als je AI in Instellingen inschakelt en een providersleutel opslaat, starten advies, rapporten en scans op jouw verzoek. Na afronden van een workout plant TrainIQ een AI-terugblik in. Als AI aanstaat en een providersleutel is opgeslagen, kan die later op de achtergrond worden verwerkt.")
-        Text("TrainIQ gebruikt JSON-contracten en lokale fallback wanneer AI uitstaat, offline is of geen geldige output geeft.")
+        Text("Je kunt handmatig blijven loggen als AI uitstaat of tijdelijk niet beschikbaar is. TrainIQ gebruikt dan lokale inzichten.")
         PrimaryActionButton(onClick = { onEvent(OnboardingEvent.DeferAiSetup) }, modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.tertiary) {
             Text(if (draft.aiSetupDeferred) "Later in Instellingen gekozen" else "Later in Instellingen instellen")
         }
