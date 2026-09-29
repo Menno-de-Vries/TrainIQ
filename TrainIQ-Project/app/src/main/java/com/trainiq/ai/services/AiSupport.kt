@@ -3,7 +3,9 @@ package com.trainiq.ai.services
 import com.trainiq.domain.model.AiFallbackContext
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlin.random.Random
@@ -280,6 +282,7 @@ internal suspend fun <T> callOpenAiWithBoundedRetry(
             )
         }
     } catch (error: TimeoutCancellationException) {
+        currentCoroutineContext().ensureActive()
         lastRateLimit?.let {
             throttle.recordRateLimit(feature, it.retryAfterMillis)
             throw it.withExecutionMetadata(
@@ -346,6 +349,7 @@ internal suspend fun <T> callAiWithBoundedRetry(
                 block()
             }
         } catch (error: TimeoutCancellationException) {
+            currentCoroutineContext().ensureActive()
             throw AiTimeoutException(feature)
         } catch (error: CancellationException) {
             throw error
