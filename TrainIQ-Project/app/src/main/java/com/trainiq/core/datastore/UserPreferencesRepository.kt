@@ -70,6 +70,7 @@ data class ReminderPreferences(
 class UserPreferencesRepository @Inject constructor(
     @param:ApplicationContext private val context: Context,
 ) {
+    private val healthConnectSyncCoordinator = HealthConnectSyncCoordinator()
     private val streakKey = intPreferencesKey("streak_count")
     private val themeModeKey = stringPreferencesKey("theme_mode")
     private val aiEnabledKey = booleanPreferencesKey("ai_enabled")
@@ -281,6 +282,9 @@ class UserPreferencesRepository @Inject constructor(
         )
     }
 
+    internal suspend fun <T> withHealthConnectSync(block: suspend () -> T): T =
+        healthConnectSyncCoordinator.sync(block)
+
     suspend fun saveHealthConnectSyncPreferences(
         changesToken: String,
         cacheStateJson: String,
@@ -309,8 +313,10 @@ class UserPreferencesRepository @Inject constructor(
     }
 
     suspend fun clearLocalPrivateData() {
-        context.dataStore.edit { preferences ->
-            preferences.clear()
+        healthConnectSyncCoordinator.reset {
+            context.dataStore.edit { preferences ->
+                preferences.clear()
+            }
         }
     }
 }
