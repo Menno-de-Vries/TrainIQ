@@ -121,13 +121,13 @@ class HealthConnectPermissionPolicyTest {
                 samsungHealthDirectSteps = 0,
             ),
         )
-        assertFalse(
-            HealthConnectCacheState(
-                samsungHealthDirectStepsToday = 0L,
-                displayStepsToday = 0L,
-                stepsLocalDate = "2026-07-09",
-            ).isEmpty(),
+        val zeroStepsCache = HealthConnectCacheState(
+            samsungHealthDirectStepsToday = 0L,
+            displayStepsToday = 0L,
+            stepsLocalDate = "2026-07-09",
         )
+        assertEquals("2026-07-09", zeroStepsCache.stepsLocalDate)
+        assertEquals(0L, zeroStepsCache.samsungHealthDirectStepsToday)
     }
 
     @Test
@@ -521,6 +521,147 @@ class HealthConnectPermissionPolicyTest {
         assertEquals(654L, payload.lastSyncedAt)
         assertEquals(4321, payload.cacheState.toDomainMetrics().stepsToday)
         assertTrue(payload.metricStatuses.all { it.state == HealthMetricSyncState.FAILED })
+    }
+
+    @Test
+    fun partialTokenFailureFullSyncsOnlyTheMetricMissingItsToken() {
+        val metrics = HealthConnectSyncMetricTypes.toSet()
+        val metricsWithTokens = metrics - HealthMetricType.HEART_RATE
+
+        val plan = planHealthConnectSync(
+            metricsToSync = metrics,
+            tokenMetrics = metricsWithTokens,
+            hasStoredCache = true,
+        )
+
+        assertEquals(setOf(HealthMetricType.HEART_RATE), plan.fullSyncMetrics)
+        assertEquals(metricsWithTokens, plan.incrementalMetrics)
+
+        val missingCachePlan = planHealthConnectSync(
+            metricsToSync = metrics,
+            tokenMetrics = metricsWithTokens,
+            hasStoredCache = false,
+        )
+        assertEquals(metrics, missingCachePlan.fullSyncMetrics)
+        assertTrue(missingCachePlan.incrementalMetrics.isEmpty())
+    }
+
+    @Test
+    fun syncUsesThePartialPlanForFullAndIncrementalReads() {
+        val source = File("src/main/java/com/trainiq/data/datasource/HealthConnectDataSource.kt").readText()
+        val syncBody = source.substringAfter("private suspend fun syncTrackedMetrics(")
+            .substringBefore("private suspend fun aggregateStepsToday(")
+
+        assertTrue(syncBody.contains("metricsToSync = syncPlan.fullSyncMetrics"))
+        assertTrue(syncBody.contains("metricTokens = incrementalTokens"))
+        assertTrue(syncBody.contains("mergeHealthConnectSyncPayloads("))
+        assertTrue(source.contains("updatedMetrics = grantedMetrics"))
+        assertTrue(source.contains("cacheStateJson = gson.toJson(persistedCacheState)"))
+    }
+
+    @Test
+    fun partialSyncPayloadMergePreservesCacheTokensAndMetricStatuses() {
+        val fullMetrics = setOf(HealthMetricType.HEART_RATE)
+        val incrementalMetrics = setOf(HealthMetricType.STEPS)
+        val fullSync = SyncPayload(
+            cacheState = HealthConnectCacheState(
+                heartRateRecords = listOf(
+                    CachedHeartRateRecord(
+                        recordId = "hr-1",
+                        startTimeMillis = 10L,
+                        endTimeMillis = 20L,
+                        averageBeatsPerMinute = 120,
+                        latestBeatsPerMinute = 130,
+                        latestSampleTimeMillis = 20L,
+                        sampleCount = 2,
+                    ),
+                ),
+            ),
+            nextChangesTokens = mapOf(HealthMetricType.HEART_RATE to "heart-rate-next"),
+            lastSyncedAt = 100L,
+            metricStatuses = buildHealthMetricSyncStatuses(fullMetrics, emptyMap(), 100L),
+        )
+        val incrementalSync = SyncPayload(
+            cacheState = HealthConnectCacheState(
+                aggregatedStepsToday = 8_500L,
+                displayStepsToday = 8_500L,
+                stepsLocalDate = "2026-09-29",
+            ),
+            nextChangesTokens = mapOf(HealthMetricType.STEPS to "steps-next"),
+            lastSyncedAt = 200L,
+            metricStatuses = buildHealthMetricSyncStatuses(incrementalMetrics, emptyMap(), 200L),
+        )
+
+        val merged = mergeHealthConnectSyncPayloads(
+            fullSyncPayload = fullSync,
+            fullSyncMetrics = fullMetrics,
+            incrementalPayload = incrementalSync,
+            incrementalMetrics = incrementalMetrics,
+            metricsToSync = fullMetrics + incrementalMetrics,
+        )
+
+        assertEquals(8_500L, merged.cacheState.displayStepsToday)
+        assertEquals(listOf("hr-1"), merged.cacheState.heartRateRecords.map { it.recordId })
+        assertEquals(
+            mapOf(
+                HealthMetricType.HEART_RATE to "heart-rate-next",
+                HealthMetricType.STEPS to "steps-next",
+            ),
+            merged.nextChangesTokens,
+        )
+        assertEquals(setOf(HealthMetricType.HEART_RATE, HealthMetricType.STEPS), merged.metricStatuses.map { it.metric }.toSet())
+        assertEquals(200L, merged.lastSyncedAt)
+    }
+
+    @Test
+    fun partialMetricCacheUpdatePreservesMetricsOutsideTheGrantedSet() {
+        val cachedHeartRate = CachedHeartRateRecord(
+            recordId = "cached-heart-rate",
+            startTimeMillis = 10L,
+            endTimeMillis = 20L,
+            averageBeatsPerMinute = 120,
+            latestBeatsPerMinute = 130,
+            latestSampleTimeMillis = 20L,
+            sampleCount = 2,
+        )
+        val cachedSleep = CachedSleepSessionRecord(
+            recordId = "cached-sleep",
+            startTimeMillis = 30L,
+            endTimeMillis = 40L,
+            durationMinutes = 480L,
+        )
+        val cachedWeight = CachedWeightRecord("cached-weight", 50L, 70.0)
+        val cachedState = HealthConnectCacheState(
+            displayStepsToday = 1_000L,
+            stepsLocalDate = "2026-09-28",
+            heartRateRecords = listOf(cachedHeartRate),
+            sleepSessionRecords = listOf(cachedSleep),
+            weightRecords = listOf(cachedWeight),
+        )
+        val updatedState = HealthConnectCacheState(
+            displayStepsToday = 2_000L,
+            stepsLocalDate = "2026-09-29",
+        )
+
+        val persisted = mergeHealthConnectCacheMetrics(
+            cachedState = cachedState,
+            updatedState = updatedState,
+            updatedMetrics = setOf(HealthMetricType.STEPS),
+        )
+
+        assertEquals(2_000L, persisted.displayStepsToday)
+        assertEquals("2026-09-29", persisted.stepsLocalDate)
+        assertEquals(listOf(cachedHeartRate), persisted.heartRateRecords)
+        assertEquals(listOf(cachedSleep), persisted.sleepSessionRecords)
+        assertEquals(listOf(cachedWeight), persisted.weightRecords)
+        assertEquals(
+            cachedState,
+            mergeHealthConnectCacheMetrics(
+                cachedState = cachedState,
+                updatedState = updatedState,
+                updatedMetrics = emptySet(),
+            ),
+        )
     }
 
     @Test

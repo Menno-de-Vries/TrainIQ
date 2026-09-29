@@ -1077,7 +1077,7 @@ internal fun parseWorkoutDebriefResponse(
         progressionFeedback = progressionFeedback,
         recommendation = recommendation,
         nextSessionFocus = nextSessionFocus,
-        recoveryScore = (root.get("recoveryScore")?.asInt ?: 75).coerceIn(0, 100),
+        recoveryScore = root.get("recoveryScore")?.asInt?.coerceIn(0, 100),
         intensitySignal = root.get("intensitySignal")?.asString?.trim()?.uppercase().orEmpty()
             .ifBlank { "MAINTAIN" },
         wins = wins,
@@ -1140,7 +1140,7 @@ internal fun fallbackWorkoutDebriefResult(
     } ?: "Nog geen eerdere vergelijkbare training gevonden.",
     recommendation = "Houd dezelfde opzet aan en verhoog pas als uitvoering en herstel goed blijven.",
     nextSessionFocus = "Huidige gewichten vasthouden",
-    recoveryScore = 75,
+    recoveryScore = null,
     intensitySignal = "MAINTAIN",
     wins = listOf("Trainingsvolume lokaal vastgelegd."),
     risks = if ((progression ?: 0.0) > 5.0) listOf("Volume steeg meer dan 5%; let op herstel.") else emptyList(),

@@ -567,7 +567,7 @@ internal fun compactBottomNavigationRouteClasses(): List<KClass<*>> =
 internal fun navigationRailRouteClasses(): List<KClass<*>> = topLevelDestinations().map { it.routeClass }
 
 internal fun compactSelectedNavigationRouteClass(currentRouteClass: KClass<*>?): KClass<*>? =
-    if (currentRouteClass == Progress::class) Coach::class else currentRouteClass
+    if (currentRouteClass == Progress::class) Settings::class else currentRouteClass
 
 internal fun guidedTourTopLevelRouteClasses(): List<KClass<*>> =
     listOf(Home::class, Train::class, Nutrition::class, Progress::class, Coach::class, Settings::class)

@@ -46,8 +46,8 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.reflect.KClass
 
@@ -172,9 +172,14 @@ class HealthConnectDataSource @Inject constructor(
                     grantedMetrics = grantedMetrics,
                     tokenUpdates = syncPayload.nextChangesTokens,
                 )
+                val persistedCacheState = mergeHealthConnectCacheMetrics(
+                    cachedState = readCacheStateFromStoredState(storedState),
+                    updatedState = syncPayload.cacheState,
+                    updatedMetrics = grantedMetrics,
+                )
                 preferencesRepository.saveHealthConnectSyncPreferences(
                     changesToken = mergedMetricTokens[HealthMetricType.STEPS].orEmpty(),
-                    cacheStateJson = gson.toJson(syncPayload.cacheState),
+                    cacheStateJson = gson.toJson(persistedCacheState),
                     lastSyncedAt = syncPayload.lastSyncedAt,
                     changesTokensJson = encodeMetricChangesTokens(mergedMetricTokens),
                 )
@@ -207,18 +212,45 @@ class HealthConnectDataSource @Inject constructor(
     ): SyncPayload {
         val storedState = preferencesRepository.getHealthConnectSyncPreferences()
         val metricTokens = storedState.resolvedMetricChangesTokens(metricsToSync)
-        if (metricTokens.keys != metricsToSync || storedState.cacheStateJson.isBlank()) {
-            return performFullSync(
+        val storedCache = readStoredCacheState(storedState)
+        val cachedState = storedCache.cacheState.onlyMetrics(metricsToSync)
+        val syncPlan = planHealthConnectSync(
+            metricsToSync = metricsToSync,
+            tokenMetrics = metricTokens.keys,
+            hasStoredCache = storedCache.isValid,
+        )
+        if (syncPlan.fullSyncMetrics.isNotEmpty()) {
+            val fullSyncPayload = performFullSync(
                 client = client,
-                metricsToSync = metricsToSync,
-                initialCacheState = readCacheStateFromStoredState(storedState).onlyMetrics(metricsToSync),
+                metricsToSync = syncPlan.fullSyncMetrics,
+                initialCacheState = cachedState.onlyMetrics(syncPlan.fullSyncMetrics),
             )
-        }
+            if (syncPlan.incrementalMetrics.isEmpty()) return fullSyncPayload
 
-        val cachedState = readCacheStateFromStoredState(storedState).onlyMetrics(metricsToSync)
-
-        if (cachedState.isEmpty()) {
-            return performFullSync(client = client, metricsToSync = metricsToSync, initialCacheState = cachedState)
+            val incrementalTokens = metricTokens.filterKeys { it in syncPlan.incrementalMetrics }
+            val incrementalPayload = runHealthConnectSyncCatchingCancellation {
+                performIncrementalSync(
+                    client = client,
+                    storedState = storedState,
+                    metricTokens = incrementalTokens,
+                    initialCacheState = cachedState.onlyMetrics(syncPlan.incrementalMetrics),
+                )
+            }.getOrElse { throwable ->
+                cachedIncrementalFailurePayload(
+                    cachedState = cachedState.onlyMetrics(syncPlan.incrementalMetrics),
+                    storedState = storedState,
+                    failureMessage = throwable.message
+                        ?: "Health Connect-incrementele sync is mislukt; vorige cache behouden.",
+                    metrics = syncPlan.incrementalMetrics,
+                )
+            }
+            return mergeHealthConnectSyncPayloads(
+                fullSyncPayload = fullSyncPayload,
+                fullSyncMetrics = syncPlan.fullSyncMetrics,
+                incrementalPayload = incrementalPayload,
+                incrementalMetrics = syncPlan.incrementalMetrics,
+                metricsToSync = metricsToSync,
+            )
         }
 
         return runHealthConnectSyncCatchingCancellation {
@@ -228,6 +260,7 @@ class HealthConnectDataSource @Inject constructor(
                 cachedState = cachedState,
                 storedState = storedState,
                 failureMessage = throwable.message ?: "Health Connect-incrementele sync is mislukt; vorige cache behouden.",
+                metrics = syncPlan.incrementalMetrics,
             )
         }
     }
@@ -828,13 +861,26 @@ class HealthConnectDataSource @Inject constructor(
     }
 
     private fun readCacheStateFromStoredState(storedState: HealthConnectSyncPreferences): HealthConnectCacheState =
+        readStoredCacheState(storedState).cacheState
+
+    private fun readStoredCacheState(storedState: HealthConnectSyncPreferences): StoredHealthConnectCacheState {
         if (storedState.cacheStateJson.isBlank()) {
-            HealthConnectCacheState()
-        } else {
-            runCatching {
-                gson.fromJson(storedState.cacheStateJson, HealthConnectCacheState::class.java) ?: HealthConnectCacheState()
-            }.getOrElse { HealthConnectCacheState() }
+            return StoredHealthConnectCacheState(cacheState = HealthConnectCacheState(), isValid = false)
         }
+        val parsedState = runCatching {
+            gson.fromJson(storedState.cacheStateJson, HealthConnectCacheState::class.java)
+        }.getOrNull()
+        return if (parsedState == null) {
+            StoredHealthConnectCacheState(cacheState = HealthConnectCacheState(), isValid = false)
+        } else {
+            StoredHealthConnectCacheState(cacheState = parsedState, isValid = true)
+        }
+    }
+
+    private data class StoredHealthConnectCacheState(
+        val cacheState: HealthConnectCacheState,
+        val isValid: Boolean,
+    )
 
     private fun buildMessage(metrics: HealthConnectMetrics, state: HealthConnectState, isPartialPermission: Boolean): String {
         if (state == HealthConnectState.NO_DATA) {
@@ -1068,18 +1114,30 @@ internal data class HealthConnectCacheState(
     val caloriesBurnedRecords: List<CachedCaloriesBurnedRecord> = emptyList(),
     val weightRecords: List<CachedWeightRecord> = emptyList(),
     val exerciseSessionRecords: List<CachedExerciseSessionRecord> = emptyList(),
-) {
-    fun isEmpty(): Boolean =
-        stepsLocalDate == null &&
-            aggregatedStepsToday == 0L &&
-            (samsungHealthStepsToday ?: 0L) == 0L &&
-            (samsungHealthDirectStepsToday ?: 0L) == 0L &&
-            (displayStepsToday ?: 0L) == 0L &&
-            heartRateRecords.isEmpty() &&
-            sleepSessionRecords.isEmpty() &&
-            caloriesBurnedRecords.isEmpty() &&
-            weightRecords.isEmpty() &&
-            exerciseSessionRecords.isEmpty()
+)
+
+internal data class HealthConnectSyncPlan(
+    val fullSyncMetrics: Set<HealthMetricType>,
+    val incrementalMetrics: Set<HealthMetricType>,
+)
+
+internal fun planHealthConnectSync(
+    metricsToSync: Set<HealthMetricType>,
+    tokenMetrics: Set<HealthMetricType>,
+    hasStoredCache: Boolean,
+): HealthConnectSyncPlan {
+    val metricsWithTokens = tokenMetrics intersect metricsToSync
+    val needsFullBaseline = !hasStoredCache || metricsWithTokens.isEmpty()
+    if (needsFullBaseline) {
+        return HealthConnectSyncPlan(
+            fullSyncMetrics = metricsToSync,
+            incrementalMetrics = emptySet(),
+        )
+    }
+    return HealthConnectSyncPlan(
+        fullSyncMetrics = metricsToSync - metricsWithTokens,
+        incrementalMetrics = metricsWithTokens,
+    )
 }
 
 internal fun HealthConnectCacheState.pruneForInstant(now: Instant): HealthConnectCacheState {
@@ -1245,6 +1303,23 @@ internal fun HealthConnectCacheState.onlyMetrics(metrics: Set<HealthMetricType>)
     exerciseSessionRecords = if (HealthMetricType.WORKOUTS in metrics) exerciseSessionRecords else emptyList(),
 )
 
+internal fun mergeHealthConnectCacheMetrics(
+    cachedState: HealthConnectCacheState,
+    updatedState: HealthConnectCacheState,
+    updatedMetrics: Set<HealthMetricType>,
+): HealthConnectCacheState = cachedState.copy(
+    aggregatedStepsToday = if (HealthMetricType.STEPS in updatedMetrics) updatedState.aggregatedStepsToday else cachedState.aggregatedStepsToday,
+    samsungHealthStepsToday = if (HealthMetricType.STEPS in updatedMetrics) updatedState.samsungHealthStepsToday else cachedState.samsungHealthStepsToday,
+    samsungHealthDirectStepsToday = if (HealthMetricType.STEPS in updatedMetrics) updatedState.samsungHealthDirectStepsToday else cachedState.samsungHealthDirectStepsToday,
+    displayStepsToday = if (HealthMetricType.STEPS in updatedMetrics) updatedState.displayStepsToday else cachedState.displayStepsToday,
+    stepsLocalDate = if (HealthMetricType.STEPS in updatedMetrics) updatedState.stepsLocalDate else cachedState.stepsLocalDate,
+    stepRecords = if (HealthMetricType.STEPS in updatedMetrics) updatedState.stepRecords else cachedState.stepRecords,
+    heartRateRecords = if (HealthMetricType.HEART_RATE in updatedMetrics) updatedState.heartRateRecords else cachedState.heartRateRecords,
+    sleepSessionRecords = if (HealthMetricType.SLEEP in updatedMetrics) updatedState.sleepSessionRecords else cachedState.sleepSessionRecords,
+    caloriesBurnedRecords = if (HealthMetricType.ACTIVE_CALORIES in updatedMetrics) updatedState.caloriesBurnedRecords else cachedState.caloriesBurnedRecords,
+    exerciseSessionRecords = if (HealthMetricType.WORKOUTS in updatedMetrics) updatedState.exerciseSessionRecords else cachedState.exerciseSessionRecords,
+)
+
 internal data class SyncPayload(
     val cacheState: HealthConnectCacheState,
     val lastSyncedAt: Long,
@@ -1258,10 +1333,55 @@ internal data class SyncPayload(
     ),
 )
 
+internal fun mergeHealthConnectSyncPayloads(
+    fullSyncPayload: SyncPayload,
+    fullSyncMetrics: Set<HealthMetricType>,
+    incrementalPayload: SyncPayload,
+    incrementalMetrics: Set<HealthMetricType>,
+    metricsToSync: Set<HealthMetricType>,
+): SyncPayload {
+    fun stateFor(metric: HealthMetricType): HealthConnectCacheState = when {
+        metric in fullSyncMetrics -> fullSyncPayload.cacheState
+        metric in incrementalMetrics -> incrementalPayload.cacheState
+        else -> HealthConnectCacheState()
+    }
+
+    val stepDiagnostic = when {
+        HealthMetricType.STEPS in fullSyncMetrics -> fullSyncPayload.stepDiagnostic
+        HealthMetricType.STEPS in incrementalMetrics -> incrementalPayload.stepDiagnostic
+        else -> null
+    }
+    val statusesByMetric = (fullSyncPayload.metricStatuses + incrementalPayload.metricStatuses)
+        .associateBy { it.metric }
+    val nextChangesTokens = fullSyncPayload.nextChangesTokens + incrementalPayload.nextChangesTokens
+    val stepState = stateFor(HealthMetricType.STEPS)
+
+    return SyncPayload(
+        cacheState = HealthConnectCacheState(
+            aggregatedStepsToday = stepState.aggregatedStepsToday,
+            samsungHealthStepsToday = stepState.samsungHealthStepsToday,
+            samsungHealthDirectStepsToday = stepState.samsungHealthDirectStepsToday,
+            displayStepsToday = stepState.displayStepsToday,
+            stepsLocalDate = stepState.stepsLocalDate,
+            heartRateRecords = stateFor(HealthMetricType.HEART_RATE).heartRateRecords,
+            sleepSessionRecords = stateFor(HealthMetricType.SLEEP).sleepSessionRecords,
+            caloriesBurnedRecords = stateFor(HealthMetricType.ACTIVE_CALORIES).caloriesBurnedRecords,
+            exerciseSessionRecords = stateFor(HealthMetricType.WORKOUTS).exerciseSessionRecords,
+        ),
+        stepDiagnostic = stepDiagnostic,
+        nextChangesTokens = nextChangesTokens,
+        lastSyncedAt = maxOf(fullSyncPayload.lastSyncedAt, incrementalPayload.lastSyncedAt),
+        metricStatuses = HealthConnectSyncMetricTypes
+            .filter { it in metricsToSync }
+            .mapNotNull(statusesByMetric::get),
+    )
+}
+
 internal fun cachedIncrementalFailurePayload(
     cachedState: HealthConnectCacheState,
     storedState: HealthConnectSyncPreferences,
     failureMessage: String,
+    metrics: Set<HealthMetricType> = HealthConnectSyncMetricTypes.toSet(),
     now: Instant = Instant.now(),
 ): SyncPayload {
     val safeCachedState = cachedState.pruneForInstant(now)
@@ -1286,11 +1406,11 @@ internal fun cachedIncrementalFailurePayload(
             displaySteps = safeCachedState.toDomainMetrics().stepsToday,
             queriedAt = storedState.lastSyncedAt,
         ),
-        nextChangesTokens = storedState.resolvedMetricChangesTokens(HealthConnectSyncMetricTypes),
+        nextChangesTokens = storedState.resolvedMetricChangesTokens(metrics),
         nextChangesToken = storedState.changesToken,
         metricStatuses = buildHealthMetricSyncStatuses(
-            metrics = HealthConnectSyncMetricTypes,
-            failedMetrics = HealthConnectSyncMetricTypes.associateWith { failureMessage },
+            metrics = metrics,
+            failedMetrics = metrics.associateWith { failureMessage },
             lastSyncedAt = storedState.lastSyncedAt,
         ),
     )

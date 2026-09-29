@@ -64,7 +64,8 @@ class WorkoutInputValidationTest {
             .substringBefore("private fun ActiveWorkoutPlanCard(")
 
         assertTrue(activeWorkoutBottomContentPaddingForFeedback() <= 24.dp)
-        assertTrue(activeScreen.contains("snackbarHost = { SnackbarHost(snackbarHostState) }"))
+        assertTrue(activeScreen.contains("snackbarHost = {"))
+        assertTrue(activeScreen.contains("modifier = Modifier.padding(bottom = ActiveWorkoutSnackbarClearance)"))
         assertTrue(activeScreen.contains(".consumeWindowInsets(padding)"))
         assertTrue(bottomBar.contains("modifier = Modifier.navigationBarsPadding()"))
     }
@@ -941,7 +942,8 @@ class WorkoutInputValidationTest {
         assertTrue(workoutScreen.contains("private fun ActiveSetInputMetricValue("))
         assertTrue(workoutScreen.contains("BasicTextField("))
         assertTrue(workoutScreen.contains("private fun SetTypePill("))
-        assertTrue(workoutScreen.contains("snackbarHost = { SnackbarHost(snackbarHostState) }"))
+        assertTrue(workoutScreen.contains("snackbarHost = {"))
+        assertTrue(workoutScreen.contains("modifier = Modifier.padding(bottom = ActiveWorkoutSnackbarClearance)"))
         assertFalse(activeExerciseCard.contains("label = \"Set +\""))
         assertFalse(activeExerciseCard.contains("label = activeExerciseReplaceLabel()"))
         assertFalse(activeExerciseCard.contains("active-workout-message"))

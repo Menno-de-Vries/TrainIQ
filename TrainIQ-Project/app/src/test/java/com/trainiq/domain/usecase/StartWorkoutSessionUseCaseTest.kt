@@ -1,6 +1,7 @@
 package com.trainiq.domain.usecase
 
 import com.trainiq.domain.model.ActiveWorkoutSession
+import com.trainiq.domain.model.ActiveWorkoutSetLogResult
 import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.Exercise
 import com.trainiq.domain.model.ExerciseHistory
@@ -144,7 +145,7 @@ private class FakeWorkoutRepository(
     override fun observeExerciseHistory(exerciseId: Long): Flow<ExerciseHistory> = emptyFlow()
     override suspend fun getNextWorkoutDay(): WorkoutDay? = null
     override suspend fun updateActiveWorkoutDraft(exerciseId: Long, draft: ActiveWorkoutSetDraft): ActiveWorkoutSession? = null
-    override suspend fun logActiveWorkoutSet(dayId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int): ActiveWorkoutSession = error("unused")
+    override suspend fun logActiveWorkoutSet(dayId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int): ActiveWorkoutSetLogResult = error("unused")
     override suspend fun updateActiveWorkoutSet(setId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int): ActiveWorkoutSession? = null
     override suspend fun updateActiveWorkoutSetType(setId: Long, setType: SetType): ActiveWorkoutSession? = null
     override suspend fun deleteActiveWorkoutSet(setId: Long): ActiveWorkoutSession? = null
