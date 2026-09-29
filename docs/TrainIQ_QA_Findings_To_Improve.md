@@ -1,5 +1,9 @@
 # TrainIQ QA Findings To Improve
 
+## 2026-09-30 Full audit package
+
+Selected current-run findings TECH-01–04 and B1-01–04 map to FIX-01–08 in [the scoped improvement plan](qa/2026-09-30/improvement-plan.md). Status: all eight selected changes accepted locally after 992 JVM tests, 202/202 Android tests, debug/compile/lint, Room marker and changed-screen visual/interaction checks. Independent review caught the initial reserved-positive meal ID assumption before delivery; explicit create/edit intent is required. See [verification](qa/2026-09-30/verification.md) for actual executed results and external NOT RUN boundaries. Historical findings below remain preserved.
+
 ## 2026-09-28 Autonomous quality cycle
 
 Cycle scope: fresh install/onboarding, compact and expanded navigation/layout, workout setup/logging, Health Connect synchronization and affected regression paths. Findings below were observed before editing; all are open until their stated evidence passes.

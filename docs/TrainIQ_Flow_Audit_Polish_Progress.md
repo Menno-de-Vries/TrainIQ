@@ -1,5 +1,9 @@
 # TrainIQ Flow Audit Polish Progress
 
+## 2026-09-30 Whole-app audit and selected local improvements
+
+The current run inventories the complete Android route graph, persistence/AI/platform boundaries and existing local food gateway, with a bounded official-source comparator review. Eight selected findings and their acceptance criteria are tracked in [the audit delivery index](qa/2026-09-30/README.md). This entry does not supersede historical provider/device blockers or certify full target-state alignment. Accepted local verification: 992 JVM and 202/202 Android tests, debug/compile/lint and Room marker; compact/expanded dark/light installed-app checks. Local commits and final clean-HEAD packages are recorded in the delivery index. Earlier failures, independent-review repairs and external limits remain explicit.
+
 ## 2026-09-06 Fresh audit rerun
 
 Implemented the five new findings FRESH-001 through FRESH-005 documented in [the findings register](TrainIQ_QA_Findings_To_Improve.md): targeted workout undo, local activity dates, routine-input validation, bounded plate previews and recoverable meal-save errors. Task branch: `codex/five-fresh-flow-fixes`, from main `acaf79086d2a9aaa26688b3d313b114ce032a245`. The PR carries final-commit local verification and environment limits. Existing historical findings and unrelated worktrees remain preserved; no overall readiness or alignment score was re-certified.
