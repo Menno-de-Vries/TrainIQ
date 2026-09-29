@@ -1,20 +1,35 @@
 # Automation State: trainiq-cycle
 
-Last run: 2026-07-12
+## Active cycle plan (2026-09-29)
+
+| ID | Work | Model / effort | Dependency | Exclusive write scope | Status |
+| --- | --- | --- | --- | --- | --- |
+| A1 | Product-wide UI/UX, navigation and accessibility audit | GPT-6 Luna / high | Current source and target-state docs | Read-only | Done: corrected the compact Progress destination and found the active-workout Undo Snackbar overlapping the logger; intentional tab-swipe behavior was retained. |
+| A2 | Functional, lifecycle and edge-case audit | GPT-6 Luna / high | Current source, tests and local runtime evidence | Read-only | Done: found swallowed Health Connect cancellation, fabricated unavailable energy/recovery values, repeated healthy-metric syncs after token gaps, and a stale Flow read that omitted the set-undo action. |
+| I1 | Correct compact selected destination for Progress | GPT-6 Luna / high | Existing adaptive-navigation policy | `TrainIqNav.kt`; `AdaptiveNavigationPolicyTest.kt` | Done: Progress selects Meer in compact navigation. |
+| I2 | Preserve cancellation and per-metric Health Connect independence | GPT-6 Luna / high | Suspend-boundary scan, cache/token review | `HealthConnectDataSource.kt`; Health Connect policy/cancellation tests | Done: cancellation propagates; missing-token metrics full-sync independently; partial permission sync preserves out-of-scope cached metrics without surfacing them as granted data. |
+| I3 | Keep Home and local workout fallback data honest | Root agent | Existing model and mapper contracts | Home use case/UI tests; debrief model/repository/UI tests | Done: unknown steps no longer produce energy balance and local fallback no longer invents a recovery score. |
+| I4 | Keep workout logging reachable and undoable | Root agent | Real-touch instrumentation reproduced Snackbar obstruction and Room-backed summary race; overlapping requests could allocate duplicate IDs from stale state | `WorkoutScreen.kt`, workout repository/domain contract, active-workout instrumentation | Done: Snackbar clears the bottom logger; logging returns its persisted undo event ID directly, and set/event IDs are allocated from fresh Room state under the write lock. |
+| I5 | Reconcile the Settings disclosure regression assertion | Root agent | Existing user copy and added assertion | No additional edit | Verified current disclosure assertions pass; user-owned Settings changes remain unstaged. |
+| V1 | Integrated local regression and device verification | Root agent / high | I1-I5 integrated | Read-only verification | Done: required local gates passed; 183 connected tests passed on `emulator-5554`. |
+
+Each change was tied to repository behavior and a focused regression before broader verification. The 2026-09-28 tab-swipe change remains because its child-gesture regression test confirms the intended behavior. Weekly-report input coverage and broader adaptive/accessibility polish remain separate findings for a later cycle.
+
+Last run: 2026-09-29
 Mode: polish
-Selected next action: Complete the bounded trust, navigation and Trend recovery batch
+Selected next action: Audit weekly-report data coverage and deterministic local context
 Current target-state alignment: 98%
-Last useful change: Removed hidden top-level swipe navigation, clarified local coach and weekly-load semantics, and made fatal Trend observations retryable through the shared reload path.
+Last useful change: Preserved Health Connect per-metric cache/token behavior and cancellation, removed fabricated Home energy/recovery values, fixed compact Progress selection, made workout undo immediate and reachable, and serialized set/event ID allocation against fresh Room state.
 Consecutive no-op runs: 0
 Consecutive blocked runs: 0
 Open findings:
 - P0: none observed in this batch.
-- P1: release-owner/privacy/signing decisions, the intentionally absent hosted CI workflow, physical-device performance/accessibility acceptance, and the remaining Health Connect provider/permission-state matrix.
-- P2: Health Connect refresh single-flight/cancellation, workout-draft write coalescing, duplicated screen timers, Coach draft restoration, weekly-report input semantics, light-theme contrast, onboarding preference reuse, reminders/recovery context and broader adaptive-width polish.
-Next safest action: take Health Connect refresh single-flight and cancellation as a separate small data/performance batch, with focused concurrency guards and the same broad Android gates.
+- P1: privacy/release-owner decisions, manual TalkBack/Switch Access acceptance, physical-device performance evidence, and the remaining Health Connect provider/permission-state matrix. Local release signing readiness passed.
+- P2: Health Connect refresh single-flight, workout-draft write coalescing, duplicated screen timers, Coach draft restoration, weekly-report input semantics, light-theme contrast, onboarding preference reuse, reminders/recovery context and broader adaptive-width polish.
+Next safest action: audit weekly-report data coverage and deterministic local context as a separate small data-quality batch, with focused unit coverage and the same broad Android gates.
 Stop if: the next change requires a product, medical, privacy, legal, release-owner or credential decision; no safe device/profile exists; or verification cannot distinguish harness instability from an app regression.
-Blockers: hosted-CI policy, release signing/versioning and store declarations remain owner decisions; real-device performance, TalkBack/Switch Access and the complete Health Connect runtime matrix remain external acceptance work.
-Verification summary: PASS focused red/green navigation, repository, Home and Progress contracts; PASS `:app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:compileDebugAndroidTestKotlin`; PASS debug update install; PASS final cold launch with `Status: ok` and `TotalTime: 4836 ms`; PASS Trend render and horizontal-swipe containment; PASS return to Home; PASS empty TrainIQ crash/ANR slices; PASS independent final re-review with no critical or important issue.
+Blockers: hosted-CI policy and store/privacy owner decisions remain open; physical-device performance, TalkBack/Switch Access and the complete Health Connect provider/permission runtime matrix remain external acceptance work. Macrobenchmark device execution was not run because only emulators were available.
+Verification summary: PASS focused Health Connect policy/cancellation tests, Home data-availability tests, workout debrief tests, navigation tests, the 5-test active-workout instrumentation class, and the concurrent Room set/event ID allocation test; PASS `:app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:compileDebugAndroidTestKotlin :app:assembleProfileable :macrobenchmark:assembleAndroidTest :app:checkReleaseSigningReadiness`; PASS `:app:generateDebugRoomMigrationChainVerificationMarker` including 183/183 connected tests on `emulator-5554`; PASS release signing readiness. `:macrobenchmark:connectedProfileableAndroidTest` not run because no physical device was available. An earlier interrupted verification attempt briefly selected both online emulators; its test APKs were stopped without shutting down either emulator, and final connected verification was scoped to `emulator-5554`.
 
 ## Historical snapshot (superseded 2026-05-12)
 

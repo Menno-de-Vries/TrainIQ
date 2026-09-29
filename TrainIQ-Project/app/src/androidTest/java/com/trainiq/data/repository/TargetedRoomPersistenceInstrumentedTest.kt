@@ -41,13 +41,19 @@ import com.trainiq.data.migration.RoomMigrationChainVerificationMarkerSource
 import com.trainiq.data.migration.RoomMigrationChainVerificationProvider
 import com.trainiq.data.migration.RoomRuntimeReadinessGate
 import com.trainiq.domain.model.FoodSourceType
+import com.trainiq.domain.model.ActiveWorkoutSetDraft
+import com.trainiq.domain.model.LoggedSet
+import com.trainiq.domain.model.SetType
 import com.trainiq.domain.usecase.ExportAppDataUseCase
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -92,6 +98,55 @@ class TargetedRoomPersistenceInstrumentedTest {
         assertEquals(2, savedItems.map { it.id }.toSet().size)
         assertEquals(120.0, savedItems.single { it.mealId == second }.calories, 0.0)
         assertEquals(200.0, savedItems.single { it.mealId == first }.calories, 0.0)
+    }
+
+    @Test
+    fun concurrentActiveWorkoutSetLogsAllocateDistinctSetAndUndoIdsFromRoomState() = runTest {
+        val store = runtimeStore()
+        storeJobs.forEach { it.cancelAndJoin() }
+        seedNextPlan()
+        database.dao().insertActiveWorkoutSessions(
+            listOf(ActiveWorkoutSessionEntity(sessionId = 7L, dayId = 2L, routineId = 1L, startedAt = 1_000L, updatedAt = 1_000L)),
+        )
+        val staleState = store.state.value
+
+        val results = coroutineScope {
+            listOf(
+                async {
+                    store.logActiveWorkoutSet(
+                        state = staleState,
+                        dayId = 2L,
+                        set = LoggedSet(exerciseId = 3L, weight = 80.0, reps = 8, rpe = 7.0, setType = SetType.NORMAL),
+                        draft = ActiveWorkoutSetDraft(weight = "80", reps = "8", rpe = "7"),
+                        restSeconds = 60,
+                        now = 10_000L,
+                    )
+                },
+                async {
+                    store.logActiveWorkoutSet(
+                        state = staleState,
+                        dayId = 2L,
+                        set = LoggedSet(exerciseId = 6L, weight = 30.0, reps = 10, rpe = 8.0, setType = SetType.NORMAL),
+                        draft = ActiveWorkoutSetDraft(weight = "30", reps = "10", rpe = "8"),
+                        restSeconds = 60,
+                        now = 10_001L,
+                    )
+                },
+            ).awaitAll()
+        }
+
+        val returnedSetIds = results.map { it.active.loggedSets.last().id }
+        val returnedEventIds = results.map { it.undoEventId }
+        assertEquals(2, returnedSetIds.toSet().size)
+        assertEquals(2, returnedEventIds.toSet().size)
+
+        val persistedEvents = database.dao().readWorkoutLogEventsForExport()
+        assertEquals(returnedEventIds.toSet(), persistedEvents.map { it.id }.toSet())
+        val currentSnapshotsByEvent = database.dao().readWorkoutLogEventSetsForExport()
+            .filter { it.snapshotRole == "CURRENT" }
+            .associate { it.eventId to it.id }
+        assertEquals(results.associate { it.undoEventId to it.active.loggedSets.last().id }, currentSnapshotsByEvent)
+        assertEquals(returnedSetIds.toSet(), database.dao().readActiveWorkoutSetsForExport().map { it.id }.toSet())
     }
 
     @Test fun missingActiveRoutineSelectionPreservesCurrentSelection() = runTest {

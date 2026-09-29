@@ -8,6 +8,7 @@ import com.trainiq.domain.model.HomeDashboard
 import com.trainiq.domain.model.UserProfile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class BuildHomeDashboardUseCaseTest {
@@ -59,5 +60,15 @@ class BuildHomeDashboardUseCaseTest {
         assertNotNull(merged.energyBalance)
         assertEquals(1_900, merged.energyBalance?.caloriesIn?.toInt())
         assertEquals(320, merged.energyBalance?.workoutCalories)
+
+        val missingSteps = useCase.mergeHealthStatus(
+            dashboard = dashboard,
+            healthConnectStatus = HealthConnectStatus(
+                state = HealthConnectState.NO_DATA,
+                message = "Stappengegevens ontbreken",
+            ),
+        )
+        assertNull(missingSteps.steps)
+        assertNull("Unknown steps must not be treated as zero activity", missingSteps.energyBalance)
     }
 }

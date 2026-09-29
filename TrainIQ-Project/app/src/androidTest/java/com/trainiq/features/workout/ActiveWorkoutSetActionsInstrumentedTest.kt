@@ -144,16 +144,20 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             compose.onNodeWithContentDescription("Actieve oefening acties").performScrollTo().performClick()
             compose.onNodeWithText("Set toevoegen").performClick()
             compose.onNodeWithText("Set loggen").performScrollTo().performClick()
+            val firstSetTapAt = android.os.SystemClock.elapsedRealtime()
 
-            compose.waitUntil(15_000) {
-                runBlocking { database.dao().observeActiveWorkoutSets().first().size == 1 }
+            // Observe the short-lived Undo Snackbar before waiting for persistence/debounce.
+            compose.waitUntil(5_000) {
+                compose.onAllNodesWithText("Ongedaan maken").fetchSemanticsNodes().isNotEmpty()
             }
-            compose.waitUntil(10_000) {
-                compose.onAllNodesWithText("Extra set loggen").fetchSemanticsNodes().isNotEmpty()
+            compose.waitUntil(5_000) {
+                runBlocking { database.dao().observeActiveWorkoutSets().first().size == 1 } &&
+                    compose.onAllNodesWithText("Extra set loggen").fetchSemanticsNodes().isNotEmpty() &&
+                    android.os.SystemClock.elapsedRealtime() - firstSetTapAt >= 400L
             }
-            compose.mainClock.advanceTimeBy(5_000L)
-            compose.waitForIdle()
-            compose.onNodeWithText("Extra set loggen").performScrollTo().performClick()
+            val extraSetAction = compose.onNodeWithText("Extra set loggen").performScrollTo()
+            extraSetAction.assertIsDisplayed()
+            extraSetAction.performClick()
             compose.waitUntil(15_000) {
                 runBlocking { database.dao().observeActiveWorkoutSets().first().size == 2 } ||
                     compose.onAllNodesWithText("Set loggen is mislukt", substring = true).fetchSemanticsNodes().isNotEmpty() ||

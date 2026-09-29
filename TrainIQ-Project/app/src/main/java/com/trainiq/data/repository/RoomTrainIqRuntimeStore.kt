@@ -40,6 +40,8 @@ import com.trainiq.data.migration.JsonRoomImportPlanner
 import com.trainiq.data.migration.RoomJsonImportSink
 import com.trainiq.data.mapper.toDomain
 import com.trainiq.domain.model.FoodSourceType
+import com.trainiq.domain.model.ActiveWorkoutSetDraft
+import com.trainiq.domain.model.LoggedSet
 import com.trainiq.domain.model.LoggedMealItemType
 import com.trainiq.domain.model.MealType
 import com.trainiq.domain.model.SetType
@@ -65,6 +67,11 @@ data class SavedRecipeSnapshot(
     val recipe: RecipeStorage,
     val ingredients: List<RecipeIngredientStorage>,
     val foods: List<FoodItemStorage>,
+)
+
+internal data class LoggedActiveWorkoutSetMutation(
+    val active: ActiveWorkoutSessionStorage,
+    val undoEventId: Long,
 )
 
 @Singleton
@@ -566,38 +573,72 @@ class RoomTrainIqRuntimeStore internal constructor(
         }
     }
 
-    suspend fun logActiveWorkoutSet(
-        active: ActiveWorkoutSessionStorage,
-        set: ActiveWorkoutSetStorage,
-        draft: ActiveWorkoutDraftStorage,
-        event: WorkoutLogEventStorage,
-    ) {
+    internal suspend fun logActiveWorkoutSet(
+        state: TrainIqStorageState,
+        dayId: Long,
+        set: LoggedSet,
+        draft: ActiveWorkoutSetDraft,
+        restSeconds: Int,
+        now: Long,
+    ): LoggedActiveWorkoutSetMutation =
         mutex.withLock {
-            dao.logActiveWorkoutSet(
-                session = ActiveWorkoutSessionEntity(
-                    sessionId = active.sessionId,
-                    dayId = active.dayId,
-                    routineId = active.routineId,
-                    startedAt = active.startedAt,
-                    updatedAt = active.updatedAt,
-                    restTimerEndsAt = active.restTimerEndsAt,
-                    restTimerTotalSeconds = active.restTimerTotalSeconds,
-                ),
-                draft = ActiveWorkoutDraftEntity(
-                    sessionId = active.sessionId,
-                    exerciseId = set.activeKey,
-                    weight = draft.weight,
-                    reps = draft.reps,
-                    rpe = draft.rpe,
-                    setType = draft.setType.name,
-                ),
-                set = set.toActiveWorkoutSetEntity(sessionId = active.sessionId),
-                event = event.toWorkoutLogEventEntity(),
-                eventSets = event.toWorkoutLogEventSetEntities(),
-                activeKey = set.activeKey,
-            )
+            database.withTransaction {
+                val activeTables = ActiveWorkoutTables(
+                    sessions = dao.readActiveWorkoutSessionsForExport(),
+                    drafts = dao.readActiveWorkoutDraftsForExport(),
+                    collapsed = dao.readActiveWorkoutCollapsedExercisesForExport(),
+                    sets = dao.readActiveWorkoutSetsForExport(),
+                    events = dao.readWorkoutLogEventsForExport(),
+                )
+                val eventSets = dao.readWorkoutLogEventSetsForExport()
+                val currentState = state.copy(
+                    performedExercises = dao.readPerformedExercisesForExport(),
+                    activeWorkoutSession = activeTables.toStorage(),
+                    workoutLogEvents = activeTables.events.map { event ->
+                        event.toStorage(eventSets.filter { it.eventId == event.id })
+                    },
+                )
+                val mutation = ActiveWorkoutSessionMutations.logSet(
+                    state = currentState,
+                    dayId = dayId,
+                    set = set,
+                    draft = draft,
+                    restSeconds = restSeconds,
+                    now = now,
+                )
+                val active = mutation.active
+                val loggedSet = requireNotNull(active.loggedSets.lastOrNull()) {
+                    "Active workout set logging did not produce a stored set."
+                }
+                val event = requireNotNull(mutation.state.workoutLogEvents.lastOrNull()) {
+                    "Active workout set logging did not produce a workout log event."
+                }
+                dao.logActiveWorkoutSet(
+                    session = ActiveWorkoutSessionEntity(
+                        sessionId = active.sessionId,
+                        dayId = active.dayId,
+                        routineId = active.routineId,
+                        startedAt = active.startedAt,
+                        updatedAt = active.updatedAt,
+                        restTimerEndsAt = active.restTimerEndsAt,
+                        restTimerTotalSeconds = active.restTimerTotalSeconds,
+                    ),
+                    draft = ActiveWorkoutDraftEntity(
+                        sessionId = active.sessionId,
+                        exerciseId = loggedSet.activeKey,
+                        weight = draft.weight,
+                        reps = draft.reps,
+                        rpe = draft.rpe,
+                        setType = draft.setType.name,
+                    ),
+                    set = loggedSet.toActiveWorkoutSetEntity(sessionId = active.sessionId),
+                    event = event.toWorkoutLogEventEntity(),
+                    eventSets = event.toWorkoutLogEventSetEntities(),
+                    activeKey = loggedSet.activeKey,
+                )
+                LoggedActiveWorkoutSetMutation(active = active, undoEventId = event.id)
+            }
         }
-    }
 
     suspend fun updateActiveWorkoutSet(
         active: ActiveWorkoutSessionStorage,
@@ -827,7 +868,7 @@ class RoomTrainIqRuntimeStore internal constructor(
                 progressionFeedback = debrief.progressionFeedback,
                 recommendation = debrief.recommendation,
                 nextSessionFocus = debrief.nextSessionFocus,
-                recoveryScore = debrief.recoveryScore,
+                recoveryScore = debrief.recoveryScore ?: -1,
                 intensitySignal = debrief.intensitySignal,
                 wins = debrief.wins.joinToString("\n"),
                 risks = debrief.risks.joinToString("\n"),

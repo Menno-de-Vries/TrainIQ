@@ -20,6 +20,7 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import retrofit2.HttpException
@@ -911,7 +912,7 @@ class AiServicesTest {
         assertEquals("Volume veranderde met -3,2% ten opzichte van de vorige sessie.", result.progressionFeedback)
         assertEquals("Houd dezelfde opzet aan en verhoog pas als uitvoering en herstel goed blijven.", result.recommendation)
         assertEquals("Huidige gewichten vasthouden", result.nextSessionFocus)
-        assertEquals(75, result.recoveryScore)
+        assertNull(result.recoveryScore)
         assertEquals("MAINTAIN", result.intensitySignal)
         assertEquals(com.trainiq.domain.model.WorkoutDebriefSource.LOCAL_FALLBACK, result.source)
     }
@@ -1156,7 +1157,7 @@ class AiServicesTest {
 
         assertFalse(api.called)
         assertEquals("Huidige gewichten vasthouden", result.nextSessionFocus)
-        assertEquals(75, result.recoveryScore)
+        assertNull(result.recoveryScore)
         assertEquals("MAINTAIN", result.intensitySignal)
         assertEquals(com.trainiq.domain.model.WorkoutDebriefSource.LOCAL_FALLBACK, result.source)
     }

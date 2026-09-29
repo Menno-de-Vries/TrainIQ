@@ -13,6 +13,7 @@ import com.trainiq.data.migration.TrainIqJsonExportFormat
 import com.trainiq.data.migration.importedRowCount
 import com.trainiq.domain.model.LoggedSet
 import com.trainiq.domain.model.ActiveWorkoutSetDraft
+import com.trainiq.domain.model.ActiveWorkoutSetLogResult
 import com.trainiq.domain.model.ActiveWorkoutSession
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.GeneratedRoutine
@@ -56,12 +57,14 @@ class BuildHomeDashboardUseCase @Inject constructor() {
     ): HomeDashboard = dashboard.copy(
         steps = healthConnectStatus.stepsToday,
         energyBalance = dashboard.profile?.let { profile ->
-            buildEnergyBalance(
-                profile = profile,
-                caloriesIn = dashboard.calorieProgress.toDouble(),
-                steps = healthConnectStatus.stepsToday ?: 0,
-                workoutCalories = dashboard.todaysWorkoutCalories,
-            )
+            healthConnectStatus.stepsToday?.let { steps ->
+                buildEnergyBalance(
+                    profile = profile,
+                    caloriesIn = dashboard.calorieProgress.toDouble(),
+                    steps = steps,
+                    workoutCalories = dashboard.todaysWorkoutCalories,
+                )
+            }
         },
     )
 }
@@ -189,7 +192,7 @@ class UpdateActiveWorkoutDraftUseCase @Inject constructor(private val repository
 }
 
 class LogActiveWorkoutSetUseCase @Inject constructor(private val repository: WorkoutRepository) {
-    suspend operator fun invoke(dayId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int) =
+    suspend operator fun invoke(dayId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int): ActiveWorkoutSetLogResult =
         repository.logActiveWorkoutSet(dayId, set, draft, restSeconds)
 }
 

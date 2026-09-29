@@ -2,6 +2,7 @@ package com.trainiq.domain.repository
 
 import com.trainiq.domain.model.CoachOverview
 import com.trainiq.domain.model.ActiveWorkoutSession
+import com.trainiq.domain.model.ActiveWorkoutSetLogResult
 import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.BodyMeasurementPhotoResult
@@ -52,7 +53,7 @@ interface WorkoutRepository {
     suspend fun getCurrentActiveWorkoutSession(): ActiveWorkoutSession?
     suspend fun getOrStartActiveWorkoutSession(dayId: Long, initialDrafts: Map<Long, ActiveWorkoutSetDraft>): ActiveWorkoutSession
     suspend fun updateActiveWorkoutDraft(exerciseId: Long, draft: ActiveWorkoutSetDraft): ActiveWorkoutSession?
-    suspend fun logActiveWorkoutSet(dayId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int): ActiveWorkoutSession
+    suspend fun logActiveWorkoutSet(dayId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int): ActiveWorkoutSetLogResult
     suspend fun updateActiveWorkoutSet(setId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int): ActiveWorkoutSession?
     suspend fun updateActiveWorkoutSetType(setId: Long, setType: SetType): ActiveWorkoutSession?
     suspend fun deleteActiveWorkoutSet(setId: Long): ActiveWorkoutSession?

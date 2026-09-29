@@ -40,6 +40,7 @@ import com.trainiq.data.remote.BarcodeProductLookupService
 import com.trainiq.domain.model.BodyMeasurement
 import com.trainiq.domain.model.BodyMeasurementPhotoResult
 import com.trainiq.domain.model.ActiveWorkoutSession
+import com.trainiq.domain.model.ActiveWorkoutSetLogResult
 import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.ActiveWorkoutSetEntry
 import com.trainiq.domain.model.BarcodeProductLookupResult
@@ -307,31 +308,19 @@ class TrainIqDataCoordinator @Inject constructor(
         set: LoggedSet,
         draft: ActiveWorkoutSetDraft,
         restSeconds: Int,
-    ): ActiveWorkoutSession {
-        val mutation = withContext(Dispatchers.IO) {
-            val mutation = ActiveWorkoutSessionMutations.logSet(
-                state = runtimeStore.state.value,
-                dayId = dayId,
-                set = set,
-                draft = draft,
-                restSeconds = restSeconds,
-                now = System.currentTimeMillis(),
-            )
-            val loggedSet = requireNotNull(mutation.active.loggedSets.lastOrNull()) {
-                "Active workout set logging did not produce a stored set."
-            }
-            val event = requireNotNull(mutation.state.workoutLogEvents.lastOrNull()) {
-                "Active workout set logging did not produce a workout log event."
-            }
-            runtimeStore.logActiveWorkoutSet(
-                active = mutation.active,
-                set = loggedSet,
-                draft = requireNotNull(mutation.active.drafts[loggedSet.activeKey]),
-                event = event,
-            )
-            mutation
-        }
-        return mutation.active.toDomain()
+    ): ActiveWorkoutSetLogResult = withContext(Dispatchers.IO) {
+        val mutation = runtimeStore.logActiveWorkoutSet(
+            state = runtimeStore.state.value,
+            dayId = dayId,
+            set = set,
+            draft = draft,
+            restSeconds = restSeconds,
+            now = System.currentTimeMillis(),
+        )
+        ActiveWorkoutSetLogResult(
+            session = mutation.active.toDomain(),
+            undoEventId = mutation.undoEventId,
+        )
     }
 
     suspend fun updateActiveWorkoutSet(
@@ -523,7 +512,7 @@ class TrainIqDataCoordinator @Inject constructor(
                 progressionFeedback = "Log minimaal een set om voortgang op te slaan.",
                 recommendation = "Voeg tijdens je training sets toe voordat je afrondt.",
                 nextSessionFocus = "Huidige gewichten vasthouden",
-                recoveryScore = 75,
+                recoveryScore = null,
                 intensitySignal = "MAINTAIN",
                 source = WorkoutDebriefSource.LOCAL_FALLBACK,
                 ),
@@ -1355,6 +1344,8 @@ class TrainIqDataCoordinator @Inject constructor(
             .filter { it.isNotBlank() }
             .joinToString(" - ")
             .ifBlank { "Krachttraining" }
+        val debriefSource = runCatching { WorkoutDebriefSource.valueOf(session.debriefSource) }
+            .getOrDefault(WorkoutDebriefSource.LOCAL_FALLBACK)
         return WorkoutSessionSummary(
             id = session.id,
             date = session.endedAt.takeIf { it > 0L } ?: session.date,
@@ -1368,9 +1359,10 @@ class TrainIqDataCoordinator @Inject constructor(
             debriefSummary = session.debriefSummary,
             debriefRecommendation = session.debriefRecommendation,
             debriefNextSessionFocus = session.debriefNextSessionFocus,
-            debriefRecoveryScore = session.debriefRecoveryScore.coerceIn(0, 100),
+            debriefRecoveryScore = session.debriefRecoveryScore
+                .takeIf { debriefSource != WorkoutDebriefSource.LOCAL_FALLBACK && it in 0..100 },
             debriefIntensitySignal = session.debriefIntensitySignal,
-            debriefSource = runCatching { WorkoutDebriefSource.valueOf(session.debriefSource) }.getOrDefault(WorkoutDebriefSource.LOCAL_FALLBACK),
+            debriefSource = debriefSource,
         )
     }
 
@@ -1890,7 +1882,7 @@ private fun WorkoutSessionEntity.withDebrief(debrief: WorkoutDebrief): WorkoutSe
     debriefProgressionFeedback = debrief.progressionFeedback,
     debriefRecommendation = debrief.recommendation,
     debriefNextSessionFocus = debrief.nextSessionFocus,
-    debriefRecoveryScore = debrief.recoveryScore,
+    debriefRecoveryScore = debrief.recoveryScore ?: -1,
     debriefIntensitySignal = debrief.intensitySignal,
     debriefWins = debrief.wins.joinToString("\n"),
     debriefRisks = debrief.risks.joinToString("\n"),
@@ -1899,19 +1891,24 @@ private fun WorkoutSessionEntity.withDebrief(debrief: WorkoutDebrief): WorkoutSe
     debriefSource = debrief.source.name,
 )
 
-private fun WorkoutSessionEntity.toStoredDebrief(): WorkoutDebrief = WorkoutDebrief(
-    summary = debriefSummary,
-    progressionFeedback = debriefProgressionFeedback,
-    recommendation = debriefRecommendation,
-    nextSessionFocus = debriefNextSessionFocus,
-    recoveryScore = debriefRecoveryScore.coerceIn(0, 100),
-    intensitySignal = debriefIntensitySignal.ifBlank { "MAINTAIN" },
-    wins = debriefWins.lines().map { it.trim() }.filter { it.isNotBlank() },
-    risks = debriefRisks.lines().map { it.trim() }.filter { it.isNotBlank() },
-    nextLoadTarget = debriefNextLoadTarget,
-    recoveryAdvice = debriefRecoveryAdvice,
-    source = runCatching { WorkoutDebriefSource.valueOf(debriefSource) }.getOrDefault(WorkoutDebriefSource.LOCAL_FALLBACK),
-)
+private fun WorkoutSessionEntity.toStoredDebrief(): WorkoutDebrief {
+    val source = runCatching { WorkoutDebriefSource.valueOf(debriefSource) }
+        .getOrDefault(WorkoutDebriefSource.LOCAL_FALLBACK)
+    return WorkoutDebrief(
+        summary = debriefSummary,
+        progressionFeedback = debriefProgressionFeedback,
+        recommendation = debriefRecommendation,
+        nextSessionFocus = debriefNextSessionFocus,
+        recoveryScore = debriefRecoveryScore
+            .takeIf { source != WorkoutDebriefSource.LOCAL_FALLBACK && it in 0..100 },
+        intensitySignal = debriefIntensitySignal.ifBlank { "MAINTAIN" },
+        wins = debriefWins.lines().map { it.trim() }.filter { it.isNotBlank() },
+        risks = debriefRisks.lines().map { it.trim() }.filter { it.isNotBlank() },
+        nextLoadTarget = debriefNextLoadTarget,
+        recoveryAdvice = debriefRecoveryAdvice,
+        source = source,
+    )
+}
 
 private fun formatSummaryWeight(weight: Double): String =
     if (weight % 1.0 == 0.0) weight.toInt().toString() else String.format(Locale.US, "%.1f", weight)

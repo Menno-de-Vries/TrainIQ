@@ -110,7 +110,7 @@ fun EnergyBalanceCard(
             Text("Energiekompas", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
             Text(
                 energyBalance?.let { "Netto energie vandaag" }
-                    ?: "Vul je profiel in voor rustverbranding, vertering, beweging en trainingsverbruik.",
+                    ?: "Stappengegevens zijn niet beschikbaar, dus het totale verbruik kan niet worden berekend.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.trainIqColors.mutedText,
             )

@@ -52,7 +52,7 @@ class HomeObservationTest {
             data.value = data.value.copy(profile = profile, calorieProgress = intake, todaysWorkoutCalories = workout)
             runCurrent()
             val actual = (vm.uiState.value as HomeUiState.Success).dashboard.energyBalance
-            assertEquals(buildEnergyBalance(profile, intake.toDouble(), 0, workout), actual)
+            assertNull("Unknown step count must keep total energy unavailable", actual)
         }
         health = HealthConnectStatus(state = HealthConnectState.CONNECTED, message = "Connected",
             metrics = HealthConnectMetrics(stepsToday = 8500))
