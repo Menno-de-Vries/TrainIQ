@@ -88,7 +88,7 @@ data class WorkoutSessionSummary(
     val debriefSummary: String = "",
     val debriefRecommendation: String = "",
     val debriefNextSessionFocus: String = "",
-    val debriefRecoveryScore: Int = 0,
+    val debriefRecoveryScore: Int? = null,
     val debriefIntensitySignal: String = "",
     val debriefSource: WorkoutDebriefSource = WorkoutDebriefSource.LOCAL_FALLBACK,
 )
@@ -223,6 +223,11 @@ data class ActiveWorkoutSession(
     val collapsedExerciseIds: Set<Long>,
     val restTimerEndsAt: Long?,
     val restTimerTotalSeconds: Int,
+)
+
+data class ActiveWorkoutSetLogResult(
+    val session: ActiveWorkoutSession,
+    val undoEventId: Long,
 )
 
 enum class WorkoutLogEventType {
@@ -604,7 +609,7 @@ data class WorkoutDebrief(
     val progressionFeedback: String,
     val recommendation: String,
     val nextSessionFocus: String,
-    val recoveryScore: Int,
+    val recoveryScore: Int?,
     val intensitySignal: String,
     val wins: List<String> = emptyList(),
     val risks: List<String> = emptyList(),

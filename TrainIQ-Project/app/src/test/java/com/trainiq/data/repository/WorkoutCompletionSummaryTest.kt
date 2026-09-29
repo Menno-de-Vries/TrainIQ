@@ -11,6 +11,7 @@ import com.trainiq.domain.model.LoggedSet
 import com.trainiq.domain.model.WorkoutDebrief
 import com.trainiq.domain.model.WorkoutDebriefSource
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -56,7 +57,7 @@ class WorkoutCompletionSummaryTest {
                 progressionFeedback = "",
                 recommendation = "",
                 nextSessionFocus = "",
-                recoveryScore = 75,
+                recoveryScore = null,
                 intensitySignal = "MAINTAIN",
             ),
         )
@@ -67,6 +68,7 @@ class WorkoutCompletionSummaryTest {
         assertEquals(2, summary.setsLogged)
         assertEquals(1_340.0, summary.totalVolume, 0.0)
         assertEquals(WorkoutDebriefSource.LOCAL_FALLBACK, summary.debrief.source)
+        assertNull("Local completion fallback has no measured recovery score", summary.debrief.recoveryScore)
         assertTrue(summary.sourceLabel.contains("trainingsdata"))
         assertEquals(listOf("Bench Press", "Cable Row"), summary.exercises.map { it.name })
         assertEquals("80 kg x 8", summary.strongestSetLabel)

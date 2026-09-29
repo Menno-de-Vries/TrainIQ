@@ -187,6 +187,7 @@ import com.trainiq.core.theme.spacing
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.domain.model.ActiveWorkoutFocusTarget
 import com.trainiq.domain.model.ActiveWorkoutSession
+import com.trainiq.domain.model.ActiveWorkoutSetLogResult
 import com.trainiq.domain.model.ActiveWorkoutSetEntry
 import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.ChartPoint
@@ -457,6 +458,7 @@ private val ActiveSetHeaderMinHeight = 56.dp
 private val ActiveSetStackedActionBreakpoint = 320.dp
 private val TopLevelBottomContentPadding = 16.dp
 private val ActiveWorkoutBottomContentPadding = 16.dp
+private val ActiveWorkoutSnackbarClearance = 80.dp
 // Cover a double tap while allowing the next deliberate set promptly after persistence finishes.
 private const val MinSetLogTapIntervalMillis = 350L
 private val ExercisePickerHandleDismissThreshold = 96.dp
@@ -887,20 +889,25 @@ class WorkoutViewModel @Inject constructor(
             } ?: SetInputDraft(setType = draft.setType)
             try {
                 val restSeconds = validInput.restSeconds
-                val active = if (correctionSet != null) {
-                    updateActiveWorkoutSetUseCase(
+                val active: ActiveWorkoutSession
+                val undoEventId: Long?
+                if (correctionSet != null) {
+                    undoEventId = null
+                    active = updateActiveWorkoutSetUseCase(
                         setId = correctionSet.id,
                         set = loggedSet,
                         draft = nextDraft.toDomainDraft(),
                         restSeconds = restSeconds,
                     ) ?: return@launchAction
                 } else {
-                    logActiveWorkoutSetUseCase(
+                    val logResult: ActiveWorkoutSetLogResult = logActiveWorkoutSetUseCase(
                         dayId = dayId,
                         set = loggedSet,
                         draft = nextDraft.toDomainDraft(),
                         restSeconds = restSeconds,
                     )
+                    active = logResult.session
+                    undoEventId = logResult.undoEventId
                 }
                 applyActiveSession(active)
                 if (correctionSet != null) {
@@ -915,8 +922,7 @@ class WorkoutViewModel @Inject constructor(
                     loggedSetsByPlanKey = loggedSetsByExerciseId,
                     justLoggedPlanKey = key,
                 )
-                val summary = observeWorkoutLoggingSummaryUseCase(dayId).first()
-                _loggingSummary.value = summary.copy(activeFocusTarget = _activeFocusTarget.value)
+                _loggingSummary.value = _loggingSummary.value.copy(activeFocusTarget = _activeFocusTarget.value)
                 val message = if (correctionSet != null) {
                     "Set ${correctionSet.orderIndex + 1} bijgewerkt voor ${plan.exercise.name}."
                 } else when (loggedSet.setType) {
@@ -928,7 +934,7 @@ class WorkoutViewModel @Inject constructor(
                     WorkoutUiEvent.SetLogged(
                         id = ++eventId,
                         message = message,
-                        undoEventId = if (correctionSet == null) summary.lastUndoableEventId else null,
+                        undoEventId = undoEventId,
                     ),
                 )
                 diagnosticsTracker.state("Workout:SetLogged")
@@ -2226,8 +2232,8 @@ internal fun WorkoutHistoryCard(session: WorkoutSessionSummary, onDelete: (Long)
                 if (session.strongestSetLabel.isNotBlank()) {
                     HistoryMetricTile("Topset", session.strongestSetLabel, MaterialTheme.trainIqColors.amber)
                 }
-                if (session.debriefRecoveryScore > 0) {
-                    HistoryMetricTile("Herstel", "${session.debriefRecoveryScore}/100", intensityContentColor(session.debriefIntensitySignal))
+                session.debriefRecoveryScore?.let { recoveryScore ->
+                    HistoryMetricTile("Herstel", "$recoveryScore/100", intensityContentColor(session.debriefIntensitySignal))
                 }
             }
             session.debriefSummary.takeIf { it.isNotBlank() }?.let {
@@ -5224,10 +5230,12 @@ private fun CompletionInsightChips(summary: WorkoutCompletionSummary) {
             },
             accent = intensityContentColor(debrief.intensitySignal),
         )
-        AppChip(
-            label = "Herstel ${debrief.recoveryScore.coerceIn(0, 100)}/100",
-            accent = intensityContentColor(debrief.intensitySignal),
-        )
+        debrief.recoveryScore?.let { score ->
+            AppChip(
+                label = "Herstel ${score.coerceIn(0, 100)}/100",
+                accent = intensityContentColor(debrief.intensitySignal),
+            )
+        }
     }
 }
 
@@ -5254,7 +5262,7 @@ private fun AiAdviceSection(
     recommendation: String,
     nextWorkoutAdvice: String,
     recoveryAdvice: String,
-    recoveryScore: Int,
+    recoveryScore: Int?,
     accent: Color,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -5266,7 +5274,12 @@ private fun AiAdviceSection(
         if (recoveryAdvice.isNotBlank()) {
             Text("Herstel: $recoveryAdvice", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.trainIqColors.mutedText)
         }
-        AppLinearProgress(progress = recoveryScore.coerceIn(0, 100) / 100f, accent = accent)
+        if (recoveryScore != null) {
+            AppLinearProgress(progress = recoveryScore.coerceIn(0, 100) / 100f, accent = accent)
+            Text("Herstelscore: ${recoveryScore.coerceIn(0, 100)}/100", style = MaterialTheme.typography.bodySmall)
+        } else {
+            Text("Geen herstelscore beschikbaar in deze samenvatting.", style = MaterialTheme.typography.bodySmall)
+        }
     }
 }
 
@@ -5505,7 +5518,12 @@ fun ActiveWorkoutScreen(
     Scaffold(
         modifier = Modifier.clearFocusOnTapOutside(),
         containerColor = MaterialTheme.colorScheme.background,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.padding(bottom = ActiveWorkoutSnackbarClearance),
+            )
+        },
         bottomBar = {
             if (uiState.debrief == null) {
                 ActiveWorkoutBottomBar(
@@ -7083,11 +7101,13 @@ private fun WorkoutDebriefCard(result: WorkoutDebrief, uiState: ActiveWorkoutUiS
                 Text("Herstel: ${result.recoveryAdvice}")
             }
             Text("Intensiteitssignaal: ${result.intensitySignal}", color = intensityContentColor(result.intensitySignal))
-            LinearProgressIndicator(
-                progress = { result.recoveryScore.coerceIn(0, 100) / 100f },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Text("Herstelscore: ${result.recoveryScore}/100", style = MaterialTheme.typography.bodySmall)
+            result.recoveryScore?.let { score ->
+                LinearProgressIndicator(
+                    progress = { score.coerceIn(0, 100) / 100f },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text("Herstelscore: ${score.coerceIn(0, 100)}/100", style = MaterialTheme.typography.bodySmall)
+            } ?: Text("Geen herstelscore beschikbaar in de lokale analyse.", style = MaterialTheme.typography.bodySmall)
         }
     }
 }

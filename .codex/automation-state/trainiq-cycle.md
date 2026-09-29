@@ -1,5 +1,15 @@
 # Automation State: trainiq-cycle
 
+## Active cycle update (2026-09-29)
+
+Mode: polish. The current cycle is implemented and locally verified.
+Last useful change: preserve Health Connect cancellation and per-metric cache/token behavior; avoid presenting missing steps or local fallback recovery as measured data; correct compact Progress selection; keep the active-workout Undo Snackbar clear of the logger; return the persisted undo event ID and serialize set/event ID allocation against fresh Room state.
+Verification on current `main`: PASS full unit/build/lint/profileable/signing-readiness gates and `:app:generateDebugRoomMigrationChainVerificationMarker`, including 190/190 API 36 connected tests on `emulator-5554` and the concurrent Room ID-allocation regression. `:macrobenchmark:connectedProfileableAndroidTest` remains unrun because no physical device was available.
+Remaining evidence: `:macrobenchmark:connectedProfileableAndroidTest` was not run because no physical device was available; manual TalkBack/Switch Access and the full Health Connect provider/permission runtime matrix remain external acceptance work.
+Next safest action: audit weekly-report data coverage and deterministic local context as a separate data-quality batch.
+
+## Previous cycle state (2026-09-28; superseded by this update)
+
 Last run: 2026-09-28
 Mode: qa
 Selected next action: Commit the completed cycle 2 repairs and pause this goal as requested.

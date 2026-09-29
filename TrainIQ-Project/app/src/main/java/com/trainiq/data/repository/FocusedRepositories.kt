@@ -1,6 +1,7 @@
 package com.trainiq.data.repository
 
 import com.trainiq.domain.model.ActiveWorkoutSession
+import com.trainiq.domain.model.ActiveWorkoutSetLogResult
 import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.BiologicalSex
 import com.trainiq.domain.model.BodyMeasurementPhotoResult
@@ -65,7 +66,7 @@ class RoomWorkoutRepository @Inject constructor(
         delegate.getOrStartActiveWorkoutSession(dayId, initialDrafts)
     override suspend fun updateActiveWorkoutDraft(exerciseId: Long, draft: ActiveWorkoutSetDraft): ActiveWorkoutSession? =
         delegate.updateActiveWorkoutDraft(exerciseId, draft)
-    override suspend fun logActiveWorkoutSet(dayId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int): ActiveWorkoutSession =
+    override suspend fun logActiveWorkoutSet(dayId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int): ActiveWorkoutSetLogResult =
         delegate.logActiveWorkoutSet(dayId, set, draft, restSeconds)
     override suspend fun updateActiveWorkoutSet(setId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int): ActiveWorkoutSession? =
         delegate.updateActiveWorkoutSet(setId, set, draft, restSeconds)

@@ -49,10 +49,11 @@ class RepositoryDecompositionArchitectureTest {
         val coordinator = File(root, "data/repository/TrainIqRepository.kt").readText()
         val progression = File(root, "data/repository/WorkoutProgressionSuggestionCalculator.kt").readText()
         val activeMutations = File(root, "data/repository/ActiveWorkoutSessionMutations.kt").readText()
+        val runtimeStore = File(root, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
 
         assertTrue(coordinator.contains("progressionSuggestionCalculator.calculate("))
         assertTrue(coordinator.contains("ActiveWorkoutSessionMutations.startOrResume("))
-        assertTrue(coordinator.contains("ActiveWorkoutSessionMutations.logSet("))
+        assertTrue(runtimeStore.contains("ActiveWorkoutSessionMutations.logSet("))
         assertTrue(progression.contains("class WorkoutProgressionSuggestionCalculator"))
         assertTrue(activeMutations.contains("internal object ActiveWorkoutSessionMutations"))
         assertFalse(coordinator.contains("plateauDetected && effectiveRir"))

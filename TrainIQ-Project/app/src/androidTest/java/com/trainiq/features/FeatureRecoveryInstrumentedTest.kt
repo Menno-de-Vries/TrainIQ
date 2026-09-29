@@ -61,7 +61,14 @@ class FeatureRecoveryInstrumentedTest {
             dashboard = dashboard.copy(profile = com.trainiq.domain.model.UserProfile(
                 1, "Test", 30, com.trainiq.domain.model.BiologicalSex.MALE, 180.0, 80.0, 20.0,
                 "moderate", "maintain", 2400, 160, 260, 80, "strength",
-            ), calorieTarget = 2400, energyBalance = com.trainiq.domain.model.EnergyBalanceSnapshot(
+            ), calorieTarget = 2400)
+        }
+        onNodeWithText("Energiekompas").assertIsDisplayed()
+        onNodeWithText("Stappengegevens zijn niet beschikbaar, dus het totale verbruik kan niet worden berekend.")
+            .assertIsDisplayed()
+        onNodeWithText("Netto energie vandaag").assertDoesNotExist()
+        runOnIdle {
+            dashboard = dashboard.copy(energyBalance = com.trainiq.domain.model.EnergyBalanceSnapshot(
                 caloriesIn = 1500, caloriesOut = 2100, balance = -600,
                 bmr = 1600, tefCalories = 150, neatCalories = 100, workoutCalories = 250,
             ))
