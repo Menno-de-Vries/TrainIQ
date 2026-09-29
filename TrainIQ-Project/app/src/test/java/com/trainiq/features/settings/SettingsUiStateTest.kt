@@ -597,6 +597,20 @@ class SettingsUiStateTest {
     }
 
     @Test
+    fun aiDisclosureExplainsProviderOrderAndDeferredWorkoutDebrief() {
+        val source = File("src/main/java/com/trainiq/features/settings/SettingsSection.kt").readText()
+        val aiSection = source.substringAfter("SectionCard(title = \"AI / Providers\")")
+            .substringBefore("SectionCard(title = \"Health Connect\")")
+
+        assertTrue(aiSection.contains("AI blijft uit totdat jij het inschakelt"))
+        assertTrue(aiSection.contains("eerste provider in jouw volgorde waarvoor een sleutel is opgeslagen"))
+        assertTrue(aiSection.contains("Na afronden van een workout plant TrainIQ een AI-terugblik in"))
+        assertTrue(aiSection.contains("kan die later op de achtergrond worden verwerkt"))
+        assertFalse(aiSection.contains("geen AI-aanvragen op de achtergrond"))
+        assertFalse(aiSection.contains("jouw gekozen provider"))
+    }
+
+    @Test
     fun settingsDoesNotExposeBodyRegistration() {
         assertEquals("Meer", settingsOverflowSectionTitle())
         assertFalse(settingsOverflowSectionBody().contains("Voortgang"))

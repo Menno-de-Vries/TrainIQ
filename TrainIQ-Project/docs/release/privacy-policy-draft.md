@@ -22,9 +22,10 @@ TrainIQ may store the following data locally on the device:
 - Training data such as routines, exercises, sets, workout sessions, workout notes, and active workout state.
 - Nutrition data such as meals, foods, recipes, ingredients, macro estimates, and notes.
 - Progress measurements such as body measurements and trend values.
+- Photos selected for meal analysis or smart-scale/body-measurement reading; check local retention and temporary-file behavior before publication.
 - Health Connect data after permission is granted: steps, heart rate, sleep, active calories, weight, and exercise sessions.
 - Health Connect cache metadata such as sync tokens and last sync timestamps.
-- Gemini API key if the user chooses Bring Your Own Key AI.
+- API keys for configured AI providers if the user chooses Bring Your Own Key AI.
 - Technical diagnostics and performance summaries only if telemetry is enabled and configured.
 
 OWNER_CONFIRMATION_REQUIRED: confirm final data categories against Play Console Data Safety wording.
@@ -37,13 +38,13 @@ TrainIQ reads Health Connect data for activity, recovery, progress, and coaching
 
 OWNER_CONFIRMATION_REQUIRED: confirm exact Health Connect declaration and whether background reads are enabled in production.
 
-## Gemini AI and Bring Your Own Key
+## AI and Bring Your Own Key
 
-AI features are optional. If enabled, TrainIQ uses the user's locally stored Gemini API key for explicit user-triggered actions such as meal analysis, routine generation, workout feedback, weekly reports, or goal advice.
+AI features stay off until the user enables them. An AI action also requires a saved key for a configured provider. TrainIQ sends only the input needed for that action to the first provider in the user's configured order that has a saved key. This may include profile details (age, sex, height, weight, body-fat percentage, activity level, goal, and an optional manual calorie target) for goal advice; a user-selected meal or smart-scale photo for scanning; training data for a workout debrief; or weekly aggregates such as training volume, weight trend, and adherence derived locally from completed-workout and meal timestamps.
 
-For those actions, TrainIQ may send the prompt, relevant local context, and for meal scan flows the selected image to Google Gemini. TrainIQ does not run AI requests in the background.
+After a workout is completed, TrainIQ queues a debrief that may be processed later in the background when AI is enabled and a provider key is available. The debrief can include training volume, progression/comparison, muscle-group distribution, average RPE, top exercises, and weekly frequency. Other AI actions start from the related user action. The configured provider order may route a request to Google Gemini or OpenAI, depending on which keys are saved.
 
-OWNER_CONFIRMATION_REQUIRED: confirm Google Gemini terms, regional availability, retention behavior, and whether production will move to a server-side gateway or OAuth-mediated access.
+OWNER_CONFIRMATION_REQUIRED: confirm Google Gemini and OpenAI terms, regional availability, retention behavior, and whether production will move to a server-side gateway or OAuth-mediated access.
 
 ## Telemetry and Diagnostics
 

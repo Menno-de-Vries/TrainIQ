@@ -62,7 +62,8 @@ Decision owner: Product owner + backend owner + legal/privacy owner
 Current local state: `CURRENT_LOCAL_STATE_ONLY`
 
 - No account/auth backend sync was found in local app code.
-- Gemini calls go directly to Google Gemini only for explicit AI features in current BYOK mode.
+- With AI enabled and a saved provider key, AI calls go from the app to the first configured provider in the user's preferred order that has a key; current providers are Gemini and OpenAI.
+- Workout completion queues a debrief for later processing. When AI is enabled and a provider key is available, this processing may happen in the background when network is available.
 
 Release decision required:
 
@@ -84,14 +85,15 @@ Decision owner: Product owner + backend owner + security owner + legal/privacy o
 
 Current local state: `CURRENT_LOCAL_STATE_ONLY`
 
-- Current AI mode is local-client BYOK.
-- Requests are user-triggered and use the user-provided Gemini key.
+- Current AI mode is local-client BYOK and AI remains opt-in.
+- AI requests use the first configured provider in the user's order with a saved key. Inputs may include profile details, training or nutrition data, and user-selected meal or smart-scale photos as needed for the action.
+- A completed workout queues a debrief that may be processed later in the background when AI is enabled and a provider key is available.
 - The blueprint says production should prefer a server-side Gemini boundary or OAuth-backed access controls.
 
 Release decision required:
 
 - Keep BYOK only, add server gateway, add OAuth/account-mediated gateway, or support hybrid mode?
-- Does production AI receive health, nutrition, training, photos, or profile data server-side?
+- Does production AI receive health, nutrition, training, photos, or profile data server-side, and what data do configured providers retain?
 
 Required evidence:
 

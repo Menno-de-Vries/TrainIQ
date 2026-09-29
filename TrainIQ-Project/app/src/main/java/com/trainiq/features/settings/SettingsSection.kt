@@ -961,8 +961,8 @@ fun SettingsScreen(
                 )
         }
         SectionCard(title = "AI / Providers") {
-                Text("AI wordt alleen gebruikt nadat jij het inschakelt. TrainIQ doet geen AI-aanvragen op de achtergrond.")
-                Text("Bij een expliciete AI-actie stuurt TrainIQ de benodigde prompt, context en eventueel gekozen foto naar je gekozen provider met jouw lokaal opgeslagen API-sleutel.")
+                Text("AI blijft uit totdat jij het inschakelt. Benodigde profiel-, trainings- of voedingsgegevens en eventueel jouw gekozen maaltijd- of slimme-weegschaalfoto gaan naar de eerste provider in jouw volgorde waarvoor een sleutel is opgeslagen.")
+                Text("Na afronden van een workout plant TrainIQ een AI-terugblik in. Als AI aanstaat en een providersleutel is opgeslagen, kan die later op de achtergrond worden verwerkt.")
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
