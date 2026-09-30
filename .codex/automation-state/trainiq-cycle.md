@@ -1,6 +1,10 @@
 # Automation State: trainiq-cycle
 
-## Active cycle update (2026-09-29)
+## Active audit update (2026-09-30)
+
+Mode: full audit and bounded implementation. Eight selected improvements and independent-review repairs are locally accepted on `codex/full-audit-2026-09-30`. Current evidence: debug build, Android-test compile, 992 JVM tests, full202/202 Android tests across54 classes (zero failures/errors/skips), lint zero errors/66 warnings, Room marker and compact/expanded dark/light installed-app checks. Local source/report commits and post-commit package provenance are described in the delivery index. Run ledger: `docs/qa/2026-09-30/README.md`. No remote delivery, signing, production mutation or physical performance claim.
+
+## Previous cycle update (2026-09-29)
 
 Mode: polish. The current cycle is implemented and locally verified.
 Last useful change: preserve Health Connect cancellation and per-metric cache/token behavior; avoid presenting missing steps or local fallback recovery as measured data; correct compact Progress selection; keep the active-workout Undo Snackbar clear of the logger; return the persisted undo event ID and serialize set/event ID allocation against fresh Room state.

@@ -30,6 +30,7 @@ import com.trainiq.domain.model.WeeklyReportResult
 import com.trainiq.domain.model.WorkoutDay
 import com.trainiq.domain.model.WorkoutLoggingSummary
 import com.trainiq.domain.model.buildEnergyBalance
+import com.trainiq.domain.repository.MealSaveTarget
 import com.trainiq.domain.repository.MealEntryRequest
 import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.repository.CoachRepository
@@ -446,12 +447,12 @@ class SaveRecipeUseCase @Inject constructor(private val repository: NutritionRep
 
 class SaveMealUseCase @Inject constructor(private val repository: NutritionRepository) {
     suspend operator fun invoke(
-        id: Long?,
+        target: MealSaveTarget,
         mealType: MealType,
         name: String,
         notes: String?,
         items: List<MealEntryRequest>,
-    ) = repository.saveMeal(id, mealType, name, notes, items)
+    ) = repository.saveMeal(target, mealType, name, notes, items)
 }
 
 class DeleteMealUseCase @Inject constructor(private val repository: NutritionRepository) {

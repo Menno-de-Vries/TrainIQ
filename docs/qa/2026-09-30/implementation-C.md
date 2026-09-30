@@ -1,0 +1,13 @@
+# Implementation C — caller-owned AI cancellation
+
+FIX-03 / TECH-03 changes only `AiSupport.kt` and its `AiSupportTest.kt`. Both retry timeout catch boundaries now call `currentCoroutineContext().ensureActive()` before mapping a timeout to provider failure or writing the rate-limit cooldown. An active caller still receives the existing safe owned-timeout mapping; a canceled caller propagates cancellation before failure/fallback state can be updated. No request format, retry budget, provider selection, network call or credential handling changes.
+
+Two deterministic `runTest` regressions use an outer 5 ms deadline against a 100 ms provider budget. Gemini cancellation on its first request must remain `TimeoutCancellationException`, invoke no ordinary caller fallback and record no throttle. OpenAI cancellation during a retry following a temporary rate limit proves the additional state-mutation risk: two attempts, cancellation propagation, no fallback and no recorded cooldown. Existing owned-timeout, quota, bounded backoff and exhausted-rate-limit cases remain in the corresponding suite; Gemini's owned timeout and generic cancellation are also covered by `AiServicesTest`.
+
+Evidence basis: repository retry code, TECH-03 audit and root's official Kotlin reference: [withTimeout](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/with-timeout.html). `ensureActive` checks the caller context after the local timeout scope exits, distinguishing the local canceled child from a canceled enclosing job.
+
+Verification status: `git diff --check` PASS. Focused red attempt was NOT EXECUTED: `:app:testDebugUnitTest --tests 'com.trainiq.ai.services.AiSupportTest.*outerDeadline*' --console=plain --offline` failed at unit compilation because the concurrently introduced `HealthConnectSyncCoordinatorTest` referenced its not-yet-written implementation. This is an intermediate integrated tree, not a baseline defect and not a regression result. Log remains ignored at `TrainIQ-Project/.codex/baseline-2026-09-30/c2-red.log`. No unchanged retry was run; central verification waits for all writers' ready handoffs. Final JVM/instrumented results are recorded in verification.md.
+
+Residual risk: no live AI provider requests were made; this change is coroutine cancellation behavior proven at the JVM layer. No new cross-layer test is needed for the helper contract.
+
+Final acceptance: both outer-deadline cancellation regressions and existing retry/owned-timeout contracts pass within fresh992JVM tests; full202Android also passes. No live provider request was performed. Exact commands and external limitations are in verification.md.

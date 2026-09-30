@@ -154,12 +154,15 @@ class ExerciseHistoryInstrumentedTest {
             assertTrue("Stats title should wrap beyond two lines: ${titleLayouts.map { it.lineCount }}", statsTitleLayout.lineCount > 2)
             assertTrue((0 until statsTitleLayout.lineCount).none(statsTitleLayout::isLineEllipsized))
             assertTrue(statsTitleLayout.multiParagraph.height <= statsTitleLayout.size.height + 1)
+            // At large font sizes the rank is a separate offscreen lazy item.
+            compose.onNode(hasScrollAction()).performScrollToNode(hasText("Sessies"))
             compose.waitForText("Sessies")
-            compose.waitForText("score")
-            compose.onAllNodes(hasText("score", substring = true) and hasClickAction()).assertCountEquals(0)
             compose.waitForText("2")
             compose.waitForText("Beste kg")
             compose.waitForText("90")
+            compose.onNode(hasScrollAction()).performScrollToNode(hasText("score", substring = true))
+            compose.waitForText("score")
+            compose.onAllNodes(hasText("score", substring = true) and hasClickAction()).assertCountEquals(0)
             // The rank card puts the chart below the compact viewport. Ask the lazy
             // list to compose it instead of waiting for an off-screen node to exist.
             compose.onNode(hasScrollAction()).performScrollToNode(hasText("Volume per sessie"))

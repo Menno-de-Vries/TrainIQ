@@ -48,6 +48,10 @@ import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.WorkoutDebrief
 import com.trainiq.domain.model.WorkoutLogEventType
 import com.trainiq.domain.model.WorkoutSyncStatus
+import com.trainiq.domain.repository.MealSaveTarget
+import com.trainiq.domain.repository.MissingMealEditException
+import com.trainiq.domain.repository.MissingRecipeEditException
+import com.trainiq.domain.repository.mealSaveTargetForExistingId
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.roundToInt
@@ -727,14 +731,15 @@ class RoomTrainIqRuntimeStore internal constructor(
         }
     }
 
-    suspend fun saveMeal(meal: LoggedMealStorage, items: List<LoggedMealItemStorage>): Long = mutex.withLock {
+    suspend fun saveMeal(meal: LoggedMealStorage, items: List<LoggedMealItemStorage>, target: MealSaveTarget = mealSaveTargetForExistingId(meal.id)): Long = mutex.withLock {
         database.withTransaction {
-            persistMeal(meal, items)
+            persistMeal(meal, items, target)
         }
     }
 
     internal suspend fun saveMeal(
         meal: LoggedMealStorage,
+        target: MealSaveTarget = mealSaveTargetForExistingId(meal.id),
         buildItems: (List<FoodItemStorage>, List<RecipeStorage>, List<RecipeIngredientStorage>) -> List<LoggedMealItemStorage>,
     ): Long = mutex.withLock {
         database.withTransaction {
@@ -743,18 +748,23 @@ class RoomTrainIqRuntimeStore internal constructor(
                 dao.readRecipesForExport().map { it.toStorage() },
                 dao.readRecipeIngredientsForExport().map { it.toStorage() },
             )
-            persistMeal(meal, items)
+            persistMeal(meal, items, target)
         }
     }
 
-    private suspend fun persistMeal(meal: LoggedMealStorage, items: List<LoggedMealItemStorage>): Long {
-        val mealId = meal.id.takeIf { it > 0L } ?: ((dao.getMaxMealId() ?: 0L) + 1L)
+    private suspend fun persistMeal(meal: LoggedMealStorage, items: List<LoggedMealItemStorage>, target: MealSaveTarget): Long {
+        val mealId = when (target) {
+            is MealSaveTarget.Create -> target.reservedId ?: ((dao.getMaxMealId() ?: 0L) + 1L)
+            is MealSaveTarget.Edit -> target.id
+        }
+        val existing = dao.getMeal(mealId)
+        if (target is MealSaveTarget.Edit && existing == null) throw MissingMealEditException()
         val firstItemId = (dao.getMaxMealItemId() ?: 0L) + 1L
         val persistedItems = items.mapIndexed { index, item ->
             item.copy(id = firstItemId + index, mealId = mealId)
         }
         dao.saveMeal(
-            meal = meal.copy(id = mealId, timestamp = if (meal.dateExplicit) meal.timestamp else dao.getMeal(mealId)?.date ?: meal.timestamp).toMealEntity(persistedItems),
+            meal = meal.copy(id = mealId, timestamp = if (meal.dateExplicit) meal.timestamp else existing?.date ?: meal.timestamp).toMealEntity(persistedItems),
             items = persistedItems.mapIndexed { index, item -> item.toMealItemEntity(orderIndex = index) },
         )
         return mealId
@@ -798,9 +808,11 @@ class RoomTrainIqRuntimeStore internal constructor(
         ingredients: List<RecipeIngredientStorage>,
     ): SavedRecipeSnapshot = mutex.withLock {
         database.withTransaction {
+            val existing = recipe.id.takeIf { it > 0L }?.let { dao.getRecipe(it) }
+            if (recipe.id > 0L && existing == null) throw MissingRecipeEditException()
             val persisted = recipe.copy(
                 id = recipe.id.takeIf { it > 0L } ?: ((dao.getMaxRecipeId() ?: 0L) + 1L),
-                createdAt = dao.getRecipe(recipe.id)?.createdAt ?: recipe.createdAt,
+                createdAt = existing?.createdAt ?: recipe.createdAt,
             )
             val firstIngredientId = (dao.getMaxRecipeIngredientId() ?: 0L) + 1L
             val persistedIngredients = ingredients.mapIndexed { index, ingredient ->

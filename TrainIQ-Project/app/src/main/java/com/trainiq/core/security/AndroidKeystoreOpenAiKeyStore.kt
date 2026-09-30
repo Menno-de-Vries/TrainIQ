@@ -44,8 +44,9 @@ class AndroidKeystoreOpenAiKeyStore @Inject constructor(
     }
 
     override suspend fun clearKey() = withContext(Dispatchers.IO) {
-        storage.edit().remove(IvKey).remove(CiphertextKey).commit()
-        Unit
+        commitEncryptedKeyRemoval {
+            storage.edit().remove(IvKey).remove(CiphertextKey).commit()
+        }
     }
 
     private fun getOrCreateSecretKey(): SecretKey {

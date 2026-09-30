@@ -132,12 +132,14 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.Role
@@ -159,6 +161,9 @@ import com.trainiq.core.ui.launchSingleSubmission
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.trainiq.core.ui.MessageCard
@@ -5015,18 +5020,31 @@ internal fun WorkoutCompletionScreen(
 ) {
     var autoReturnActive by rememberSaveable { mutableStateOf(true) }
     var countdown by rememberSaveable { mutableIntStateOf(12) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val recommendedTimeout = LocalAccessibilityManager.current?.calculateRecommendedTimeoutMillis(
+        originalTimeoutMillis = 12_000L,
+        containsIcons = true,
+        containsText = true,
+        containsControls = true,
+    ) ?: 12_000L
+    val timedReturnEnabled = autoReturnActive && recommendedTimeout != Long.MAX_VALUE
     val listState = rememberLazyListState()
     val cancelAutoReturn = {
         autoReturnActive = false
     }
-    LaunchedEffect(autoReturnActive, uiState is WorkoutCompletionUiState.Success) {
-        if (!autoReturnActive || uiState !is WorkoutCompletionUiState.Success) return@LaunchedEffect
-        countdown = 12
-        while (countdown > 0 && autoReturnActive) {
-            delay(1_000L)
-            countdown -= 1
+    LaunchedEffect(timedReturnEnabled, uiState is WorkoutCompletionUiState.Success, lifecycleOwner, recommendedTimeout) {
+        if (!timedReturnEnabled || uiState !is WorkoutCompletionUiState.Success) return@LaunchedEffect
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            // Returning from another app gives the owner a fresh opportunity to read.
+            val readingTimeMillis = recommendedTimeout.coerceAtLeast(12_000L)
+            countdown = (readingTimeMillis / 1_000L + if (readingTimeMillis % 1_000L == 0L) 0L else 1L)
+                .coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            while (countdown > 0 && autoReturnActive) {
+                delay(1_000L)
+                countdown -= 1
+            }
+            if (autoReturnActive) onHome()
         }
-        if (autoReturnActive) onHome()
     }
     LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
         if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
@@ -5044,6 +5062,10 @@ internal fun WorkoutCompletionScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .consumeWindowInsets(padding)
+                .onPreviewKeyEvent {
+                    cancelAutoReturn()
+                    false
+                }
                 .pointerInput(Unit) {
                     awaitPointerEventScope {
                         while (true) {
@@ -5081,14 +5103,23 @@ internal fun WorkoutCompletionScreen(
                 }
                 is WorkoutCompletionUiState.Success -> {
                     val summary = uiState.summary
-                    item { CompletionHeader(summary) }
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            CompletionHeader(summary)
+                            if (timedReturnEnabled) {
+                                OutlinedButton(onClick = cancelAutoReturn, modifier = Modifier.fillMaxWidth()) {
+                                    Text("Op scherm blijven")
+                                }
+                            }
+                        }
+                    }
                     item { CompletionSmartSummary(summary) }
                     item { CompletionStats(summary) }
                     item { CompletionExerciseOverview(summary.exercises) }
                     item {
                         CompletionActions(
                             countdown = countdown,
-                            autoReturnActive = autoReturnActive,
+                            autoReturnActive = timedReturnEnabled,
                             onBackToTraining = {
                                 cancelAutoReturn()
                                 onBackToTraining()
@@ -5129,15 +5160,23 @@ private fun CompletionHeader(summary: WorkoutCompletionSummary) {
 
 @Composable
 private fun CompletionStats(summary: WorkoutCompletionSummary) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        AppCard(modifier = Modifier.weight(1f), accent = MaterialTheme.colorScheme.primary) {
-            StatusMetric("Oefeningen", summary.exercisesCompleted.toString())
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val stackStats = maxWidth < 280.dp || (LocalDensity.current.fontScale >= 1.3f && maxWidth < 400.dp)
+        val metrics: @Composable (Modifier) -> Unit = { cardModifier ->
+            AppCard(modifier = cardModifier, accent = MaterialTheme.colorScheme.primary) {
+                StatusMetric("Oefeningen", summary.exercisesCompleted.toString())
+            }
+            AppCard(modifier = cardModifier, accent = MaterialTheme.colorScheme.secondary) {
+                StatusMetric("Sets", summary.setsLogged.toString())
+            }
+            AppCard(modifier = cardModifier, accent = MaterialTheme.colorScheme.tertiary) {
+                StatusMetric("Volume", "${summary.totalVolume.toInt()} kg")
+            }
         }
-        AppCard(modifier = Modifier.weight(1f), accent = MaterialTheme.colorScheme.secondary) {
-            StatusMetric("Sets", summary.setsLogged.toString())
-        }
-        AppCard(modifier = Modifier.weight(1f), accent = MaterialTheme.colorScheme.tertiary) {
-            StatusMetric("Volume", "${summary.totalVolume.toInt()} kg")
+        if (stackStats) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { metrics(Modifier.fillMaxWidth()) }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { metrics(Modifier.weight(1f)) }
         }
     }
 }

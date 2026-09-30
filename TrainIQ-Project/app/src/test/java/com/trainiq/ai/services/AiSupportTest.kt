@@ -1,8 +1,10 @@
 package com.trainiq.ai.services
 
 import java.io.IOException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -13,6 +15,69 @@ import retrofit2.Response
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class AiSupportTest {
+    @Test
+    fun callGeminiWithBoundedRetry_outerDeadlinePropagatesWithoutFallbackOrThrottle() = runTest {
+        val throttle = AiFeatureThrottle(nowMillis = { testScheduler.currentTime })
+        var calls = 0
+        var fallbackCalls = 0
+
+        val error = runCatching {
+            withTimeout(5L) {
+                try {
+                    callGeminiWithBoundedRetry(
+                        feature = AiFeature.WEEKLY_REPORT,
+                        timeoutMillis = 100L,
+                        throttle = throttle,
+                    ) {
+                        calls += 1
+                        delay(10L)
+                    }
+                } catch (failure: Exception) {
+                    if (failure !is kotlinx.coroutines.CancellationException) fallbackCalls += 1
+                    throw failure
+                }
+            }
+        }.exceptionOrNull()
+
+        assertTrue(error is TimeoutCancellationException)
+        assertEquals(1, calls)
+        assertEquals(0, fallbackCalls)
+        assertEquals(null, throttle.failureIfThrottled(AiFeature.WEEKLY_REPORT))
+    }
+
+    @Test
+    fun callOpenAiWithBoundedRetry_outerDeadlineAfterRateLimitDoesNotRecordCooldown() = runTest {
+        val throttle = AiFeatureThrottle(nowMillis = { testScheduler.currentTime })
+        var calls = 0
+        var fallbackCalls = 0
+
+        val error = runCatching {
+            withTimeout(5L) {
+                try {
+                    callOpenAiWithBoundedRetry(
+                        feature = AiFeature.WEEKLY_REPORT,
+                        timeoutMillis = 100L,
+                        initialBackoffMillis = 0L,
+                        throttle = throttle,
+                        elapsedRealtimeMillis = { testScheduler.currentTime },
+                    ) {
+                        calls += 1
+                        if (calls == 1) throw failure(AiFailureCategory.TEMPORARY_RATE_LIMIT)
+                        delay(10L)
+                    }
+                } catch (failure: Exception) {
+                    if (failure !is kotlinx.coroutines.CancellationException) fallbackCalls += 1
+                    throw failure
+                }
+            }
+        }.exceptionOrNull()
+
+        assertTrue(error is TimeoutCancellationException)
+        assertEquals(2, calls)
+        assertEquals(0, fallbackCalls)
+        assertEquals(null, throttle.failureIfThrottled(AiFeature.WEEKLY_REPORT))
+    }
+
     @Test
     fun toAiUserMessage_mapsOpenAiFailuresToDistinctActionableCauses() {
         val authentication = failure(AiFailureCategory.AUTHENTICATION).toAiUserMessage("generic")

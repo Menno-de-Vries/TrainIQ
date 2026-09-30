@@ -112,6 +112,10 @@ class HealthConnectDataSource @Inject constructor(
     }
 
     suspend fun getStatus(): HealthConnectStatus = withContext(Dispatchers.IO) {
+        preferencesRepository.withHealthConnectSync { readStatusAndSync() }
+    }
+
+    private suspend fun readStatusAndSync(): HealthConnectStatus =
         when (HealthConnectClient.getSdkStatus(context)) {
             HealthConnectClient.SDK_UNAVAILABLE -> {
                 preferencesRepository.clearHealthConnectSyncPreferences()
@@ -141,7 +145,6 @@ class HealthConnectDataSource @Inject constructor(
                 stepDataFreshness = HealthConnectStepDataFreshness.ERROR,
             )
         }
-    }
 
     private suspend fun fetchConnectedStatus(): HealthConnectStatus {
         return runHealthConnectSyncCatchingCancellation {

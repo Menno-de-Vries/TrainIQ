@@ -31,6 +31,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import com.trainiq.features.nutrition.importScannerImage
 import com.trainiq.features.nutrition.deleteScannerTemporaryImage
@@ -38,11 +39,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -89,6 +93,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import java.util.Locale
 
 enum class ProgressMeasurementField {
@@ -120,8 +125,59 @@ sealed interface ProgressUiState {
         val message: UiMessage? = null,
         val isSaving: Boolean = false,
         val savedMeasurement: ValidatedProgressMeasurement? = null,
+        val isAnalyzingPhoto: Boolean = false,
     ) : ProgressUiState
     data class Error(val message: String) : ProgressUiState
+}
+
+/** Owns admission across image copying and analysis, independently from the saveable form. */
+internal class ProgressPhotoImportSession(
+    scope: CoroutineScope,
+    private val releaseImage: (String) -> Unit,
+) {
+    private val request = com.trainiq.features.nutrition.LatestScanRequest(scope, releaseImage)
+    private var revision = 0L
+    private val pending = MutableStateFlow(false)
+    val isPending: StateFlow<Boolean> = pending
+
+    fun begin(): Long {
+        invalidate()
+        pending.value = true
+        return revision
+    }
+
+    fun invalidate() {
+        revision++
+        pending.value = false
+        request.cancel()
+    }
+
+    fun finishCopyFailure(token: Long): Boolean {
+        if (!isCurrent(token)) return false
+        pending.value = false
+        return true
+    }
+
+    private fun isCurrent(token: Long) = token == revision && pending.value
+
+    fun <T> analyze(token: Long, path: String, analyze: suspend () -> T, publish: (T) -> Unit, fail: (Throwable) -> Unit) {
+        if (!isCurrent(token)) {
+            // Do not use request.discard: an older copy must not cancel a newer analysis.
+            releaseImage(path)
+            return
+        }
+        request.start(path, analyze, { result ->
+            if (isCurrent(token)) {
+                pending.value = false
+                publish(result)
+            }
+        }, { error ->
+            if (isCurrent(token)) {
+                pending.value = false
+                fail(error)
+            }
+        })
+    }
 }
 
 private data class ProgressMeasurementFieldSpec(
@@ -204,15 +260,17 @@ class ProgressViewModel @Inject constructor(
     private val _message = MutableStateFlow<UiMessage?>(null)
     private data class SaveState(val isSaving: Boolean = false, val saved: ValidatedProgressMeasurement? = null)
     private val saveState = MutableStateFlow(SaveState())
-    val uiState: StateFlow<ProgressUiState> = combine(overview, _message, saveState) { current, message, save ->
+    private val importedScaleScan = ProgressPhotoImportSession(viewModelScope, ::deleteScannerTemporaryImage)
+    val uiState: StateFlow<ProgressUiState> = combine(overview, _message, saveState, importedScaleScan.isPending) { current, message, save, analyzing ->
         when (val state = progressUiState(current, message)) {
-            is ProgressUiState.Success -> state.copy(isSaving = save.isSaving, savedMeasurement = save.saved)
+            is ProgressUiState.Success -> state.copy(isSaving = save.isSaving, savedMeasurement = save.saved, isAnalyzingPhoto = analyzing)
             else -> state
         }
     }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ProgressUiState.Loading)
 
     fun addMeasurement(weight: String, bodyFat: String, muscleMass: String) {
+        cancelScalePhotoAnalysis()
         if (saveState.value.isSaving) return
         when (val validation = validateProgressMeasurementInput(weight, bodyFat, muscleMass)) {
             is ProgressMeasurementValidationResult.Invalid -> {
@@ -251,12 +309,19 @@ class ProgressViewModel @Inject constructor(
         }
     }
 
-    private val importedScaleScan = com.trainiq.features.nutrition.LatestScanRequest(viewModelScope) {
-        deleteScannerTemporaryImage(it)
+    fun beginScalePhotoImport(): Long = importedScaleScan.begin()
+
+    fun cancelScalePhotoAnalysis() = importedScaleScan.invalidate()
+
+    fun scalePhotoCopyFailed(token: Long) {
+        if (importedScaleScan.finishCopyFailure(token)) {
+            emitMessage("Foto importeren mislukt. Probeer opnieuw of vul handmatig in.")
+        }
     }
 
-    fun analyzeScalePhoto(path: String, context: String, onResult: (com.trainiq.domain.model.BodyMeasurementPhotoResult) -> Unit) {
-        importedScaleScan.start(
+    fun analyzeScalePhoto(token: Long, path: String, context: String, onResult: (com.trainiq.domain.model.BodyMeasurementPhotoResult) -> Unit) {
+        importedScaleScan.analyze(
+            token = token,
             path = path,
             analyze = { analyzeBodyMeasurementPhotoUseCase(path, context) },
             publish = { result ->
@@ -294,6 +359,7 @@ fun ProgressRoute(
     pendingScaleNotes: String? = null,
     onScaleResultConsumed: () -> Unit = {},
     onOpenScaleScanner: () -> Unit = {},
+    onBack: () -> Unit = {},
     viewModel: ProgressViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -309,8 +375,13 @@ fun ProgressRoute(
         pendingScaleNotes = pendingScaleNotes,
         onScaleResultConsumed = onScaleResultConsumed,
         onOpenScaleScanner = onOpenScaleScanner,
-        onAnalyzeImportedScalePhoto = { path, onResult ->
+        onBack = onBack,
+        onBeginScalePhotoImport = viewModel::beginScalePhotoImport,
+        onCancelScalePhotoAnalysis = viewModel::cancelScalePhotoAnalysis,
+        onScalePhotoCopyFailed = viewModel::scalePhotoCopyFailed,
+        onAnalyzeImportedScalePhoto = { token, path, onResult ->
             viewModel.analyzeScalePhoto(
+                token = token,
                 path = path,
                 context = "Lees gewicht, vetpercentage en spiermassa uit van de geimporteerde smart-weegschaalfoto.",
                 onResult = onResult,
@@ -332,9 +403,17 @@ fun ProgressScreen(
     pendingScaleNotes: String? = null,
     onScaleResultConsumed: () -> Unit = {},
     onOpenScaleScanner: () -> Unit = {},
-    onAnalyzeImportedScalePhoto: (String, (com.trainiq.domain.model.BodyMeasurementPhotoResult) -> Unit) -> Unit = { _, _ -> },
+    onBack: () -> Unit = {},
+    onBeginScalePhotoImport: () -> Long = { 0L },
+    onCancelScalePhotoAnalysis: () -> Unit = {},
+    onScalePhotoCopyFailed: (Long) -> Unit = {},
+    onAnalyzeImportedScalePhoto: (Long, String, (com.trainiq.domain.model.BodyMeasurementPhotoResult) -> Unit) -> Unit = { _, _, _ -> },
 ) {
     val context = LocalContext.current
+    val cancelPhotoAnalysis by rememberUpdatedState(onCancelScalePhotoAnalysis)
+    DisposableEffect(Unit) {
+        onDispose { cancelPhotoAnalysis() }
+    }
     var weight by rememberSaveable { mutableStateOf("") }
     var bodyFat by rememberSaveable { mutableStateOf("") }
     var muscleMass by rememberSaveable { mutableStateOf("") }
@@ -357,12 +436,13 @@ fun ProgressScreen(
     val imageImportScope = rememberCoroutineScope()
     val photoImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
+        val token = onBeginScalePhotoImport()
         imageImportScope.launch {
             importScannerImage(
                 copy = { copyScannerImageFromUri(context, uri) },
-                failed = { scalePhotoNote = "Foto importeren mislukt. Probeer opnieuw of vul handmatig in." },
+                failed = { onScalePhotoCopyFailed(token) },
                 consume = { path ->
-                    onAnalyzeImportedScalePhoto(path) { result ->
+                    onAnalyzeImportedScalePhoto(token, path) { result ->
                         weight = result.weight.takeIf { it > 0.0 }?.let(::oneDecimal).orEmpty()
                         bodyFat = result.bodyFat.takeIf { it > 0.0 }?.let(::oneDecimal).orEmpty()
                         muscleMass = result.muscleMass.takeIf { it > 0.0 }?.let(::oneDecimal).orEmpty()
@@ -396,6 +476,7 @@ fun ProgressScreen(
 
     LaunchedEffect(pendingScaleWeight, pendingScaleBodyFat, pendingScaleMuscleMass) {
         if (pendingScaleWeight != null || pendingScaleBodyFat != null || pendingScaleMuscleMass != null) {
+            onCancelScalePhotoAnalysis()
             pendingScaleWeight?.let {
                 weight = it
                 weightTouched = true
@@ -431,7 +512,16 @@ fun ProgressScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
         ) {
-            item { ScreenHeader(title = "Lichaam & voortgang", subtitle = "Metingen, grafieken en krachttrends") }
+            item {
+                TextButton(
+                    onClick = {
+                        onCancelScalePhotoAnalysis()
+                        onBack()
+                    },
+                    modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Terug naar Coach" },
+                ) { Text("Terug naar Coach") }
+                ScreenHeader(title = "Lichaam & voortgang", subtitle = "Metingen, grafieken en krachttrends")
+            }
             when (uiState) {
             ProgressUiState.Loading -> {
                 item { ShimmerCardPlaceholder(lineCount = 4) }
@@ -485,18 +575,31 @@ fun ProgressScreen(
                         bodyFat = latestBodyFatText(overview.measurements),
                         muscleMass = latestMuscleMassText(overview.measurements),
                     )
-                    OutlinedButton(onClick = onOpenScaleScanner, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = {
+                        onCancelScalePhotoAnalysis()
+                        onOpenScaleScanner()
+                    }, modifier = Modifier.fillMaxWidth()) {
                         Text("Smart-weegschaal foto maken")
                     }
                     OutlinedButton(
-                        onClick = { photoImportLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                        onClick = {
+                            onCancelScalePhotoAnalysis()
+                            photoImportLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(scalePhotoImportLabel())
                     }
+                    if (successState?.isAnalyzingPhoto == true) {
+                        Text("Weegfoto analyseren… Je kunt handmatig verdergaan.")
+                        TextButton(onClick = onCancelScalePhotoAnalysis, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text("Fotoanalyse annuleren")
+                        }
+                    }
                     MeasurementTextField(
                         value = weight,
                         onValueChange = {
+                            onCancelScalePhotoAnalysis()
                             weight = it
                             weightTouched = true
                         },
@@ -507,6 +610,7 @@ fun ProgressScreen(
                     MeasurementTextField(
                         value = bodyFat,
                         onValueChange = {
+                            onCancelScalePhotoAnalysis()
                             bodyFat = it
                             bodyFatTouched = true
                         },
@@ -517,6 +621,7 @@ fun ProgressScreen(
                     MeasurementTextField(
                         value = muscleMass,
                         onValueChange = {
+                            onCancelScalePhotoAnalysis()
                             muscleMass = it
                             muscleMassTouched = true
                         },
@@ -526,6 +631,7 @@ fun ProgressScreen(
                     )
                     PrimaryActionButton(onClick = {
                         if (measurementValidation is ProgressMeasurementValidationResult.Valid) {
+                            onCancelScalePhotoAnalysis()
                             onAddMeasurement(weight, bodyFat, muscleMass)
                         }
                     }, enabled = canSaveMeasurement, modifier = Modifier.fillMaxWidth(), accent = MaterialTheme.trainIqColors.amber) {

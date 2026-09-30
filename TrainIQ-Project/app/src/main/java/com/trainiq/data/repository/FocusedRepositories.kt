@@ -33,6 +33,7 @@ import com.trainiq.domain.model.WorkoutLoggingSummary
 import com.trainiq.domain.model.WorkoutOverview
 import com.trainiq.domain.repository.CoachRepository
 import com.trainiq.domain.repository.HomeRepository
+import com.trainiq.domain.repository.MealSaveTarget
 import com.trainiq.domain.repository.MealEntryRequest
 import com.trainiq.domain.repository.NutritionRepository
 import com.trainiq.domain.repository.ProgressRepository
@@ -135,8 +136,8 @@ class RoomNutritionRepository @Inject constructor(
         delegate.saveFoodItem(id, name, barcode, caloriesPer100g, proteinPer100g, carbsPer100g, fatPer100g, defaultServingGrams, sourceType)
     override suspend fun saveRecipe(id: Long?, name: String, notes: String?, totalCookedGrams: Double?, ingredients: List<Pair<Long, Double>>): Recipe =
         delegate.saveRecipe(id, name, notes, totalCookedGrams, ingredients)
-    override suspend fun saveMeal(id: Long?, mealType: MealType, name: String, notes: String?, items: List<MealEntryRequest>): Long =
-        delegate.saveMeal(id, mealType, name, notes, items)
+    override suspend fun saveMeal(target: MealSaveTarget, mealType: MealType, name: String, notes: String?, items: List<MealEntryRequest>): Long =
+        delegate.saveMeal(target, mealType, name, notes, items)
     override suspend fun deleteMeal(mealId: Long) = delegate.deleteMeal(mealId)
     override suspend fun deleteFood(foodId: Long) = delegate.deleteFood(foodId)
     override suspend fun deleteRecipe(recipeId: Long) = delegate.deleteRecipe(recipeId)
