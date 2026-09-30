@@ -1,5 +1,11 @@
 # TrainIQ Target-State Progress
 
+## 2026-09-30 Targeted Active Workout polish
+
+- The workout portion of QA-2026-05-09-011 now has coherent set surfaces, compact labelled metric inputs, differentiated typography and integrated adaptive bottom controls. Existing workout state logic, persistence and architecture are retained.
+- See [scope, exact local verification and runtime evidence](qa/TrainIQ_Active_Workout_Polish_2026-09-30.md). The broader finding remains partially done; no other P0/P1/P2/P3 status is changed and global alignment is not reassessed.
+- No external research or service change was required for this local presentation refinement. Remaining acceptance limits and the next safe verification scope are recorded in the evidence document.
+
 ## 2026-09-28 Autonomous whole-app quality cycle
 
 - Reproduced and fixed expanded-route width/centering, first-run onboarding actions below the fold, Health Connect full-sync token ordering, long custom exercise-name truncation, instrumentation focus/back harness issues, and the missing cancel action for new scanned products.

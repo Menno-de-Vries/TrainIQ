@@ -501,7 +501,18 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             scenario.recreate()
             compose.waitForText("Actieve training")
             compose.onNodeWithText("Rustig opbouwen vandaag").performScrollTo().assertIsDisplayed()
-            compose.onNodeWithContentDescription("Open oefening").performScrollTo().performClick()
+            // The restoration Snackbar can cover the collapsed exercise's toggle on compact screens.
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("Actieve training hersteld.").fetchSemanticsNodes().isEmpty()
+            }
+            compose.onNodeWithContentDescription("Open oefening").performScrollTo()
+            capture("recreated-before-open")
+            compose.onNodeWithContentDescription("Open oefening").performClick()
+            capture("recreated-after-open")
+            // Collapse changes persist through a coroutine; Compose idleness alone does not await it.
+            compose.waitUntil(10_000) {
+                compose.onAllNodes(hasContentDescription("Set toevoegen aan Bench Press")).fetchSemanticsNodes().isNotEmpty()
+            }
             compose.onNodeWithContentDescription("Set toevoegen aan Bench Press").performScrollTo().assertIsDisplayed()
         }
     }
@@ -595,6 +606,71 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             val snackbar = compose.onNodeWithText("Set 2 gelogd", substring = true).assertIsDisplayed()
                 .fetchSemanticsNode().boundsInRoot
             assertTrue("Snackbar moet boven de bereikbare actiebalk blijven.", snackbar.bottom <= finish.top)
+        }
+    }
+
+    @Test
+    fun compactFirstSetKeepsMetricTapTargetsAndAlignedInputs() {
+        runBlocking {
+            database.dao().deleteActiveWorkoutSetsForSession(12L)
+            database.dao().insertRoutineSets(listOf(
+                RoutineSetEntity(id = 11L, workoutExerciseId = 4L, orderIndex = 1, setType = "NORMAL", targetReps = 5, restSeconds = 120),
+                RoutineSetEntity(id = 12L, workoutExerciseId = 4L, orderIndex = 2, setType = "NORMAL", targetReps = 5, restSeconds = 120),
+            ))
+        }
+        ActivityScenario.launch(MainActivity::class.java).use {
+            val training = (hasText("Training") or hasContentDescription("Training")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(training).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(training).performClick()
+            compose.waitForText("QA Upper")
+            compose.onNodeWithText("Training starten").performClick()
+            compose.waitForText("Actieve training")
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("Actieve training hersteld.").fetchSemanticsNodes().isEmpty()
+            }
+            metricInput("Herh.").performScrollTo()
+            val density = context.resources.displayMetrics.density
+            val fontScale = context.resources.configuration.fontScale
+            val bounds = listOf("Herh.", "Gewicht in kilogram", "Rust in seconden").map { description ->
+                compose.onNodeWithContentDescription(description, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            }
+            val compactHeightLimit = (64f + (fontScale - 1f).coerceAtLeast(0f) * 28f) * density
+            bounds.forEach { cell ->
+                assertTrue("Metric cell must retain a 48dp tap target: $cell", cell.width >= 48f * density && cell.height >= 48f * density)
+                assertTrue("Metric cell should remain compact at font scale $fontScale: $cell", cell.height <= compactHeightLimit + 1f)
+            }
+            assertTrue("Metric heights must match", bounds.maxOf { it.height } - bounds.minOf { it.height } <= 1f)
+            assertTrue("Metric labels and values must align", bounds.maxOf { it.top } - bounds.minOf { it.top } <= 1f)
+            bounds.zipWithNext().forEach { (left, right) -> assertTrue("Metric cells must not overlap", left.right <= right.left) }
+            capture("polish-first-set")
+            compose.onAllNodes(hasContentDescription("Geplande set uit deze training verwijderen"))[0]
+                .performScrollTo().performClick()
+            compose.onNodeWithText("Set 3", useUnmergedTree = true).assertDoesNotExist()
+            compose.onNodeWithContentDescription("Set toevoegen aan Bench Press").performScrollTo().performClick()
+            compose.onNodeWithText("Set 3", useUnmergedTree = true).assertExists()
+            metricInput("Herh.").performScrollTo()
+            metricInput("Herh.").performClick().performTextReplacement("7")
+            metricInput("Herh.").performImeAction()
+            metricInput("Gewicht in kilogram").assertIsFocused().performTextReplacement("27.5")
+            metricInput("Gewicht in kilogram").performImeAction()
+            metricInput("Rust in seconden").assertIsFocused().performTextReplacement("75")
+            metricInput("Rust in seconden").performImeAction()
+            val submit = compose.onNode(hasText("Set loggen") and hasClickAction()).performScrollTo().assertIsDisplayed()
+            val submitBounds = submit.fetchSemanticsNode().boundsInRoot
+            assertTrue("Log action must retain a 48dp target", submitBounds.height >= 48f * density)
+            submit.performClick()
+            waitForSetCount(1)
+            val set = readActiveWorkoutSet()
+            assertEquals(7, set.reps)
+            assertEquals(27.5, set.weight, 0.0)
+            assertEquals(75, set.restSeconds)
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("Set 1 gelogd", substring = true).fetchSemanticsNodes().isEmpty()
+            }
+            capture("polish-completed-next")
+            val finish = compose.onNodeWithContentDescription("Training afronden").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+            assertTrue("Finish action must retain a 48dp target", finish.width >= 48f * density && finish.height >= 48f * density)
+            assertTrue("Finish action must stay inside the app viewport", finish.bottom <= compose.onRoot().fetchSemanticsNode().boundsInRoot.bottom)
         }
     }
 

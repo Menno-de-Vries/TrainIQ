@@ -1012,6 +1012,7 @@ Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emula
 - status: partially-done
 - owner suggestion: Android UI owner
 - current evidence with file references:
+  - 2026-09-30 targeted Active Workout refinement uses compact metric containers, coherent active/upcoming/completed surfaces, quieter previous/target context and an integrated adaptive bottom bar. Scope and local/runtime verification are recorded in [Active Workout polish evidence](qa/TrainIQ_Active_Workout_Polish_2026-09-30.md). This updates the workout portion only; routine-generation and wider device/accessibility acceptance remain outside this batch, so the finding stays partially-done.
   - Prior runtime artifact `runtime-gemini-test/active-workout-start.xml` shows dense active-workout rows with clipped/tiny bounds for `Set 1`.
   - Prior runtime artifact `runtime-gemini-test/routine-ai-dialog.xml` includes `NAF="true"` nodes and English labels such as `Days per week`, `Available equipment`, and `Experience level`.
   - Current worktree uses a `ModalBottomSheet` for generated routine preview and replaces no-op metadata `AssistChip` controls with non-clickable `GeneratedRoutineInfoPill` labels in `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/RoutineDialogs.kt`.

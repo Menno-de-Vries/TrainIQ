@@ -9,6 +9,7 @@ import android.app.Activity
 import android.os.SystemClock
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Canvas
@@ -135,6 +136,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -5959,13 +5961,13 @@ private fun ActiveWorkoutBottomBar(
     val clock by clockState
     Surface(
         modifier = Modifier.navigationBarsPadding(),
-        color = MaterialTheme.colorScheme.background,
+        color = MaterialTheme.colorScheme.surfaceContainer,
         tonalElevation = 0.dp,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 0.dp)
+                .padding(horizontal = MaterialTheme.spacing.compact, vertical = MaterialTheme.spacing.extraSmall)
                 .semantics(mergeDescendants = true) {
                     contentDescription = activeWorkoutBottomBarContentDescription(uiState, clock.restTimerSeconds)
                 },
@@ -5980,55 +5982,65 @@ private fun ActiveWorkoutBottomBar(
                     },
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                    Text(
-                        if (clock.restTimerSeconds > 0) "Rust ${formatTimer(clock.restTimerSeconds)}" else "Klaar voor volgende set",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        activeLoggedSetCountText(uiState.visibleLoggedSetCount),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val stackStatus = if (clock.restTimerSeconds > 0) {
+                    maxWidth < 328.dp || (LocalDensity.current.fontScale >= 1.3f && maxWidth < 400.dp)
+                } else {
+                    maxWidth < 280.dp
                 }
-                if (clock.restTimerSeconds > 0) {
-                    IconButton(onClick = { onAdjustRestTimer(-30) }, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Rounded.Remove, contentDescription = restTimerAdjustContentDescription(-30))
+                val status: @Composable () -> Unit = {
+                    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                        Text(
+                            if (clock.restTimerSeconds > 0) "Rust ${formatTimer(clock.restTimerSeconds)}" else "Klaar voor volgende set",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Text(
+                            activeLoggedSetCountText(uiState.visibleLoggedSetCount),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
-                    IconButton(onClick = { onAdjustRestTimer(30) }, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Rounded.Add, contentDescription = restTimerAdjustContentDescription(30))
-                    }
-                    IconButton(
-                        onClick = onSkipRestTimer,
-                        modifier = Modifier.size(48.dp),
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall)) {
+                    if (stackStatus) status()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall, Alignment.End),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(Icons.Rounded.SkipNext, contentDescription = restTimerSkipContentDescription())
-                    }
-                }
-                PrimaryActionButton(
-                    onClick = onFinishClick,
-                    enabled = uiState.workout != null,
-                    modifier = Modifier
-                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-                        .semantics {
-                            contentDescription = activeWorkoutFinishContentDescription(uiState.workout != null)
-                        },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                ) {
-                    Icon(Icons.Default.Check, contentDescription = null)
-                    if (clock.restTimerSeconds == 0) {
-                        Spacer(Modifier.width(6.dp))
-                        Text("Afronden")
+                        if (!stackStatus) Box(modifier = Modifier.weight(1f)) { status() }
+                        if (clock.restTimerSeconds > 0) {
+                            IconButton(onClick = { onAdjustRestTimer(-30) }, modifier = Modifier.size(48.dp)) {
+                                Icon(Icons.Rounded.Remove, contentDescription = restTimerAdjustContentDescription(-30))
+                            }
+                            IconButton(onClick = { onAdjustRestTimer(30) }, modifier = Modifier.size(48.dp)) {
+                                Icon(Icons.Rounded.Add, contentDescription = restTimerAdjustContentDescription(30))
+                            }
+                            IconButton(
+                                onClick = onSkipRestTimer,
+                                modifier = Modifier.size(48.dp),
+                            ) {
+                                Icon(Icons.Rounded.SkipNext, contentDescription = restTimerSkipContentDescription())
+                            }
+                        }
+                        Button(
+                            onClick = onFinishClick,
+                            enabled = uiState.workout != null,
+                            shape = MaterialTheme.shapes.medium,
+                            modifier = Modifier
+                                .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                .semantics {
+                                    contentDescription = activeWorkoutFinishContentDescription(uiState.workout != null)
+                                },
+                            contentPadding = PaddingValues(horizontal = MaterialTheme.spacing.compact, vertical = MaterialTheme.spacing.small),
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null)
+                            if (clock.restTimerSeconds == 0) {
+                                Spacer(Modifier.width(6.dp))
+                                Text("Afronden", style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
                     }
                 }
             }
@@ -6261,6 +6273,7 @@ private fun ActiveExerciseCard(
         modifier = Modifier.fillMaxWidth().semantics {
             stateDescription = if (collapsed) "Ingeklapt" else "Uitgeklapt"
         },
+        contentPadding = PaddingValues(MaterialTheme.spacing.compact),
         accent = when {
             isAutoAdvanceTarget -> MaterialTheme.colorScheme.secondary
             loggedSets.size >= plannedSetCount -> MaterialTheme.trainIqColors.mint
@@ -6281,17 +6294,17 @@ private fun ActiveExerciseCard(
                             onClickLabel = "Open geschiedenis",
                             onClick = onOpenHistory,
                         ),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
                 ) {
                     Text(
                         plan.exercise.name,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
                     )
                     Text(
                         "${loggedSets.size}/$plannedSetCount sets - ${plan.repRange} herh.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.trainIqColors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         softWrap = false,
                         overflow = TextOverflow.Ellipsis,
@@ -6686,6 +6699,7 @@ private fun SetTypeSelector(
 private fun SetTypePill(
     setType: SetType,
     enabled: Boolean,
+    compact: Boolean = false,
     onClick: () -> Unit,
 ) {
     val color = setTypeColor(setType)
@@ -6699,11 +6713,28 @@ private fun SetTypePill(
                 onClick = onClick,
             ),
         shape = RoundedCornerShape(999.dp),
-        color = color.copy(alpha = if (enabled) 0.26f else 0.14f),
+        color = if (compact) Color.Transparent else color.copy(alpha = if (enabled) 0.26f else 0.14f),
         contentColor = color,
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-            Text(setType.shortCode(), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            if (compact) {
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = color.copy(alpha = if (enabled) 0.26f else 0.14f),
+                    contentColor = color,
+                ) {
+                    Text(
+                        setType.shortCode(),
+                        modifier = Modifier.defaultMinSize(minWidth = 28.dp, minHeight = 24.dp)
+                            .padding(horizontal = MaterialTheme.spacing.extraSmall, vertical = 2.dp),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            } else {
+                Text(setType.shortCode(), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
@@ -6817,32 +6848,17 @@ private fun ActiveSetInputMetricValue(
         "s" -> "Rust in seconden"
         else -> label
     }
-    val textStyle = MaterialTheme.typography.labelMedium.copy(
+    val textStyle = MaterialTheme.typography.bodyMedium.copy(
         fontWeight = FontWeight.SemiBold,
         color = MaterialTheme.colorScheme.onSurface,
         textAlign = TextAlign.Center,
     )
     Column(
-        modifier = modifier
-            .defaultMinSize(minWidth = 52.dp, minHeight = 52.dp)
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.62f), MaterialTheme.shapes.small)
-            .padding(horizontal = 6.dp, vertical = 4.dp)
-            .semantics {
-                contentDescription = content
-                errorText?.let { error(it) }
-            },
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(1.dp),
+        modifier = modifier.semantics {
+            contentDescription = content
+            errorText?.let { error(it) }
+        },
     ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = if (errorText == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
-            maxLines = 1,
-            softWrap = false,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-        )
         BasicTextField(
             value = value,
             onValueChange = { raw ->
@@ -6871,7 +6887,9 @@ private fun ActiveSetInputMetricValue(
             ),
             modifier = Modifier
                 .fillMaxWidth()
-                .defaultMinSize(minHeight = 48.dp)
+                .defaultMinSize(minHeight = 56.dp)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.shapes.small)
+                .padding(horizontal = MaterialTheme.spacing.small, vertical = MaterialTheme.spacing.extraSmall)
                 .onFocusChanged { state ->
                     if (state.isFocused && !focused) {
                         valueBeforeFocus = value
@@ -6882,22 +6900,35 @@ private fun ActiveSetInputMetricValue(
                     focused = state.isFocused
                 },
             decorationBox = { innerTextField ->
-                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    if (value.isBlank() && !focused) {
-                        Text(
-                            fallback.orEmpty(),
-                            style = textStyle.copy(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(modifier = Modifier.weight(1f)) {
-                            innerTextField()
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
+                ) {
+                    Text(
+                        label,
+                        modifier = Modifier.clearAndSetSemantics { },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (errorText == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
+                    )
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        if (value.isBlank() && !focused) {
+                            Text(
+                                fallback.orEmpty(),
+                                style = textStyle.copy(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(modifier = Modifier.weight(1f)) {
+                                innerTextField()
+                            }
                         }
                     }
                 }
@@ -6934,14 +6965,12 @@ private fun SetRow(
     var showDeleteConfirm by remember(index, loggedSet) { mutableStateOf(false) }
     var setTypeMenuExpanded by remember(index, loggedSet?.id, plannedSet?.id) { mutableStateOf(false) }
     val visibleSetType = draft?.takeIf { isInputExpanded }?.setType ?: loggedSet?.setType ?: plannedSet?.setType
-    val background = if (isCurrent) {
-        MaterialTheme.trainIqColors.amber.copy(alpha = 0.18f)
-    } else {
-        MaterialTheme.colorScheme.surfaceVariant
+    val emphasized = isCurrent || isCorrecting
+    val rowColor = when {
+        emphasized -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+        loggedSet?.completed == true -> MaterialTheme.colorScheme.surfaceContainer
+        else -> MaterialTheme.colorScheme.surfaceContainerLow
     }
-    val rowColor = if (loggedSet?.completed == true && !isCorrecting) {
-        MaterialTheme.colorScheme.primaryContainer
-    } else background
     val metricCells = activeSetMetricCells(
         repRange = repRange,
         plannedSet = plannedSet,
@@ -6968,6 +6997,7 @@ private fun SetRow(
         modifier = Modifier
             .fillMaxWidth()
             .background(rowColor, MaterialTheme.shapes.small)
+            .border(1.dp, if (emphasized) MaterialTheme.colorScheme.primary else Color.Transparent, MaterialTheme.shapes.small)
             .semantics { stateDescription = when {
                 isCorrecting -> "Correctie"
                 loggedSet?.completed == true -> "Voltooid"
@@ -6977,52 +7007,10 @@ private fun SetRow(
             .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .defaultMinSize(minHeight = ActiveSetHeaderMinHeight),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(modifier = Modifier.size(20.dp), contentAlignment = Alignment.Center) {
-                if (loggedSet?.completed == true && !isCorrecting) {
-                    Icon(Icons.Default.Check, contentDescription = "Voltooide set", modifier = Modifier.size(18.dp))
-                } else if (isCorrecting) {
-                    Icon(Icons.Rounded.Edit, contentDescription = "Set wordt gecorrigeerd", modifier = Modifier.size(18.dp))
-                }
-            }
-            Box {
-                SetTypePill(
-                    setType = visibleSetType ?: SetType.NORMAL,
-                    enabled = loggedSet != null || isInputExpanded,
-                    onClick = { setTypeMenuExpanded = true },
-                )
-                DropdownMenu(
-                    expanded = setTypeMenuExpanded,
-                    onDismissRequest = { setTypeMenuExpanded = false },
-                ) {
-                    SetType.entries.forEach { type ->
-                        DropdownMenuItem(
-                            text = { Text(type.label()) },
-                            onClick = {
-                                setTypeMenuExpanded = false
-                                onSetTypeSelected(type)
-                            },
-                        )
-                    }
-                }
-            }
-            Text(
-                text = "Set $index",
-                modifier = Modifier
-                    .weight(1f),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (loggedSet != null) {
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            // Reserve the status, badge, actions and a readable title before sharing one row.
+            val separateActions = maxWidth < 242.dp + 44.dp * LocalDensity.current.fontScale
+            val loggedActions: @Composable () -> Unit = {
                 IconButton(onClick = onRelog, modifier = Modifier.size(48.dp)) {
                     Icon(Icons.Rounded.Replay, contentDescription = relogSetContentDescription())
                 }
@@ -7032,9 +7020,69 @@ private fun SetRow(
                 IconButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.size(48.dp)) {
                     Icon(Icons.Rounded.Delete, contentDescription = "Set verwijderen")
                 }
-            } else if (canRemovePlanned) {
-                IconButton(onClick = onRemovePlanned, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.Rounded.DeleteOutline, contentDescription = "Geplande set uit deze training verwijderen")
+            }
+            Column {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = ActiveSetHeaderMinHeight),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(modifier = Modifier.size(20.dp), contentAlignment = Alignment.Center) {
+                        if (loggedSet?.completed == true && !isCorrecting) {
+                            Icon(Icons.Default.Check, contentDescription = "Voltooide set", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                        } else if (isCorrecting) {
+                            Icon(Icons.Rounded.Edit, contentDescription = "Set wordt gecorrigeerd", modifier = Modifier.size(18.dp))
+                        }
+                    }
+                    Box {
+                        SetTypePill(
+                            setType = visibleSetType ?: SetType.NORMAL,
+                            enabled = loggedSet != null || isInputExpanded,
+                            compact = true,
+                            onClick = { setTypeMenuExpanded = true },
+                        )
+                        DropdownMenu(
+                            expanded = setTypeMenuExpanded,
+                            onDismissRequest = { setTypeMenuExpanded = false },
+                        ) {
+                            SetType.entries.forEach { type ->
+                                DropdownMenuItem(
+                                    text = { Text(type.label()) },
+                                    onClick = {
+                                        setTypeMenuExpanded = false
+                                        onSetTypeSelected(type)
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        text = "Set $index",
+                        modifier = Modifier
+                            .weight(1f),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (loggedSet == null && canRemovePlanned) {
+                        IconButton(onClick = onRemovePlanned, modifier = Modifier.size(48.dp)) {
+                            Icon(Icons.Rounded.DeleteOutline, contentDescription = "Geplande set uit deze training verwijderen")
+                        }
+                    }
+                    if (loggedSet != null && !separateActions) loggedActions()
+                }
+                if (loggedSet != null && separateActions) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        loggedActions()
+                    }
                 }
             }
         }
@@ -7042,13 +7090,13 @@ private fun SetRow(
             FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     lastSession?.let { "Vorige: ${it.weight} kg × ${it.reps}" } ?: "Nog geen vorige prestatie",
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
                     "Doel: $targetPerformance",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -7103,14 +7151,16 @@ private fun SetRow(
             }
         }
         if (isInputExpanded && submitLabel != null) {
-            PrimaryActionButton(
+            Button(
                 onClick = onLogSet,
                 enabled = !isLogPending,
+                shape = MaterialTheme.shapes.medium,
+                contentPadding = PaddingValues(horizontal = MaterialTheme.spacing.compact, vertical = MaterialTheme.spacing.small),
                 modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp),
             ) {
                 Icon(Icons.Default.Check, contentDescription = null)
                 Spacer(modifier = Modifier.width(6.dp))
-                Text(submitLabel, textAlign = TextAlign.Center)
+                Text(submitLabel, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
             }
         }
     }
@@ -7169,26 +7219,20 @@ private fun ExerciseProgressionHint(suggestion: ProgressionSuggestion) {
 @Composable
 private fun CompactPreviousPerformance(suggestion: ProgressionSuggestion) {
     val previous = suggestion.toLastSessionDraft()
-    Row(
+    FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
     ) {
         Text(
             previous?.let { "Vorige: ${it.weight} kg x ${it.reps}" } ?: "Nog geen vorige prestatie",
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
         Text(
             "Doel: ${formatWeight(suggestion.suggestedWeightKg)} kg x ${displayRepTarget(suggestion.suggestedReps)}",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.End,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -7203,14 +7247,14 @@ private fun PlannedPerformanceFallback(plan: WorkoutExercisePlan) {
     ) {
         Text(
             "Nog geen vorige prestatie",
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (target.isNotBlank()) {
             Text(
                 "Plan: $target",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
