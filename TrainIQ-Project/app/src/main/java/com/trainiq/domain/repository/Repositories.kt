@@ -53,6 +53,7 @@ interface WorkoutRepository {
     suspend fun getCurrentActiveWorkoutSession(): ActiveWorkoutSession?
     suspend fun getOrStartActiveWorkoutSession(dayId: Long, initialDrafts: Map<Long, ActiveWorkoutSetDraft>): ActiveWorkoutSession
     suspend fun updateActiveWorkoutDraft(exerciseId: Long, draft: ActiveWorkoutSetDraft): ActiveWorkoutSession?
+    suspend fun updateActiveWorkoutNotes(notes: String): ActiveWorkoutSession? = getCurrentActiveWorkoutSession()
     suspend fun logActiveWorkoutSet(dayId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int): ActiveWorkoutSetLogResult
     suspend fun updateActiveWorkoutSet(setId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int): ActiveWorkoutSession?
     suspend fun updateActiveWorkoutSetType(setId: Long, setType: SetType): ActiveWorkoutSession?
@@ -141,6 +142,7 @@ interface WorkoutRepository {
 interface NutritionRepository {
     fun observeNutritionOverview(): Flow<NutritionOverview>
     suspend fun analyzeMealPhoto(path: String, context: String, capturedAtMillis: Long): MealAnalysisResult
+    suspend fun analyzeMealPhoto(path: String, context: String, capturedAtMillis: Long, mode: com.trainiq.domain.model.FoodProviderMode): MealAnalysisResult = analyzeMealPhoto(path, context, capturedAtMillis)
     suspend fun lookupBarcodeProduct(barcode: String): BarcodeProductLookupResult?
     suspend fun lookupBarcodeProduct(barcode: String, mode: com.trainiq.domain.model.FoodProviderMode): BarcodeProductLookupResult? = lookupBarcodeProduct(barcode)
     fun clearLastScanResult()

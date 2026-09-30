@@ -570,6 +570,9 @@ interface TrainIqDao {
     @Query("UPDATE active_workout_sessions SET updatedAt = :updatedAt WHERE sessionId = :sessionId")
     suspend fun updateActiveWorkoutSessionUpdatedAt(sessionId: Long, updatedAt: Long)
 
+    @Query("UPDATE active_workout_sessions SET notes = :notes, updatedAt = :updatedAt WHERE sessionId = :sessionId")
+    suspend fun updateActiveWorkoutNotes(sessionId: Long, notes: String, updatedAt: Long)
+
     @Transaction
     suspend fun updateActiveWorkoutDraft(
         sessionId: Long,

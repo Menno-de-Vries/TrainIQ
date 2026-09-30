@@ -14,10 +14,11 @@ object AiPrompts {
             "Vergelijking beschikbaar."
         },
         distribution: String,
-        avgRpe: Float,
+        avgRpe: Float?,
         topExercises: String,
         weeklyFrequency: Int,
         userLanguage: String = "nl-NL",
+        exerciseEffort: List<com.trainiq.domain.model.ExerciseEffortSummary> = emptyList(),
     ) = """
         Je bent een senior strength coach en longevity-specialist voor TrainIQ.
         Antwoord altijd in het Nederlands volgens locale $userLanguage.
@@ -28,9 +29,10 @@ object AiPrompts {
         - Vergelijking: $comparisonSummary
         - Volumeprogressie tegenover vorige vergelijkbare training: ${progression?.let { "${String.format(Locale.US, "%.1f", it)}%" } ?: "niet beschikbaar"}
         - Verdeling spiergroepen: $distribution
-        - Gemiddelde RPE: $avgRpe / 10
+        - Gemiddelde RPE: ${avgRpe?.takeIf { it.isFinite() && it in 1f..10f } ?: "null (unknown)"} / 10
         - Belangrijkste lifts: $topExercises
         - Trainingsfrequentie per week: $weeklyFrequency dagen/week
+        - Voltooide oefeningen en setdetails (JSON): ${exerciseEffortJson(exerciseEffort)}
 
         Regels:
         - Gebruik geen Engels, behalve oefeningnamen als die in de invoer Engels zijn
@@ -38,7 +40,11 @@ object AiPrompts {
         - progressionFeedback is 1 korte zin
         - recommendation is een concrete Nederlandse actie: verhogen, gelijk houden, verlagen of eerst data verbeteren
         - wins bevat 2 tot 4 korte hoogtepunten
-        - risks bevat 0 tot 3 korte aandachtspunten; benoem ontbrekende RPE of beperkte historie netjes als dat relevant is
+        - risks bevat 0 tot 3 korte aandachtspunten; benoem beperkte historie netjes als dat relevant is
+        - averageRpe is het ongewogen gemiddelde van geldige gerapporteerde RPE (1-10) van alle voltooide sets per oefening. null betekent onbekend; nul is geen lage inspanning.
+        - Gebruik averageRpe per oefening als inspanningsbron. Meld RPE niet als ontbrekend voor een oefening met een niet-null averageRpe, ook als sommige sets onbekend zijn.
+        - Verzin geen RPE uit gewicht, herhalingen of doelwaarden. Bij null geeft objectieve prestatie alleen conservatief advies.
+        - repsInReserve is afzonderlijk gerapporteerde inspanningsdata (0-10). Gebruik beschikbare RIR als bron, zonder deze als gemeten RPE te presenteren; bij aanwezige RIR ontbreekt niet alle inspanningsdata.
         - recoveryAdvice is 1 korte herstelzin
         - Als gemiddelde RPE > 8,5 en progressie > 5%, waarschuw kort over herstel
         - Als gemiddelde RPE < 6 en volume stijgt, adviseer iets hogere intensiteit
@@ -67,6 +73,7 @@ object AiPrompts {
         Je bent een senior strength en longevity-specialist en voedingswetenschapper voor TrainIQ.
         Antwoord altijd in het Nederlands volgens locale nl-NL.
         Analyseer de maaltijd-foto en schat zichtbare voeding realistisch. Verlaag waarden niet standaard bij onzekerheid.
+        Geef alleen expliciet zichtbare/opgegeven verpakkingsidentiteit mee als productName, brand, variant en barcode; verzin deze nooit. Laat onbekende velden weg. amountUnit is g voor een gramportie, ml voor expliciet volume, anders unknown. Een barcode moet volledig en duidelijk leesbaar zijn. Geef geen URL, gebruikersnotities of persoonsgegevens als productidentiteit.
         Gebruikerscontext: ${userContext.ifBlank { "Niet opgegeven." }}
         Regels voor context:
         - De gebruikerscontext is leidend wanneer die is opgegeven; de foto is alleen ondersteunend bewijs.
@@ -88,6 +95,7 @@ object AiPrompts {
             {
               "name": "Voedingsmiddel",
               "estimatedGrams": 120,
+              "amountUnit": "g|ml|unknown",
               "nutritionBasis": "PORTION|PER_100_G",
               "calories": 180,
               "protein": 12,

@@ -461,7 +461,8 @@ class WorkoutInputValidationTest {
 
         assertTrue(summaryBody.contains("displayWorkoutDayName"))
         assertTrue(summaryBody.contains("activeWorkoutBottomBarStatusText(clock.restTimerSeconds)"))
-        assertTrue(summaryBody.contains("StatusMetric(\"Rust\""))
+        assertTrue(summaryBody.contains("Text(activeWorkoutBottomBarStatusText(clock.restTimerSeconds)"))
+        assertTrue(summaryBody.contains("contentDescription = \"Sessietijd"))
         assertTrue(summaryBody.contains("AppLinearProgress(progress = progress"))
     }
 
@@ -923,12 +924,16 @@ class WorkoutInputValidationTest {
         assertTrue(activeExerciseCard.contains("modifier = Modifier\n                        .fillMaxWidth()"))
         assertFalse(activeExerciseTitle.contains("maxLines"))
         assertFalse(activeExerciseTitle.contains("TextOverflow.Ellipsis"))
-        assertTrue(activeExerciseCard.contains("horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)"))
+        assertTrue(activeExerciseCard.contains("FlowRow("))
+        assertTrue(activeExerciseCard.contains("horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally)"))
+        assertTrue(activeExerciseCard.contains("verticalArrangement = Arrangement.spacedBy(4.dp)"))
         assertTrue(activeExerciseCard.contains("ActiveExerciseRestControl"))
         assertTrue(workoutScreen.contains("val activeWorkoutListState = rememberLazyListState()"))
         assertTrue(workoutScreen.contains("state = activeWorkoutListState"))
         assertTrue(activeExerciseCard.contains("DropdownMenuItem("))
-        assertTrue(activeExerciseCard.contains("text = { Text(\"Set toevoegen\") }"))
+        assertTrue(activeExerciseCard.contains("Text(\"Set toevoegen\")"))
+        assertTrue(activeExerciseCard.contains("contentDescription = \"Set toevoegen aan"))
+        assertTrue(activeExerciseCard.contains("onClick = { activeSetTargetDelta += 1 }"))
         assertTrue(activeExerciseCard.contains("index == loggedSets.size"))
         assertFalse(activeExerciseCard.contains("activeInputIndex = index"))
         assertFalse(activeExerciseCard.contains("Card(\n                        modifier = Modifier.fillMaxWidth(),\n                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)"))

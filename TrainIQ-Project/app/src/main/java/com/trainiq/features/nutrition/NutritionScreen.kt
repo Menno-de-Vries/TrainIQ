@@ -372,7 +372,7 @@ class NutritionViewModel @Inject constructor(
         ephemeral.update { it.copy(isAnalyzing = true, scanResult = null, message = null) }
         importedScan.start(
             path = path,
-            analyze = { analyzeMealUseCase(path, context, capturedAtMillis) },
+            analyze = { analyzeMealUseCase(path, context, capturedAtMillis, foodProvider) },
             publish = { result ->
                 ephemeral.update { it.copy(
                     scanResult = result,
@@ -3417,6 +3417,11 @@ private fun AiMealAnalysisCard(
                 style = MaterialTheme.typography.bodyMedium,
             )
             NutritionTextField(value = aiContext, onValueChange = onContextChange, label = "Optionele context", modifier = Modifier.fillMaxWidth())
+            Text(
+                "Herkenbare producten worden kort online gecontroleerd via je voedingsprovider. Alleen productnaam, merk, variant of barcode wordt gedeeld. Controleer de waarden voor je opslaat.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Button(onClick = onOpenCamera, enabled = aiPreferences.hasAnyReadyProvider(), modifier = Modifier.fillMaxWidth()) {
                 Text("Scanner openen")
             }

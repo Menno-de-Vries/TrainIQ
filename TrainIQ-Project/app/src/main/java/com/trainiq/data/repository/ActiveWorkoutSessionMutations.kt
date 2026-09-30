@@ -39,6 +39,7 @@ internal object ActiveWorkoutSessionMutations {
         }
         val existingSessionIds = state.sessions.map { it.id }.toSet()
         val draftSession = WorkoutSessionEntity(
+            notes = active.notes,
             id = active.sessionId,
             date = active.startedAt,
             duration = ((now - active.startedAt) / 1_000).coerceAtLeast(0),

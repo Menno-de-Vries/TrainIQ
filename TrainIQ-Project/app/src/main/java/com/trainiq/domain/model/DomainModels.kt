@@ -91,6 +91,7 @@ data class WorkoutSessionSummary(
     val debriefRecoveryScore: Int? = null,
     val debriefIntensitySignal: String = "",
     val debriefSource: WorkoutDebriefSource = WorkoutDebriefSource.LOCAL_FALLBACK,
+    val notes: String = "",
 )
 
 data class ExerciseHistory(
@@ -223,6 +224,7 @@ data class ActiveWorkoutSession(
     val collapsedExerciseIds: Set<Long>,
     val restTimerEndsAt: Long?,
     val restTimerTotalSeconds: Int,
+    val notes: String = "",
 )
 
 data class ActiveWorkoutSetLogResult(
@@ -443,6 +445,11 @@ data class MealScanItem(
     val nutrition: NutritionFacts,
     val confidence: String? = null,
     val notes: String? = null,
+    val productName: String? = null,
+    val brand: String? = null,
+    val variant: String? = null,
+    val barcode: String? = null,
+    val amountUnit: String? = null,
 )
 
 enum class MealAnalysisSource {

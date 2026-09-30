@@ -7,6 +7,11 @@ object AiJsonSchemas {
                 objectSchema(
                     properties = listOf(
                         "name" to stringSchema(maxLength = MaxMealScanNameChars),
+                        "productName" to stringSchema(maxLength = MaxMealScanNameChars),
+                        "brand" to stringSchema(maxLength = MaxAiMetaChars),
+                        "variant" to stringSchema(maxLength = MaxAiMetaChars),
+                        "barcode" to stringSchema(maxLength = 14),
+                        "amountUnit" to stringSchema(enum = listOf("g", "ml", "unknown")),
                         "estimatedGrams" to numberSchema(),
                         "nutritionBasis" to stringSchema(enum = listOf("PORTION", "PER_100_G")),
                         "calories" to numberSchema(),

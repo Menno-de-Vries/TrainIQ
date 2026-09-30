@@ -30,6 +30,8 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.lifecycle.Lifecycle
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -141,8 +143,7 @@ class ActiveWorkoutSetActionsInstrumentedTest {
                 titleBounds.top >= scrollBounds.top && titleBounds.bottom <= scrollBounds.bottom,
             )
             compose.onNodeWithContentDescription("Klap oefening in").assertExists()
-            compose.onNodeWithContentDescription("Actieve oefening acties").performScrollTo().performClick()
-            compose.onNodeWithText("Set toevoegen").performClick()
+            compose.onNodeWithContentDescription("Set toevoegen aan $longExerciseName").performScrollTo().performClick()
             compose.onNodeWithText("Set loggen").performScrollTo().performClick()
             val firstSetTapAt = android.os.SystemClock.elapsedRealtime()
 
@@ -353,6 +354,159 @@ class ActiveWorkoutSetActionsInstrumentedTest {
     }
 
     @Test
+    fun twoExerciseSessionKeepsNotesTimersAndSetsThroughResumeAndFinish() {
+        runBlocking {
+            val dao = database.dao()
+            UserPreferencesRepository(context).setAiEnabled(false)
+            dao.insertExercises(listOf(ExerciseEntity(id = 5L, name = "Seated Row", muscleGroup = "Back", equipment = "Cable")))
+            dao.insertWorkoutExercises(listOf(WorkoutExerciseEntity(
+                id = 6L, dayId = 7L, exerciseId = 5L, targetSets = 1, repRange = "8",
+                restSeconds = 90, targetWeightKg = 40.0, targetRpe = 0.0, setType = "NORMAL", orderIndex = 1,
+            )))
+            dao.insertRoutineSets(listOf(
+                RoutineSetEntity(id = 11L, workoutExerciseId = 4L, orderIndex = 1, setType = "NORMAL", targetReps = 5, restSeconds = 120),
+                RoutineSetEntity(id = 12L, workoutExerciseId = 4L, orderIndex = 2, setType = "NORMAL", targetReps = 5, restSeconds = 120),
+                RoutineSetEntity(id = 20L, workoutExerciseId = 6L, orderIndex = 0, setType = "NORMAL", targetReps = 8, restSeconds = 90),
+            ))
+            dao.insertPerformedExercises(listOf(PerformedExerciseEntity(
+                id = 22L, sessionId = 12L, exerciseId = 5L, sourceWorkoutExerciseId = 6L, orderIndex = 1,
+            )))
+        }
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            val trainingNavigation = (hasContentDescription("Training") or hasText("Training")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(trainingNavigation).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(trainingNavigation).performClick()
+            compose.waitForText("QA Upper")
+            compose.onNodeWithText("Training starten").performClick()
+            compose.waitForText("Actieve training")
+            compose.onNodeWithText("Workout-notitie").performScrollTo().performTextReplacement("Twee oefeningen, rustig tempo")
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("Actieve training hersteld.").fetchSemanticsNodes().isEmpty()
+            }
+            compose.onNodeWithText("Notitie opslaan").performScrollTo().performClick()
+            compose.waitUntil(10_000) {
+                runBlocking { database.dao().observeActiveWorkoutSessions().first().single().notes == "Twee oefeningen, rustig tempo" }
+            }
+
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("Actieve training hersteld.").fetchSemanticsNodes().isEmpty()
+            }
+            exerciseControl("Bench Press", "Rusttimer 30 seconden langer").performScrollTo().performClick()
+            capture("rest-control")
+            compose.waitUntil(10_000) {
+                compose.onAllNodes(hasContentDescription("Rust voor deze oefening: 150s"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+            }
+            exerciseControl("Bench Press", "Gewicht in kilogram", input = true).performScrollTo().performClick()
+                .performTextReplacement("82.5")
+            exerciseControl("Bench Press", "Herh.", input = true).performClick().performTextReplacement("6")
+            exerciseControl("Bench Press", "Herh.", input = true).performImeAction()
+            exerciseControl("Bench Press", "Gewicht in kilogram", input = true).assertIsFocused().performImeAction()
+            exerciseControl("Bench Press", "Rust in seconden", input = true).assertIsFocused().performImeAction()
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("Rust voor deze oefening ingesteld", substring = true).fetchSemanticsNodes().isEmpty()
+            }
+            exerciseText("Bench Press", "Set loggen").performScrollTo().assertIsDisplayed().performClick()
+            waitForSetCount(2)
+            compose.waitUntil(10_000) {
+                runBlocking { database.dao().observeActiveWorkoutSessions().first().single().restTimerTotalSeconds == 150 }
+            }
+            val bottom = hasAnyAncestor(hasContentDescription("Training afronden", substring = true))
+            compose.onNode(hasContentDescription("Rusttimer 30 seconden langer") and bottom, useUnmergedTree = true)
+                .assertIsDisplayed().performClick()
+            compose.waitUntil(10_000) {
+                runBlocking { database.dao().observeActiveWorkoutSessions().first().single().restTimerTotalSeconds > 150 }
+            }
+            compose.onNode(hasContentDescription("Rusttimer overslaan") and bottom, useUnmergedTree = true).performClick()
+            compose.waitUntil(10_000) {
+                runBlocking { database.dao().observeActiveWorkoutSessions().first().single().restTimerEndsAt == null }
+            }
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("Set 2 gelogd", substring = true).fetchSemanticsNodes().isEmpty()
+                    && compose.onAllNodesWithText("Rusttimer overgeslagen.").fetchSemanticsNodes().isEmpty()
+            }
+            exerciseText("Bench Press", "Set loggen").performScrollTo().performClick()
+            waitForSetCount(3)
+
+            // Resume through both app backgrounding and the existing Training navigation.
+            scenario.moveToState(Lifecycle.State.CREATED)
+            scenario.moveToState(Lifecycle.State.RESUMED)
+            // Resume preserves scroll; the header may be outside the lazy composition.
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Actieve training"))
+            compose.waitForText("Actieve training")
+            compose.onNodeWithContentDescription("Terug naar Training").performScrollTo().performClick()
+            compose.waitForText("QA Upper")
+            compose.onNodeWithText("Training starten").performClick()
+            compose.waitForText("Actieve training")
+            assertEquals(3, runBlocking { database.dao().readActiveWorkoutSetsForExport().size })
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Seated Row"))
+            exerciseControl("Seated Row", "Gewicht in kilogram", input = true).performScrollTo()
+                .performTextReplacement("40")
+            exerciseControl("Seated Row", "Herh.", input = true).performTextReplacement("8")
+            exerciseControl("Seated Row", "Rust in seconden", input = true).performImeAction()
+            exerciseText("Seated Row", "Set loggen").performScrollTo().assertIsDisplayed().performClick()
+            waitForSetCount(4)
+            capture("two-exercise-completed")
+            compose.onNodeWithContentDescription("Training afronden").assertIsDisplayed().performClick()
+            compose.waitForText("Voltooid")
+            runBlocking {
+                val dao = trainIqAndroidTestDatabase(context).dao()
+                val session = dao.readWorkoutSessionsForExport().single()
+                assertTrue(session.completed)
+                assertEquals("Twee oefeningen, rustig tempo", session.notes)
+                val sets = dao.readWorkoutSetsForExport()
+                assertEquals(3, sets.count { it.exerciseId == 3L })
+                assertEquals(1, sets.count { it.exerciseId == 5L })
+                assertEquals(0, dao.readActiveWorkoutSetsForExport().size)
+            }
+        }
+    }
+
+    private fun exerciseScope(name: String) = hasAnyAncestor(
+        SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Uitgeklapt") and hasAnyDescendant(hasText(name)),
+    )
+
+    private fun exerciseControl(name: String, description: String, input: Boolean = false): SemanticsNodeInteraction =
+        compose.onNode(
+            (if (input) hasSetTextAction() and hasAnyAncestor(hasContentDescription(description)) else hasContentDescription(description)) and exerciseScope(name),
+            useUnmergedTree = true,
+        )
+
+    private fun exerciseText(name: String, text: String): SemanticsNodeInteraction =
+        compose.onNode(hasText(text) and exerciseScope(name), useUnmergedTree = true)
+
+    private fun waitForSetCount(count: Int) = compose.waitUntil(15_000) {
+        runBlocking { database.dao().readActiveWorkoutSetsForExport().size == count }
+    }
+
+    @Test
+    fun notesAndCollapsedExerciseSurviveRecreation() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            val trainingNavigation = (hasContentDescription("Training") or hasText("Training")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(trainingNavigation).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(trainingNavigation).performClick()
+            compose.waitForText("QA Upper")
+            compose.onNodeWithText("Training starten").performClick()
+            compose.waitForText("Actieve training")
+            compose.onNodeWithText("Workout-notitie").performScrollTo().performTextReplacement("Rustig opbouwen vandaag")
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("Actieve training hersteld.").fetchSemanticsNodes().isEmpty()
+            }
+            compose.onNodeWithText("Notitie opslaan").performScrollTo().performClick()
+            compose.waitUntil(10_000) {
+                runBlocking { database.dao().observeActiveWorkoutSessions().first().single().notes == "Rustig opbouwen vandaag" }
+            }
+            compose.onNodeWithContentDescription("Klap oefening in").performScrollTo().performClick()
+            compose.onNodeWithContentDescription("Open oefening").assertExists()
+            compose.onNodeWithContentDescription("Set toevoegen aan Bench Press").assertDoesNotExist()
+            scenario.recreate()
+            compose.waitForText("Actieve training")
+            compose.onNodeWithText("Rustig opbouwen vandaag").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithContentDescription("Open oefening").performScrollTo().performClick()
+            compose.onNodeWithContentDescription("Set toevoegen aan Bench Press").performScrollTo().assertIsDisplayed()
+        }
+    }
+
+    @Test
     fun finishConfirmationPersistsOneSessionAndSurvivesRecreation() {
         runBlocking {
             UserPreferencesRepository(context).setAiEnabled(false)
@@ -368,7 +522,10 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             compose.waitForText("QA Upper")
             compose.onNodeWithText("Training starten").performClick()
             compose.waitForText("Actieve training")
+            // Finishing must flush an unsaved note before navigating to processing.
+            compose.onNodeWithText("Workout-notitie").performScrollTo().performTextReplacement("Goede sessie")
             compose.onNodeWithContentDescription("Training afronden").performClick()
+            compose.waitForText("Training afronden?")
             compose.onNodeWithText("Training afronden?").assertIsDisplayed()
             compose.onNodeWithText("Opslaan").performTouchInput { doubleClick() }
             compose.waitForText("Voltooid")
@@ -379,6 +536,7 @@ class ActiveWorkoutSetActionsInstrumentedTest {
                 assertEquals(1, sessions.size)
                 assertEquals(12L, sessions.single().id)
                 assertEquals(true, sessions.single().completed)
+                assertEquals("Goede sessie", sessions.single().notes)
                 assertEquals(1, dao.readWorkoutSetsForExport().size)
                 assertEquals(0, dao.observeActiveWorkoutSets().first().size)
             }

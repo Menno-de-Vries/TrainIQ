@@ -106,6 +106,7 @@ class JsonRoomImportPlanner(
             activeWorkoutSessions = state.activeWorkoutSession?.let {
                 listOf(
                     ActiveWorkoutSessionEntity(
+                        notes = it.notes.orEmpty().take(2_000),
                         sessionId = it.sessionId,
                         dayId = it.dayId,
                         routineId = it.routineId,
@@ -195,6 +196,7 @@ class JsonRoomImportPlanner(
     )
 
     private fun WorkoutSessionEntity.normalized(): WorkoutSessionEntity = copy(
+        notes = notes.orEmpty().take(2_000),
         status = stringOrDefault(status, "COMPLETED"),
         debriefSummary = stringOrDefault(debriefSummary),
         debriefProgressionFeedback = stringOrDefault(debriefProgressionFeedback),
@@ -458,7 +460,7 @@ fun JsonRoomImportPlan.importedRowCount(): Int =
         workoutLogEventSets.size +
         measurements.size
 
-private const val TrainIqDatabaseVersion = 19
+private const val TrainIqDatabaseVersion = 20
 internal const val TrainIqJsonExportFormat = "trainiq-json-export"
 
 sealed interface JsonRoomImportOutcome {

@@ -515,6 +515,15 @@ class RoomTrainIqRuntimeStore internal constructor(
         }
     }
 
+    suspend fun updateActiveWorkoutNotes(notes: String): ActiveWorkoutSessionStorage? = mutex.withLock {
+        database.withTransaction {
+            val active = readCurrentActiveWorkout() ?: return@withTransaction null
+            val updated = active.copy(notes = notes.take(2_000), updatedAt = System.currentTimeMillis())
+            dao.updateActiveWorkoutNotes(updated.sessionId, updated.notes, updated.updatedAt)
+            updated
+        }
+    }
+
     suspend fun updateActiveWorkoutRestTimer(
         sessionId: Long,
         endsAt: Long?,
@@ -619,6 +628,7 @@ class RoomTrainIqRuntimeStore internal constructor(
                 }
                 dao.logActiveWorkoutSet(
                     session = ActiveWorkoutSessionEntity(
+                        notes = active.notes,
                         sessionId = active.sessionId,
                         dayId = active.dayId,
                         routineId = active.routineId,
@@ -851,12 +861,17 @@ class RoomTrainIqRuntimeStore internal constructor(
         activeSessionId: Long?,
     ) {
         mutex.withLock {
-            dao.finishActiveWorkoutSession(
-                session = session,
-                performedExercises = performedExercises,
-                sets = sets,
-                activeSessionId = activeSessionId,
-            )
+            database.withTransaction {
+                val savedNotes = activeSessionId?.let { id ->
+                    dao.readActiveWorkoutSessionsForExport().firstOrNull { it.sessionId == id }?.notes
+                }
+                dao.finishActiveWorkoutSession(
+                    session = session.copy(notes = savedNotes ?: session.notes),
+                    performedExercises = performedExercises,
+                    sets = sets,
+                    activeSessionId = activeSessionId,
+                )
+            }
         }
     }
 
@@ -980,6 +995,7 @@ private data class ActiveWorkoutTables(
     fun toStorage(): ActiveWorkoutSessionStorage? {
         val session = sessions.firstOrNull() ?: return null
         return ActiveWorkoutSessionStorage(
+            notes = session.notes,
             sessionId = session.sessionId,
             dayId = session.dayId,
             routineId = session.routineId,
@@ -1119,6 +1135,7 @@ private fun LoggedMealItemStorage.toMealItemEntity(orderIndex: Int) = MealItemEn
 )
 
 private fun ActiveWorkoutSessionStorage.toActiveWorkoutSessionEntity() = ActiveWorkoutSessionEntity(
+    notes = notes,
     sessionId = sessionId,
     dayId = dayId,
     routineId = routineId,

@@ -111,7 +111,7 @@ fun ExerciseEntity.toDomain() = Exercise(id, name, muscleGroup, equipment)
 fun BodyMeasurementEntity.toDomain() = BodyMeasurement(id, date, weight, bodyFat, muscleMass)
 
 fun WorkoutSessionEntity.toDomain(totalVolume: Double) =
-    WorkoutSessionSummary(id, endedAt.takeIf { it > 0L } ?: date, duration, caloriesBurned, totalVolume)
+    WorkoutSessionSummary(id, endedAt.takeIf { it > 0L } ?: date, duration, caloriesBurned, totalVolume, notes = notes)
 
 fun WorkoutDayEntity.toDomain(exercises: List<WorkoutExercisePlan>) = WorkoutDay(id, routineId, name, orderIndex, exercises)
 

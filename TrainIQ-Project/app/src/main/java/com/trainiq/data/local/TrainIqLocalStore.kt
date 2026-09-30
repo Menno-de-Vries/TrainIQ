@@ -290,6 +290,7 @@ data class ActiveWorkoutSessionStorage(
     val collapsedExerciseIds: Set<Long> = emptySet(),
     val restTimerEndsAt: Long? = null,
     val restTimerTotalSeconds: Int = 0,
+    val notes: String = "",
 )
 
 data class ActiveWorkoutSetStorage(

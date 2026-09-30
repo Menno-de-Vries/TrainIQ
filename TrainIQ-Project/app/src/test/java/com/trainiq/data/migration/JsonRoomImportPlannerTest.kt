@@ -11,6 +11,20 @@ import org.junit.Test
 
 class JsonRoomImportPlannerTest {
     @Test
+    fun workoutNotesRoundTripAndLegacyMissingNotesStayEmpty() {
+        val legacy = JsonRoomImportPlanner().plan(fixture("valid-representative-trainiq-state.json"))
+        assertEquals("", legacy.activeWorkoutSessions.single().notes)
+        assertEquals("", legacy.sessions.single().notes)
+        val state = TrainIqStorageState(
+            sessions = listOf(com.trainiq.core.database.WorkoutSessionEntity(id = 1, date = 1, duration = 60, notes = "Sessie-notitie")),
+            activeWorkoutSession = com.trainiq.data.local.ActiveWorkoutSessionStorage(sessionId = 1, dayId = 7, notes = "Actieve notitie"),
+        )
+        val imported = JsonRoomImportPlanner().plan(com.google.gson.Gson().toJson(state))
+        assertEquals("Sessie-notitie", imported.sessions.single().notes)
+        assertEquals("Actieve notitie", imported.activeWorkoutSessions.single().notes)
+    }
+
+    @Test
     fun representativeJsonMapsToRoomCompatibleTablesAndReportsParityGaps() {
         val source = fixture("valid-representative-trainiq-state.json")
 

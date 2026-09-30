@@ -8,6 +8,7 @@ import com.trainiq.domain.model.ReadinessLevel
 import com.trainiq.domain.model.SetType
 import com.trainiq.domain.model.StrengthCalculator
 import com.trainiq.domain.model.WorkoutDay
+import com.trainiq.domain.model.WorkoutEffortSummary
 import javax.inject.Inject
 
 class WorkoutProgressionSuggestionCalculator @Inject constructor() {
@@ -35,8 +36,7 @@ class WorkoutProgressionSuggestionCalculator @Inject constructor() {
                 .sortedByDescending { it.date }
                 .take(3)
             val lastSession = exerciseSessions.firstOrNull() ?: return@mapNotNull null
-            val lastSessionAvgRpe = lastSession.sets.map { it.rpe }
-                .filter { it.isFinite() && it in 1.0..10.0 }
+            val lastSessionAvgRpe = lastSession.sets.mapNotNull { WorkoutEffortSummary.recordedRpe(it.rpe) }
                 .average().takeIf { !it.isNaN() }?.toFloat()
             val recentAverageRir = exerciseSessions
                 .mapNotNull { session ->

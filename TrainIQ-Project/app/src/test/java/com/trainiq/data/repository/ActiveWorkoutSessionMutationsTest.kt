@@ -15,6 +15,21 @@ import org.junit.Test
 
 class ActiveWorkoutSessionMutationsTest {
     @Test
+    fun resumeAndSetLoggingPreserveWorkoutNotes() {
+        val active = ActiveWorkoutSessionStorage(sessionId = 12L, dayId = 7L, startedAt = 1_000L, notes = "Rustig opbouwen")
+        val resumed = ActiveWorkoutSessionMutations.startOrResume(
+            TrainIqStorageState(activeWorkoutSession = active), 7L, emptyMap(), 2_000L,
+        )
+        assertEquals(active.notes, resumed.active.notes)
+        assertEquals(active.notes, resumed.state.sessions.single().notes)
+        val logged = ActiveWorkoutSessionMutations.logSet(
+            resumed.state, 7L, LoggedSet(exerciseId = 3L, weight = 60.0, reps = 8, rpe = 0.0),
+            ActiveWorkoutSetDraft(weight = "60", reps = "8"), 90, 3_000L,
+        )
+        assertEquals(active.notes, logged.active.notes)
+    }
+
+    @Test
     fun startOrResume_createsDraftSessionAndPreservesInitialDraftsInOneStateTransition() {
         val state = TrainIqStorageState(
             days = listOf(WorkoutDayEntity(id = 7L, routineId = 3L, name = "Push", orderIndex = 0)),

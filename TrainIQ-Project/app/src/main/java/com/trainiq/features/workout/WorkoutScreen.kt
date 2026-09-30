@@ -92,6 +92,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarResult
@@ -138,6 +139,9 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.tooling.preview.Preview
+import com.trainiq.core.theme.TrainIqTheme
+import com.trainiq.core.theme.ThemeMode
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.semantics.contentDescription
@@ -255,6 +259,7 @@ import com.trainiq.domain.usecase.SetActiveWorkoutCollapsedUseCase
 import com.trainiq.domain.usecase.SetSupersetGroupUseCase
 import com.trainiq.domain.usecase.StartWorkoutSessionUseCase
 import com.trainiq.domain.usecase.UpdateActiveWorkoutDraftUseCase
+import com.trainiq.domain.usecase.UpdateActiveWorkoutNotesUseCase
 import com.trainiq.domain.usecase.UpdateActiveWorkoutRestTimerUseCase
 import com.trainiq.domain.usecase.UpdateActiveWorkoutSetUseCase
 import com.trainiq.domain.usecase.UpdateActiveWorkoutSetTypeUseCase
@@ -537,6 +542,7 @@ class WorkoutViewModel @Inject constructor(
     private val startWorkoutSessionUseCase: StartWorkoutSessionUseCase,
     private val getCurrentActiveWorkoutSessionUseCase: GetCurrentActiveWorkoutSessionUseCase,
     private val updateActiveWorkoutDraftUseCase: UpdateActiveWorkoutDraftUseCase,
+    private val updateActiveWorkoutNotesUseCase: UpdateActiveWorkoutNotesUseCase,
     private val logActiveWorkoutSetUseCase: LogActiveWorkoutSetUseCase,
     private val updateActiveWorkoutSetUseCase: UpdateActiveWorkoutSetUseCase,
     private val updateActiveWorkoutSetTypeUseCase: UpdateActiveWorkoutSetTypeUseCase,
@@ -969,6 +975,25 @@ class WorkoutViewModel @Inject constructor(
         _drafts.value = _drafts.value.toMutableMap().apply { put(key, lastSet.toDraft()) }
         clearSetInputError(key)
         return logSet(plan)
+    }
+
+    fun saveWorkoutNotes(notes: String, onSaved: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val result = runUserActionCatching { updateActiveWorkoutNotesUseCase(notes) }
+            val savedSession = result.getOrNull()
+            val currentSession = _activeSession.value
+            val saved = savedSession != null && currentSession?.sessionId == savedSession.sessionId
+            if (saved) {
+                // A set may finish saving while the notes transaction is running.
+                // Update only notes so that its returned snapshot cannot rewind set state.
+                _activeSession.value = currentSession.copy(
+                    notes = savedSession.notes,
+                    updatedAt = maxOf(currentSession.updatedAt, savedSession.updatedAt),
+                )
+            }
+            if (!saved) _message.value = "Notitie opslaan is mislukt. Probeer opnieuw."
+            onSaved(saved)
+        }
     }
 
     fun finishWorkout(dayId: Long) {
@@ -2243,6 +2268,9 @@ internal fun WorkoutHistoryCard(session: WorkoutSessionSummary, onDelete: (Long)
             }
             session.debriefSummary.takeIf { it.isNotBlank() }?.let {
                 HistoryDebriefBlock(title = "Samenvatting", body = it)
+            }
+            session.notes.takeIf { it.isNotBlank() }?.let {
+                HistoryDebriefBlock(title = "Workout-notitie", body = it)
             }
             session.debriefRecommendation.takeIf { it.isNotBlank() }?.let {
                 HistoryDebriefBlock(title = "Advies", body = it)
@@ -4888,6 +4916,7 @@ fun ActiveWorkoutRoute(
         onBack = onBack,
         onOpenExerciseHistory = onOpenExerciseHistory,
         onDraftChange = viewModel::updateSetDraft,
+        onSaveNotes = viewModel::saveWorkoutNotes,
         onSetTypeChange = viewModel::updateLoggedSetType,
         onEditSet = viewModel::editLoggedSet,
         onDeleteSet = { setId -> viewModel.deleteLoggedSet(setId) },
@@ -5470,6 +5499,7 @@ fun ActiveWorkoutScreen(
     onDismissStartConflict: () -> Unit,
     onFinish: () -> Unit,
     onDiscard: () -> Unit,
+    onSaveNotes: (String, (Boolean) -> Unit) -> Unit = { _, callback -> callback(false) },
 ) {
     val haptics = LocalHapticFeedback.current
     var showFinishConfirm by remember { mutableStateOf(false) }
@@ -5483,6 +5513,21 @@ fun ActiveWorkoutScreen(
     val exerciseGroups = remember(workoutExercises) { workoutExerciseGroups(workoutExercises) }
     val activeWorkoutListState = rememberLazyListState()
     val clockState = rememberActiveWorkoutClock(uiState.activeSession)
+    var notesDraft by rememberSaveable(uiState.activeSession?.sessionId) { mutableStateOf(uiState.activeSession?.notes.orEmpty()) }
+    var notesSaving by remember { mutableStateOf(false) }
+    val saveNotesThen = { next: () -> Unit ->
+        if (!notesSaving) {
+            if (uiState.activeSession == null || notesDraft == uiState.activeSession.notes) next()
+            else {
+                notesSaving = true
+                onSaveNotes(notesDraft) { saved ->
+                    notesSaving = false
+                    if (saved) next()
+                }
+            }
+        }
+    }
+    BackHandler { saveNotesThen(onBack) }
     val suggestionsByPlanId = remember(uiState.progressionSuggestions, workoutExercises) {
         workoutExercises.associate { plan ->
             plan.id to uiState.progressionSuggestions.firstOrNull {
@@ -5561,7 +5606,9 @@ fun ActiveWorkoutScreen(
             SnackbarHost(
                 hostState = snackbarHostState,
                 modifier = Modifier.padding(bottom = ActiveWorkoutSnackbarClearance),
-            )
+            ) { data ->
+                Snackbar(data, actionOnNewLine = LocalDensity.current.fontScale >= 1.3f)
+            }
         },
         bottomBar = {
             if (uiState.debrief == null) {
@@ -5571,7 +5618,9 @@ fun ActiveWorkoutScreen(
                     onAdjustRestTimer = onAdjustRestTimer,
                     onSkipRestTimer = onSkipRestTimer,
                     onFinishClick = {
-                        if (uiState.needsFinishConfirmation) showFinishConfirm = true else onFinish()
+                        saveNotesThen {
+                            if (uiState.needsFinishConfirmation) showFinishConfirm = true else onFinish()
+                        }
                     },
                 )
             }
@@ -5606,7 +5655,7 @@ fun ActiveWorkoutScreen(
                         maxItemsInEachRow = 3,
                     ) {
                         SecondaryActionButton(
-                            onClick = onBack,
+                            onClick = { saveNotesThen(onBack) },
                             modifier = Modifier
                                 .weight(1f)
                                 .semantics { contentDescription = "Terug naar Training" },
@@ -5631,6 +5680,29 @@ fun ActiveWorkoutScreen(
                         color = MaterialTheme.trainIqColors.mutedText,
                     )
                     ActiveWorkoutSessionSummary(uiState, clockState)
+                    if (uiState.debrief == null && uiState.activeSession != null) {
+                        OutlinedTextField(
+                            value = notesDraft,
+                            onValueChange = { notesDraft = it.take(2_000) },
+                            label = { Text("Workout-notitie") },
+                            placeholder = { Text("Hoe voelt je training?") },
+                            enabled = !notesSaving,
+                            maxLines = 3,
+                            modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                        )
+                        if (notesDraft != uiState.activeSession.notes) {
+                            Row {
+                                TextButton(
+                                    enabled = !notesSaving,
+                                    onClick = { saveNotesThen {} },
+                                    modifier = Modifier.defaultMinSize(minHeight = 48.dp),
+                                ) { Text(if (notesSaving) "Opslaan…" else "Notitie opslaan") }
+                                TextButton(enabled = !notesSaving, onClick = { notesDraft = uiState.activeSession.notes }) {
+                                    Text("Annuleren")
+                                }
+                            }
+                        }
+                    }
                 }
             }
             if (uiState.workout == null) {
@@ -5841,31 +5913,35 @@ private fun ActiveWorkoutSessionSummary(
         accent = MaterialTheme.trainIqColors.amber,
         elevated = true,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 if (uiState.debrief == null) "Actieve training" else "Training opgeslagen",
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.ExtraBold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                displayWorkoutDayName(uiState.workout?.name ?: "Workout"),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    displayWorkoutDayName(uiState.workout?.name ?: "Workout"),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    formatTimer(clock.elapsedSeconds.toInt()),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.semantics { contentDescription = "Sessietijd ${formatTimer(clock.elapsedSeconds.toInt())}" },
+                )
+            }
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                StatusMetric("Tijd", formatTimer(clock.elapsedSeconds.toInt()))
-                StatusMetric("Oefeningen", uiState.workout?.exercises?.size?.toString() ?: "-")
-                StatusMetric("Sets", "${uiState.completedSets}/${uiState.targetSets}")
-                StatusMetric("Rust", activeWorkoutBottomBarStatusText(clock.restTimerSeconds).removePrefix("Rust "))
+                Text("${uiState.workout?.exercises?.size ?: 0} oefeningen · ${uiState.completedSets}/${uiState.targetSets} sets", style = MaterialTheme.typography.bodySmall)
+                Text(activeWorkoutBottomBarStatusText(clock.restTimerSeconds), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
             AppLinearProgress(progress = progress, accent = MaterialTheme.trainIqColors.amber)
         }
@@ -5926,15 +6002,15 @@ private fun ActiveWorkoutBottomBar(
                     )
                 }
                 if (clock.restTimerSeconds > 0) {
-                    IconButton(onClick = { onAdjustRestTimer(-30) }, modifier = Modifier.size(38.dp)) {
+                    IconButton(onClick = { onAdjustRestTimer(-30) }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Rounded.Remove, contentDescription = restTimerAdjustContentDescription(-30))
                     }
-                    IconButton(onClick = { onAdjustRestTimer(30) }, modifier = Modifier.size(38.dp)) {
+                    IconButton(onClick = { onAdjustRestTimer(30) }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Rounded.Add, contentDescription = restTimerAdjustContentDescription(30))
                     }
                     IconButton(
                         onClick = onSkipRestTimer,
-                        modifier = Modifier.size(38.dp),
+                        modifier = Modifier.size(48.dp),
                     ) {
                         Icon(Icons.Rounded.SkipNext, contentDescription = restTimerSkipContentDescription())
                     }
@@ -5943,13 +6019,17 @@ private fun ActiveWorkoutBottomBar(
                     onClick = onFinishClick,
                     enabled = uiState.workout != null,
                     modifier = Modifier
-                        .defaultMinSize(minWidth = 42.dp, minHeight = 38.dp)
+                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
                         .semantics {
                             contentDescription = activeWorkoutFinishContentDescription(uiState.workout != null)
                         },
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                 ) {
                     Icon(Icons.Default.Check, contentDescription = null)
+                    if (clock.restTimerSeconds == 0) {
+                        Spacer(Modifier.width(6.dp))
+                        Text("Afronden")
+                    }
                 }
             }
         }
@@ -6090,9 +6170,9 @@ private fun RestTimerCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "Rusttimer",
+                    "Rusttimer ${formatTimer(restTimerSeconds)}",
                     modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.ExtraBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -6104,14 +6184,6 @@ private fun RestTimerCard(
                     maxLines = 1,
                 )
             }
-            Text(
-                formatTimer(restTimerSeconds),
-                modifier = Modifier.fillMaxWidth(),
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.trainIqColors.amber,
-                textAlign = TextAlign.Center,
-            )
             AppLinearProgress(
                 progress = if (totalSeconds > 0) (restTimerSeconds / totalSeconds.toFloat()).coerceIn(0f, 1f) else 0f,
                 accent = MaterialTheme.trainIqColors.amber,
@@ -6121,17 +6193,17 @@ private fun RestTimerCard(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = { onAdjust(-30) }, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = { onAdjust(-30) }, modifier = Modifier.size(48.dp)) {
                     Icon(Icons.Rounded.Remove, contentDescription = restTimerAdjustContentDescription(-30))
                 }
-                IconButton(onClick = { onAdjust(30) }, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = { onAdjust(30) }, modifier = Modifier.size(48.dp)) {
                     Icon(Icons.Rounded.Add, contentDescription = restTimerAdjustContentDescription(30))
                 }
-                IconButton(onClick = onRestart, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onRestart, modifier = Modifier.size(48.dp)) {
                     Icon(Icons.Rounded.Replay, contentDescription = restTimerRestartContentDescription())
                 }
                 Spacer(modifier = Modifier.weight(1f))
-                IconButton(onClick = onSkip, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onSkip, modifier = Modifier.size(48.dp)) {
                     Icon(Icons.Rounded.SkipNext, contentDescription = restTimerSkipContentDescription())
                 }
             }
@@ -6195,10 +6267,10 @@ private fun ActiveExerciseCard(
             else -> MaterialTheme.colorScheme.primary
         },
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Column(
                     modifier = Modifier
@@ -6225,10 +6297,10 @@ private fun ActiveExerciseCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Row(
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     IconButton(onClick = {
                         if (!collapsed) focusManager.clearFocus(force = true)
@@ -6252,14 +6324,6 @@ private fun ActiveExerciseCard(
                             expanded = menuExpanded,
                             onDismissRequest = { menuExpanded = false },
                         ) {
-                            DropdownMenuItem(
-                                text = { Text("Set toevoegen") },
-                                leadingIcon = { Icon(Icons.Rounded.Add, contentDescription = null) },
-                                onClick = {
-                                    menuExpanded = false
-                                    activeSetTargetDelta += 1
-                                },
-                            )
                             DropdownMenuItem(
                                 text = { Text("Geschiedenis") },
                                 onClick = {
@@ -6288,7 +6352,9 @@ private fun ActiveExerciseCard(
                 }
             }
             if (collapsed) return@Column
-            suggestion?.let { CompactPreviousPerformance(it) } ?: PlannedPerformanceFallback(plan)
+            if (!showLogger) {
+                suggestion?.let { CompactPreviousPerformance(it) } ?: PlannedPerformanceFallback(plan)
+            }
             val visibleSetRows = visibleActiveSetRows(
                 plannedSetCount = activeSetTargetCount,
                 loggedSetCount = loggedSets.size,
@@ -6317,6 +6383,9 @@ private fun ActiveExerciseCard(
                     draft = draft,
                     draftErrors = draftErrors,
                     lastSession = suggestion?.toLastSessionDraft(),
+                    targetPerformance = suggestion?.let {
+                        "${formatWeight(it.suggestedWeightKg)} kg × ${it.suggestedReps}"
+                    } ?: "${formatWeight(plan.targetWeightKg)} kg × ${plan.repRange}",
                     onSetTypeSelected = { type ->
                         if (rowIsActiveInput) {
                             onDraftChange(draft.copy(setType = type))
@@ -6343,6 +6412,16 @@ private fun ActiveExerciseCard(
                     isLogPending = isLogPending,
                     onLogSet = onLogSet,
                 )
+            }
+            TextButton(
+                onClick = { activeSetTargetDelta += 1 },
+                enabled = !isSessionFinished,
+                modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)
+                    .semantics { contentDescription = "Set toevoegen aan ${plan.exercise.name}" },
+            ) {
+                Icon(Icons.Rounded.Add, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text("Set toevoegen")
             }
             if (platePlan.isNotEmpty()) {
                 PlateBarDiagram(
@@ -6445,17 +6524,17 @@ private fun ActiveExerciseRestControl(
             horizontalArrangement = Arrangement.spacedBy(0.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onDecrease, modifier = Modifier.size(32.dp)) {
+            IconButton(onClick = onDecrease, modifier = Modifier.size(48.dp)) {
                 Icon(Icons.Rounded.Remove, contentDescription = restTimerAdjustContentDescription(-30))
             }
             Text(
-                "${restSeconds}s",
+                "Rust ${restSeconds}s",
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 softWrap = false,
             )
-            IconButton(onClick = onIncrease, modifier = Modifier.size(32.dp)) {
+            IconButton(onClick = onIncrease, modifier = Modifier.size(48.dp)) {
                 Icon(Icons.Rounded.Add, contentDescription = restTimerAdjustContentDescription(30))
             }
         }
@@ -6840,6 +6919,7 @@ private fun SetRow(
     draft: SetInputDraft?,
     draftErrors: SetInputFieldErrors?,
     lastSession: SetInputDraft?,
+    targetPerformance: String,
     onSetTypeSelected: (SetType) -> Unit,
     onDraftChange: (SetInputDraft) -> Unit,
     onEdit: () -> Unit,
@@ -6887,9 +6967,15 @@ private fun SetRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(rowColor, MaterialTheme.shapes.medium)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .background(rowColor, MaterialTheme.shapes.small)
+            .semantics { stateDescription = when {
+                isCorrecting -> "Correctie"
+                loggedSet?.completed == true -> "Voltooid"
+                isCurrent -> "Huidige set"
+                else -> "Volgende set"
+            } }
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(
             modifier = Modifier
@@ -6952,6 +7038,20 @@ private fun SetRow(
                 }
             }
         }
+        if (isInputExpanded) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    lastSession?.let { "Vorige: ${it.weight} kg × ${it.reps}" } ?: "Nog geen vorige prestatie",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "Doel: $targetPerformance",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
             if (isInputExpanded && draft != null && draftErrors != null) {
                 ActiveSetInputMetrics(
@@ -6961,6 +7061,12 @@ private fun SetRow(
                     lastSession = lastSession,
                     onDraftChange = onDraftChange,
                 )
+            } else if (loggedSet != null || !isCurrent) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    metricCells.forEach { cell ->
+                        Text("${cell.label}: ${cell.value}", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             } else when (routineSetMetricLayoutForWidth(maxWidth)) {
                 RoutineSetMetricLayout.OneRow -> {
                     Row(
@@ -7007,6 +7113,40 @@ private fun SetRow(
                 Text(submitLabel, textAlign = TextAlign.Center)
             }
         }
+    }
+}
+
+@Preview(name = "Compact active set", widthDp = 328)
+@Preview(name = "Compact active set large text", widthDp = 328, fontScale = 1.5f)
+@Composable
+private fun CompactActiveSetPreview() {
+    TrainIqTheme(themeMode = ThemeMode.LIGHT, dynamicColor = false) {
+        SetRow(
+            index = 2, repRange = "8–12", plannedSet = null, loggedSet = null,
+            activeRestSeconds = 90, isCurrent = true, isCorrecting = false, isInputExpanded = true,
+            draft = SetInputDraft(reps = "10", weight = "53.5", restSeconds = "90"),
+            draftErrors = SetInputFieldErrors(),
+            lastSession = SetInputDraft(reps = "12", weight = "53.5", restSeconds = "90"),
+            targetPerformance = "53.5 kg × 12", onSetTypeSelected = {}, onDraftChange = {},
+            onEdit = {}, onDelete = {}, canRemovePlanned = true, onRemovePlanned = {}, onRelog = {},
+            submitLabel = "Set loggen", isLogPending = false, onLogSet = {},
+        )
+    }
+}
+
+@Preview(name = "Compact completed set", widthDp = 328)
+@Composable
+private fun CompactCompletedSetPreview() {
+    TrainIqTheme(themeMode = ThemeMode.DARK, dynamicColor = false) {
+        SetRow(
+            index = 1, repRange = "8–12", plannedSet = null,
+            loggedSet = LoggedSet(exerciseId = 3L, weight = 53.5, reps = 12, rpe = 0.0, restSeconds = 90),
+            activeRestSeconds = 90, isCurrent = false, isCorrecting = false, isInputExpanded = false,
+            draft = null, draftErrors = null, lastSession = null, targetPerformance = "53.5 kg × 12",
+            onSetTypeSelected = {}, onDraftChange = {}, onEdit = {}, onDelete = {},
+            canRemovePlanned = false, onRemovePlanned = {}, onRelog = {}, submitLabel = null,
+            isLogPending = false, onLogSet = {},
+        )
     }
 }
 

@@ -17,6 +17,26 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class TrainIqDatabaseMigrationTest {
     @Test
+    fun migration19To20PreservesWorkoutHistoryAndInitializesEmptyNotes() {
+        helper.createDatabase(TEST_DB, 19).apply {
+            seedVersion11RelationalData()
+            close()
+        }
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 20, true)
+        migrated.assertVersion11RelationalDataSurvived()
+        migrated.query("SELECT COUNT(*) FROM workout_sessions WHERE notes != ''").use {
+            assertTrue(it.moveToFirst())
+            assertEquals(0, it.getInt(0))
+        }
+        migrated.query("SELECT COUNT(*) FROM active_workout_sessions WHERE notes != ''").use {
+            assertTrue(it.moveToFirst())
+            assertEquals(0, it.getInt(0))
+        }
+        migrated.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
+        migrated.close()
+    }
+
+    @Test
     fun migration18To19BackfillsDistinctDebriefGenerationsForExistingWorkouts() {
         helper.createDatabase(TEST_DB, 18).apply {
             execSQL("INSERT INTO workout_sessions (id, date, duration, caloriesBurned) VALUES (41, 1000, 60, 0)")

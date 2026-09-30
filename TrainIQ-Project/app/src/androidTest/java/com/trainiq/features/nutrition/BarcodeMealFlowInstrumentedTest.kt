@@ -102,6 +102,11 @@ class BarcodeMealFlowInstrumentedTest {
             }
             imeHidden
         }
+        // The product-added snackbar overlays the lower save action at compact font scale.
+        // Wait for its disappearance before the single physical save tap.
+        compose.waitUntil(timeoutMillis = 10_000) {
+            compose.onAllNodesWithText("Product alleen aan deze maaltijd toegevoegd.").fetchSemanticsNodes().isEmpty()
+        }
         val save = compose.onNodeWithText("Maaltijd opslaan").performScrollTo()
         save.assertIsEnabled().assertIsDisplayed()
         val beforeTap = manualSaveWindowSnapshot()

@@ -210,6 +210,7 @@ data class WorkoutSessionEntity(
     @ColumnInfo(name = "debrief_recovery_advice", defaultValue = "") val debriefRecoveryAdvice: String = "",
     @ColumnInfo(name = "debrief_source", defaultValue = "LOCAL_FALLBACK") val debriefSource: String = "LOCAL_FALLBACK",
     @ColumnInfo(name = "debrief_generation_id", defaultValue = "''") val debriefGenerationId: String = "",
+    @ColumnInfo(defaultValue = "''") val notes: String = "",
 )
 
 @Entity(
@@ -415,6 +416,7 @@ data class ActiveWorkoutSessionEntity(
     val updatedAt: Long,
     val restTimerEndsAt: Long? = null,
     val restTimerTotalSeconds: Int = 0,
+    @ColumnInfo(defaultValue = "''") val notes: String = "",
 )
 
 @Entity(

@@ -291,6 +291,10 @@ class TrainIqDataCoordinator @Inject constructor(
         return active.toDomain()
     }
 
+    suspend fun updateActiveWorkoutNotes(notes: String): ActiveWorkoutSession? = withContext(Dispatchers.IO) {
+        runtimeStore.updateActiveWorkoutNotes(notes)?.toDomain()
+    }
+
     suspend fun updateActiveWorkoutDraft(exerciseId: Long, draft: ActiveWorkoutSetDraft): ActiveWorkoutSession? =
         withContext(Dispatchers.IO) {
             val active = runtimeStore.state.value.activeWorkoutSession ?: return@withContext null
@@ -531,6 +535,7 @@ class TrainIqDataCoordinator @Inject constructor(
         val generationId = UUID.randomUUID().toString()
         val startedAt = activeStartedAt?.takeIf { it > 0L } ?: (now - durationSeconds * 1_000L).coerceAtLeast(0L)
         val newSession = WorkoutSessionEntity(
+            notes = current.activeWorkoutSession?.takeIf { it.sessionId == sessionId }?.notes.orEmpty(),
             id = sessionId,
             date = startedAt,
             duration = durationSeconds,
@@ -628,6 +633,19 @@ class TrainIqDataCoordinator @Inject constructor(
         val dayId = session.workoutDayId ?: return@withContext WorkoutDebriefRefreshOutcome.INVALID_RESULT
         val sessionSets = refreshSnapshot.sets.filter { it.sessionId == sessionId }
         if (sessionSets.isEmpty()) return@withContext WorkoutDebriefRefreshOutcome.INVALID_RESULT
+        val effortSets = sessionSets.map { set ->
+            LoggedSet(
+                exerciseId = set.exerciseId,
+                weight = set.weight,
+                reps = set.reps,
+                rpe = set.rpe,
+                repsInReserve = set.repsInReserve,
+                completed = set.completed,
+                setType = parseSetType(set.setType),
+                orderIndex = set.orderIndex,
+                performedExerciseId = set.performedExerciseId,
+            )
+        }
         val progressionSets = sessionSets.filter { parseSetType(it.setType).isProgressionType() }.ifEmpty { sessionSets }
         val currentVolume = progressionSets.sumOf { it.weight * it.reps }
         val comparison = buildWorkoutProgressComparison(
@@ -691,7 +709,8 @@ class TrainIqDataCoordinator @Inject constructor(
             progression = comparison?.progressionPercent,
             comparisonSummary = comparison?.summary ?: "Nog geen eerdere vergelijkbare training gevonden.",
             distribution = distribution,
-            avgRpe = progressionSets.map { it.rpe }.average().takeIf { !it.isNaN() }?.toFloat() ?: 0f,
+            avgRpe = com.trainiq.domain.model.WorkoutEffortSummary.averageRpe(effortSets)?.toFloat(),
+            exerciseEffort = com.trainiq.domain.model.WorkoutEffortSummary.exercises(effortSets, exerciseNameById),
             topExercises = topExercises,
             weeklyFrequency = refreshSnapshot.sessions
                 .filter { it.completed && it.date >= sevenDaysAgo }
@@ -1047,13 +1066,14 @@ class TrainIqDataCoordinator @Inject constructor(
     fun observeNutritionOverview(): Flow<NutritionOverview> =
         combine(snapshotState, _cachedSteps) { snapshot, steps -> buildNutritionOverview(snapshot, steps) }
 
-    suspend fun analyzeMealPhoto(path: String, context: String, capturedAtMillis: Long): MealAnalysisResult {
+    suspend fun analyzeMealPhoto(path: String, context: String, capturedAtMillis: Long, mode: com.trainiq.domain.model.FoodProviderMode = com.trainiq.domain.model.FoodProviderMode.AUTOMATIC): MealAnalysisResult {
         scannedMealResult.value = null
         return try {
             val result = mealAnalysisService.analyzeMealImage(
                 path = path,
                 userContext = context,
                 capturedAtMillis = capturedAtMillis,
+                foodProviderMode = mode,
             )
             currentCoroutineContext().ensureActive()
             scannedMealResult.value = result
@@ -1392,6 +1412,7 @@ class TrainIqDataCoordinator @Inject constructor(
         val debriefSource = runCatching { WorkoutDebriefSource.valueOf(session.debriefSource) }
             .getOrDefault(WorkoutDebriefSource.LOCAL_FALLBACK)
         return WorkoutSessionSummary(
+            notes = session.notes,
             id = session.id,
             date = session.endedAt.takeIf { it > 0L } ?: session.date,
             duration = session.duration,
@@ -2172,6 +2193,7 @@ internal fun TrainIqStorageState.ensurePerformedExercisesForCompletedSets(
 }
 
 internal fun ActiveWorkoutSessionStorage.toDomain() = ActiveWorkoutSession(
+    notes = notes,
     sessionId = sessionId,
     dayId = dayId,
     routineId = routineId,

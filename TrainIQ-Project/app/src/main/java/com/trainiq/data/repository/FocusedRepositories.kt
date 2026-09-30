@@ -65,6 +65,7 @@ class RoomWorkoutRepository @Inject constructor(
     override suspend fun getCurrentActiveWorkoutSession(): ActiveWorkoutSession? = delegate.getCurrentActiveWorkoutSession()
     override suspend fun getOrStartActiveWorkoutSession(dayId: Long, initialDrafts: Map<Long, ActiveWorkoutSetDraft>): ActiveWorkoutSession =
         delegate.getOrStartActiveWorkoutSession(dayId, initialDrafts)
+    override suspend fun updateActiveWorkoutNotes(notes: String): ActiveWorkoutSession? = delegate.updateActiveWorkoutNotes(notes)
     override suspend fun updateActiveWorkoutDraft(exerciseId: Long, draft: ActiveWorkoutSetDraft): ActiveWorkoutSession? =
         delegate.updateActiveWorkoutDraft(exerciseId, draft)
     override suspend fun logActiveWorkoutSet(dayId: Long, set: LoggedSet, draft: ActiveWorkoutSetDraft, restSeconds: Int): ActiveWorkoutSetLogResult =
@@ -129,6 +130,7 @@ class RoomNutritionRepository @Inject constructor(
     override fun observeNutritionOverview(): Flow<NutritionOverview> = delegate.observeNutritionOverview()
     override suspend fun analyzeMealPhoto(path: String, context: String, capturedAtMillis: Long): MealAnalysisResult =
         delegate.analyzeMealPhoto(path, context, capturedAtMillis)
+    override suspend fun analyzeMealPhoto(path: String, context: String, capturedAtMillis: Long, mode: com.trainiq.domain.model.FoodProviderMode): MealAnalysisResult = delegate.analyzeMealPhoto(path, context, capturedAtMillis, mode)
     override suspend fun lookupBarcodeProduct(barcode: String) = delegate.lookupBarcodeProduct(barcode)
     override suspend fun lookupBarcodeProduct(barcode: String, mode: com.trainiq.domain.model.FoodProviderMode) = delegate.lookupBarcodeProduct(barcode, mode)
     override fun clearLastScanResult() = delegate.clearLastScanResult()

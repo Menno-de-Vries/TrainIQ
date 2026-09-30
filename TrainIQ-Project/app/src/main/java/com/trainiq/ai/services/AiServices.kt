@@ -49,6 +49,7 @@ class MealAnalysisService internal constructor(
     private val readinessProvider: suspend () -> AiReadiness = {
         if (isAiReady()) AiReadiness.CONFIGURED else AiReadiness.NO_DECRYPTABLE_KEY
     },
+    private val productEnricher: suspend (MealAnalysisResult, com.trainiq.domain.model.FoodProviderMode) -> MealAnalysisResult = { result, _ -> result },
 ) {
     internal constructor(
         api: GeminiApi,
@@ -74,17 +75,19 @@ class MealAnalysisService internal constructor(
     constructor(
         aiProviderRouter: AiProviderRouter,
         aiUsageGate: AiUsageGate,
+        mealProductEnricher: com.trainiq.data.remote.MealProductEnricher,
     ) : this(
         aiJsonGenerator = aiProviderRouter,
         isAiReady = { aiUsageGate.isAiReady() },
         imageBytesProvider = ::prepareMealScanImageBytes,
         readinessProvider = aiUsageGate::currentReadiness,
+        productEnricher = mealProductEnricher::enrich,
     )
 
     private val gson = Gson()
     private val captureTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
-    suspend fun analyzeMealImage(path: String, userContext: String, capturedAtMillis: Long): MealAnalysisResult {
+    suspend fun analyzeMealImage(path: String, userContext: String, capturedAtMillis: Long, foodProviderMode: com.trainiq.domain.model.FoodProviderMode = com.trainiq.domain.model.FoodProviderMode.AUTOMATIC): MealAnalysisResult {
         val readiness = readinessProvider()
         if (readiness != AiReadiness.CONFIGURED) {
             val fallbackContext = readiness.toAiFallbackContext()
@@ -127,7 +130,7 @@ class MealAnalysisService internal constructor(
             )
         }
         return try {
-            parseMealScan(routed.rawJson, suggestedMealType, routed.providerUsed, contextOverrides)
+            productEnricher(parseMealScan(routed.rawJson, suggestedMealType, routed.providerUsed, contextOverrides), foodProviderMode)
         } catch (error: MealAnalysisUnavailableException) {
             if (routed.providerUsed == AiProvider.OPENAI) {
                 throw AiProviderRequestException(
@@ -175,6 +178,11 @@ class MealAnalysisService internal constructor(
                     nutrition = if (basis == "PER_100_G") scaleNutritionToGrams(reportedNutrition, 100.0, estimatedGrams) else reportedNutrition,
                     confidence = obj.get("confidence").boundedString(MaxMealScanMetaChars),
                     notes = obj.get("notes").boundedString(MaxMealScanNotesChars),
+                    productName = obj.get("productName").boundedString(MaxMealScanNameChars),
+                    brand = obj.get("brand").boundedString(MaxMealScanMetaChars),
+                    variant = obj.get("variant").boundedString(MaxMealScanMetaChars),
+                    barcode = obj.get("barcode").boundedString(14),
+                    amountUnit = obj.get("amountUnit").boundedString(10),
                 )
             }.orEmpty()
             val normalizedItems = applyMealContextOverrides(items, contextOverrides)
@@ -677,9 +685,10 @@ class WorkoutDebriefService internal constructor(
             "Vergelijking beschikbaar: ${formatAiPercentNl(progression)}%."
         },
         distribution: String,
-        avgRpe: Float,
+        avgRpe: Float?,
         topExercises: String,
         weeklyFrequency: Int,
+        exerciseEffort: List<com.trainiq.domain.model.ExerciseEffortSummary> = emptyList(),
     ): WorkoutDebrief =
         runCatching {
             generateWorkoutDebriefOrThrow(
@@ -690,6 +699,7 @@ class WorkoutDebriefService internal constructor(
                 avgRpe = avgRpe,
                 topExercises = topExercises,
                 weeklyFrequency = weeklyFrequency,
+                exerciseEffort = exerciseEffort,
             )
         }.getOrElse { error ->
             if (error is CancellationException) throw error
@@ -707,9 +717,10 @@ class WorkoutDebriefService internal constructor(
         progression: Double?,
         comparisonSummary: String,
         distribution: String,
-        avgRpe: Float,
+        avgRpe: Float?,
         topExercises: String,
         weeklyFrequency: Int,
+        exerciseEffort: List<com.trainiq.domain.model.ExerciseEffortSummary> = emptyList(),
     ): WorkoutDebrief {
         val routed = aiJsonGenerator.generateJson(
                 AiRouteRequest(
@@ -725,6 +736,7 @@ class WorkoutDebriefService internal constructor(
                                         avgRpe = avgRpe,
                                         topExercises = topExercises,
                                         weeklyFrequency = weeklyFrequency,
+                exerciseEffort = exerciseEffort,
                                     ),
                 ),
             )

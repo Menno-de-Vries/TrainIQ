@@ -187,6 +187,10 @@ class StartWorkoutSessionUseCase @Inject constructor(private val repository: Wor
     }
 }
 
+class UpdateActiveWorkoutNotesUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(notes: String) = repository.updateActiveWorkoutNotes(notes)
+}
+
 class UpdateActiveWorkoutDraftUseCase @Inject constructor(private val repository: WorkoutRepository) {
     suspend operator fun invoke(exerciseId: Long, draft: ActiveWorkoutSetDraft) =
         repository.updateActiveWorkoutDraft(exerciseId, draft)
@@ -412,8 +416,8 @@ class ObserveNutritionUseCase @Inject constructor(private val repository: Nutrit
 }
 
 class AnalyzeMealUseCase @Inject constructor(private val repository: NutritionRepository) {
-    suspend operator fun invoke(path: String, context: String, capturedAtMillis: Long) =
-        repository.analyzeMealPhoto(path, context, capturedAtMillis)
+    suspend operator fun invoke(path: String, context: String, capturedAtMillis: Long, mode: com.trainiq.domain.model.FoodProviderMode = com.trainiq.domain.model.FoodProviderMode.AUTOMATIC) =
+        repository.analyzeMealPhoto(path, context, capturedAtMillis, mode)
 }
 
 class LookupBarcodeProductUseCase @Inject constructor(private val repository: NutritionRepository) {
