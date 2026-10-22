@@ -29,6 +29,104 @@ import kotlin.coroutines.CoroutineContext
 
 class AiServicesTest {
     @Test
+    fun parseMealContextOverrides_acceptsBulletedNumberedAndParenthesizedWeights() {
+        val overrides = parseMealContextOverrides("- brood 35 g\n2. boter: 5 g\n• kiprollade (25 g)\n4) 20 g kaas")
+        assertEquals(mapOf("brood" to 35.0, "boter" to 5.0, "kiprollade" to 25.0, "kaas" to 20.0), overrides.itemGramsByName)
+    }
+
+    @Test
+    fun analyzeMealImage_sliceLabelsRemainExplicitRatherThanFuzzyMatchingGenericBread() = runTest {
+        val overrides = parseMealContextOverrides("1 snee brood 35 g\nbrood 1 40 g")
+        assertEquals(mapOf("1 snee brood" to 35.0, "brood 1" to 40.0), overrides.itemGramsByName)
+        val api = FakeGeminiApi(response = mealScanResponse("""{"items":[
+            {"name":"brood","estimatedGrams":100,"calories":250,"protein":10,"carbs":40,"fat":5}
+        ],"suggestedMealType":"LUNCH"}"""))
+        val service = MealAnalysisService(api = api, isAiReady = { true }, apiKeyProvider = { "key" }, imageBytesProvider = { byteArrayOf(1) })
+        val result = service.analyzeMealImage(tempImagePath(), "1 snee brood 35 g\nbrood 1 40 g", 0)
+        assertEquals(100.0, result.items.single().estimatedGrams, 0.0)
+        assertTrue(result.notes.orEmpty().contains("1 snee brood, brood 1 ontbreken"))
+    }
+
+    @Test
+    fun analyzeMealImage_repeatedBreadLinesRemainSeparateWhenModelGroupedThem() = runTest {
+        val api = FakeGeminiApi(response = mealScanResponse("""{"items":[
+            {"name":"brood","estimatedGrams":100,"calories":250,"protein":10,"carbs":40,"fat":5},
+            {"name":"kaas","estimatedGrams":20,"calories":80,"protein":5,"carbs":0,"fat":6}
+        ],"suggestedMealType":"LUNCH"}"""))
+        val service = MealAnalysisService(api = api, isAiReady = { true }, apiKeyProvider = { "key" }, imageBytesProvider = { byteArrayOf(1) })
+        val result = service.analyzeMealImage(tempImagePath(), "- brood 35 g\n- brood 40 g\n- kaas 20 g", 0)
+        assertEquals(listOf("brood", "brood", "kaas"), result.items.map { it.name })
+        assertEquals(listOf(35.0, 40.0, 20.0), result.items.map { it.estimatedGrams })
+        assertEquals(267.5, result.items.sumOf { it.nutrition.calories }, 0.001)
+    }
+
+    @Test
+    fun analyzeMealImage_repeatedPredictionsAreNotAddedAgainAfterContextLock() = runTest {
+        val api = FakeGeminiApi(response = mealScanResponse("""{"items":[
+            {"name":"brood","estimatedGrams":30,"calories":75,"protein":3,"carbs":12,"fat":1.5},
+            {"name":"brood","estimatedGrams":30,"calories":75,"protein":3,"carbs":12,"fat":1.5}
+        ],"suggestedMealType":"LUNCH"}"""))
+        val service = MealAnalysisService(api = api, isAiReady = { true }, apiKeyProvider = { "key" }, imageBytesProvider = { byteArrayOf(1) })
+        val result = service.analyzeMealImage(tempImagePath(), "brood 35 g\nbrood 40 g", 0)
+        assertEquals(listOf(35.0, 40.0), result.items.map { it.estimatedGrams })
+        assertEquals(187.5, result.items.sumOf { it.nutrition.calories }, 0.001)
+    }
+
+    @Test
+    fun analyzeMealImage_ambiguousPooledProductsRequireReviewWithoutBorrowedIdentity() = runTest {
+        val api = FakeGeminiApi(response = mealScanResponse("""{"items":[
+            {"name":"brood","productName":"volkoren brood","brand":"A","barcode":"11111111","estimatedGrams":50,"calories":125,"protein":5,"carbs":20,"fat":2},
+            {"name":"brood","productName":"wit brood","brand":"B","barcode":"22222222","estimatedGrams":50,"calories":175,"protein":5,"carbs":30,"fat":2}
+        ],"suggestedMealType":"LUNCH"}"""))
+        val service = MealAnalysisService(api = api, isAiReady = { true }, apiKeyProvider = { "key" }, imageBytesProvider = { byteArrayOf(1) })
+        val result = service.analyzeMealImage(tempImagePath(), "brood 20 g\nbrood 30 g\nbrood 40 g", 0)
+        assertEquals(listOf(20.0, 30.0, 40.0), result.items.map { it.estimatedGrams })
+        assertEquals(270.0, result.items.sumOf { it.nutrition.calories }, 0.001)
+        assertTrue(result.items.all { it.brand == null && it.productName == null && it.barcode == null && it.confidence == "low" })
+    }
+
+    @Test
+    fun prepareMealScanImageBytes_downsizesSourceAboveFormerSixMiBLimit() = runTest {
+        val file = File.createTempFile("meal-large-source", ".jpg").apply { deleteOnExit() }
+        try {
+            RandomAccessFile(file, "rw").use { it.setLength(7L * 1024 * 1024) }
+            assertEquals(listOf<Byte>(1, 2), prepareMealScanImageBytes(file, imageCompressor = { byteArrayOf(1, 2) })?.toList())
+        } finally { file.delete() }
+    }
+
+    @Test
+    fun prepareMealScanImageBytes_keepsSourceAndUploadBounds() = runTest {
+        val file = File.createTempFile("meal-source-bound", ".jpg").apply { deleteOnExit() }
+        try {
+            RandomAccessFile(file, "rw").use { it.setLength(32L * 1024 * 1024 + 1) }
+            assertNull(prepareMealScanImageBytes(file, imageCompressor = { error("Oversized source must not decode") }))
+            file.writeBytes(byteArrayOf(1))
+            assertNull(prepareMealScanImageBytes(file, imageCompressor = { ByteArray(1_500_001) }))
+        } finally { file.delete() }
+    }
+
+    @Test
+    fun prepareMealScanImageBytes_doesNotSwallowCancellation() = runTest {
+        val file = File.createTempFile("meal-cancel", ".jpg").apply { writeBytes(byteArrayOf(1)); deleteOnExit() }
+        try {
+            val error = runCatching { prepareMealScanImageBytes(file, imageCompressor = { throw CancellationException("cancelled") }) }.exceptionOrNull()
+            assertTrue(error is CancellationException)
+        } finally { file.delete() }
+    }
+
+    @Test
+    fun analyzeMealImage_unreadablePhotoExplainsRecoveryWithoutCallingAi() = runTest {
+        val service = MealAnalysisService(
+            aiJsonGenerator = object : AiJsonGenerator { override suspend fun generateJson(request: AiRouteRequest): AiRouteResult = error("Must not upload") },
+            isAiReady = { true }, imageBytesProvider = { null },
+        )
+        val result = service.analyzeMealImage("invalid.jpg", "brood 40 g", 0)
+        assertEquals(MealAnalysisSource.LOCAL_FALLBACK, result.source)
+        assertTrue(result.notes.orEmpty().contains("foto", ignoreCase = true))
+        assertTrue(result.notes.orEmpty().contains("andere", ignoreCase = true))
+    }
+
+    @Test
     fun calculateImageSampleSize_largeImageBoundsAvoidsFullResolutionDecode() {
         assertEquals(4, calculateImageSampleSize(width = 5_120, height = 2_880, maxDimensionPx = 1_280))
     }

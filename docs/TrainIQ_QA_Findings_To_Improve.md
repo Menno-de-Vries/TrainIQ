@@ -1,5 +1,17 @@
 # TrainIQ QA Findings To Improve
 
+## 2026-10-22 Food scan and active workout
+
+Status: done for the reproduced scoped defects; the original live scan incident
+remains unconfirmed. Confirmed findings cover
+list-prefix/repeated-food quantity handling, premature 6 MiB source rejection,
+Gemini meal-response classification and a hidden finish label/duplicate rest
+controls. The [scoped analysis and verification](qa/TrainIQ_Food_Workout_2026-10-22.md)
+compares all seven supplied design concepts, records RED regressions and final
+passing local build/JVM/lint/scoped Android evidence, and separates
+confirmed defects from the user's unconfirmed live scan failure. Preserve existing
+coaching fallback and manual meal entry; no model/schema/permission changes.
+
 ## 2026-09-30 Full audit package
 
 Selected current-run findings TECH-01–04 and B1-01–04 map to FIX-01–08 in [the scoped improvement plan](qa/2026-09-30/improvement-plan.md). Status: all eight selected changes accepted locally after 992 JVM tests, 202/202 Android tests, debug/compile/lint, Room marker and changed-screen visual/interaction checks. Independent review caught the initial reserved-positive meal ID assumption before delivery; explicit create/edit intent is required. See [verification](qa/2026-09-30/verification.md) for actual executed results and external NOT RUN boundaries. Historical findings below remain preserved.

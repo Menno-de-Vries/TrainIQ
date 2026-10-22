@@ -85,6 +85,7 @@ import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import com.trainiq.BuildConfig
 import com.trainiq.ai.services.AiUsageGate
+import com.trainiq.ai.services.MaxMealImageSourceBytes
 import com.trainiq.ai.services.hasAnyReadyProvider
 import com.trainiq.ai.services.toAiUserMessage
 import com.trainiq.core.datastore.AiPreferences
@@ -460,7 +461,7 @@ internal fun CameraScannerScreen(
             importScannerImage(
                 copy = { copyScannerImageFromUri(context, uri) },
                 consume = { path -> if (screenActive.get()) onAnalyze(path) else deleteScannerTemporaryImage(path) },
-                failed = { restorableState = restorableState.copy(cameraError = "Foto importeren mislukt. Kies een duidelijke JPG of PNG.") },
+                failed = { restorableState = restorableState.copy(cameraError = "Foto importeren mislukt. Kies een andere duidelijke JPG of PNG van maximaal 32 MB.") },
             )
         }
     }
@@ -1214,4 +1215,4 @@ private fun InputStream.copyToLimit(output: OutputStream, maxBytes: Long) {
 private class ScannerImportTooLargeException : RuntimeException()
 
 private const val ScannerLogTag = "TrainIQ"
-private const val MaxScannerImportBytes = 6L * 1024L * 1024L
+private const val MaxScannerImportBytes = MaxMealImageSourceBytes

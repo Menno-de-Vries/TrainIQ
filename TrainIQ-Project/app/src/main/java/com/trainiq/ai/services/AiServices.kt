@@ -109,7 +109,9 @@ class MealAnalysisService internal constructor(
             append("Voorgesteld maaltijdtype: ${suggestedMealType.promptLabel()}. ")
             append(sanitizedUserContext.ifBlank { "Herken de voeding en schat porties en voedingswaarden met passende onzekerheid." })
         }
-        val imageBytes = imageBytesProvider(file) ?: return fallbackMealScan()
+        val imageBytes = imageBytesProvider(file) ?: return fallbackMealScan(
+            notes = "Deze foto kan niet worden gelezen of is te groot. Kies een andere duidelijke foto (maximaal 32 MB) of voeg de maaltijd handmatig toe.",
+        )
         val routed = runCatching {
             aiJsonGenerator.generateJson(
                 AiRouteRequest(
@@ -320,9 +322,10 @@ internal data class MealContextOverrides(
     val unresolvedVolumesByName: Map<String, Double> = emptyMap(),
     val hasServingOrPackageScope: Boolean = false,
     val hasRawOrCookedScope: Boolean = false,
+    val items: List<MealContextItemOverride> = emptyList(),
 )
 
-private data class MealContextItemOverride(
+internal data class MealContextItemOverride(
     val normalized: String,
     val displayName: String,
     val grams: Double,
@@ -337,13 +340,14 @@ internal data class BodyMeasurementContextOverrides(
 internal fun parseMealContextOverrides(context: String): MealContextOverrides {
     if (context.isBlank()) return MealContextOverrides()
     val quantity = """(\d+(?:[,.]\d+)?)\s*(kg|kilogram|g|gram|grams|ml|milliliter|milliliters)\b"""
-    val name = """([a-zA-ZÀ-ÿ][a-zA-ZÀ-ÿ0-9 '\-]{0,40}?)"""
-    val before = Regex("""(?i)^\s*$name\s*[:=]?\s*$quantity\s*$""")
+    val name = """([a-zA-ZÀ-ÿ0-9][a-zA-ZÀ-ÿ0-9 '\-]{0,119}?)"""
+    val before = Regex("""(?i)^\s*$name\s*[:=]?\s*\(?\s*$quantity\s*\)?\s*$""")
     val after = Regex("""(?i)^\s*$quantity\s+$name\s*$""")
     var total: Double? = null
     val itemOverrides = mutableListOf<MealContextItemOverride>()
     val volumes = mutableMapOf<String, Double>()
-    context.split(Regex("""(?<!\d)[,;\n]|[,;\n](?!\d)""")).forEach { segment ->
+    context.split(Regex("""(?<!\d)[,;\n]|[,;\n](?!\d)""")).forEach { rawSegment ->
+        val segment = rawSegment.trim().replaceFirst(Regex("""^(?:[-*•]\s+|\d+[.)]\s+)"""), "")
         val matchBefore = before.matchEntire(segment)
         val matchAfter = if (matchBefore == null) after.matchEntire(segment) else null
         val displayName = (matchBefore?.groupValues?.get(1) ?: matchAfter?.groupValues?.get(3))?.trim().orEmpty()
@@ -362,11 +366,12 @@ internal fun parseMealContextOverrides(context: String): MealContextOverrides {
     }
     return MealContextOverrides(
         totalGrams = total,
-        itemGramsByName = itemOverrides.associate { it.normalized to it.grams },
+        itemGramsByName = itemOverrides.groupBy { it.normalized }.mapValues { (_, entries) -> entries.sumOf { it.grams } },
         itemDisplayNamesByName = itemOverrides.associate { it.normalized to it.displayName },
         unresolvedVolumesByName = volumes,
         hasServingOrPackageScope = Regex("""(?i)\b(?:portie|porties|serving|servings|gegeten|opgegeten|aandeel|recept|verpakking|etiket)\b""").containsMatchIn(context),
         hasRawOrCookedScope = Regex("""(?i)\b(?:rauw|rauwe|ongekookt|ongekookte|bereid|bereide|gekookt|gekookte)\b""").containsMatchIn(context),
+        items = itemOverrides,
     )
 }
 internal fun parseBodyMeasurementContextOverrides(context: String): BodyMeasurementContextOverrides {
@@ -415,25 +420,45 @@ private fun applyLockedMealContextItems(
     overrides: MealContextOverrides,
 ): List<MealScanItem> {
     val remaining = items.toMutableList()
-    val matchedPredictions = mutableListOf<MealScanItem>()
-    val locked = overrides.itemGramsByName.entries.mapNotNull { (contextName, grams) ->
-        val matchedIndex = remaining.indexOfFirst { item ->
-            namesMatch(contextName, item.name)
-        }.takeIf { it >= 0 } ?: return@mapNotNull null
-        val matched = remaining.removeAt(matchedIndex)
-        matchedPredictions += matched
-        val displayName = overrides.itemDisplayNamesByName[contextName] ?: contextName
-        matched.copy(
-            name = displayName,
-            estimatedGrams = grams,
-            nutrition = scaleNutritionToGrams(matched.nutrition, matched.estimatedGrams, grams),
-            notes = listOfNotNull(
-                matched.notes,
-                "Gebruikerscontext vergrendelde dit component op ${formatAiOneDecimal(grams)} g.",
-            ).joinToString(" ").ifBlank { null },
-        )
+    val locked = mutableListOf<Pair<Int, MealScanItem>>()
+    val contextItems = overrides.items.ifEmpty {
+        overrides.itemGramsByName.map { (name, grams) -> MealContextItemOverride(name, overrides.itemDisplayNamesByName[name] ?: name, grams) }
     }
-    return locked + remaining.filterNot { candidate -> candidate in matchedPredictions }
+    for ((contextName, entries) in contextItems.withIndex().groupBy { it.value.normalized }) {
+        val predictions = remaining.filter { namesMatch(contextName, it.name) }
+        if (predictions.isEmpty()) continue
+        remaining.removeAll { namesMatch(contextName, it.name) }
+        val pooledGrams = predictions.sumOf { it.estimatedGrams }
+        val pooledNutrition = NutritionFacts(
+            predictions.sumOf { it.nutrition.calories }, predictions.sumOf { it.nutrition.protein },
+            predictions.sumOf { it.nutrition.carbs }, predictions.sumOf { it.nutrition.fat },
+        )
+        val pooled = predictions.size != entries.size
+        val mixedProducts = pooled && predictions.map { listOf(it.productName, it.brand, it.variant, it.barcode) }.distinct().size > 1
+        entries.forEachIndexed { index, entry ->
+            val matched = predictions.getOrNull(index) ?: predictions.first()
+            val grams = entry.value.grams
+            val nutrition = if (predictions.size == entries.size) {
+                scaleNutritionToGrams(matched.nutrition, matched.estimatedGrams, grams)
+            } else {
+                // A grouped prediction supplies one density, never an additional meal portion.
+                scaleNutritionToGrams(pooledNutrition, pooledGrams, grams)
+            }
+            locked += entry.index to matched.copy(
+                name = entry.value.displayName, estimatedGrams = grams, nutrition = nutrition,
+                productName = matched.productName.takeUnless { mixedProducts },
+                brand = matched.brand.takeUnless { mixedProducts },
+                variant = matched.variant.takeUnless { mixedProducts },
+                barcode = matched.barcode.takeUnless { mixedProducts },
+                confidence = if (pooled) "low" else matched.confidence,
+                notes = listOfNotNull(matched.notes,
+                    "Gebruikerscontext vergrendelde dit component op ${formatAiOneDecimal(grams)} g.",
+                    if (pooled) "De AI groepeerde deze onderdelen anders. Controleer de voedingswaarden per onderdeel." else null,
+                ).joinToString(" "),
+            )
+        }
+    }
+    return locked.sortedBy { it.first }.map { it.second } + remaining
 }
 
 private fun namesMatch(contextName: String, itemName: String): Boolean {
@@ -565,7 +590,7 @@ private const val MaxMealScanMetaChars = 40
 private const val MaxMealScanNotesChars = 600
 private const val MaxMealScanContextChars = 2_000
 private const val MaxBodyMeasurementContextChars = 1_000
-private const val MaxMealImageSourceBytes = 6L * 1024L * 1024L
+internal const val MaxMealImageSourceBytes = 32L * 1024L * 1024L
 private const val MaxMealImageUploadBytes = 1_500_000
 private const val MaxMealImageDimensionPx = 1_280
 private const val MaxAiRawResponseChars = 64_000
@@ -586,7 +611,10 @@ internal suspend fun prepareMealScanImageBytes(
     if (sourceLength <= 0L || sourceLength > MaxMealImageSourceBytes) return@withContext null
 
     runCatching { imageCompressor(file) }
-        .getOrNull()
+        .getOrElse { error ->
+            if (error is CancellationException) throw error
+            null
+        }
         ?.takeIf { it.size <= MaxMealImageUploadBytes }
 }
 
@@ -602,7 +630,10 @@ internal fun calculateImageSampleSize(width: Int, height: Int, maxDimensionPx: I
 private fun compressMealImageForAiUpload(file: File): ByteArray? {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeFile(file.absolutePath, bounds)
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0 ||
+        bounds.outWidth.toLong() * bounds.outHeight > 200_000_000L ||
+        maxOf(bounds.outWidth, bounds.outHeight) > 32_768
+    ) return null
 
     val source = BitmapFactory.decodeFile(
         file.absolutePath,

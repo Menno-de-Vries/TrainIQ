@@ -916,7 +916,6 @@ class WorkoutInputValidationTest {
         assertTrue(activeWorkoutPlanCard.contains("exerciseState: ActiveWorkoutExerciseUiState"))
         assertFalse(activeWorkoutPlanCard.contains("uiState: ActiveWorkoutUiState"))
         assertTrue(activeWorkoutScreen.contains("contentType = \"active-workout-header\""))
-        assertTrue(activeWorkoutScreen.contains("contentType = \"active-workout-rest-timer\""))
         assertTrue(activeWorkoutScreen.contains("contentType = { group -> if (group.size > 1) \"active-workout-superset\" else \"active-workout-exercise\" }"))
         assertFalse(routineExerciseCard.contains("ActiveExerciseActionChip("))
         assertTrue(routineExerciseCard.contains("text = { Text(\"Set toevoegen\") }"))

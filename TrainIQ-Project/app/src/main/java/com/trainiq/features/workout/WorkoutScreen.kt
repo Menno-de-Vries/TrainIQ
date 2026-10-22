@@ -5619,6 +5619,7 @@ fun ActiveWorkoutScreen(
                     clockState = clockState,
                     onAdjustRestTimer = onAdjustRestTimer,
                     onSkipRestTimer = onSkipRestTimer,
+                    onRestartRestTimer = onRestartRestTimer,
                     onFinishClick = {
                         saveNotesThen {
                             if (uiState.needsFinishConfirmation) showFinishConfirm = true else onFinish()
@@ -5714,18 +5715,6 @@ fun ActiveWorkoutScreen(
             if (uiState.workout.exercises.isEmpty()) {
                 item { EmptyCard("Geen oefeningen", "Voeg oefeningen toe aan deze routine voordat je een training start.") }
                 return@LazyColumn
-            }
-            item(
-                key = "active-workout-rest-timer",
-                contentType = "active-workout-rest-timer",
-            ) {
-                ActiveWorkoutRestTimerItem(
-                    clockState = clockState,
-                    fallbackRestSeconds = uiState.workout.exercises.firstOrNull()?.restSeconds ?: 0,
-                    onAdjust = onAdjustRestTimer,
-                    onSkip = onSkipRestTimer,
-                    onRestart = onRestartRestTimer,
-                )
             }
             items(
                 exerciseGroups,
@@ -5956,6 +5945,7 @@ private fun ActiveWorkoutBottomBar(
     clockState: State<ActiveWorkoutClockUiState>,
     onAdjustRestTimer: (Int) -> Unit,
     onSkipRestTimer: () -> Unit,
+    onRestartRestTimer: (Int) -> Unit,
     onFinishClick: () -> Unit,
 ) {
     val clock by clockState
@@ -5971,7 +5961,7 @@ private fun ActiveWorkoutBottomBar(
                 .semantics(mergeDescendants = true) {
                     contentDescription = activeWorkoutBottomBarContentDescription(uiState, clock.restTimerSeconds)
                 },
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
         ) {
             if (clock.restTimerSeconds > 0) {
                 AppLinearProgress(
@@ -5981,68 +5971,106 @@ private fun ActiveWorkoutBottomBar(
                         0f
                     },
                 )
-            }
-            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                val stackStatus = if (clock.restTimerSeconds > 0) {
-                    maxWidth < 328.dp || (LocalDensity.current.fontScale >= 1.3f && maxWidth < 400.dp)
-                } else {
-                    maxWidth < 280.dp
-                }
-                val status: @Composable () -> Unit = {
-                    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                        Text(
-                            if (clock.restTimerSeconds > 0) "Rust ${formatTimer(clock.restTimerSeconds)}" else "Klaar voor volgende set",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        Text(
-                            activeLoggedSetCountText(uiState.visibleLoggedSetCount),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val stackControls = maxWidth < 380.dp || LocalDensity.current.fontScale >= 1.3f
+                    val status: @Composable (Modifier) -> Unit = { modifier ->
+                        FlowRow(
+                            modifier = modifier,
+                            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+                        ) {
+                            Text(
+                                activeWorkoutBottomBarStatusText(clock.restTimerSeconds),
+                                modifier = Modifier.semantics {
+                                    contentDescription = restTimerCardContentDescription(
+                                        clock.restTimerSeconds, clock.restTimerTotalSeconds,
+                                    )
+                                },
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                activeLoggedSetCountText(uiState.visibleLoggedSetCount),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall)) {
-                    if (stackStatus) status()
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall, Alignment.End),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        if (!stackStatus) Box(modifier = Modifier.weight(1f)) { status() }
-                        if (clock.restTimerSeconds > 0) {
-                            IconButton(onClick = { onAdjustRestTimer(-30) }, modifier = Modifier.size(48.dp)) {
-                                Icon(Icons.Rounded.Remove, contentDescription = restTimerAdjustContentDescription(-30))
-                            }
-                            IconButton(onClick = { onAdjustRestTimer(30) }, modifier = Modifier.size(48.dp)) {
-                                Icon(Icons.Rounded.Add, contentDescription = restTimerAdjustContentDescription(30))
-                            }
+                    val controls: @Composable () -> Unit = {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
+                            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
+                        ) {
+                            TextButton(
+                                onClick = { onAdjustRestTimer(-30) },
+                                modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                    .semantics { contentDescription = restTimerAdjustContentDescription(-30) },
+                                contentPadding = PaddingValues(MaterialTheme.spacing.extraSmall),
+                            ) { Text("−30 s") }
+                            TextButton(
+                                onClick = { onAdjustRestTimer(30) },
+                                modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                    .semantics { contentDescription = restTimerAdjustContentDescription(30) },
+                                contentPadding = PaddingValues(MaterialTheme.spacing.extraSmall),
+                            ) { Text("+30 s") }
                             IconButton(
-                                onClick = onSkipRestTimer,
+                                onClick = {
+                                    onRestartRestTimer(clock.restTimerTotalSeconds.takeIf { it > 0 }
+                                        ?: uiState.workout?.exercises?.firstOrNull()?.restSeconds ?: 0)
+                                },
                                 modifier = Modifier.size(48.dp),
                             ) {
-                                Icon(Icons.Rounded.SkipNext, contentDescription = restTimerSkipContentDescription())
+                                Icon(Icons.Rounded.Replay, contentDescription = restTimerRestartContentDescription())
                             }
+                            TextButton(
+                                onClick = onSkipRestTimer,
+                                modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                    .semantics { contentDescription = restTimerSkipContentDescription() },
+                                contentPadding = PaddingValues(MaterialTheme.spacing.extraSmall),
+                            ) { Text(restTimerSkipLabel()) }
                         }
-                        Button(
-                            onClick = onFinishClick,
-                            enabled = uiState.workout != null,
-                            shape = MaterialTheme.shapes.medium,
-                            modifier = Modifier
-                                .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-                                .semantics {
-                                    contentDescription = activeWorkoutFinishContentDescription(uiState.workout != null)
-                                },
-                            contentPadding = PaddingValues(horizontal = MaterialTheme.spacing.compact, vertical = MaterialTheme.spacing.small),
+                    }
+                    if (stackControls) {
+                        Column {
+                            status(Modifier.fillMaxWidth())
+                            controls()
+                        }
+                    } else {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
                         ) {
-                            Icon(Icons.Default.Check, contentDescription = null)
-                            if (clock.restTimerSeconds == 0) {
-                                Spacer(Modifier.width(6.dp))
-                                Text("Afronden", style = MaterialTheme.typography.labelLarge)
-                            }
+                            status(Modifier.weight(1f))
+                            controls()
                         }
                     }
                 }
+            } else {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+                    Text(
+                        activeWorkoutBottomBarStatusText(clock.restTimerSeconds),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        activeLoggedSetCountText(uiState.visibleLoggedSetCount),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Button(
+                onClick = onFinishClick,
+                enabled = uiState.workout != null,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)
+                    .semantics {
+                        contentDescription = activeWorkoutFinishContentDescription(uiState.workout != null)
+                    },
+                contentPadding = PaddingValues(horizontal = MaterialTheme.spacing.compact, vertical = MaterialTheme.spacing.small),
+            ) {
+                Icon(Icons.Default.Check, contentDescription = null)
+                Spacer(Modifier.width(MaterialTheme.spacing.small))
+                Text("Training afronden", style = MaterialTheme.typography.labelLarge)
             }
         }
     }
@@ -6135,92 +6163,6 @@ private fun activeWorkoutExerciseUiState(
         pendingCorrectionSetId = uiState.pendingCorrectionSetIds[key],
         collapsed = key in uiState.collapsedExerciseIds,
     )
-}
-
-@Composable
-private fun ActiveWorkoutRestTimerItem(
-    clockState: State<ActiveWorkoutClockUiState>,
-    fallbackRestSeconds: Int,
-    onAdjust: (Int) -> Unit,
-    onSkip: () -> Unit,
-    onRestart: (Int) -> Unit,
-) {
-    val clock by clockState
-    if (clock.restTimerSeconds <= 0) return
-    RestTimerCard(
-        restTimerSeconds = clock.restTimerSeconds,
-        totalSeconds = clock.restTimerTotalSeconds,
-        onAdjust = onAdjust,
-        onSkip = onSkip,
-        onRestart = {
-            onRestart(clock.restTimerTotalSeconds.takeIf { it > 0 } ?: fallbackRestSeconds)
-        },
-    )
-}
-
-@Composable
-private fun RestTimerCard(
-    restTimerSeconds: Int,
-    totalSeconds: Int,
-    onAdjust: (Int) -> Unit,
-    onSkip: () -> Unit,
-    onRestart: () -> Unit,
-) {
-    AppCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics(mergeDescendants = true) {
-                contentDescription = restTimerCardContentDescription(restTimerSeconds, totalSeconds)
-            },
-        accent = MaterialTheme.trainIqColors.amber,
-        elevated = true,
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "Rusttimer ${formatTimer(restTimerSeconds)}",
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    if (restTimerSeconds <= 15) "Bijna klaar" else "Herstel",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.trainIqColors.amber,
-                    maxLines = 1,
-                )
-            }
-            AppLinearProgress(
-                progress = if (totalSeconds > 0) (restTimerSeconds / totalSeconds.toFloat()).coerceIn(0f, 1f) else 0f,
-                accent = MaterialTheme.trainIqColors.amber,
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = { onAdjust(-30) }, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.Rounded.Remove, contentDescription = restTimerAdjustContentDescription(-30))
-                }
-                IconButton(onClick = { onAdjust(30) }, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.Rounded.Add, contentDescription = restTimerAdjustContentDescription(30))
-                }
-                IconButton(onClick = onRestart, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.Rounded.Replay, contentDescription = restTimerRestartContentDescription())
-                }
-                Spacer(modifier = Modifier.weight(1f))
-                IconButton(onClick = onSkip, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.Rounded.SkipNext, contentDescription = restTimerSkipContentDescription())
-                }
-            }
-        }
-    }
 }
 
 @Composable
@@ -6538,7 +6480,7 @@ private fun ActiveExerciseRestControl(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onDecrease, modifier = Modifier.size(48.dp)) {
-                Icon(Icons.Rounded.Remove, contentDescription = restTimerAdjustContentDescription(-30))
+                Icon(Icons.Rounded.Remove, contentDescription = activeExerciseRestAdjustContentDescription(-30))
             }
             Text(
                 "Rust ${restSeconds}s",
@@ -6548,7 +6490,7 @@ private fun ActiveExerciseRestControl(
                 softWrap = false,
             )
             IconButton(onClick = onIncrease, modifier = Modifier.size(48.dp)) {
-                Icon(Icons.Rounded.Add, contentDescription = restTimerAdjustContentDescription(30))
+                Icon(Icons.Rounded.Add, contentDescription = activeExerciseRestAdjustContentDescription(30))
             }
         }
     }
@@ -7398,6 +7340,13 @@ internal fun restTimerAdjustContentDescription(deltaSeconds: Int): String =
         "Rusttimer ${-deltaSeconds} seconden korter"
     } else {
         "Rusttimer $deltaSeconds seconden langer"
+    }
+
+internal fun activeExerciseRestAdjustContentDescription(deltaSeconds: Int): String =
+    if (deltaSeconds < 0) {
+        "Rust voor volgende sets ${-deltaSeconds} seconden korter"
+    } else {
+        "Rust voor volgende sets $deltaSeconds seconden langer"
     }
 
 internal fun restTimerRestartContentDescription(): String = "Rusttimer opnieuw starten"

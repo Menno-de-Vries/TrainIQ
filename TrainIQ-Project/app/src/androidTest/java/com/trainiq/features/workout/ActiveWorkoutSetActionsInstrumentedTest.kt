@@ -3,6 +3,7 @@ package com.trainiq.features.workout
 import android.content.Context
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.click
@@ -70,6 +71,72 @@ class ActiveWorkoutSetActionsInstrumentedTest {
 
     private lateinit var context: Context
     private lateinit var database: TrainIqDatabase
+
+    @Test
+    fun runningRestKeepsFinishLabelAndOneTimerControlGroup() {
+        runBlocking {
+            val now = System.currentTimeMillis()
+            database.dao().insertActiveWorkoutSessions(listOf(ActiveWorkoutSessionEntity(
+                sessionId = 12L, dayId = 7L, routineId = 1L,
+                startedAt = now - 60_000L, updatedAt = now,
+                restTimerEndsAt = now + 120_000L, restTimerTotalSeconds = 120,
+            )))
+        }
+        ActivityScenario.launch(MainActivity::class.java).use {
+            val training = (hasText("Training") or hasContentDescription("Training")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(training).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(training).performClick()
+            compose.waitForText("QA Upper")
+            compose.onNodeWithText("Training starten").performClick()
+            compose.waitForText("Actieve training")
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("Actieve training hersteld.").fetchSemanticsNodes().isEmpty()
+            }
+            val finishText = compose.onNodeWithText("Training afronden", useUnmergedTree = true)
+                .assertTextEquals("Training afronden").assertIsDisplayed()
+            capture("single-rest-before-label-check")
+            val finishLayouts = mutableListOf<TextLayoutResult>()
+            finishText.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(finishLayouts) }
+            val finishLayout = finishLayouts.single()
+            val lineGeometry = (0 until finishLayout.lineCount).map { line ->
+                "line $line: ${finishLayout.getLineLeft(line)}..${finishLayout.getLineRight(line)}, " +
+                    "ellipsis=${finishLayout.isLineEllipsized(line)}"
+            }
+            assertTrue("Finish label height must fit: size=${finishLayout.size}", !finishLayout.didOverflowHeight)
+            assertTrue(
+                "Finish label glyphs must fit its bounds: size=${finishLayout.size}, $lineGeometry",
+                (0 until finishLayout.lineCount).all { line ->
+                    !finishLayout.isLineEllipsized(line) && finishLayout.getLineLeft(line) >= -1f &&
+                        finishLayout.getLineRight(line) <= finishLayout.size.width + 1f
+                },
+            )
+            assertEquals(
+                "Finish label must render every character",
+                "Training afronden".length,
+                finishLayout.getLineEnd(finishLayout.lineCount - 1, visibleEnd = true),
+            )
+            compose.onAllNodes(hasContentDescription("Rusttimer overslaan"), useUnmergedTree = true).assertCountEquals(1)
+            compose.onAllNodes(hasContentDescription("Rusttimer 30 seconden langer"), useUnmergedTree = true).assertCountEquals(1)
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Bench Press"))
+            compose.onAllNodes(hasContentDescription("Rusttimer overslaan"), useUnmergedTree = true).assertCountEquals(1)
+            compose.onAllNodes(hasContentDescription("Rusttimer 30 seconden langer"), useUnmergedTree = true).assertCountEquals(1)
+            exerciseControl("Bench Press", "Rust voor volgende sets 30 seconden langer").assertExists()
+            exerciseControl("Bench Press", "Rust voor volgende sets 30 seconden korter").assertExists()
+            val finish = compose.onNodeWithContentDescription("Training afronden").assertIsDisplayed()
+                .fetchSemanticsNode().boundsInRoot
+            val density = context.resources.displayMetrics.density
+            assertTrue("Labelled finish action must retain a 48dp target", finish.height >= 48f * density)
+            val viewport = compose.onRoot().fetchSemanticsNode().boundsInRoot
+            assertTrue("Finish action must stay inside the app viewport", finish.bottom <= viewport.bottom && finish.left >= viewport.left && finish.right <= viewport.right)
+            val labelBounds = finishText.fetchSemanticsNode().boundsInRoot
+            assertTrue(
+                "Entire finish label must stay inside its button: label=$labelBounds button=$finish",
+                labelBounds.left >= finish.left && labelBounds.right <= finish.right &&
+                    labelBounds.top >= finish.top && labelBounds.bottom <= finish.bottom,
+            )
+            capture("single-rest-labelled-finish")
+        }
+    }
 
     @Test
     fun collapsingExerciseHidesSetDetailsWithoutChangingLoggedSet() {
@@ -334,17 +401,7 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             metricInput("Herh.").performTextReplacement("5")
             val logButton = compose.onNodeWithText("Set loggen")
             logButton.performScrollTo()
-            var bounds = logButton.fetchSemanticsNode().boundsInRoot
-            var stableSince = android.os.SystemClock.elapsedRealtime()
-            compose.waitUntil(5_000) {
-                val next = logButton.fetchSemanticsNode().boundsInRoot
-                if (next != bounds) {
-                    bounds = next
-                    stableSince = android.os.SystemClock.elapsedRealtime()
-                }
-                android.os.SystemClock.elapsedRealtime() - stableSince >= 500
-            }
-            logButton.assertIsDisplayed().performClick()
+            awaitReachableWorkoutAction(logButton, "rest-ime-before-log-check").performClick()
             compose.waitUntil(15_000) {
                 runBlocking { database.dao().observeActiveWorkoutSets().first().size == 1 }
             }
@@ -391,7 +448,7 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             compose.waitUntil(10_000) {
                 compose.onAllNodesWithText("Actieve training hersteld.").fetchSemanticsNodes().isEmpty()
             }
-            exerciseControl("Bench Press", "Rusttimer 30 seconden langer").performScrollTo().performClick()
+            exerciseControl("Bench Press", "Rust voor volgende sets 30 seconden langer").performScrollTo().performClick()
             capture("rest-control")
             compose.waitUntil(10_000) {
                 compose.onAllNodes(hasContentDescription("Rust voor deze oefening: 150s"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
@@ -410,6 +467,7 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             compose.waitUntil(10_000) {
                 runBlocking { database.dao().observeActiveWorkoutSessions().first().single().restTimerTotalSeconds == 150 }
             }
+            compose.onNodeWithText("Training afronden", useUnmergedTree = true).assertIsDisplayed()
             val bottom = hasAnyAncestor(hasContentDescription("Training afronden", substring = true))
             compose.onNode(hasContentDescription("Rusttimer 30 seconden langer") and bottom, useUnmergedTree = true)
                 .assertIsDisplayed().performClick()
@@ -437,13 +495,18 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             compose.waitForText("QA Upper")
             compose.onNodeWithText("Training starten").performClick()
             compose.waitForText("Actieve training")
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("Actieve training hersteld.").fetchSemanticsNodes().isEmpty() &&
+                    compose.onAllNodesWithText("Set 3 gelogd", substring = true).fetchSemanticsNodes().isEmpty()
+            }
             assertEquals(3, runBlocking { database.dao().readActiveWorkoutSetsForExport().size })
             compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Seated Row"))
             exerciseControl("Seated Row", "Gewicht in kilogram", input = true).performScrollTo()
                 .performTextReplacement("40")
             exerciseControl("Seated Row", "Herh.", input = true).performTextReplacement("8")
             exerciseControl("Seated Row", "Rust in seconden", input = true).performImeAction()
-            exerciseText("Seated Row", "Set loggen").performScrollTo().assertIsDisplayed().performClick()
+            val finalSetAction = exerciseText("Seated Row", "Set loggen").performScrollTo()
+            awaitReachableWorkoutAction(finalSetAction, "resumed-final-set-before-click").performClick()
             waitForSetCount(4)
             capture("two-exercise-completed")
             compose.onNodeWithContentDescription("Training afronden").assertIsDisplayed().performClick()
@@ -672,6 +735,53 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             assertTrue("Finish action must retain a 48dp target", finish.width >= 48f * density && finish.height >= 48f * density)
             assertTrue("Finish action must stay inside the app viewport", finish.bottom <= compose.onRoot().fetchSemanticsNode().boundsInRoot.bottom)
         }
+    }
+
+    private fun awaitReachableWorkoutAction(
+        action: SemanticsNodeInteraction,
+        evidenceState: String,
+    ): SemanticsNodeInteraction {
+        var lastGeometry: Triple<Rect, Rect, Rect>? = null
+        var stableSince = android.os.SystemClock.elapsedRealtime()
+        try {
+            compose.waitUntil(5_000) {
+                val geometry = Triple(
+                    action.fetchSemanticsNode().boundsInRoot,
+                    compose.onNode(hasScrollToIndexAction()).fetchSemanticsNode().boundsInRoot,
+                    compose.onRoot().fetchSemanticsNode().boundsInRoot,
+                )
+                val displayed = runCatching { action.assertIsDisplayed() }.isSuccess
+                val tapReachable = geometry.first.width > 0f && geometry.first.height > 0f &&
+                    geometry.second.contains(geometry.first.center) && geometry.third.contains(geometry.first.center)
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (geometry != lastGeometry || !displayed || !tapReachable) stableSince = now
+                lastGeometry = geometry
+                displayed && tapReachable && now - stableSince >= 500
+            }
+        } catch (failure: Throwable) {
+            val captureFailure = runCatching { capture("$evidenceState-unreachable") }.exceptionOrNull()
+            throw AssertionError(
+                "Set log action did not settle inside the visible list/root: " +
+                    "lastButtonListRoot=$lastGeometry, stableForMs=${android.os.SystemClock.elapsedRealtime() - stableSince}, " +
+                    "button=${runCatching { action.fetchSemanticsNode().boundsInRoot }.getOrNull()}, " +
+                    "list=${compose.onNode(hasScrollToIndexAction()).fetchSemanticsNode().boundsInRoot}, " +
+                    "root=${compose.onRoot().fetchSemanticsNode().boundsInRoot}, captureFailure=$captureFailure",
+                failure,
+            )
+        }
+        capture(evidenceState)
+        try {
+            action.assertIsDisplayed()
+        } catch (failure: AssertionError) {
+            throw AssertionError(
+                "Set log action must remain reachable with keyboard and rest timer: " +
+                    "button=${action.fetchSemanticsNode().boundsInRoot}, " +
+                    "list=${compose.onNode(hasScrollToIndexAction()).fetchSemanticsNode().boundsInRoot}, " +
+                    "root=${compose.onRoot().fetchSemanticsNode().boundsInRoot}",
+                failure,
+            )
+        }
+        return action
     }
 
     private fun capture(state: String) {

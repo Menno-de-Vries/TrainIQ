@@ -14,6 +14,23 @@ import retrofit2.Response
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class AiProviderRouterTest {
     @Test
+    fun geminiHttpFailureRecordsSafeStatusWithoutResponseBody() = runTest {
+        val diagnostics = mutableListOf<Map<String, String>>()
+        val failure = HttpException(Response.error<Unit>(400, "private user meal details".toResponseBody()))
+        val client = FakeAiModelClient(AiProvider.GEMINI, error = failure)
+        val error = runCatching {
+            routeAiProviderRequest(
+                settings = aiSettings(AiProviderPreference.GEMINI_FIRST, geminiApiKey = "gemini-key", openAiApiKey = ""),
+                request = weeklyRequest(), clientFor = { client }, onFailureDiagnostic = { diagnostics += it },
+            )
+        }.exceptionOrNull()
+        assertEquals(failure, error)
+        assertEquals(listOf(mapOf("provider" to "gemini", "feature" to "weekly_report", "category" to "request_configuration", "http_status" to "400")), diagnostics)
+        assertFalse(diagnostics.toString().contains("private"))
+        assertFalse(diagnostics.toString().contains("gemini-key"))
+    }
+
+    @Test
     fun openAiStrictSchema_addsAdditionalPropertiesFalseToNestedObjects() {
         val schema = AiJsonSchemas.routineGenerator.toOpenAiStrictSchema()
         val days = ((schema["properties"] as Map<*, *>)["days"] as Map<*, *>)

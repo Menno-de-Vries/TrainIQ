@@ -1,5 +1,16 @@
 # TrainIQ Target-State Progress
 
+## 2026-10-22 Food scan and workout clarity
+
+- Bounded food boundary and workout-control improvements target Blueprint §§7–9.
+  Local debug build, 1,027 JVM tests, lint and scoped food/scanner/workout Android
+  evidence pass, including compact dark/font 1.5 and expanded critical flows.
+  Failed development aggregates and scoped reruns remain explicit in the evidence;
+  no global alignment score is reassessed.
+- The [analysis, concept comparison and evidence](qa/TrainIQ_Food_Workout_2026-10-22.md)
+  retains the uncertain cause of the original live scan failure and the limits of
+  deterministic local proof. No live AI upload or release is claimed.
+
 ## 2026-09-30 Targeted Active Workout polish
 
 - The workout portion of QA-2026-05-09-011 now has coherent set surfaces, compact labelled metric inputs, differentiated typography and integrated adaptive bottom controls. Existing workout state logic, persistence and architecture are retained.
