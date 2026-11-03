@@ -21,6 +21,7 @@ import com.trainiq.domain.model.WeeklyReportResult
 import com.trainiq.domain.model.WeeklyReportSource
 import com.trainiq.domain.model.WorkoutDebrief
 import com.trainiq.domain.model.WorkoutDebriefSource
+import com.trainiq.domain.model.WorkoutAnalysisSnapshot
 import java.io.File
 import java.io.ByteArrayOutputStream
 import java.time.Instant
@@ -720,6 +721,7 @@ class WorkoutDebriefService internal constructor(
         topExercises: String,
         weeklyFrequency: Int,
         exerciseEffort: List<com.trainiq.domain.model.ExerciseEffortSummary> = emptyList(),
+        analysisSnapshot: WorkoutAnalysisSnapshot? = null,
     ): WorkoutDebrief =
         runCatching {
             generateWorkoutDebriefOrThrow(
@@ -731,6 +733,7 @@ class WorkoutDebriefService internal constructor(
                 topExercises = topExercises,
                 weeklyFrequency = weeklyFrequency,
                 exerciseEffort = exerciseEffort,
+                analysisSnapshot = analysisSnapshot,
             )
         }.getOrElse { error ->
             if (error is CancellationException) throw error
@@ -740,6 +743,7 @@ class WorkoutDebriefService internal constructor(
                 progression = progression,
                 failureMessage = error.toSafeAiFallbackMessage("AI-workoutanalyse is nu niet beschikbaar."),
                 fallbackContext = error.toAiFallbackContext(),
+                analysisSnapshot = analysisSnapshot,
             )
         }
 
@@ -752,26 +756,28 @@ class WorkoutDebriefService internal constructor(
         topExercises: String,
         weeklyFrequency: Int,
         exerciseEffort: List<com.trainiq.domain.model.ExerciseEffortSummary> = emptyList(),
+        analysisSnapshot: WorkoutAnalysisSnapshot? = null,
     ): WorkoutDebrief {
         val routed = aiJsonGenerator.generateJson(
-                AiRouteRequest(
-                    feature = AiFeature.WORKOUT_DEBRIEF,
-                    schemaName = "workout_debrief",
-                    responseJsonSchema = AiJsonSchemas.workoutDebrief,
-                    thinkingBudget = 1000,
-                    prompt = AiPrompts.workoutDebrief(
-                                        totalVolume = totalVolume,
-                                        progression = progression,
-                                        comparisonSummary = comparisonSummary,
-                                        distribution = distribution,
-                                        avgRpe = avgRpe,
-                                        topExercises = topExercises,
-                                        weeklyFrequency = weeklyFrequency,
-                exerciseEffort = exerciseEffort,
-                                    ),
+            AiRouteRequest(
+                feature = AiFeature.WORKOUT_DEBRIEF,
+                schemaName = "workout_debrief",
+                responseJsonSchema = AiJsonSchemas.workoutDebrief,
+                thinkingBudget = 1000,
+                prompt = AiPrompts.workoutDebrief(
+                    totalVolume = totalVolume,
+                    progression = progression,
+                    comparisonSummary = comparisonSummary,
+                    distribution = distribution,
+                    avgRpe = avgRpe,
+                    topExercises = topExercises,
+                    weeklyFrequency = weeklyFrequency,
+                    exerciseEffort = exerciseEffort,
+                    analysisSnapshot = analysisSnapshot,
                 ),
-            )
-        return parseWorkoutDebriefResponse(routed.rawJson, totalVolume, progression, routed.providerUsed).also { debrief ->
+            ),
+        )
+        return parseWorkoutDebriefResponse(routed.rawJson, totalVolume, progression, routed.providerUsed, analysisSnapshot).also { debrief ->
             if (routed.providerUsed == AiProvider.OPENAI && debrief.source == WorkoutDebriefSource.LOCAL_FALLBACK) {
                 throw AiProviderRequestException(AiProvider.OPENAI, AiFeature.WORKOUT_DEBRIEF, AiFailureCategory.INVALID_RESPONSE)
             }
@@ -1093,6 +1099,7 @@ internal fun parseWorkoutDebriefResponse(
     totalVolume: Double,
     progression: Double?,
     provider: AiProvider,
+    analysisSnapshot: WorkoutAnalysisSnapshot? = null,
 ): WorkoutDebrief = runCatching {
     val boundedText = requireAiRawResponseWithinLimit(text)
     val root = JsonParser.parseString(boundedText).asJsonObject
@@ -1114,7 +1121,7 @@ internal fun parseWorkoutDebriefResponse(
         nextLoadTarget,
         recoveryAdvice,
     ) + wins + risks
-    if (!fields.isUsableDutchAiText()) return fallbackWorkoutDebriefResult(totalVolume, progression)
+    if (!fields.isUsableDutchAiText()) return fallbackWorkoutDebriefResult(totalVolume, progression, analysisSnapshot = analysisSnapshot)
     WorkoutDebrief(
         summary = summary,
         progressionFeedback = progressionFeedback,
@@ -1129,7 +1136,7 @@ internal fun parseWorkoutDebriefResponse(
         recoveryAdvice = recoveryAdvice,
         source = provider.toWorkoutDebriefSource(),
     )
-}.getOrElse { fallbackWorkoutDebriefResult(totalVolume, progression) }
+}.getOrElse { fallbackWorkoutDebriefResult(totalVolume, progression, analysisSnapshot = analysisSnapshot) }
 
 private fun AiProvider.toMealAnalysisSource(): MealAnalysisSource = when (this) {
     AiProvider.GEMINI -> MealAnalysisSource.API
@@ -1173,25 +1180,50 @@ internal fun fallbackWorkoutDebriefResult(
     progression: Double?,
     failureMessage: String? = null,
     fallbackContext: AiFallbackContext? = null,
-) = WorkoutDebrief(
-    summary = listOfNotNull(
-        failureMessage,
-        "Lokale samenvatting: volume ${totalVolume.toInt()} kg.",
-    ).joinToString(" "),
-    progressionFeedback = progression?.let {
-        "Volume veranderde met ${formatAiPercentNl(it)}% ten opzichte van de vorige sessie."
-    } ?: "Nog geen eerdere vergelijkbare training gevonden.",
-    recommendation = "Houd dezelfde opzet aan en verhoog pas als uitvoering en herstel goed blijven.",
-    nextSessionFocus = "Huidige gewichten vasthouden",
-    recoveryScore = null,
-    intensitySignal = "MAINTAIN",
-    wins = listOf("Trainingsvolume lokaal vastgelegd."),
-    risks = if ((progression ?: 0.0) > 5.0) listOf("Volume steeg meer dan 5%; let op herstel.") else emptyList(),
-    nextLoadTarget = "Herhaal de huidige werkgewichten en voeg alleen herhalingen toe als RPE onder 8 blijft.",
-    recoveryAdvice = "Gebruik slaap, stappen en spierpijn om te bepalen of je verhoogt of vasthoudt.",
-    source = WorkoutDebriefSource.LOCAL_FALLBACK,
-    fallbackContext = fallbackContext,
-)
+    analysisSnapshot: WorkoutAnalysisSnapshot? = null,
+): WorkoutDebrief {
+    val volume = analysisSnapshot?.totalVolumeKg ?: totalVolume
+    val effortSummary = analysisSnapshot?.let { snapshot ->
+        val mean = snapshot.reportedMeanRpe?.let(::formatAiPercentNl) ?: "onbekend"
+        "Gemiddelde set-RPE $mean · ${snapshot.reportedRpeCount} van ${snapshot.completedSetCount} sets ingevuld."
+    } ?: "Setdetails en RPE-dekking niet beschikbaar."
+    val adviceReason = when {
+        analysisSnapshot == null -> "Setdetails en RPE-dekking ontbreken voor een onderbouwde aanpassing."
+        analysisSnapshot.reportedRpeCount == 0 -> "RPE ontbreekt; gewicht en herhalingen bepalen je ervaren inspanning niet."
+        analysisSnapshot.reportedRpeCount < analysisSnapshot.completedSetCount ->
+            "RPE is deels ingevuld; het gemiddelde beschrijft alleen die sets."
+        progression == null -> "Er is geen eerdere vergelijkbare training voor een onderbouwde aanpassing."
+        else -> "Set-RPE en vergelijkingsvolume alleen bepalen geen passend volgend gewicht."
+    }
+    return WorkoutDebrief(
+        summary = listOfNotNull(
+            failureMessage,
+            analysisSnapshot?.let {
+                "Lokale samenvatting: ${it.completedSetCount} sets · ${it.totalReps} herhalingen · totaalvolume ${formatWorkoutKgNl(volume)} kg."
+            } ?: "Lokale samenvatting: totaalvolume ${formatWorkoutKgNl(volume)} kg.",
+            effortSummary,
+        ).joinToString(" "),
+        progressionFeedback = progression?.let {
+            val comparisonVolume = analysisSnapshot?.let { snapshot ->
+                "Vergelijkingsvolume ${formatWorkoutKgNl(snapshot.comparisonVolumeKg)} kg; "
+            } ?: "Vergelijkingsvolume: "
+            "${comparisonVolume}verandering ${formatAiPercentNl(it)}% tegenover de vorige vergelijkbare training."
+        } ?: "Nog geen eerdere vergelijkbare training gevonden.",
+        recommendation = "Houd de huidige gewichten aan. $adviceReason",
+        nextSessionFocus = "Huidige gewichten vasthouden",
+        recoveryScore = null,
+        intensitySignal = "MAINTAIN",
+        wins = listOf("Totaalvolume ${formatWorkoutKgNl(volume)} kg lokaal vastgelegd."),
+        risks = emptyList(),
+        nextLoadTarget = "Herhaal de huidige werkgewichten; beoordeel uitvoering en gerapporteerde inspanning per oefening.",
+        recoveryAdvice = "Herstel is niet af te leiden uit deze setgegevens; beoordeel zelf hoe je je voelt.",
+        source = WorkoutDebriefSource.LOCAL_FALLBACK,
+        fallbackContext = fallbackContext,
+    )
+}
+
+private fun formatWorkoutKgNl(value: Double): String =
+    String.format(Locale.forLanguageTag("nl-NL"), "%.1f", value).removeSuffix(",0")
 
 internal fun formatAiPercentNl(value: Double): String =
     String.format(Locale.forLanguageTag("nl-NL"), "%.1f", value)

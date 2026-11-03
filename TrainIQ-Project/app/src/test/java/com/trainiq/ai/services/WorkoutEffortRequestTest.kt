@@ -7,6 +7,8 @@ import com.trainiq.data.model.GeminiResponse
 import com.trainiq.data.remote.GeminiApi
 import com.trainiq.domain.model.LoggedSet
 import com.trainiq.domain.model.WorkoutEffortSummary
+import com.trainiq.domain.model.SetType
+import com.trainiq.domain.model.buildWorkoutAnalysisSnapshot
 import com.trainiq.core.database.ExerciseEntity
 import com.trainiq.data.local.ActiveWorkoutSessionStorage
 import com.trainiq.data.local.ActiveWorkoutSetStorage
@@ -23,7 +25,7 @@ class WorkoutEffortRequestTest {
     @Test fun correctedAndDeletedStoredSetsReachActualRequestWithoutStaleValuesOrPlannedExercises() = runTest {
         val original = ActiveWorkoutSetStorage(id = 1L, exerciseId = 1L, weight = 60.0, reps = 8, rpe = 9.0)
         val state = TrainIqStorageState(activeWorkoutSession = ActiveWorkoutSessionStorage(
-            dayId = 7L, loggedSets = listOf(original,
+            dayId = 7L, notes = "PRIVATE_SESSION_NOTE", loggedSets = listOf(original,
                 ActiveWorkoutSetStorage(id = 2L, exerciseId = 2L, weight = 999.0, reps = 10, rpe = 10.0),
                 ActiveWorkoutSetStorage(id = 3L, exerciseId = 99L, weight = 0.0, reps = 12),
                 ActiveWorkoutSetStorage(id = 4L, exerciseId = 2L, weight = 888.0, reps = 10, completed = false)),
@@ -47,7 +49,7 @@ class WorkoutEffortRequestTest {
         WorkoutDebriefService(api) { "synthetic-key" }.generateWorkoutDebrief(
             totalVolume = analysis.snapshot.totalVolumeKg, progression = null, distribution = analysis.distribution,
             avgRpe = analysis.snapshot.reportedMeanRpe?.toFloat(), topExercises = analysis.topExercises,
-            weeklyFrequency = 1, exerciseEffort = analysis.exerciseEffort,
+            weeklyFrequency = 1, exerciseEffort = analysis.exerciseEffort, analysisSnapshot = analysis.snapshot,
         )
         val root = JsonParser.parseString(serializedRequest).asJsonObject
         val prompt = root.getAsJsonArray("contents")[0].asJsonObject.getAsJsonArray("parts")[0].asJsonObject.get("text").asString
@@ -64,7 +66,43 @@ class WorkoutEffortRequestTest {
         assertFalse(prompt.contains("Unused row"))
         assertFalse(prompt.contains("999"))
         assertFalse(prompt.contains("888"))
+        assertFalse(prompt.contains("PRIVATE_SESSION_NOTE"))
         assertTrue(prompt.contains("Totaalvolume: 300.0kg"))
+    }
+
+    @Test fun snapshotFactsAndCoverageReachSerializedRequestWithSeparateComparisonVolume() = runTest {
+        var serializedRequest = ""
+        val api = object : GeminiApi {
+            override suspend fun generateContent(model: String, apiKey: String, request: GeminiRequest): GeminiResponse {
+                serializedRequest = Gson().toJson(request)
+                return GeminiResponse()
+            }
+        }
+        val sets = listOf(
+            set(1, 3.0).copy(weight = 20.0, reps = 10, setType = SetType.WARM_UP),
+            set(1, 8.0), set(1, 0.0), set(1, 10.0).copy(completed = false),
+        )
+        WorkoutDebriefService(api) { "synthetic-key" }.generateWorkoutDebrief(
+            totalVolume = 9999.0, progression = 20.0, distribution = "Borst 1", avgRpe = 10f,
+            topExercises = "Bench", weeklyFrequency = 1,
+            exerciseEffort = WorkoutEffortSummary.exercises(sets, mapOf(1L to "Bench")),
+            analysisSnapshot = buildWorkoutAnalysisSnapshot(sets),
+        )
+        val root = JsonParser.parseString(serializedRequest).asJsonObject
+        val prompt = root.getAsJsonArray("contents")[0].asJsonObject.getAsJsonArray("parts")[0].asJsonObject.get("text").asString
+        assertTrue(prompt.contains("Totaalvolume: 1160.0kg"))
+        assertTrue(prompt.contains("Voltooide sets: 3; herhalingen: 26"))
+        assertTrue(prompt.contains("Vergelijkingsvolume: 960.0kg; vergelijkingssets: 2"))
+        assertTrue(prompt.contains("Gemiddelde set-RPE: 5.5 / 10"))
+        assertTrue(prompt.contains("RPE-dekking: 2 van 3 sets ingevuld"))
+        assertTrue(prompt.contains("De volumeprogressie betreft uitsluitend het vergelijkingsvolume"))
+        assertTrue(prompt.contains("Een ongewogen gemiddelde over alle settypen is geen gemeten sessie-RPE"))
+        assertFalse(prompt.contains("Als gemiddelde RPE < 6"))
+        assertFalse(prompt.contains("Als gemiddelde RPE > 8,5"))
+        assertFalse(prompt.contains("9999"))
+        assertEquals(1000, root.getAsJsonObject("generationConfig").getAsJsonObject("thinkingConfig").get("thinkingBudget").asInt)
+        assertEquals("application/json", root.getAsJsonObject("generationConfig").get("responseMimeType").asString)
+        assertNotNull(root.getAsJsonObject("generationConfig").get("responseJsonSchema"))
     }
 
     @Test fun actualSerializedGeminiRequestCarriesPerExerciseMeanSetDetailsAndExplicitNulls() = runTest {

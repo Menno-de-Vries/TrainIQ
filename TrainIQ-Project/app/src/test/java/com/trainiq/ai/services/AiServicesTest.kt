@@ -1006,9 +1006,9 @@ class AiServicesTest {
             weeklyFrequency = 2,
         )
 
-        assertEquals("Lokale samenvatting: volume 9250 kg.", result.summary)
-        assertEquals("Volume veranderde met -3,2% ten opzichte van de vorige sessie.", result.progressionFeedback)
-        assertEquals("Houd dezelfde opzet aan en verhoog pas als uitvoering en herstel goed blijven.", result.recommendation)
+        assertEquals("Lokale samenvatting: totaalvolume 9250 kg. Setdetails en RPE-dekking niet beschikbaar.", result.summary)
+        assertEquals("Vergelijkingsvolume: verandering -3,2% tegenover de vorige vergelijkbare training.", result.progressionFeedback)
+        assertEquals("Houd de huidige gewichten aan. Setdetails en RPE-dekking ontbreken voor een onderbouwde aanpassing.", result.recommendation)
         assertEquals("Huidige gewichten vasthouden", result.nextSessionFocus)
         assertNull(result.recoveryScore)
         assertEquals("MAINTAIN", result.intensitySignal)

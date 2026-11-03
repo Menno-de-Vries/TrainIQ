@@ -585,7 +585,7 @@ class TrainIqDataCoordinator @Inject constructor(
             exercises = beforeSnapshot.exercises,
         )
         val progression = comparison?.progressionPercent
-        val localDebrief = fallbackWorkoutDebriefResult(currentVolume, progression)
+        val localDebrief = fallbackWorkoutDebriefResult(currentVolume, progression, analysisSnapshot = analysis)
         runtimeStore.finishActiveWorkoutSession(
             session = newSession.withDebrief(localDebrief),
             performedExercises = performedExercises,
@@ -638,6 +638,7 @@ class TrainIqDataCoordinator @Inject constructor(
             distribution = analysis.distribution,
             avgRpe = analysis.snapshot.reportedMeanRpe?.toFloat(),
             exerciseEffort = analysis.exerciseEffort,
+            analysisSnapshot = analysis.snapshot,
             topExercises = analysis.topExercises,
             weeklyFrequency = refreshSnapshot.sessions
                 .filter { it.completed && it.date >= sevenDaysAgo }
