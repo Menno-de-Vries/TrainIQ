@@ -23,6 +23,22 @@ import org.junit.Test
 
 @OptIn(ExperimentalTestApi::class, ExperimentalComposeUiApi::class)
 class WorkoutCompletionRecoveryInstrumentedTest {
+    @Test fun lateDebriefRemainsVisibleWhenExistingStayActionKeepsScreenOpen() = runComposeUiTest {
+        var homes = 0
+        var state by mutableStateOf<WorkoutCompletionUiState>(WorkoutCompletionUiState.Success(summary()))
+        setContent { TrainIqTheme { WorkoutCompletionScreen(state, {}, { homes++ }) } }
+        onNodeWithText("Op scherm blijven").performClick()
+        mainClock.advanceTimeBy(15_000)
+        runOnIdle {
+            val saved = summary()
+            state = WorkoutCompletionUiState.Success(saved.copy(
+                debrief = saved.debrief.copy(summary = "Nieuwe opgeslagen analyse", source = WorkoutDebriefSource.GEMINI_2_5_FLASH),
+            ))
+        }
+        onNodeWithText("Nieuwe opgeslagen analyse").assertExists()
+        runOnIdle { assertEquals(0, homes) }
+    }
+
     @Test fun semanticStayActionPausesWithoutTouchOrScroll() = runComposeUiTest {
         var homes = 0
         setContent { TrainIqTheme { WorkoutCompletionScreen(WorkoutCompletionUiState.Success(summary()), {}, { homes++ }) } }

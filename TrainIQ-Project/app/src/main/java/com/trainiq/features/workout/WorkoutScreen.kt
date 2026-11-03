@@ -242,7 +242,7 @@ import com.trainiq.domain.usecase.FinishActiveWorkoutUseCase
 import com.trainiq.domain.usecase.GenerateAiRoutineUseCase
 import com.trainiq.domain.usecase.GetCurrentActiveWorkoutSessionUseCase
 import com.trainiq.domain.usecase.GetProgressionSuggestionsUseCase
-import com.trainiq.domain.usecase.GetWorkoutCompletionSummaryUseCase
+import com.trainiq.domain.usecase.ObserveWorkoutCompletionSummaryUseCase
 import com.trainiq.domain.usecase.GetWorkoutDayUseCase
 import com.trainiq.domain.usecase.LogActiveWorkoutSetUseCase
 import com.trainiq.domain.usecase.DeleteRoutineSetUseCase
@@ -1920,9 +1920,9 @@ fun WorkoutScreen(
 
 @HiltViewModel
 class WorkoutCompletionViewModel @Inject constructor(
-    private val getWorkoutCompletionSummaryUseCase: GetWorkoutCompletionSummaryUseCase,
+    private val observeWorkoutCompletionSummaryUseCase: ObserveWorkoutCompletionSummaryUseCase,
 ) : ViewModel() {
-    private val loader = WorkoutCompletionLoader(viewModelScope, getWorkoutCompletionSummaryUseCase::invoke)
+    private val loader = WorkoutCompletionLoader(viewModelScope, observeWorkoutCompletionSummaryUseCase::invoke)
     val uiState: StateFlow<WorkoutCompletionUiState> = loader.uiState
     fun load(sessionId: Long) = loader.load(sessionId)
 }

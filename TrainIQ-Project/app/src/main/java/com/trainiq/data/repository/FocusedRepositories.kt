@@ -84,6 +84,7 @@ class RoomWorkoutRepository @Inject constructor(
     override suspend fun refreshWorkoutDebrief(sessionId: Long, generationId: String?): WorkoutDebriefRefreshOutcome =
         delegate.refreshWorkoutDebrief(sessionId, generationId)
     override suspend fun getWorkoutCompletionSummary(sessionId: Long): WorkoutCompletionSummary? = delegate.getWorkoutCompletionSummary(sessionId)
+    override fun observeWorkoutCompletionSummary(sessionId: Long): Flow<WorkoutCompletionSummary?> = delegate.observeWorkoutCompletionSummary(sessionId)
     override suspend fun discardActiveWorkout(dayId: Long) = delegate.discardActiveWorkout(dayId)
     override suspend fun discardActiveWorkoutSession(sessionId: Long) = delegate.discardActiveWorkoutSession(sessionId)
     override suspend fun setActiveRoutine(routineId: Long) = delegate.setActiveRoutine(routineId)

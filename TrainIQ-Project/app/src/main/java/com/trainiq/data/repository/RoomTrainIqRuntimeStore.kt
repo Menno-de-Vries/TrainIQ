@@ -214,6 +214,8 @@ class RoomTrainIqRuntimeStore internal constructor(
 
     fun observeSavedGoalAdvice() = dao.observeSavedGoalAdvice().map { it?.toDomain() }
 
+    fun observeWorkoutCompletionSnapshot(sessionId: Long) = dao.observeWorkoutCompletionSnapshot(sessionId)
+
     suspend fun saveProfile(profile: UserProfileEntity, savedGoalAdvice: SavedGoalAdviceEntity? = null) {
         mutex.withLock {
             database.withTransaction {

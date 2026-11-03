@@ -485,6 +485,10 @@ interface TrainIqDao {
     @Query("SELECT * FROM workout_sessions WHERE id = :sessionId AND completed = 1 AND status = 'COMPLETED' LIMIT 1")
     suspend fun getCompletedWorkoutSession(sessionId: Long): WorkoutSessionEntity?
 
+    @Transaction
+    @Query("SELECT * FROM workout_sessions WHERE id = :sessionId AND completed = 1 AND status = 'COMPLETED' LIMIT 1")
+    fun observeWorkoutCompletionSnapshot(sessionId: Long): Flow<WorkoutCompletionSnapshot?>
+
     @Query("SELECT debrief_generation_id FROM workout_sessions WHERE id = :sessionId LIMIT 1")
     suspend fun getWorkoutSessionDebriefGenerationId(sessionId: Long): String?
 

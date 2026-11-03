@@ -18,6 +18,7 @@ import com.trainiq.domain.model.WorkoutOverview
 import com.trainiq.domain.repository.WorkoutRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.fail
@@ -154,6 +155,7 @@ private class FakeWorkoutRepository(
     override suspend fun updateActiveWorkoutRestTimer(endsAt: Long?, totalSeconds: Int): ActiveWorkoutSession? = null
     override suspend fun finishActiveWorkout(dayId: Long): WorkoutCompletionResult = error("unused")
     override suspend fun getWorkoutCompletionSummary(sessionId: Long): WorkoutCompletionSummary? = null
+    override fun observeWorkoutCompletionSummary(sessionId: Long): Flow<WorkoutCompletionSummary?> = flowOf(null)
     override suspend fun discardActiveWorkout(dayId: Long) = Unit
     override suspend fun discardActiveWorkoutSession(sessionId: Long) {
         discardedSessionId = sessionId

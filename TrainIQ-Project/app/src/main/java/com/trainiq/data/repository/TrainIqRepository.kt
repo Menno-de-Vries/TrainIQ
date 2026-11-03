@@ -125,6 +125,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -468,21 +470,24 @@ class TrainIqDataCoordinator @Inject constructor(
         return result
     }
 
-    suspend fun getWorkoutCompletionSummary(sessionId: Long): WorkoutCompletionSummary? = withContext(Dispatchers.IO) {
-        val state = runtimeStore.state.value
-        val session = state.sessions.firstOrNull { it.id == sessionId && it.completed && it.status == "COMPLETED" }
-            ?: return@withContext null
-        buildWorkoutCompletionSummary(
-            session = session,
-            routines = state.routines,
-            days = state.days,
-            exercises = state.exercises,
-            workoutExercises = state.workoutExercises,
-            performedExercises = state.performedExercises,
-            sets = state.workoutSets,
-            fallbackDebrief = session.toStoredDebrief(),
-        )
-    }
+    suspend fun getWorkoutCompletionSummary(sessionId: Long): WorkoutCompletionSummary? =
+        observeWorkoutCompletionSummary(sessionId).first()
+
+    fun observeWorkoutCompletionSummary(sessionId: Long): Flow<WorkoutCompletionSummary?> =
+        runtimeStore.observeWorkoutCompletionSnapshot(sessionId).map { snapshot ->
+            snapshot?.let {
+                buildWorkoutCompletionSummary(
+                    session = it.session,
+                    routines = (it.routines + it.days.flatMap { day -> day.routines }).distinctBy { routine -> routine.id },
+                    days = it.days.map { day -> day.day },
+                    exercises = it.sets.flatMap { set -> set.exercises }.distinctBy { exercise -> exercise.id },
+                    workoutExercises = it.days.flatMap { day -> day.workoutExercises },
+                    performedExercises = it.performedExercises,
+                    sets = it.sets.map { set -> set.set },
+                    fallbackDebrief = it.session.toStoredDebrief(),
+                )
+            }
+        }.distinctUntilChanged().flowOn(Dispatchers.IO)
 
     suspend fun discardActiveWorkout(dayId: Long) {
         withContext(Dispatchers.IO) {

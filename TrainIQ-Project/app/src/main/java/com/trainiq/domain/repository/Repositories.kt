@@ -64,6 +64,7 @@ interface WorkoutRepository {
     suspend fun finishActiveWorkout(dayId: Long): WorkoutCompletionResult
     suspend fun refreshWorkoutDebrief(sessionId: Long, generationId: String? = null): WorkoutDebriefRefreshOutcome
     suspend fun getWorkoutCompletionSummary(sessionId: Long): WorkoutCompletionSummary?
+    fun observeWorkoutCompletionSummary(sessionId: Long): Flow<WorkoutCompletionSummary?>
     suspend fun discardActiveWorkout(dayId: Long)
     suspend fun discardActiveWorkoutSession(sessionId: Long)
     suspend fun setActiveRoutine(routineId: Long)
