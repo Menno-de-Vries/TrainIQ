@@ -67,6 +67,7 @@ import com.trainiq.domain.model.LoggedMeal
 import com.trainiq.domain.model.LoggedMealItem
 import com.trainiq.domain.model.LoggedMealItemType
 import com.trainiq.domain.model.LoggedSet
+import com.trainiq.domain.model.buildWorkoutAnalysisSnapshot
 import com.trainiq.domain.model.MealAnalysisResult
 import com.trainiq.domain.model.MealScanItem
 import com.trainiq.domain.model.MealType
@@ -513,7 +514,8 @@ class TrainIqDataCoordinator @Inject constructor(
         activeSessionId: Long?,
         activeStartedAt: Long?,
     ): WorkoutCompletionResult {
-        if (loggedSets.isEmpty()) {
+        val analysis = buildWorkoutAnalysisSnapshot(loggedSets)
+        if (analysis.completedSets.isEmpty()) {
             return WorkoutCompletionResult(
                 sessionId = 0L,
                 debrief = WorkoutDebrief(
@@ -570,44 +572,19 @@ class TrainIqDataCoordinator @Inject constructor(
                 completedAt = now + index,
             )
         }
-        val debriefSets = loggedSets.filter { it.setType.isProgressionType() }.ifEmpty { loggedSets }
-        val currentVolume = debriefSets.sumOf { it.weight * it.reps }
+        val currentVolume = analysis.totalVolumeKg
         val comparison = buildWorkoutProgressComparison(
             dayId = dayId,
             routineId = newSession.routineId,
             startedAt = startedAt,
             activeSessionId = activeSessionId,
-            currentSets = debriefSets,
+            currentSets = analysis.completedSets,
             sessions = beforeSnapshot.sessions,
             sets = beforeSnapshot.sets,
             days = beforeSnapshot.days,
             exercises = beforeSnapshot.exercises,
         )
         val progression = comparison?.progressionPercent
-        val distribution = buildWorkoutDay(beforeSnapshot, dayId)?.exercises
-            ?.groupBy { it.exercise.muscleGroup }
-            ?.map { "${it.key} ${it.value.size}" }
-            ?.joinToString()
-            .orEmpty()
-        val avgRpe = debriefSets.map { it.rpe }.average().takeIf { !it.isNaN() }?.toFloat() ?: 0f
-        val exerciseNameById = buildWorkoutDay(beforeSnapshot, dayId)
-            ?.exercises
-            ?.associate { it.exercise.id to it.exercise.name }
-            .orEmpty() + beforeSnapshot.exercises.associate { it.id to it.name }
-        val topExercises = debriefSets
-            .sortedByDescending { it.weight * it.reps }
-            .take(3)
-            .joinToString { set ->
-                val exerciseName = exerciseNameById[set.exerciseId] ?: "Oefening ${set.exerciseId}"
-                workoutDebriefTopSetText(exerciseName = exerciseName, weightLabel = formatWeight(set.weight), reps = set.reps)
-            }
-            .ifBlank { workoutDebriefEmptyTopSetsText() }
-        val sevenDaysAgo = System.currentTimeMillis() - (7 * 86_400_000L)
-        val weeklyFrequency = (beforeSnapshot.sessions + newSession)
-            .filter { it.date >= sevenDaysAgo }
-            .map { normalizeToDay(it.date) }
-            .distinct()
-            .count()
         val localDebrief = fallbackWorkoutDebriefResult(currentVolume, progression)
         runtimeStore.finishActiveWorkoutSession(
             session = newSession.withDebrief(localDebrief),
@@ -632,70 +609,20 @@ class TrainIqDataCoordinator @Inject constructor(
         }
         val dayId = session.workoutDayId ?: return@withContext WorkoutDebriefRefreshOutcome.INVALID_RESULT
         val sessionSets = refreshSnapshot.sets.filter { it.sessionId == sessionId }
-        if (sessionSets.isEmpty()) return@withContext WorkoutDebriefRefreshOutcome.INVALID_RESULT
-        val effortSets = sessionSets.map { set ->
-            LoggedSet(
-                exerciseId = set.exerciseId,
-                weight = set.weight,
-                reps = set.reps,
-                rpe = set.rpe,
-                repsInReserve = set.repsInReserve,
-                completed = set.completed,
-                setType = parseSetType(set.setType),
-                orderIndex = set.orderIndex,
-                performedExerciseId = set.performedExerciseId,
-            )
-        }
-        val progressionSets = sessionSets.filter { parseSetType(it.setType).isProgressionType() }.ifEmpty { sessionSets }
-        val currentVolume = progressionSets.sumOf { it.weight * it.reps }
+        val analysis = buildWorkoutDebriefAnalysis(sessionSets.map { it.toAnalysisSet() }, refreshSnapshot.exercises)
+        if (analysis.snapshot.completedSets.isEmpty()) return@withContext WorkoutDebriefRefreshOutcome.INVALID_RESULT
+        val currentVolume = analysis.snapshot.totalVolumeKg
         val comparison = buildWorkoutProgressComparison(
             dayId = dayId,
             routineId = session.routineId,
             startedAt = session.startedAt,
             activeSessionId = sessionId,
-            currentSets = progressionSets.map { set ->
-                LoggedSet(
-                    exerciseId = set.exerciseId,
-                    weight = set.weight,
-                    reps = set.reps,
-                    rpe = set.rpe,
-                    repsInReserve = set.repsInReserve,
-                    setType = parseSetType(set.setType),
-                    restSeconds = set.restSeconds,
-                    orderIndex = set.orderIndex,
-                    completed = set.completed,
-                    loggedAt = set.loggedAt,
-                    performedExerciseId = set.performedExerciseId,
-                )
-            },
+            currentSets = analysis.snapshot.completedSets,
             sessions = refreshSnapshot.sessions,
             sets = refreshSnapshot.sets,
             days = refreshSnapshot.days,
             exercises = refreshSnapshot.exercises,
         )
-        val directSnapshot = RepositorySnapshot(
-            days = refreshSnapshot.days,
-            exercises = refreshSnapshot.exercises,
-            workoutExercises = refreshSnapshot.workoutExercises,
-        )
-        val workoutDay = buildWorkoutDay(directSnapshot, dayId)
-        val distribution = workoutDay?.exercises
-            ?.groupBy { it.exercise.muscleGroup }
-            ?.map { "${it.key} ${it.value.size}" }
-            ?.joinToString()
-            .orEmpty()
-        val exerciseNameById = refreshSnapshot.exercises.associate { it.id to it.name }
-        val topExercises = progressionSets
-            .sortedByDescending { it.weight * it.reps }
-            .take(3)
-            .joinToString { set ->
-                workoutDebriefTopSetText(
-                    exerciseName = exerciseNameById[set.exerciseId] ?: "Oefening ${set.exerciseId}",
-                    weightLabel = formatWeight(set.weight),
-                    reps = set.reps,
-                )
-            }
-            .ifBlank { workoutDebriefEmptyTopSetsText() }
         val sevenDaysAgo = System.currentTimeMillis() - (7 * 86_400_000L)
         val refreshed = runWorkoutDebriefForCurrentGeneration(
             currentGeneration = session.debriefGenerationId,
@@ -708,10 +635,10 @@ class TrainIqDataCoordinator @Inject constructor(
             totalVolume = currentVolume,
             progression = comparison?.progressionPercent,
             comparisonSummary = comparison?.summary ?: "Nog geen eerdere vergelijkbare training gevonden.",
-            distribution = distribution,
-            avgRpe = com.trainiq.domain.model.WorkoutEffortSummary.averageRpe(effortSets)?.toFloat(),
-            exerciseEffort = com.trainiq.domain.model.WorkoutEffortSummary.exercises(effortSets, exerciseNameById),
-            topExercises = topExercises,
+            distribution = analysis.distribution,
+            avgRpe = analysis.snapshot.reportedMeanRpe?.toFloat(),
+            exerciseEffort = analysis.exerciseEffort,
+            topExercises = analysis.topExercises,
             weeklyFrequency = refreshSnapshot.sessions
                 .filter { it.completed && it.date >= sevenDaysAgo }
                 .map { normalizeToDay(it.date) }
@@ -1870,6 +1797,7 @@ internal fun buildWorkoutCompletionSummary(
     val sessionSets = sets
         .filter { it.sessionId == session.id && it.completed }
         .sortedWith(compareBy<WorkoutSetEntity> { it.performedExerciseId }.thenBy { it.orderIndex }.thenBy { it.id })
+    val analysis = buildWorkoutAnalysisSnapshot(sessionSets.map { it.toAnalysisSet() })
     val sessionPerformed = performedExercises
         .filter { it.sessionId == session.id }
         .sortedBy { it.orderIndex }
@@ -1900,7 +1828,7 @@ internal fun buildWorkoutCompletionSummary(
                     completed = set.completed,
                 )
             },
-            totalVolume = orderedSets.sumOf { it.weight * it.reps },
+            totalVolume = buildWorkoutAnalysisSnapshot(orderedSets.map { it.toAnalysisSet() }).totalVolumeKg,
             bestSetLabel = orderedSets.maxWithOrNull(compareBy<WorkoutSetEntity> { it.weight }.thenBy { it.reps })?.let { set ->
                 "${formatSummaryWeight(set.weight)} kg x ${set.reps}"
             }.orEmpty(),
@@ -1923,8 +1851,8 @@ internal fun buildWorkoutCompletionSummary(
         endedAt = session.endedAt.takeIf { it > 0L } ?: session.date,
         durationSeconds = session.duration,
         exercisesCompleted = exerciseSummaries.size,
-        setsLogged = sessionSets.size,
-        totalVolume = sessionSets.sumOf { it.weight * it.reps },
+        setsLogged = analysis.completedSetCount,
+        totalVolume = analysis.totalVolumeKg,
         personalBests = 0,
         strongestSetLabel = strongestSet?.let { "${formatSummaryWeight(it.weight)} kg x ${it.reps}" }.orEmpty(),
         debrief = debrief,
@@ -1976,7 +1904,7 @@ private fun WorkoutSessionEntity.toStoredDebrief(): WorkoutDebrief {
     )
 }
 
-private fun formatSummaryWeight(weight: Double): String =
+internal fun formatSummaryWeight(weight: Double): String =
     if (weight % 1.0 == 0.0) weight.toInt().toString() else String.format(Locale.US, "%.1f", weight)
 
 internal data class WorkoutProgressComparison(
@@ -1999,7 +1927,10 @@ internal fun buildWorkoutProgressComparison(
     days: List<WorkoutDayEntity>,
     exercises: List<ExerciseEntity>,
 ): WorkoutProgressComparison? {
-    val currentExerciseIds = currentSets.map { it.exerciseId }.toSet()
+    val currentComparisonSets = buildWorkoutAnalysisSnapshot(
+        currentSets.filter { it.reps > 0 && it.weight >= 0.0 },
+    ).comparisonSets
+    val currentExerciseIds = currentComparisonSets.map { it.exerciseId }.toSet()
     if (currentExerciseIds.isEmpty()) return null
     val exerciseNameById = exercises.associate { it.id to it.name.trim().lowercase(Locale.US) }
     val currentExerciseNames = currentExerciseIds.mapNotNull { exerciseNameById[it] }.toSet()
@@ -2010,7 +1941,10 @@ internal fun buildWorkoutProgressComparison(
         .filter { it.id != activeSessionId }
         .filter { (it.startedAt.takeIf { value -> value > 0L } ?: it.date) < startedAt }
         .mapNotNull { session ->
-            val sessionSets = sets.filter { it.sessionId == session.id && isProgressionSet(it) }
+            val sessionSets = buildWorkoutAnalysisSnapshot(
+                sets.filter { it.sessionId == session.id && it.reps > 0 && it.weight >= 0.0 }
+                    .map { it.toAnalysisSet() },
+            ).comparisonSets
             val sessionExerciseIds = sessionSets.map { it.exerciseId }.toSet()
             val idOverlap = sessionExerciseIds.intersect(currentExerciseIds).size
             val nameOverlap = sessionExerciseIds.mapNotNull { exerciseNameById[it] }.toSet().intersect(currentExerciseNames).size
@@ -2043,7 +1977,7 @@ internal fun buildWorkoutProgressComparison(
         )
         .toList()
     val previous = candidates.firstOrNull() ?: return null
-    val currentVolume = currentSets
+    val currentVolume = currentComparisonSets
         .filter { it.exerciseId in currentExerciseIds || exerciseNameById[it.exerciseId] in currentExerciseNames }
         .sumOf { it.weight * it.reps }
     if (currentVolume <= 0.0 || previous.volume <= 0.0) return null

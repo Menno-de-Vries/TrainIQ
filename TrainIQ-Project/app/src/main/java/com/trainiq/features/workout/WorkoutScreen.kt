@@ -633,7 +633,7 @@ class WorkoutViewModel @Inject constructor(
         _progressionSuggestions,
         _loggedSetsThisSession,
     ) { workout, activeSession, suggestions, loggedSets ->
-        val allSets = loggedSets.values.flatten()
+        val analysis = com.trainiq.domain.model.buildWorkoutAnalysisSnapshot(loggedSets.values.flatten())
         val targetSets = workout?.exercises?.sumOf { it.plannedSetCount() } ?: 0
         ActiveWorkoutUiState(
             workout = workout,
@@ -641,11 +641,11 @@ class WorkoutViewModel @Inject constructor(
             progressionSuggestions = suggestions,
             loggedSetsThisSession = loggedSets,
             collapsedExerciseIds = activeSession?.collapsedExerciseIds.orEmpty(),
-            completedSets = allSets.size,
+            completedSets = analysis.completedSetCount,
             targetSets = targetSets,
-            totalVolume = allSets.sumOf { it.weight * it.reps },
-            canFinish = allSets.isNotEmpty(),
-            needsFinishConfirmation = allSets.isEmpty() || (targetSets > 0 && allSets.size < targetSets),
+            totalVolume = analysis.totalVolumeKg,
+            canFinish = analysis.completedSetCount > 0,
+            needsFinishConfirmation = analysis.completedSetCount == 0 || (targetSets > 0 && analysis.completedSetCount < targetSets),
         )
     }.combine(_pendingLoggingExerciseIds) { state, pendingLoggingExerciseIds ->
         state.copy(pendingLoggingExerciseIds = pendingLoggingExerciseIds)
