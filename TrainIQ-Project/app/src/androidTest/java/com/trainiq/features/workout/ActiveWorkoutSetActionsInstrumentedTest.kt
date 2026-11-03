@@ -8,6 +8,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -72,6 +73,124 @@ class ActiveWorkoutSetActionsInstrumentedTest {
     private lateinit var context: Context
     private lateinit var database: TrainIqDatabase
 
+    @Test
+    fun appendPreviousSetIsDisabledDuringCorrectionAndKeepsOriginal() {
+        ActivityScenario.launch(MainActivity::class.java).use {
+            val training = (hasText("Training") or hasContentDescription("Training")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(training).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(training).performClick()
+            compose.waitForText("QA Upper")
+            compose.onNodeWithText("Training starten").performClick()
+            compose.waitForText("Actieve training")
+            compose.onNodeWithContentDescription("Gelogde set corrigeren").performScrollTo().performClick()
+            val repeat = compose.onNodeWithText("Opnieuw loggen").performScrollTo().assertIsNotEnabled().fetchSemanticsNode().boundsInRoot
+            val primary = compose.onNodeWithText("Wijzig loggen").fetchSemanticsNode().boundsInRoot
+            val density = context.resources.displayMetrics.density
+            assertTrue("Both actions retain 48dp targets", repeat.height >= 48f * density && primary.height >= 48f * density && repeat.width >= 48f * density && primary.width >= 48f * density)
+            assertTrue("Actions do not overlap", repeat.left >= primary.right || repeat.top >= primary.bottom)
+            if (repeat.left >= primary.right) {
+                assertTrue("Adjacent actions have equal width and height", kotlin.math.abs(repeat.width - primary.width) <= 1f && kotlin.math.abs(repeat.height - primary.height) <= 1f)
+            }
+            assertEquals(1, runBlocking { database.dao().observeActiveWorkoutSets().first().size })
+        }
+    }
+    @Test
+    fun appendPreviousSetCopiesPerformanceWithoutEffortAndCanUndo() {
+        ActivityScenario.launch(MainActivity::class.java).use {
+            val training = (hasText("Training") or hasContentDescription("Training")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(training).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(training).performClick()
+            compose.waitForText("QA Upper")
+            compose.onNodeWithText("Training starten").performClick()
+            compose.waitForText("Actieve training")
+            compose.onNodeWithContentDescription("Set toevoegen aan Bench Press").performScrollTo().performClick()
+            metricInput("Gewicht in kilogram").performScrollTo().performTextReplacement("35")
+            compose.onNodeWithText("Opnieuw loggen").performScrollTo().performClick()
+            waitForSetCount(2)
+            val sets = runBlocking { database.dao().observeActiveWorkoutSets().first() }.sortedBy { it.orderIndex }
+            assertEquals(80.0, sets.last().weight, 0.0)
+            assertEquals(5, sets.last().reps)
+            assertEquals(0.0, sets.last().rpe, 0.0)
+            compose.onNodeWithText("Ongedaan maken").performClick()
+            waitForSetCount(1)
+            assertEquals(80.0, readActiveWorkoutSet().weight, 0.0)
+        }
+    }
+
+    @Test
+    fun appendPreviousSetIsDisabledWithoutCompletedSet() {
+        runBlocking { database.dao().deleteActiveWorkoutSetsForSession(12L) }
+        ActivityScenario.launch(MainActivity::class.java).use {
+            val training = (hasText("Training") or hasContentDescription("Training")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(training).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(training).performClick()
+            compose.waitForText("QA Upper")
+            compose.onNodeWithText("Training starten").performClick()
+            compose.waitForText("Actieve training")
+            compose.onNodeWithText("Opnieuw loggen").performScrollTo().assertIsNotEnabled()
+        }
+    }
+    @Test
+    fun alternatingLogActionsAcceptOnlyFirstTap() {
+        ActivityScenario.launch(MainActivity::class.java).use {
+            val training = (hasText("Training") or hasContentDescription("Training")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(training).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(training).performClick()
+            compose.waitForText("QA Upper")
+            compose.onNodeWithText("Training starten").performClick()
+            compose.waitForText("Actieve training")
+            compose.onNodeWithContentDescription("Set toevoegen aan Bench Press").performScrollTo().performClick()
+            metricInput("Gewicht in kilogram").performScrollTo().performTextReplacement("35")
+            metricInput("Gewicht in kilogram").performImeAction()
+            val normal = compose.onNodeWithText("Extra set loggen").performScrollTo()
+            val repeat = compose.onNodeWithText("Opnieuw loggen")
+            awaitReachableWorkoutAction(normal, "alternating-actions")
+            val normalBounds = normal.fetchSemanticsNode().boundsInRoot
+            val repeatBounds = repeat.fetchSemanticsNode().boundsInRoot
+            val listBounds = compose.onNode(hasScrollToIndexAction()).fetchSemanticsNode().boundsInRoot
+            assertTrue("Both tap points must be inside their buttons and visible list", normalBounds.contains(normalBounds.center) && repeatBounds.contains(repeatBounds.center) && listBounds.contains(normalBounds.center) && listBounds.contains(repeatBounds.center) && normalBounds.right <= repeatBounds.left)
+            compose.onRoot().performTouchInput {
+                click(normalBounds.center)
+                click(repeatBounds.center)
+            }
+            waitForSetCount(2)
+            compose.waitForIdle()
+            val sets = runBlocking { database.dao().observeActiveWorkoutSets().first() }.sortedBy { it.orderIndex }
+            assertEquals(2, sets.size)
+            assertEquals(35.0, sets.last().weight, 0.0)
+        }
+    }
+
+    @Test
+    fun failedRepeatRollsBackAndPreservesDraftForRetry() {
+        ActivityScenario.launch(MainActivity::class.java).use {
+            val training = (hasText("Training") or hasContentDescription("Training")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(training).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(training).performClick()
+            compose.waitForText("QA Upper")
+            compose.onNodeWithText("Training starten").performClick()
+            compose.waitForText("Actieve training")
+            compose.onNodeWithContentDescription("Set toevoegen aan Bench Press").performScrollTo().performClick()
+            metricInput("Gewicht in kilogram").performScrollTo().performTextReplacement("35")
+            metricInput("Gewicht in kilogram").performImeAction()
+            val beforeEvents = runBlocking { database.dao().readWorkoutLogEventsForExport().size }
+            val sql = database.openHelper.writableDatabase
+            sql.execSQL("CREATE TRIGGER codex_test_fail_active_set_insert BEFORE INSERT ON active_workout_sets BEGIN SELECT RAISE(ABORT, 'test insert failure'); END")
+            try {
+                compose.onNodeWithText("Opnieuw loggen").performScrollTo().performClick()
+                compose.waitForText("Set loggen is mislukt")
+                assertEquals(1, runBlocking { database.dao().observeActiveWorkoutSets().first().size })
+                assertEquals(beforeEvents, runBlocking { database.dao().readWorkoutLogEventsForExport().size })
+                metricInput("Gewicht in kilogram").performScrollTo().assertTextEquals("35")
+            } finally {
+                sql.execSQL("DROP TRIGGER IF EXISTS codex_test_fail_active_set_insert")
+            }
+            compose.onNodeWithText("Opnieuw loggen").performScrollTo().performClick()
+            waitForSetCount(2)
+            val appended = runBlocking { database.dao().observeActiveWorkoutSets().first() }.maxBy { it.orderIndex }
+            assertEquals(80.0, appended.weight, 0.0)
+        }
+    }
     @Test
     fun runningRestKeepsFinishLabelAndOneTimerControlGroup() {
         runBlocking {
@@ -319,10 +438,8 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             compose.onNodeWithText("Bench Press", useUnmergedTree = true).assertIsDisplayed()
             capture("normal")
 
-            compose.waitForText("N")
-            compose.onNodeWithText("N")
-                .performScrollTo()
-            compose.onNodeWithText("N").performSemanticsAction(SemanticsActions.OnClick) { it() }
+            compose.onNodeWithContentDescription("Gelogde set acties").performScrollTo().performClick()
+            compose.onNodeWithText("Settype wijzigen").performClick()
             compose.waitForText("Warm-up")
             compose.onNodeWithText("Warm-up").performClick()
             compose.waitForText("W")
@@ -385,10 +502,11 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             assertEquals(6, readActiveWorkoutSet().reps)
             compose.waitForText("W")
 
-            compose.onNodeWithContentDescription("Set verwijderen")
-                .performScrollTo()
-            compose.onNodeWithContentDescription("Set verwijderen")
-                .performSemanticsAction(SemanticsActions.OnClick) { it() }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Actieve training hersteld.").fetchSemanticsNodes().isEmpty() }
+            val actions = compose.onNodeWithContentDescription("Gelogde set acties").performScrollTo()
+            awaitReachableWorkoutAction(actions, "completed-menu").performClick()
+            compose.waitForText("Set verwijderen")
+            compose.onNodeWithText("Set verwijderen").performClick()
             compose.waitForText("Set verwijderen?")
             compose.onNodeWithText("Verwijderen").performClick()
             compose.waitForNoActiveWorkoutSets()
@@ -436,7 +554,8 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             compose.waitForText("QA Upper")
             compose.onNodeWithText("Training starten").performClick()
             compose.waitForText("Actieve training")
-            compose.onNodeWithText("Workout-notitie").performScrollTo().performTextReplacement("Twee oefeningen, rustig tempo")
+            compose.onNodeWithText("Workout-notitie").performScrollTo().performClick()
+            compose.onNodeWithText("Notitie").performScrollTo().performTextReplacement("Twee oefeningen, rustig tempo")
             compose.waitUntil(10_000) {
                 compose.onAllNodesWithText("Actieve training hersteld.").fetchSemanticsNodes().isEmpty()
             }
@@ -550,7 +669,8 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             compose.waitForText("QA Upper")
             compose.onNodeWithText("Training starten").performClick()
             compose.waitForText("Actieve training")
-            compose.onNodeWithText("Workout-notitie").performScrollTo().performTextReplacement("Rustig opbouwen vandaag")
+            compose.onNodeWithText("Workout-notitie").performScrollTo().performClick()
+            compose.onNodeWithText("Notitie").performScrollTo().performTextReplacement("Rustig opbouwen vandaag")
             compose.waitUntil(10_000) {
                 compose.onAllNodesWithText("Actieve training hersteld.").fetchSemanticsNodes().isEmpty()
             }
@@ -597,7 +717,8 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             compose.onNodeWithText("Training starten").performClick()
             compose.waitForText("Actieve training")
             // Finishing must flush an unsaved note before navigating to processing.
-            compose.onNodeWithText("Workout-notitie").performScrollTo().performTextReplacement("Goede sessie")
+            compose.onNodeWithText("Workout-notitie").performScrollTo().performClick()
+            compose.onNodeWithText("Notitie").performScrollTo().performTextReplacement("Goede sessie")
             compose.onNodeWithContentDescription("Training afronden").performClick()
             compose.waitForText("Training afronden?")
             compose.onNodeWithText("Training afronden?").assertIsDisplayed()

@@ -68,6 +68,7 @@ import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.SkipNext
@@ -90,6 +91,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
@@ -843,7 +845,9 @@ class WorkoutViewModel @Inject constructor(
         _message.value = "Rust voor deze oefening ingesteld op ${next}s."
     }
 
-    fun logSet(plan: WorkoutExercisePlan): Boolean {
+    fun logSet(plan: WorkoutExercisePlan): Boolean = logSet(plan, null)
+
+    private fun logSet(plan: WorkoutExercisePlan, overrideDraft: SetInputDraft?): Boolean {
         diagnosticsTracker.tap("Workout:SetLogClicked")
         val key = plan.activeKey
         val correctionSetId = _pendingCorrectionSetIds.value[key]
@@ -855,7 +859,7 @@ class WorkoutViewModel @Inject constructor(
             overrideRestSeconds = _exerciseRestOverrides.value[key],
         )
         val draft = activeSetUiDraft(
-            savedDraft = _drafts.value[key],
+            savedDraft = overrideDraft ?: _drafts.value[key],
             plan = plan,
             loggedSetCount = loggedCount,
             activeRestSeconds = draftRestSeconds,
@@ -973,12 +977,10 @@ class WorkoutViewModel @Inject constructor(
 
     fun logSameAgain(plan: WorkoutExercisePlan): Boolean {
         val key = plan.activeKey
-        val lastSet = _loggedSetsThisSession.value[key].orEmpty().lastOrNull() ?: return false
-        _drafts.value = _drafts.value.toMutableMap().apply { put(key, lastSet.toDraft()) }
-        clearSetInputError(key)
-        return logSet(plan)
+        if (key in _pendingCorrectionSetIds.value || key in _pendingLoggingExerciseIds.value) return false
+        val lastSet = _loggedSetsThisSession.value[key].orEmpty().lastOrNull { it.completed } ?: return false
+        return logSet(plan, lastSet.toDraft())
     }
-
     fun saveWorkoutNotes(notes: String, onSaved: (Boolean) -> Unit) {
         viewModelScope.launch {
             val result = runUserActionCatching { updateActiveWorkoutNotesUseCase(notes) }
@@ -5517,6 +5519,8 @@ fun ActiveWorkoutScreen(
     val clockState = rememberActiveWorkoutClock(uiState.activeSession)
     var notesDraft by rememberSaveable(uiState.activeSession?.sessionId) { mutableStateOf(uiState.activeSession?.notes.orEmpty()) }
     var notesSaving by remember { mutableStateOf(false) }
+    var notesExpanded by rememberSaveable(uiState.activeSession?.sessionId) { mutableStateOf(false) }
+    var sessionMenuExpanded by remember { mutableStateOf(false) }
     val saveNotesThen = { next: () -> Unit ->
         if (!notesSaving) {
             if (uiState.activeSession == null || notesDraft == uiState.activeSession.notes) next()
@@ -5651,57 +5655,52 @@ fun ActiveWorkoutScreen(
                 contentType = "active-workout-header",
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        maxItemsInEachRow = 3,
-                    ) {
-                        SecondaryActionButton(
-                            onClick = { saveNotesThen(onBack) },
-                            modifier = Modifier
-                                .weight(1f)
-                                .semantics { contentDescription = "Terug naar Training" },
-                        ) { Text("Terug") }
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { saveNotesThen(onBack) }, modifier = Modifier.size(48.dp)) {
+                            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Terug naar Training")
+                        }
+                        Text("Actieve training", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         if (uiState.debrief == null) {
-                            SecondaryActionButton(
-                                onClick = { showDiscardConfirm = true },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .semantics { contentDescription = "Actieve training weggooien" },
-                                accent = MaterialTheme.colorScheme.error,
-                            ) { Text("Weggooien") }
+                            Box {
+                                IconButton(onClick = { sessionMenuExpanded = true }, modifier = Modifier.size(48.dp)) {
+                                    Icon(Icons.Rounded.MoreVert, contentDescription = "Training acties")
+                                }
+                                DropdownMenu(expanded = sessionMenuExpanded, onDismissRequest = { sessionMenuExpanded = false }) {
+                                    DropdownMenuItem(
+                                        text = { Text("Training weggooien") },
+                                        modifier = Modifier.semantics { contentDescription = "Actieve training weggooien" },
+                                        onClick = { sessionMenuExpanded = false; showDiscardConfirm = true },
+                                    )
+                                }
+                            }
                         }
                     }
-                    Text(
-                        if (uiState.debrief == null) {
-                            "Terug sluit dit scherm; je training blijft actief."
-                        } else {
-                            "Je sessie is lokaal opgeslagen."
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.trainIqColors.mutedText,
-                    )
                     ActiveWorkoutSessionSummary(uiState, clockState)
                     if (uiState.debrief == null && uiState.activeSession != null) {
-                        OutlinedTextField(
-                            value = notesDraft,
-                            onValueChange = { notesDraft = it.take(2_000) },
-                            label = { Text("Workout-notitie") },
-                            placeholder = { Text("Hoe voelt je training?") },
-                            enabled = !notesSaving,
-                            maxLines = 3,
-                            modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
-                        )
-                        if (notesDraft != uiState.activeSession.notes) {
-                            Row {
-                                TextButton(
-                                    enabled = !notesSaving,
-                                    onClick = { saveNotesThen {} },
-                                    modifier = Modifier.defaultMinSize(minHeight = 48.dp),
-                                ) { Text(if (notesSaving) "Opslaan…" else "Notitie opslaan") }
-                                TextButton(enabled = !notesSaving, onClick = { notesDraft = uiState.activeSession.notes }) {
-                                    Text("Annuleren")
+                        OutlinedButton(
+                            onClick = { notesExpanded = !notesExpanded },
+                            modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        ) {
+                            Text("Workout-notitie", modifier = Modifier.weight(1f), textAlign = TextAlign.Start)
+                            Icon(if (notesExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, contentDescription = if (notesExpanded) "Notitie inklappen" else "Notitie openen")
+                        }
+                        if (notesExpanded) {
+                            OutlinedTextField(
+                                value = notesDraft,
+                                onValueChange = { notesDraft = it.take(2_000) },
+                                label = { Text("Notitie") },
+                                placeholder = { Text("Hoe voelt je training?") },
+                                enabled = !notesSaving,
+                                maxLines = 3,
+                                modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
+                            )
+                            if (notesDraft != uiState.activeSession.notes) {
+                                Row {
+                                    TextButton(enabled = !notesSaving, onClick = { saveNotesThen {} }, modifier = Modifier.defaultMinSize(minHeight = 48.dp)) {
+                                        Text(if (notesSaving) "Opslaan…" else "Notitie opslaan")
+                                    }
+                                    TextButton(enabled = !notesSaving, onClick = { notesDraft = uiState.activeSession.notes }) { Text("Annuleren") }
                                 }
                             }
                         }
@@ -5891,28 +5890,13 @@ private fun ActiveWorkoutSessionSummary(
     } else {
         0f
     }
-    AppCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics(mergeDescendants = true) {
-                contentDescription = activeWorkoutStickyStatusContentDescription(
-                    uiState = uiState,
-                    elapsedSeconds = clock.elapsedSeconds,
-                    restTimerSeconds = clock.restTimerSeconds,
-                )
-            },
-        accent = MaterialTheme.trainIqColors.amber,
-        elevated = true,
+    Column(
+        modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {
+            contentDescription = activeWorkoutStickyStatusContentDescription(uiState, clock.elapsedSeconds, clock.restTimerSeconds)
+        },
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                if (uiState.debrief == null) "Actieve training" else "Training opgeslagen",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.ExtraBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     displayWorkoutDayName(uiState.workout?.name ?: "Workout"),
                     modifier = Modifier.weight(1f),
@@ -5936,7 +5920,6 @@ private fun ActiveWorkoutSessionSummary(
             }
             AppLinearProgress(progress = progress, accent = MaterialTheme.trainIqColors.amber)
         }
-    }
 }
 
 @Composable
@@ -5957,11 +5940,11 @@ private fun ActiveWorkoutBottomBar(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = MaterialTheme.spacing.compact, vertical = MaterialTheme.spacing.extraSmall)
+                .padding(horizontal = MaterialTheme.spacing.compact, vertical = MaterialTheme.spacing.small)
                 .semantics(mergeDescendants = true) {
                     contentDescription = activeWorkoutBottomBarContentDescription(uiState, clock.restTimerSeconds)
                 },
-            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
             if (clock.restTimerSeconds > 0) {
                 AppLinearProgress(
@@ -6058,7 +6041,7 @@ private fun ActiveWorkoutBottomBar(
                     )
                 }
             }
-            Button(
+            OutlinedButton(
                 onClick = onFinishClick,
                 enabled = uiState.workout != null,
                 shape = MaterialTheme.shapes.medium,
@@ -6116,7 +6099,7 @@ private fun ActiveWorkoutPlanCard(
         onRelogSet = { setId -> onRelogSet(key, setId) },
         onToggleCollapsed = { onToggleCollapsed(key, !exerciseState.collapsed) },
         onCopyLastSet = {
-            exerciseState.loggedSets.lastOrNull()?.let { lastSet ->
+            exerciseState.loggedSets.lastOrNull { it.completed }?.let { lastSet ->
                 onDraftChange(key, lastSet.toDraft())
             }
         },
@@ -6223,87 +6206,37 @@ private fun ActiveExerciseCard(
         },
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
+                    modifier = Modifier.weight(1f)
                         .semantics { contentDescription = "Open geschiedenis voor ${plan.exercise.name}" }
-                        .clickable(
-                            role = Role.Button,
-                            onClickLabel = "Open geschiedenis",
-                            onClick = onOpenHistory,
-                        ),
+                        .clickable(role = Role.Button, onClickLabel = "Open geschiedenis", onClick = onOpenHistory),
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
                 ) {
-                    Text(
-                        plan.exercise.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        "${loggedSets.size}/$plannedSetCount sets - ${plan.repRange} herh.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Text(plan.exercise.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("${loggedSets.size}/$plannedSetCount sets - ${plan.repRange} herh.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    IconButton(onClick = {
-                        if (!collapsed) focusManager.clearFocus(force = true)
-                        onToggleCollapsed()
-                    }) {
-                        Icon(
-                            if (collapsed) Icons.Rounded.ExpandMore else Icons.Rounded.ExpandLess,
-                            contentDescription = if (collapsed) "Open oefening" else "Klap oefening in",
-                        )
+                IconButton(onClick = {
+                    if (!collapsed) focusManager.clearFocus(force = true)
+                    onToggleCollapsed()
+                }, modifier = Modifier.size(48.dp)) {
+                    Icon(if (collapsed) Icons.Rounded.ExpandMore else Icons.Rounded.ExpandLess, contentDescription = if (collapsed) "Open oefening" else "Klap oefening in")
+                }
+                Box {
+                    IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Rounded.MoreVert, contentDescription = "Actieve oefening acties")
                     }
-                    ActiveExerciseRestControl(
-                        restSeconds = activeRestSeconds,
-                        onDecrease = { onAdjustExerciseRest(-30) },
-                        onIncrease = { onAdjustExerciseRest(30) },
-                    )
-                    Box {
-                        IconButton(onClick = { menuExpanded = true }) {
-                            Icon(Icons.Rounded.MoreVert, contentDescription = "Actieve oefening acties")
-                        }
-                        DropdownMenu(
-                            expanded = menuExpanded,
-                            onDismissRequest = { menuExpanded = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Geschiedenis") },
-                                onClick = {
-                                    menuExpanded = false
-                                    onOpenHistory()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(activeExerciseReplaceLabel()) },
-                                leadingIcon = { Icon(Icons.Rounded.SwapHoriz, contentDescription = null) },
-                                onClick = {
-                                    menuExpanded = false
-                                    onReplaceExercise()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(activeExerciseDeleteLabel()) },
-                                leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null) },
-                                onClick = {
-                                    menuExpanded = false
-                                    onRemoveExercise()
-                                },
-                            )
-                        }
+                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                        DropdownMenuItem(text = { Text("Geschiedenis") }, onClick = { menuExpanded = false; onOpenHistory() })
+                        DropdownMenuItem(text = { Text("Vorige set kopiëren") }, enabled = loggedSets.any { it.completed }, onClick = { menuExpanded = false; onCopyLastSet() })
+                        DropdownMenuItem(text = { Text(activeExerciseReplaceLabel()) }, leadingIcon = { Icon(Icons.Rounded.SwapHoriz, contentDescription = null) }, onClick = { menuExpanded = false; onReplaceExercise() })
+                        DropdownMenuItem(text = { Text(activeExerciseDeleteLabel()) }, leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null) }, onClick = { menuExpanded = false; onRemoveExercise() })
                     }
+                }
+            }
+            if (!collapsed) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                    ActiveExerciseRestControl(restSeconds = activeRestSeconds, onDecrease = { onAdjustExerciseRest(-30) }, onIncrease = { onAdjustExerciseRest(30) })
                 }
             }
             if (collapsed) return@Column
@@ -6366,6 +6299,8 @@ private fun ActiveExerciseCard(
                     ) else null,
                     isLogPending = isLogPending,
                     onLogSet = onLogSet,
+                    onLogSameAgain = onLogSameAgain,
+                    canLogSameAgain = loggedSets.any { it.completed } && !isLogPending && !hasPendingCorrection,
                 )
             }
             TextButton(
@@ -6386,73 +6321,11 @@ private fun ActiveExerciseCard(
                         .height(48.dp),
                 )
             }
-            if (showLogger) Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (showLogger) {
                 liveOneRepMax?.let { oneRepMax ->
-                    Text(
-                        "Geschatte 1RM: ${formatWeight(oneRepMax)} kg",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
+                    Text("Geschatte 1RM: ${formatWeight(oneRepMax)} kg", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 }
-                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                    when (activeSetActionLayoutForWidth(maxWidth)) {
-                        ActiveSetActionLayout.Stacked -> {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    SecondaryActionButton(
-                                        onClick = onCopyLastSet,
-                                        enabled = loggedSets.isNotEmpty(),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .defaultMinSize(minHeight = 48.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-                                    ) {
-                                        Icon(Icons.Rounded.ContentCopy, contentDescription = copyPreviousSetContentDescription())
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Vorige", maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-                                    }
-                                    TextButton(
-                                        onClick = onLogSameAgain,
-                                        enabled = loggedSets.isNotEmpty() && !isLogPending,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .defaultMinSize(minHeight = 48.dp),
-                                    ) {
-                                        Text("Zelfde opnieuw", maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-                                    }
-                                }
-                            }
-                        }
-                        ActiveSetActionLayout.Wrapped -> {
-                            FlowRow(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                                maxItemsInEachRow = 3,
-                            ) {
-                                SecondaryActionButton(
-                                    onClick = onCopyLastSet,
-                                    enabled = loggedSets.isNotEmpty(),
-                                    modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-                                ) {
-                                    Icon(Icons.Rounded.ContentCopy, contentDescription = copyPreviousSetContentDescription())
-                                }
-                                TextButton(
-                                    onClick = onLogSameAgain,
-                                    enabled = loggedSets.isNotEmpty() && !isLogPending,
-                                    modifier = Modifier.defaultMinSize(minHeight = 48.dp),
-                                ) {
-                                    Text("Zelfde opnieuw", maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-                                }
-                            }
-                        }
-                    }
-                }
+
             }
         }
     }
@@ -6903,6 +6776,8 @@ private fun SetRow(
     submitLabel: String?,
     isLogPending: Boolean,
     onLogSet: () -> Unit,
+    onLogSameAgain: () -> Unit = {},
+    canLogSameAgain: Boolean = false,
 ) {
     var showDeleteConfirm by remember(index, loggedSet) { mutableStateOf(false) }
     var setTypeMenuExpanded by remember(index, loggedSet?.id, plannedSet?.id) { mutableStateOf(false) }
@@ -6946,85 +6821,68 @@ private fun SetRow(
                 isCurrent -> "Huidige set"
                 else -> "Volgende set"
             } }
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            // Reserve the status, badge, actions and a readable title before sharing one row.
-            val separateActions = maxWidth < 242.dp + 44.dp * LocalDensity.current.fontScale
-            val loggedActions: @Composable () -> Unit = {
-                IconButton(onClick = onRelog, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.Rounded.Replay, contentDescription = relogSetContentDescription())
+        var actionsExpanded by remember(index, loggedSet?.id) { mutableStateOf(false) }
+        Row(
+            modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (loggedSet?.completed == true && !isCorrecting) {
+                Icon(Icons.Default.Check, contentDescription = "Voltooide set", modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(6.dp))
+            }
+            Text("Set $index", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            if (isInputExpanded || loggedSet == null) {
+                Spacer(Modifier.width(8.dp))
+                Box(modifier = Modifier.weight(1f)) {
+                    OutlinedButton(
+                        onClick = { setTypeMenuExpanded = true },
+                        enabled = isInputExpanded,
+                        contentPadding = PaddingValues(horizontal = 10.dp),
+                        modifier = Modifier.defaultMinSize(minHeight = 48.dp),
+                    ) {
+                        Text((visibleSetType ?: SetType.NORMAL).label())
+                        Icon(Icons.Rounded.ExpandMore, contentDescription = "Settype wijzigen")
+                    }
+                    DropdownMenu(expanded = setTypeMenuExpanded, onDismissRequest = { setTypeMenuExpanded = false }) {
+                        SetType.entries.forEach { type ->
+                            DropdownMenuItem(text = { Text(type.label()) }, onClick = {
+                                setTypeMenuExpanded = false
+                                onSetTypeSelected(type)
+                            })
+                        }
+                    }
                 }
+            } else {
+                Spacer(Modifier.width(4.dp))
+                Text(loggedSet.setType.shortCode(), style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.width(4.dp))
+                Text("${formatWeight(loggedSet.weight)} kg × ${loggedSet.reps}", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            }
+            if (loggedSet != null) {
                 IconButton(onClick = onEdit, modifier = Modifier.size(48.dp)) {
                     Icon(Icons.Rounded.Edit, contentDescription = "Gelogde set corrigeren")
                 }
-                IconButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.Rounded.Delete, contentDescription = "Set verwijderen")
+                Box {
+                    IconButton(onClick = { actionsExpanded = true }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Rounded.MoreVert, contentDescription = "Gelogde set acties")
+                    }
+                    DropdownMenu(expanded = actionsExpanded, onDismissRequest = { actionsExpanded = false }) {
+                        DropdownMenuItem(text = { Text(relogSetContentDescription()) }, onClick = { actionsExpanded = false; onRelog() })
+                        DropdownMenuItem(text = { Text("Settype wijzigen") }, onClick = { actionsExpanded = false; setTypeMenuExpanded = true })
+                        DropdownMenuItem(text = { Text("Set verwijderen") }, onClick = { actionsExpanded = false; showDeleteConfirm = true })
+                    }
+                    DropdownMenu(expanded = setTypeMenuExpanded, onDismissRequest = { setTypeMenuExpanded = false }) {
+                        SetType.entries.forEach { type ->
+                            DropdownMenuItem(text = { Text(type.label()) }, onClick = { setTypeMenuExpanded = false; onSetTypeSelected(type) })
+                        }
+                    }
                 }
-            }
-            Column {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .defaultMinSize(minHeight = ActiveSetHeaderMinHeight),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(modifier = Modifier.size(20.dp), contentAlignment = Alignment.Center) {
-                        if (loggedSet?.completed == true && !isCorrecting) {
-                            Icon(Icons.Default.Check, contentDescription = "Voltooide set", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
-                        } else if (isCorrecting) {
-                            Icon(Icons.Rounded.Edit, contentDescription = "Set wordt gecorrigeerd", modifier = Modifier.size(18.dp))
-                        }
-                    }
-                    Box {
-                        SetTypePill(
-                            setType = visibleSetType ?: SetType.NORMAL,
-                            enabled = loggedSet != null || isInputExpanded,
-                            compact = true,
-                            onClick = { setTypeMenuExpanded = true },
-                        )
-                        DropdownMenu(
-                            expanded = setTypeMenuExpanded,
-                            onDismissRequest = { setTypeMenuExpanded = false },
-                        ) {
-                            SetType.entries.forEach { type ->
-                                DropdownMenuItem(
-                                    text = { Text(type.label()) },
-                                    onClick = {
-                                        setTypeMenuExpanded = false
-                                        onSetTypeSelected(type)
-                                    },
-                                )
-                            }
-                        }
-                    }
-                    Text(
-                        text = "Set $index",
-                        modifier = Modifier
-                            .weight(1f),
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (loggedSet == null && canRemovePlanned) {
-                        IconButton(onClick = onRemovePlanned, modifier = Modifier.size(48.dp)) {
-                            Icon(Icons.Rounded.DeleteOutline, contentDescription = "Geplande set uit deze training verwijderen")
-                        }
-                    }
-                    if (loggedSet != null && !separateActions) loggedActions()
-                }
-                if (loggedSet != null && separateActions) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        loggedActions()
-                    }
+            } else if (canRemovePlanned) {
+                IconButton(onClick = onRemovePlanned, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Rounded.DeleteOutline, contentDescription = "Geplande set uit deze training verwijderen")
                 }
             }
         }
@@ -7051,7 +6909,9 @@ private fun SetRow(
                     lastSession = lastSession,
                     onDraftChange = onDraftChange,
                 )
-            } else if (loggedSet != null || !isCurrent) {
+            } else if (loggedSet != null) {
+                // The completed performance is shown in the header.
+            } else if (!isCurrent) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     metricCells.forEach { cell ->
                         Text("${cell.label}: ${cell.value}", style = MaterialTheme.typography.bodySmall)
@@ -7093,16 +6953,43 @@ private fun SetRow(
             }
         }
         if (isInputExpanded && submitLabel != null) {
-            Button(
-                onClick = onLogSet,
-                enabled = !isLogPending,
-                shape = MaterialTheme.shapes.medium,
-                contentPadding = PaddingValues(horizontal = MaterialTheme.spacing.compact, vertical = MaterialTheme.spacing.small),
-                modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp),
-            ) {
-                Icon(Icons.Default.Check, contentDescription = null)
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(submitLabel, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val stack = maxWidth < 260.dp || (LocalDensity.current.fontScale >= 1.5f && maxWidth < 330.dp)
+                val primary: @Composable (Modifier) -> Unit = { modifier ->
+                    Button(onClick = onLogSet, enabled = !isLogPending,
+                        modifier = modifier.defaultMinSize(minHeight = 56.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp)) {
+                        Icon(Icons.Default.Check, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(submitLabel, textAlign = TextAlign.Center)
+                    }
+                }
+                val repeat: @Composable (Modifier) -> Unit = { modifier ->
+                    FilledTonalButton(onClick = onLogSameAgain, enabled = canLogSameAgain,
+                        modifier = modifier.defaultMinSize(minHeight = 56.dp).semantics {
+                            if (!canLogSameAgain) stateDescription = when {
+                                isCorrecting -> "Niet beschikbaar tijdens correctie"
+                                isLogPending -> "Niet beschikbaar tijdens opslaan"
+                                else -> "Nog geen voltooide set beschikbaar"
+                            }
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp)) {
+                        Icon(Icons.Rounded.Replay, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Opnieuw loggen", textAlign = TextAlign.Center)
+                    }
+                }
+                if (stack) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        primary(Modifier.fillMaxWidth())
+                        repeat(Modifier.fillMaxWidth())
+                    }
+                } else {
+                    Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        primary(Modifier.weight(1f).fillMaxHeight())
+                        repeat(Modifier.weight(1f).fillMaxHeight())
+                    }
+                }
             }
         }
     }

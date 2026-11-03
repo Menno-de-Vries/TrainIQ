@@ -375,20 +375,6 @@ class WorkoutInputValidationTest {
     }
 
     @Test
-    fun `active workout set type selector is integrated into set row pill`() {
-        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
-        val activeExerciseBody = workoutScreen.substringAfter("private fun ActiveExerciseCard(")
-            .substringBefore("private fun ActiveExerciseRestControl(")
-        val setRowBody = workoutScreen.substringAfter("private fun SetRow(")
-            .substringBefore("private fun RoutineSetMetricValue(")
-
-        assertFalse(activeExerciseBody.contains("compactShortScreen"))
-        assertTrue(setRowBody.contains("SetTypePill("))
-        assertTrue(setRowBody.contains("SetType.entries.forEach"))
-        assertTrue(setRowBody.contains("enabled = loggedSet != null || isInputExpanded"))
-    }
-
-    @Test
     fun `routine session name field keeps accessibility label at compact font scale`() {
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
         val detailBody = workoutScreen.substringAfter("private fun RoutineDetailView(")
@@ -464,21 +450,6 @@ class WorkoutInputValidationTest {
         assertTrue(summaryBody.contains("Text(activeWorkoutBottomBarStatusText(clock.restTimerSeconds)"))
         assertTrue(summaryBody.contains("contentDescription = \"Sessietijd"))
         assertTrue(summaryBody.contains("AppLinearProgress(progress = progress"))
-    }
-
-    @Test
-    fun `active set action row stacks on compact widths to avoid clipped Dutch labels`() {
-        assertEquals(ActiveSetActionLayout.Stacked, activeSetActionLayoutForWidth(319.dp))
-        assertEquals(ActiveSetActionLayout.Wrapped, activeSetActionLayoutForWidth(320.dp))
-
-        val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
-        val activeExerciseBody = workoutScreen.substringAfter("if (showLogger) Column")
-            .substringBefore("private fun ActiveExerciseRestControl(")
-
-        assertTrue(activeExerciseBody.contains("BoxWithConstraints(modifier = Modifier.fillMaxWidth())"))
-        assertTrue(activeExerciseBody.contains("activeSetActionLayoutForWidth(maxWidth)"))
-        assertTrue(activeExerciseBody.contains("maxLines = 2"))
-        assertTrue(activeExerciseBody.contains("TextAlign.Center"))
     }
 
     @Test
@@ -899,9 +870,6 @@ class WorkoutInputValidationTest {
         val activeExerciseCard = workoutScreen
             .substringAfter("private fun ActiveExerciseCard(")
             .substringBefore("private fun ActiveSetInputMetrics(")
-        val activeExerciseTitle = activeExerciseCard
-            .substringAfter("Text(\n                        plan.exercise.name,")
-            .substringBefore("\n                    )")
         val activeWorkoutPlanCard = workoutScreen
             .substringAfter("private fun ActiveWorkoutPlanCard(")
             .substringBefore("private fun activeWorkoutExerciseUiState(")
@@ -920,12 +888,6 @@ class WorkoutInputValidationTest {
         assertFalse(routineExerciseCard.contains("ActiveExerciseActionChip("))
         assertTrue(routineExerciseCard.contains("text = { Text(\"Set toevoegen\") }"))
         assertTrue(routineExerciseCard.contains("onAddSet()"))
-        assertTrue(activeExerciseCard.contains("modifier = Modifier\n                        .fillMaxWidth()"))
-        assertFalse(activeExerciseTitle.contains("maxLines"))
-        assertFalse(activeExerciseTitle.contains("TextOverflow.Ellipsis"))
-        assertTrue(activeExerciseCard.contains("FlowRow("))
-        assertTrue(activeExerciseCard.contains("horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally)"))
-        assertTrue(activeExerciseCard.contains("verticalArrangement = Arrangement.spacedBy(4.dp)"))
         assertTrue(activeExerciseCard.contains("ActiveExerciseRestControl"))
         assertTrue(workoutScreen.contains("val activeWorkoutListState = rememberLazyListState()"))
         assertTrue(workoutScreen.contains("state = activeWorkoutListState"))
@@ -942,7 +904,6 @@ class WorkoutInputValidationTest {
         assertTrue(setRow.contains("onClick = onLogSet"))
         assertFalse(setRow.contains(".clickable("))
         assertFalse(setRow.contains("SetLoggerFields("))
-        assertTrue(setRow.contains("enabled = loggedSet != null || isInputExpanded"))
         assertTrue(workoutScreen.contains("private fun ActiveSetInputMetricValue("))
         assertTrue(workoutScreen.contains("BasicTextField("))
         assertTrue(workoutScreen.contains("private fun SetTypePill("))
