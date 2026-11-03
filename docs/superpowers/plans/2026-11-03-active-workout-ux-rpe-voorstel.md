@@ -1,12 +1,12 @@
 # Actieve training: UI/UX en betrouwbare inspanningsfeedback — uitvoeringsvoorstel
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Dit is een voorstel voor bespreking; er is nog geen visuele richting gekozen en appcode is niet gewijzigd.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. De gebruiker heeft onderdelen van de drie beelden gecombineerd; die richting is hieronder uitgewerkt in een nieuw beeld ter beoordeling. Appcode is niet gewijzigd.
 
 **Goal:** De bestaande actieve training herkenbaar behouden, bediening en witruimte verbeteren en feedback aantoonbaar baseren op werkelijk uitgevoerde sets.
 
 **Architecture:** Compose leest ViewModel-state; één zuivere domeinberekening levert de feiten voor scherm, lokale samenvatting en AI-invoer. Room blijft leidend. Bestaande transacties, generatiebeveiliging en asynchrone debrief blijven behouden.
 
-**Tech Stack:** Bestaande Kotlin, Compose Material 3, StateFlow, Room, WorkManager en Gemini 2.5 Flash; geen nieuwe afhankelijkheden of diensten voorzien.
+**Tech Stack:** Bestaande Kotlin, Compose Material 3, StateFlow, Room, WorkManager en Gemini 2.5 Flash; voor de gevraagde rustmelding AlarmManager en een apart notificatiekanaal. Geen nieuwe afhankelijkheden of externe diensten voorzien.
 
 **Spec:** Het ingebedde ontwerpvoorstel hieronder, de gebruikersvraag van 3 november 2026, de relevante Training/UI/AI-eisen uit `TrainIQ_Target_State_Blueprint.md` en ADR-001/003/004.
 
@@ -19,6 +19,7 @@
 - Bestaande stijl, settypen, supersets, notities, undo, corrigeren/verwijderen/opnieuw loggen, navigatie, herstel en afrondbevestiging behouden.
 - Geen voedingswerk, algemene herbouw van `WorkoutScreen.kt`, nieuwe trainingsmodus, providers, permissions, dependencies, release of remote handelingen.
 - Optionele RPE-invoer is een voorgestelde productkeuze, geen bestaande functie of al gekozen eis. De drie beeldvoorstellen behouden de huidige drie invoervelden.
+- Aanvulling na gebruikersfeedback: twee aangrenzende logacties en een kort geluid plus Android-notificatie bij afgelopen rust. De slaapwekker dient als patroon; haar dagelijkse schema, herhaalalarm, fullscreenpresentatie en aanhoudende audio vallen buiten deze uitbreiding.
 
 ## Vastgestelde bevindingen
 
@@ -56,17 +57,38 @@ Beelden staan in de volgorde waarin ze in de chat zijn getoond. Alle drie zijn a
 | Beeld | Richting | Afweging |
 |---|---|---|
 | 1 | Vertrouwde verfijning | Bestaande samenvatting en kaarten zeer herkenbaar; minder ruimtewinst boven de actieve set. |
-| 2 | Duidelijke setfocus — aanbeveling | Compactere sessiekop maakt ruimte voor huidige set; rustigste hiërarchie. Terug en weggooien blijven bereikbaar; verplaatsen van weggooien naar menu is een expliciet voorstel. |
+| 2 | Duidelijke setfocus | Compactere sessiekop maakt ruimte voor huidige set; rustigste hiërarchie. Terug en weggooien blijven bereikbaar; verplaatsen van weggooien naar menu is een expliciet voorstel. |
 | 3 | Ruime bediening | Bestaande kaartopbouw met afzonderlijke rustknoppen; duidelijke groepering, iets meer verticale ruimte nodig. |
 
 Lokale bestanden, buiten Git, in `C:/Users/menno/.codex/visualizations/2026/11/03/01a1a335-0618-7ac1-a457-8ddd926e73ec/`: `01-vertrouwde-verfijning.png`, `02-duidelijke-setfocus.png`, `03-ruime-bediening.png`. De originelen blijven ook op de door Image Gen gemelde locatie staan.
 
 De afbeeldingen zijn sfeer- en indelingsvoorstellen. Beeld 1 heeft ongevraagd een decoratief stapeltje halterschijven; dat wordt niet overgenomen. In beeld 2/3 staan enkele bestaande acties achter menu's; hun uiteindelijke vindbaarheid moet expliciet worden gecontroleerd. Geen functie vervalt omdat ze niet in dit ene frame staat. Een afbeelding kan geen exacte touch-targets, focus of grootlettergedrag bewijzen.
 
+### Gebruikerskeuze: gecombineerd ontwerp
+
+Deze keuze vervangt de open keuze tussen beeld 1/2/3; de oorspronkelijke beelden blijven als bron behouden.
+
+- Uit beeld 3: `Set 2` met de aangrenzende typekiezer `Normaal`, de vorige prestatie en het huidige doel, de invoercellen en de vorm van de logknop. Ook de rusttimer onderin blijft de basis.
+- Uit beeld 2: een compacte gelogde-setrij met vinkje, setnummer en prestatie op één logische regel.
+- Uit beeld 1: potlood en verticale drie puntjes samen rechts in die rij. Het menu houdt overige bestaande acties bereikbaar; geen aparte derde logknop toevoegen.
+- Nieuwe wens: direct naast `Set loggen` een gelijkvormige knop `Opnieuw loggen`, met dezelfde breedte, hoogte en uitlijning. Voorstel: hoofdactie indigo, tweede actie tonal lavender. Dit kleurverschil is een advies; het maakt beide acties onderscheidbaar.
+- Eigen advies voor ruimte: de compactere sessiekop uit beeld 2 gebruiken, met behoud van terug, weggooien, sessietijd, voortgang en notities.
+- Nieuwe wens: één kort geluid en een notificatie als de rust klaar is. Een kleine bel naast de timer opent de instellingen; geen groot instellingenblok in de logflow.
+
+Het nieuwe beeld staat naast de andere bestanden als `04-gecombineerde-actieve-training.png`. De exacte gebruikte Image Gen-prompt staat daar als `04-gecombineerde-actieve-training-prompt.txt`. De drie eerdere beelden zijn werkelijk als referenties aan deze generatie gekoppeld. `Geluid en melding aan` in de mockup is voorbeeldstatus; de app mag dit alleen tonen als de echte voorkeuren en permissies dit bevestigen.
+
+### Betekenis en veiligheid van de twee logknoppen
+
+`Set loggen` bewaart de actuele invoer. `Opnieuw loggen` voegt de laatst voltooide set van dezelfde oefening in deze actieve sessie nogmaals als **nieuwe** set toe: gewicht, herhalingen, rust en type worden overgenomen, gerapporteerde RPE/RIR niet automatisch. Het voegt geen eerdere historische training toe en verwijdert of overschrijft geen bestaande set.
+
+Er zijn nu drie verschillende acties: `relogSet` (`WorkoutScreen.kt:826`) verwijdert een gekozen set en zet hem terug in de invoer; kopiëren vult alleen de draft; `logSameAgain` (`:974`) vult de draft en logt meteen. Die laatste helper wist de pending correctie niet en past de draft aan vóór de pending-/dubbele-tapcontrole. Daarom kan hij tijdens een correctie nu een bestaande set wijzigen: de nieuwe knop mag niet alleen rechtstreeks deze helper aanroepen.
+
+Voorstel: een expliciet append-pad met dezelfde opslag-, validatie-, auto-advance- en undo-infrastructuur. Tijdens correctie, een lopende opslag of zonder vorige voltooide set is de tweede knop uitgeschakeld, met toegankelijke reden. Controleer pending/correctie vóór elke draftwijziging; fout of afgewezen snelle tap bewaart de bestaande draft. Bij succesvolle opslag blijven de bestaande auto-advance-/volgende-draftregels gelden. Eventuele toelichting bij de knop benoemt dat hij de vorige set gebruikt, niet gewijzigde huidige invoer.
+
 ### Maatvoering en uitlijning
 
 - Uitgangspunt: 16 dp buitenmarge en 16 dp binnenruimte voor de oefening; 12 dp tussen verwante onderdelen en 20–24 dp tussen hoofdgroepen. Gebruik bestaande spacingtokens; geen globale themaverandering.
-- `Set loggen`: minimaal 56 dp hoog, volle beschikbare breedte, pictogram en label samen gecentreerd; genoeg verticale ruimte boven en onder.
+- De twee logknoppen delen één rij met gelijke gewichten en 8 dp tussenruimte, minimaal 56 dp hoog; zo nodig beide 64 dp of natuurlijk hoger. Pictogram en label vormen een gecentreerde groep. `Opnieuw loggen` mag op twee regels. Bij grote letters of een zeer smalle supersetindeling stapelen ze alleen als volledige leesbaarheid naast elkaar niet haalbaar is; geen afgekorte labels of kleinere touch targets.
 - Invoercellen: gelijke breedte, minimaal 56 dp hoog, eventueel 64 dp waar dat past; label en waarde vormen één gecentreerde groep. Hoofdstukken en lopende tekst blijven links uitgelijnd.
 - Iconen mogen visueel 20–24 dp blijven; elk aanraakvlak minimaal 48 × 48 dp. Tussen afzonderlijke bedieningselementen bij voorkeur 8 dp vrije ruimte. Geen overlappende onzichtbare touch targets.
 - Ruststatus en bediening logisch groeperen; hoofdactie en afronden niet even zwaar tonen. Voorgesteld: gevulde logknop en omlijnde afrondknop, beide duidelijk bereikbaar en met bestaande bevestiging.
@@ -105,7 +127,7 @@ Rekenvoorbeeld voor acceptatie: warming-up 20 × 10/RPE 3, normale set 60 × 8/R
 
 - Architectuur, Room-authoriteit, gerichte transacties, nullable AI-invoer en generation-fences behouden.
 - Schema-backed JSON, huidige Gemini 2.5 Flash en bestaande opt-in/timeout/retry/privacygrenzen behouden; geen live betaalde AI-call nodig voor testen.
-- Bestaande nulwaarde voor onbekende RPE in opslag handhaven; in analyse en AI `null`. Geen schemawijziging voorzien; indien alsnog nodig eerst migratie-impact opnieuw bepalen.
+- Bestaande nulwaarde voor onbekende RPE in opslag handhaven; in analyse en AI `null`. De RPE-kern vraagt geen nieuwe opslagvelden. De nieuwe duurzame rustmelding vraagt wel een gerichte Room-migratie voor timeridentiteit en monotone tijd; behandel dit als een afzonderlijke taak met migratiebewijs.
 - Alleen lokale tests/evidence; geen CI, upload, push, PR, release, signing, nieuwe emulator-download of toestelpermission-wijziging.
 - Ontwerpbeelden en testuitvoer blijven ongetrackt. Alleen gerichte bron-/test-/documentpaden committen bij latere uitvoering.
 
@@ -116,6 +138,7 @@ Rekenvoorbeeld voor acceptatie: warming-up 20 × 10/RPE 3, normale set 60 × 8/R
 - Ontbrekende of deels ingevulde RPE, warm-up, drop/failure en nul externe kg mogen geen gefabriceerde inspanning of misleidend volume geven.
 - Een AI-resultaat op seconde 15 moet zichtbaar worden als het scherm nog open is; oude sessiegeneraties mogen nooit overschrijven.
 - Herstel na echte processtop is iets anders dan Activity.recreate; voer alleen de relevante herstelproef uit op een geïsoleerde veilige emulator.
+- Afwisselende snelle taps op de twee logknoppen, correctiemodus en normale gelijktijdige timercallbacks mogen geen onbedoelde setwijziging of dubbel afspeelmoment veroorzaken. De procescrashgrens bij externe notificatie-afhandeling blijft afzonderlijk benoemd.
 
 ## Taak 1 — Eén feitelijke analyse van de uitgevoerde sets
 
@@ -161,6 +184,7 @@ Rekenvoorbeeld voor acceptatie: warming-up 20 × 10/RPE 3, normale set 60 × 8/R
 
 - [ ] Maak representatieve previews/fixtures voor current, completed, fout, rust actief/inactief en lange naam. Eerst actuele nulmeting op veilige emulator zodra ADB werkt.
 - [ ] Pas gericht de binnenruimte, knop-/veldgeometrie en groepsuitlijning aan. Verplaats bediening alleen volgens de gekozen richting; behoud discoverability en bestaande bevestigingen.
+- [ ] Implementeer de twee aangrenzende logacties met bovenstaand append-contract. Test geen vorige set, correctiemodus, onopgeslagen gewijzigde invoer, opslagfout, snelle afwisselende taps en undo. Bestaande `relogSet` blijft een afzonderlijke menuactie met haar eigen duidelijke tekst.
 - [ ] Leg op semantiek/geometrie vast: minimaal 48 dp targets, geen overlap, gelijke invoerveldhoogtes waar op één rij, bereikbare log-/afrondactie en correcte IME-focus. Test geen broncodevorm of exacte decoratieve pixels.
 - [ ] Inspecteer 360 × 640 en 360 × 800, font 1,3/1,5, light/dark met actuele set, rust en IME. Kies alleen combinaties met uniek risico; voeg tablet/landscape toe als gewijzigde layout daarop doorwerkt. Bekijk scherm én UI-tree; TalkBack/Switch Access apart vastleggen.
 - [ ] Verifieer notes, settype, supersets, correctie/verwijderen/relog, undo, achtergrond/terugkeer, herstel en eenmaal afronden voor de werkelijk geraakte grenzen. Commit alleen de complete visuele wijziging.
@@ -177,6 +201,40 @@ Rekenvoorbeeld voor acceptatie: warming-up 20 × 10/RPE 3, normale set 60 × 8/R
 - [ ] Bewijs log → correctie/verwijderen → finish → snapshot/fake AI-request en echte herstelgrens. Geen databasewijziging uitsluitend om dezelfde aanwezige RPE opnieuw op te slaan.
 - [ ] Draai de geraakte tests en UI-controles; commit deze productuitbreiding apart. Als deze keuze niet wordt gemaakt, blijven taken 1–4 volledig bruikbaar.
 
+## Taak 6 — Kort rustgeluid en Android-notificatie
+
+**Huidige werking:** `core/audio/RestTimerSoundPlayer.kt:7` speelt al een notification-stream ACK-toon van 180 ms. De collector in `WorkoutScreen.kt:4859` start die samen met haptic/snackbar. Hij is gekoppeld aan de levende compositie/ViewModel, niet aan een duurzame OS-planning. Bij herstel met verlopen deadline wist `WorkoutScreen.kt:1527` de timer zonder nieuwe melding. `restTimerSoundEnabled` en de geluidsinstelling bestaan al. Voor de rusttimer bestaat nog geen AlarmManager-receiver/notificatie.
+
+**Hergebruik van slaap:** expliciete immutable PendingIntent, private receiver, toestemming-/kanaalchecks, opslaan vóór plannen, vervanging/annulering en een directe instellingenroute. Eigen rustkanaal en IDs; slaap-ID 2010, dagelijks schema, fullscreen en loopende audioservice niet hergebruiken. Geen nieuwe service, dependency of manifest-permissie nodig; de private rustreceiver wordt wel nieuw geregistreerd. Bestaande slaapcode blijft functioneel gelijk.
+
+**Paden:** voorgestelde nieuwe `core/workout/WorkoutRestTimerScheduler.kt`, `WorkoutRestTimerReceiver.kt`, `WorkoutRestTimerNotifications.kt`, `domain/workout/WorkoutRestTimerPolicy.kt` en een bijbehorende completion-usecase. Gerichte wijzigingen in `RestTimer.kt`/`WorkoutScreen.kt`, `domain/model/DomainModels.kt`, `domain/repository/Repositories.kt`, `data/repository/TrainIqRepository.kt`, `ActiveWorkoutSessionMutations.kt`, `RoomTrainIqRuntimeStore.kt`, `core/database/Entities.kt`, `TrainIqDao.kt`, `Mappers.kt`, databaseconfiguratie, `AndroidManifest.xml` en de bestaande feedbackinstellingen waar nodig. Controleer ook import/export/defaults voordat persistente velden worden toegevoegd.
+
+**Interfaces:** scheduler `schedule(timer: ScheduledWorkoutRestTimer)` en `cancel(identity: WorkoutRestTimerIdentity)`; één `completeIfCurrent(identity, now)`-usecase voor UI en receiver. `WorkoutRestTimerIdentity` bevat actieve sessie-ID plus unieke generatie; `ScheduledWorkoutRestTimer` daarnaast wall-clockdeadline, monotone deadline en bootidentiteit. De concrete return-state onderscheidt verouderd/te vroeg/afgehandeld/verlopen; geen nieuwe ticker in een service.
+
+**Opslagkeuze:** Room bewaart generatie, monotone deadline, bootidentiteit en benodigde afhandelstatus naast de bestaande wall-clockdeadline. De huidige database is v20; voorstel is de volgende vrije versie, nu v21. Gebruik een gecontroleerde AutoMigration met veilige lege/null-defaults als de feitelijke kolomwijziging dit toelaat. Legacy timers zonder betrouwbare monotone identiteit geven na herstel een stille verlopen/onbekende status; geen oude hoorbare melding gokken.
+
+**Gedragsafspraken voor het voorstel:**
+
+- Deadline binnen dezelfde boot baseren op `elapsedRealtime`, zodat een klok- of tijdzonewijziging de rustduur niet vervormt. Na reboot blijft de training behouden, maar vervalt de oude rustcue.
+- Pas na succesvolle opslag het ene OS-alarm plannen/vervangen. Een nieuwe timer, overslaan, terugbrengen naar nul, discard, finish en gegevens wissen invalidateren uitsluitend de bijbehorende rustplanning/melding.
+- Opslag en OS-planning zijn niet atomair: reconcile bij geschikte appstart/foreground en verleende exact-access de actuele geldige generatie. Herplan een nog toekomstige deadline na schedulerfout of processtop tussen opslaan en plannen; behandel een verlopen timer volgens de stille/stale-regel. Geen gegarandeerde recovery beloven als de app na zo'n onderbreking nooit meer start.
+- Ticker en receiver gebruiken dezelfde transactionele generatiecontrole. Eén normale completion, vaste notificatie-identiteit en idempotente afhandeling. Geen absolute precies-éénmaalgarantie over een procescrash tussen Room-commit en Android-notificatie claimen.
+- Apart kanaal `Rusttimer`, korte notification-sound, gewone wegveegbare melding `Rust voorbij — klaar voor je volgende set` en actie `Verder trainen`. Private lockscreeninhoud; bij openen de actieve sessie opnieuw valideren en typed navigatie gebruiken.
+- Wanneer melding is toegestaan is de notificatie de enige geluidsbron, óók bij geopend scherm; de route geeft alleen visuele feedback en eventueel haptic. Zo ontstaat geen dubbele piep van ToneGenerator plus kanaalgeluid.
+- Bestaande `restTimerSoundEnabled` behouden; uit dwingt stilte af per notificatie, zonder kanaalinstellingen te herschrijven. Aan respecteert kanaalgeluid, systeemvolume en DND en garandeert geen hoorbaarheid. Alleen bij geweigerde app-notificaties kan de bestaande lokale cue als fallback dienen, uitsluitend bij een daadwerkelijk RESUMED scherm en met respect voor mute. Een bewust gedempt rustkanaal wordt niet via lokale audio omzeild.
+- Een korte sheet via de bel toont de echte geluidsvoorkeur, meldingsstatus en knoppen `Meldingen toestaan` en `Geluid en meldingen beheren`, aansluitend op de bestaande slaapflow. Geen nieuwe permissievraag bij iedere set; systeemvolume/DND/kanaalkeuzes blijven van de gebruiker.
+- Voorgestelde productkeuze: een callback meer dan 30 seconden te laat geeft alleen stille status `Rusttijd verstreken`, geen onverwachte late piep. Deze marge is een ontwerpkeuze, geen Android-regel.
+- Bestaande optionele exact-access gebruiken wanneer toegestaan; anders inexacte fallback met eerlijke status. Geen `setAlarmClock` of nieuwe wake-up/fullscreenservice voor korte rust. Doze kan ook toegestane exacte callbacks voor opeenvolgende korte timers vertragen; secondeprecisie met vergrendeld toestel nooit garanderen.
+
+**Stappen en bewijs:**
+
+- [ ] Domeintests vóór implementatie: deadline/partial seconds, tijdwijziging, nieuwe generatie, dubbele UI/receiver-callback, stale callback >30 s, iedere cancelroute, geluidskeuze en opslagfout/rollback. Fake schedulerfout en onderbroken planning bewijzen herplanning bij de volgende geschikte start zonder oude timers te laten herleven.
+- [ ] Room-contract en migratietests: v20 → volgende versie, veilige oude defaults, transactionele claim, herstel met dezelfde boot en invalidatie na reboot, finish/discard zonder herlevende timer.
+- [ ] Bouw de kleine scheduler/receiver/notificatie-adapters en koppel alle timerwijzigingen aan persist-resultaten. Laat UI-expiry de deadline niet onafhankelijk wissen vóór gedeelde completion.
+- [ ] Veilig agentprofiel: werkelijke OS-planning/melding, foreground zonder dubbel geluid, achtergrond/lock/processtop, correcte sessie openen, melding geweigerd, kanaal gedempt, per-meldingstilte bij uitgeschakeld appgeluid, exact access geweigerd/ingetrokken, twee korte timers onder Doze en reboot/stale afhandeling. Controleer dat kanaalkeuzes intact blijven.
+- [ ] Voeg nieuwe gerichte `WorkoutRestTimerPolicyTest`, `WorkoutRestTimerDeliveryTest` en `WorkoutRestTimerNotificationInstrumentedTest` toe; hergebruik `RestTimerTest` en actieve-workouttests. Controleer met bestaande slaapregressies dat IDs, kanaal en planning van slaap intact blijven.
+- [ ] Scheid bewijs van notificatieflags/AudioService van werkelijk hoorbaar beluisterde output. Geen fysiek hoorbare werking claimen op basis van alleen emulatorinspectie. Voer lokale baseline plus geraakte Android- en Room-migratiegates uit; commit apart na scoped review.
+
 ## Verificatie en oplevercriteria bij latere uitvoering
 
 Alle opdrachten vanuit `TrainIQ-Project/`, met lokaal ontdekte JBR/SDK. Geen `clean`, geen remote runners/cache. Selecteer één geïsoleerde veilige emulator en scope connected opdrachten met `ANDROID_SERIAL`.
@@ -192,7 +250,7 @@ Alle opdrachten vanuit `TrainIQ-Project/`, met lokaal ontdekte JBR/SDK. Geen `cl
 .\gradlew.bat :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.trainiq.features.workout.ActiveWorkoutSetActionsInstrumentedTest,com.trainiq.features.workout.ActiveWorkoutRestoreInstrumentedTest,com.trainiq.features.workout.WorkoutCompletionRecoveryInstrumentedTest,com.trainiq.core.database.WorkoutDebriefIdentityInstrumentedTest' --console=plain
 ```
 
-Acceptatie: herkenbare bestaande opzet; consistente ruimte/uitlijning; bereikbare acties bij grote tekst/IME; werkelijk uitgevoerde actuele sets als bron; onbekende inspanning blijft onbekend; dezelfde feiten in UI/lokaal/AI; late feedback ververst; geen dataverlies of dubbele save. Migratieketen alleen uitbreiden wanneer opslag/schema verandert; geen release- of fysieke prestatieclaim onderdeel van dit werk.
+Acceptatie: herkenbare bestaande opzet; consistente ruimte/uitlijning; bereikbare acties bij grote tekst/IME; twee veilige logacties; werkelijk uitgevoerde actuele sets als bron; onbekende inspanning blijft onbekend; dezelfde feiten in UI/lokaal/AI; late feedback ververst; rustmelding volgens de werkelijk beschikbare toestemmingen; geen dataverlies of dubbele save. De rusttimeruitbreiding verandert opslag, dus voer aanvullend de gerichte migratietests en `:app:generateDebugRoomMigrationChainVerificationMarker` na connected migratiebewijs uit. Geen release- of fysieke prestatieclaim onderdeel van dit werk.
 
 ## Bewijsstatus van deze planronde
 
@@ -200,10 +258,13 @@ Acceptatie: herkenbare bestaande opzet; consistente ruimte/uitlijning; bereikbar
 - Onafhankelijke planreview: QA-agent controleerde scope, bewijsstatus en uitvoerbaarheid. Aanvullingen voor symmetrische historische vergelijking en de afzonderlijke metadata-adapter zijn verwerkt.
 - Niet uitgevoerd: nieuwe Gradle-builds, JVM-/connected tests, live AI-debrief, nieuwe runtime-opnamen, TalkBack/Switch Access of prestatiemeting. Historische groene tests gelden niet als bewijs voor nog te bouwen wijzigingen.
 - Beperking: ADB kon zijn daemon niet starten. Product Design-contextpreflight kon niet als Python-script draaien omdat Python niet op PATH staat; de verwachte opgeslagen context bestaat niet. Repo en bekeken lokale beelden zijn de gebruikte ontwerpbron.
-- Open keuze: visuele richting 1/2/3 en wel/geen optionele RPE-invoer. De kernverbeteringen baseren feedback in beide gevallen op de werkelijk beschikbare feiten.
+- Vervolgonderzoek op `77b3ac7`: Terra/high onderzocht logactiebetekenis en geometrie; Sol/high onderzocht rust/slaap, OS-planning en officiële Android-grenzen. Eén gecombineerd Image Gen-beeld met drie echte referentiebeelden en exacte prompt is toegevoegd. Nog steeds geen appcode, build of runtime gewijzigd.
+- Delta-eindcontrole door QA/Terra/high: herstel tussen opslag en planning en per-notificatie stilte zonder kanaaloverschrijving zijn verwerkt.
+- Open beoordeling: het gecombineerde beeld en de expliciete betekenis van de twee logknoppen. Optionele RPE-invoer is nog niet gekozen; de eerder geplande kernverbeteringen blijven onderdeel van de opdracht.
 
 ## Bronnen en toepassing
 
 - [Android Developers: Compose accessibility API defaults](https://developer.android.com/develop/ui/compose/accessibility/api-defaults), gecontroleerd 3 november 2026: minimaal 48 dp en voldoende fysieke layoutruimte om overlappende touch targets te voorkomen; toegepast in maatvoering en geometriechecks.
 - [Zourdos et al., oorspronkelijke studie naar RIR-gebaseerde RPE](https://pubmed.ncbi.nlm.nih.gov/26049792/): RPE betreft ervaren inspanning/proximity to failure. Hier alleen als context voor brononderscheid; er wordt geen nieuw rekenmodel of universele coachingsdrempel uit afgeleid.
+- [Android: alarm scheduling](https://developer.android.com/develop/background-work/services/alarms), [Doze](https://developer.android.com/training/monitoring-device-state/doze-standby) en [notificatiepermissie](https://developer.android.com/develop/ui/compose/notifications/notification-permission), gecontroleerd 3 november 2026: OS-planning buiten proceslevensduur, toestemming/fallback en de grenzen aan korte opeenvolgende achtergrondtimers. Toegepast in taak 6 en de bijbehorende tests.
 - Repository: `docs/agent-guides/local-testing.md`, `docs/TrainIQ_Architecture_Decisions.md`, `docs/agent-guides/active-workout-rpe-food-verification.md` en `docs/qa/TrainIQ_Active_Workout_Polish_2026-09-30.md`. Historische uitslagen onderscheiden van de huidige bewijsstatus.
