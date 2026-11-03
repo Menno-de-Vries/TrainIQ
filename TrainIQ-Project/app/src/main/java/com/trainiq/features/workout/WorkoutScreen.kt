@@ -6856,10 +6856,19 @@ private fun SetRow(
                     }
                 }
             } else {
-                Spacer(Modifier.width(4.dp))
-                Text(loggedSet.setType.shortCode(), style = MaterialTheme.typography.labelSmall)
-                Spacer(Modifier.width(4.dp))
-                Text("${formatWeight(loggedSet.weight)} kg × ${loggedSet.reps}", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        "${formatWeight(loggedSet.weight)} kg × ${loggedSet.reps}",
+                        modifier = Modifier.semantics {
+                            contentDescription = "${loggedSet.setType.label()}, ${formatWeight(loggedSet.weight)} kilogram, ${loggedSet.reps} herhalingen"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    if (loggedSet.setType != SetType.NORMAL) {
+                        Text(loggedSet.setType.label(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
             if (loggedSet != null) {
                 IconButton(onClick = onEdit, modifier = Modifier.size(48.dp)) {
@@ -6956,7 +6965,7 @@ private fun SetRow(
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                 val stack = maxWidth < 260.dp || (LocalDensity.current.fontScale >= 1.5f && maxWidth < 330.dp)
                 val primary: @Composable (Modifier) -> Unit = { modifier ->
-                    Button(onClick = onLogSet, enabled = !isLogPending,
+                    Button(onClick = onLogSet, enabled = !isLogPending, shape = MaterialTheme.shapes.medium,
                         modifier = modifier.defaultMinSize(minHeight = 56.dp),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp)) {
                         Icon(Icons.Default.Check, contentDescription = null)
@@ -6965,7 +6974,7 @@ private fun SetRow(
                     }
                 }
                 val repeat: @Composable (Modifier) -> Unit = { modifier ->
-                    FilledTonalButton(onClick = onLogSameAgain, enabled = canLogSameAgain,
+                    FilledTonalButton(onClick = onLogSameAgain, enabled = canLogSameAgain, shape = MaterialTheme.shapes.medium,
                         modifier = modifier.defaultMinSize(minHeight = 56.dp).semantics {
                             if (!canLogSameAgain) stateDescription = when {
                                 isCorrecting -> "Niet beschikbaar tijdens correctie"

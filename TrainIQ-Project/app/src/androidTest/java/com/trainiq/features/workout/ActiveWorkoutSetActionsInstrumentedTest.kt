@@ -91,6 +91,7 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             if (repeat.left >= primary.right) {
                 assertTrue("Adjacent actions have equal width and height", kotlin.math.abs(repeat.width - primary.width) <= 1f && kotlin.math.abs(repeat.height - primary.height) <= 1f)
             }
+            capture("fix1-action-buttons")
             assertEquals(1, runBlocking { database.dao().observeActiveWorkoutSets().first().size })
         }
     }
@@ -436,13 +437,42 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             compose.onNodeWithText("Training starten").performClick()
             compose.waitForText("Actieve training")
             compose.onNodeWithText("Bench Press", useUnmergedTree = true).assertIsDisplayed()
-            capture("normal")
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Actieve training hersteld.").fetchSemanticsNodes().isEmpty() }
+            val performance = compose.onNodeWithText("80 kg × 5", useUnmergedTree = true).performScrollTo()
+            val setLabel = compose.onNodeWithText("Set 1", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val performanceBounds = performance.fetchSemanticsNode().boundsInRoot
+            val density = context.resources.displayMetrics.density
+            assertTrue("Set label and performance have clear spacing", performanceBounds.left - setLabel.right >= 12f * density - 1f)
+            compose.onAllNodesWithText("N").assertCountEquals(0)
+            val performanceLayouts = mutableListOf<TextLayoutResult>()
+            performance.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(performanceLayouts) }
+            val layout = performanceLayouts.single()
+            assertTrue("Performance glyphs and all characters must fit: $layout", (0 until layout.lineCount).all { line ->
+                !layout.isLineEllipsized(line) && layout.getLineLeft(line) >= -1f &&
+                    layout.getLineRight(line) <= layout.size.width + 1f &&
+                    layout.getLineBottom(line) <= layout.size.height + 1f
+            } && layout.getLineEnd(layout.lineCount - 1, visibleEnd = true) == "80 kg × 5".length)
+            compose.onNodeWithContentDescription("Normaal, 80 kilogram, 5 herhalingen", useUnmergedTree = true).assertExists()
+            val completedRow = compose.onNode(
+                SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Voltooid"), useUnmergedTree = true,
+            ).fetchSemanticsNode().boundsInRoot
+            val actionBounds = listOf("Gelogde set corrigeren", "Gelogde set acties").map { description ->
+                compose.onNodeWithContentDescription(description).fetchSemanticsNode().boundsInRoot.also { bounds ->
+                    assertTrue("Set action retains a 48dp target", bounds.width >= 48f * density && bounds.height >= 48f * density)
+                }
+            }
+            assertTrue("Set contents remain within the completed row", listOf(setLabel, performanceBounds, *actionBounds.toTypedArray()).all { bounds ->
+                bounds.left >= completedRow.left && bounds.right <= completedRow.right &&
+                    bounds.top >= completedRow.top && bounds.bottom <= completedRow.bottom
+            })
+            assertTrue("Performance and actions do not overlap", performanceBounds.right <= actionBounds[0].left && actionBounds[0].right <= actionBounds[1].left)
+            capture("fix1-completed-row")
 
             compose.onNodeWithContentDescription("Gelogde set acties").performScrollTo().performClick()
             compose.onNodeWithText("Settype wijzigen").performClick()
             compose.waitForText("Warm-up")
             compose.onNodeWithText("Warm-up").performClick()
-            compose.waitForText("W")
+            compose.waitForText("Warm-up")
 
             compose.onNodeWithContentDescription("Gelogde set corrigeren")
                 .performScrollTo()
@@ -500,7 +530,7 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             compose.waitForText("Actieve training")
             assertEquals(82.5, readActiveWorkoutSet().weight, 0.0)
             assertEquals(6, readActiveWorkoutSet().reps)
-            compose.waitForText("W")
+            compose.waitForText("Warm-up")
 
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Actieve training hersteld.").fetchSemanticsNodes().isEmpty() }
             val actions = compose.onNodeWithContentDescription("Gelogde set acties").performScrollTo()
