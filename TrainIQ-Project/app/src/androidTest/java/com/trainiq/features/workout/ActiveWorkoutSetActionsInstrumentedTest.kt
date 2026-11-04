@@ -254,6 +254,18 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             val finishText = compose.onNodeWithText("Training afronden", useUnmergedTree = true)
                 .assertTextEquals("Training afronden").assertIsDisplayed()
             capture("single-rest-before-label-check")
+            val restStatus = compose.onNode(hasContentDescription("Rusttimer:", substring = true), useUnmergedTree = true)
+                .fetchSemanticsNode().boundsInRoot
+            val restBell = compose.onNode(hasContentDescription("Rustmelding:", substring = true) and hasClickAction())
+                .fetchSemanticsNode().boundsInRoot
+            val restCount = compose.onNodeWithText("1 set gelogd", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val targetSize = 48f * context.resources.displayMetrics.density
+            assertTrue("Bell keeps its 48dp target", restBell.width >= targetSize && restBell.height >= targetSize)
+            listOf(restStatus, restCount).forEach { label ->
+                assertTrue("Compact fixture puts status and count on the bell's row", label.top < restBell.bottom && label.bottom > restBell.top)
+                assertTrue("Footer items on the same row share a vertical center: label=$label bell=$restBell",
+                    kotlin.math.abs(label.center.y - restBell.center.y) <= 1f)
+            }
             val finishLayouts = mutableListOf<TextLayoutResult>()
             finishText.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(finishLayouts) }
             val finishLayout = finishLayouts.single()
@@ -767,6 +779,82 @@ class ActiveWorkoutSetActionsInstrumentedTest {
                 compose.onAllNodes(hasContentDescription("Set toevoegen aan Bench Press")).fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithContentDescription("Set toevoegen aan Bench Press").performScrollTo().assertIsDisplayed()
+        }
+    }
+
+    @Test
+    fun failedFinishPreservesRestTimerAndSuccessfulRetryCancelsAfterCommit() {
+        val clock = com.trainiq.core.workout.AndroidWorkoutRestTimerClock(context)
+        val timer = com.trainiq.domain.workout.newWorkoutRestTimer(12, 7, 600, clock.now(), "finish-retry")!!
+        val preferences = UserPreferencesRepository(context)
+        val scheduler = com.trainiq.core.workout.WorkoutRestTimerScheduler(
+            context, com.trainiq.core.workout.WorkoutRestTimerNotifications(context, preferences),
+        )
+        runBlocking {
+            preferences.setAiEnabled(false)
+            database.dao().insertRoutineSets(listOf(
+                RoutineSetEntity(id = 11L, workoutExerciseId = 4L, orderIndex = 1, setType = "NORMAL", targetReps = 5),
+            ))
+            val active = database.dao().readActiveWorkoutSessionsForExport().single()
+            database.dao().insertActiveWorkoutSessions(listOf(active.copy(
+                restTimerEndsAt = timer.wallDeadline, restTimerTotalSeconds = timer.totalSeconds,
+                restTimerGeneration = timer.identity.generation, restTimerElapsedDeadline = timer.elapsedDeadline,
+                restTimerBootId = timer.bootId,
+            )))
+        }
+        fun pendingRestAlarms(): Int {
+            val descriptor = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
+                .executeShellCommand("dumpsys alarm")
+            val dump = android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { it.readBytes().decodeToString() }
+            return Regex("ELAPSED_WAKEUP #\\d+: Alarm\\{[^\\n]* com\\.trainiq\\}").findAll(dump).count()
+        }
+        val sql = database.openHelper.writableDatabase
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use {
+                val training = (hasText("Training") or hasContentDescription("Training")) and hasClickAction()
+                compose.waitUntil(30_000) { compose.onAllNodes(training).fetchSemanticsNodes().isNotEmpty() }
+                compose.onNode(training).performClick()
+                compose.waitForText("QA Upper")
+                compose.onNodeWithText("Training starten").performClick()
+                compose.waitForText("Actieve training")
+                compose.waitUntil(10_000) { pendingRestAlarms() == 1 }
+                val before = runBlocking { database.dao().readActiveWorkoutSessionsForExport().single() }
+                // The existing draft is updated by Room's upsert; active-session timer writes remain permitted.
+                sql.execSQL("CREATE TRIGGER codex_test_fail_workout_finish BEFORE UPDATE OF completed ON workout_sessions WHEN NEW.completed = 1 BEGIN SELECT RAISE(ABORT, 'test finish failure'); END")
+                compose.onNodeWithContentDescription("Training afronden").performClick()
+                compose.waitForText("Training afronden?")
+                compose.onNodeWithText("Opslaan").performClick()
+                compose.waitForText("Training afronden is mislukt. Probeer opnieuw.")
+                val after = runBlocking { database.dao().readActiveWorkoutSessionsForExport().single() }
+                assertEquals(before.sessionId, after.sessionId)
+                assertEquals(before.startedAt, after.startedAt)
+                assertEquals(before.restTimerGeneration, after.restTimerGeneration)
+                assertEquals(before.restTimerEndsAt, after.restTimerEndsAt)
+                assertEquals(before.restTimerElapsedDeadline, after.restTimerElapsedDeadline)
+                assertEquals(before.restTimerBootId, after.restTimerBootId)
+                assertEquals(before.restTimerTotalSeconds, after.restTimerTotalSeconds)
+                assertEquals(false, after.restTimerHandled)
+                assertEquals(1, pendingRestAlarms())
+                assertEquals(1, runBlocking { database.dao().readActiveWorkoutSetsForExport().size })
+                assertEquals(false, runBlocking { database.dao().readWorkoutSessionsForExport().single().completed })
+                // Platform Back also returns to the still-active session from the error route.
+                androidx.test.espresso.Espresso.pressBack()
+                compose.waitForText("Actieve training")
+                compose.onNodeWithContentDescription("Rusttimer overslaan", useUnmergedTree = true).assertIsDisplayed()
+
+                sql.execSQL("DROP TRIGGER IF EXISTS codex_test_fail_workout_finish")
+                compose.onNodeWithContentDescription("Training afronden").performClick()
+                compose.waitForText("Training afronden?")
+                compose.onNodeWithText("Opslaan").performClick()
+                compose.waitForText("Voltooid")
+                assertEquals(0, runBlocking { database.dao().readActiveWorkoutSessionsForExport().size })
+                assertEquals(true, runBlocking { database.dao().readWorkoutSessionsForExport().single().completed })
+                assertEquals(1, runBlocking { database.dao().readWorkoutSetsForExport().size })
+                assertEquals(0, pendingRestAlarms())
+            }
+        } finally {
+            sql.execSQL("DROP TRIGGER IF EXISTS codex_test_fail_workout_finish")
+            scheduler.cancel(timer.identity)
         }
     }
 

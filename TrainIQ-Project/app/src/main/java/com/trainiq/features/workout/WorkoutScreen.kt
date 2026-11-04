@@ -1042,8 +1042,8 @@ class WorkoutViewModel @Inject constructor(
     fun finishWorkout(dayId: Long) {
         diagnosticsTracker.state("Workout:Finished")
         launchAction {
-            stopRestTimer(persist = true)
             val result = finishActiveWorkoutUseCase(dayId)
+            stopRestTimer(persist = false)
             _debrief.value = result.debrief
             _activeSession.value = null
             _drafts.value = emptyMap()
@@ -6011,7 +6011,7 @@ private fun ActiveWorkoutBottomBar(
                         ) {
                             Text(
                                 activeWorkoutBottomBarStatusText(clock.restTimerSeconds),
-                                modifier = Modifier.semantics {
+                                modifier = Modifier.align(Alignment.CenterVertically).semantics {
                                     contentDescription = restTimerCardContentDescription(
                                         clock.restTimerSeconds, clock.restTimerTotalSeconds,
                                     )
@@ -6020,7 +6020,7 @@ private fun ActiveWorkoutBottomBar(
                                 color = MaterialTheme.colorScheme.primary,
                             )
 
-                            IconButton(onClick = onRestSettingsClick, modifier = Modifier.size(48.dp).semantics {
+                            IconButton(onClick = onRestSettingsClick, modifier = Modifier.size(48.dp).align(Alignment.CenterVertically).semantics {
                                 contentDescription = "Rustmelding: " + (uiState.restNotificationStatus?.label(restSoundEnabled) ?: "Status laden") + ". Instellingen openen"
                             }) {
                                 Icon(if (uiState.restNotificationStatus?.let { it.appAllowed && it.channelAllowed && it.channelSound && it.systemSound && restSoundEnabled } == true)
@@ -6028,6 +6028,7 @@ private fun ActiveWorkoutBottomBar(
                             }
                             Text(
                                 activeLoggedSetCountText(uiState.visibleLoggedSetCount),
+                                modifier = Modifier.align(Alignment.CenterVertically),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -6084,7 +6085,7 @@ private fun ActiveWorkoutBottomBar(
                 }
             } else {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-                            IconButton(onClick = onRestSettingsClick, modifier = Modifier.size(48.dp).semantics {
+                            IconButton(onClick = onRestSettingsClick, modifier = Modifier.size(48.dp).align(Alignment.CenterVertically).semantics {
                                 contentDescription = "Rustmelding: " + (uiState.restNotificationStatus?.label(restSoundEnabled) ?: "Status laden") + ". Instellingen openen"
                             }) {
                                 Icon(if (uiState.restNotificationStatus?.let { it.appAllowed && it.channelAllowed && it.channelSound && it.systemSound && restSoundEnabled } == true)
@@ -6093,11 +6094,13 @@ private fun ActiveWorkoutBottomBar(
 
                     Text(
                         activeWorkoutBottomBarStatusText(clock.restTimerSeconds),
+                        modifier = Modifier.align(Alignment.CenterVertically),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
                         activeLoggedSetCountText(uiState.visibleLoggedSetCount),
+                        modifier = Modifier.align(Alignment.CenterVertically),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
