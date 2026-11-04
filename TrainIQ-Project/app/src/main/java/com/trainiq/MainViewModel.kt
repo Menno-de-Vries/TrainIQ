@@ -21,7 +21,18 @@ sealed interface MainOnboardingState {
 @HiltViewModel
 class MainViewModel @Inject constructor(
     private val userPreferencesRepository: UserPreferencesRepository,
+    private val restTimers: com.trainiq.domain.workout.WorkoutRestTimerCoordinator,
 ) : ViewModel() {
+    private val _restTargetDayId = kotlinx.coroutines.flow.MutableStateFlow<Long?>(null)
+    val restTargetDayId: StateFlow<Long?> = _restTargetDayId
+    fun openRestTimer(sessionId: Long, generation: String) {
+        viewModelScope.launch {
+            val timer = restTimers.current()
+            _restTargetDayId.value = timer?.takeIf { it.identity.sessionId == sessionId && it.identity.generation == generation }?.dayId
+        }
+    }
+    fun consumeRestTarget() { _restTargetDayId.value = null }
+
     val themeMode: StateFlow<ThemeMode> = userPreferencesRepository.themeMode
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ThemeMode.SYSTEM)
 

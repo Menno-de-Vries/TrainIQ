@@ -67,6 +67,43 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class ActiveWorkoutSetActionsInstrumentedTest {
+    @Test
+    fun restNotificationOpensValidatedTypedSessionAndBellShowsRealPreferences() {
+        val clock = com.trainiq.core.workout.AndroidWorkoutRestTimerClock(context)
+        val timer = com.trainiq.domain.workout.newWorkoutRestTimer(12, 7, 120, clock.now(), "notification-open")!!
+        val preferences = UserPreferencesRepository(context)
+        val originalSound = runBlocking { preferences.workoutFeedbackPreferences.first().restTimerSoundEnabled }
+        val notifications = com.trainiq.core.workout.WorkoutRestTimerNotifications(context, preferences)
+        val scheduler = com.trainiq.core.workout.WorkoutRestTimerScheduler(context, notifications)
+        runBlocking {
+            val active = database.dao().readActiveWorkoutSessionsForExport().single()
+            database.dao().insertActiveWorkoutSessions(listOf(active.copy(restTimerEndsAt = timer.wallDeadline,
+                restTimerTotalSeconds = 120, restTimerGeneration = timer.identity.generation,
+                restTimerElapsedDeadline = timer.elapsedDeadline, restTimerBootId = timer.bootId)))
+        }
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use {
+                compose.waitUntil(30_000) { compose.onAllNodes((hasText("Training") or hasContentDescription("Training")) and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
+                notifications.notification(timer, silent = true).contentIntent.send()
+                compose.waitForText("Actieve training")
+                compose.onNodeWithText("Bench Press", useUnmergedTree = true).assertIsDisplayed()
+                val bell = hasContentDescription("Rustmelding:", substring = true) and hasClickAction()
+                compose.onNode(bell).assertIsDisplayed().performClick()
+                compose.waitForText("Rustmelding")
+                capture("rest-settings-sheet")
+                compose.onNodeWithText("Geluid en meldingen beheren").performScrollTo().assertIsDisplayed()
+                compose.onNodeWithContentDescription("Geluid bij afgelopen rust").performScrollTo().performClick()
+                compose.waitUntil(10_000) { runBlocking { preferences.workoutFeedbackPreferences.first().restTimerSoundEnabled != originalSound } }
+                androidx.test.espresso.Espresso.pressBack()
+                compose.onNodeWithContentDescription("Rusttimer overslaan", useUnmergedTree = true).performClick()
+                compose.waitUntil(10_000) { runBlocking { database.dao().readActiveWorkoutSessionsForExport().single().restTimerGeneration == null } }
+            }
+        } finally {
+            runBlocking { preferences.setRestTimerSoundEnabled(originalSound) }
+            scheduler.cancel(timer.identity)
+        }
+    }
+
     @get:Rule
     val compose = createEmptyComposeRule()
 
@@ -200,6 +237,8 @@ class ActiveWorkoutSetActionsInstrumentedTest {
                 sessionId = 12L, dayId = 7L, routineId = 1L,
                 startedAt = now - 60_000L, updatedAt = now,
                 restTimerEndsAt = now + 120_000L, restTimerTotalSeconds = 120,
+                restTimerGeneration = "running-rest-ui", restTimerElapsedDeadline = android.os.SystemClock.elapsedRealtime() + 120_000L,
+                restTimerBootId = com.trainiq.core.workout.AndroidWorkoutRestTimerClock(context).now().bootId,
             )))
         }
         ActivityScenario.launch(MainActivity::class.java).use {
@@ -438,7 +477,8 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             compose.waitForText("Actieve training")
             compose.onNodeWithText("Bench Press", useUnmergedTree = true).assertIsDisplayed()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Actieve training hersteld.").fetchSemanticsNodes().isEmpty() }
-            val performance = compose.onNodeWithText("80 kg × 5", useUnmergedTree = true).performScrollTo()
+            compose.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Voltooid"), useUnmergedTree = true).performScrollTo()
+            val performance = compose.onNodeWithText("80 kg × 5", useUnmergedTree = true).assertIsDisplayed()
             val setLabel = compose.onNodeWithText("Set 1", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
             val performanceBounds = performance.fetchSemanticsNode().boundsInRoot
             val density = context.resources.displayMetrics.density

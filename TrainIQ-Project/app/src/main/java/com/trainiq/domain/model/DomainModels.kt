@@ -224,6 +224,10 @@ data class ActiveWorkoutSession(
     val collapsedExerciseIds: Set<Long>,
     val restTimerEndsAt: Long?,
     val restTimerTotalSeconds: Int,
+    val restTimerGeneration: String? = null,
+    val restTimerElapsedDeadline: Long? = null,
+    val restTimerBootId: String? = null,
+    val restTimerHandled: Boolean = false,
     val notes: String = "",
 )
 

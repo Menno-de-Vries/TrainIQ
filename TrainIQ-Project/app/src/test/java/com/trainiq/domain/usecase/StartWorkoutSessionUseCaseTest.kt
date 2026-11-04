@@ -152,7 +152,7 @@ private class FakeWorkoutRepository(
     override suspend fun deleteActiveWorkoutSet(setId: Long): ActiveWorkoutSession? = null
     override suspend fun undoWorkoutLogEvent(eventId: Long): ActiveWorkoutSession? = null
     override suspend fun setActiveWorkoutCollapsed(exerciseId: Long, collapsed: Boolean): ActiveWorkoutSession? = null
-    override suspend fun updateActiveWorkoutRestTimer(endsAt: Long?, totalSeconds: Int): ActiveWorkoutSession? = null
+    override suspend fun updateActiveWorkoutRestTimer(change: com.trainiq.domain.workout.WorkoutRestTimerChange): ActiveWorkoutSession? = null
     override suspend fun finishActiveWorkout(dayId: Long): WorkoutCompletionResult = error("unused")
     override suspend fun getWorkoutCompletionSummary(sessionId: Long): WorkoutCompletionSummary? = null
     override fun observeWorkoutCompletionSummary(sessionId: Long): Flow<WorkoutCompletionSummary?> = flowOf(null)

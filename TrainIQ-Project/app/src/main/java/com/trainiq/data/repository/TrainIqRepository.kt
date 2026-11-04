@@ -267,7 +267,7 @@ class TrainIqDataCoordinator @Inject constructor(
 
     suspend fun getCurrentActiveWorkoutSession(): ActiveWorkoutSession? =
         withContext(Dispatchers.IO) {
-            runtimeStore.state.value.activeWorkoutSession?.toDomain()
+            runtimeStore.readCurrentActiveWorkout()?.toDomain()
         }
 
     suspend fun getOrStartActiveWorkoutSession(
@@ -291,7 +291,7 @@ class TrainIqDataCoordinator @Inject constructor(
             )
             mutation.active
         }
-        return active.toDomain()
+        return (runtimeStore.readCurrentActiveWorkout() ?: active).toDomain()
     }
 
     suspend fun updateActiveWorkoutNotes(notes: String): ActiveWorkoutSession? = withContext(Dispatchers.IO) {
@@ -366,12 +366,12 @@ class TrainIqDataCoordinator @Inject constructor(
                 restTimerEndsAt = if (restSeconds > 0) now + restSeconds * 1_000L else null,
                 restTimerTotalSeconds = restSeconds.coerceAtLeast(0),
             )
-        runtimeStore.updateActiveWorkoutSet(
+        val persisted = runtimeStore.updateActiveWorkoutSet(
             active = updated,
             set = updatedSet,
             draft = requireNotNull(updated.drafts[updatedSet.activeKey]),
         )
-        return updated.toDomain()
+        return persisted.toDomain()
     }
 
     suspend fun updateActiveWorkoutSetType(setId: Long, setType: SetType): ActiveWorkoutSession? {
@@ -385,7 +385,7 @@ class TrainIqDataCoordinator @Inject constructor(
             setType = setType,
             updatedAt = updated.updatedAt,
         )
-        return updated.toDomain()
+        return (runtimeStore.readCurrentActiveWorkout() ?: updated).toDomain()
     }
 
     suspend fun deleteActiveWorkoutSet(setId: Long): ActiveWorkoutSession? {
@@ -398,7 +398,7 @@ class TrainIqDataCoordinator @Inject constructor(
             setId = setId,
             updatedAt = updated.updatedAt,
         )
-        return updated.toDomain()
+        return (runtimeStore.readCurrentActiveWorkout() ?: updated).toDomain()
     }
 
     suspend fun undoWorkoutLogEvent(eventId: Long): ActiveWorkoutSession? {
@@ -413,7 +413,7 @@ class TrainIqDataCoordinator @Inject constructor(
             it.type == WorkoutLogEventType.UNDO_SET && it.targetEventId == eventId
         } ?: return active.toDomain()
         runtimeStore.undoActiveWorkoutLogEvent(active = active, undoEvent = undoEvent)
-        return active.toDomain()
+        return (runtimeStore.readCurrentActiveWorkout() ?: active).toDomain()
     }
 
     suspend fun setActiveWorkoutCollapsed(exerciseId: Long, collapsed: Boolean): ActiveWorkoutSession? {
@@ -433,26 +433,11 @@ class TrainIqDataCoordinator @Inject constructor(
             collapsed = collapsed,
             updatedAt = updated.updatedAt,
         )
-        return updated.toDomain()
+        return (runtimeStore.readCurrentActiveWorkout() ?: updated).toDomain()
     }
 
-    suspend fun updateActiveWorkoutRestTimer(endsAt: Long?, totalSeconds: Int): ActiveWorkoutSession? =
-        withContext(Dispatchers.IO) {
-            val active = runtimeStore.state.value.activeWorkoutSession ?: return@withContext null
-            val now = System.currentTimeMillis()
-            val updated = active.copy(
-                updatedAt = now,
-                restTimerEndsAt = endsAt,
-                restTimerTotalSeconds = if (endsAt == null) 0 else totalSeconds.coerceAtLeast(0),
-            )
-            runtimeStore.updateActiveWorkoutRestTimer(
-                sessionId = updated.sessionId,
-                endsAt = updated.restTimerEndsAt,
-                totalSeconds = updated.restTimerTotalSeconds,
-                updatedAt = updated.updatedAt,
-            )
-            updated.toDomain()
-        }
+    suspend fun updateActiveWorkoutRestTimer(change: com.trainiq.domain.workout.WorkoutRestTimerChange): ActiveWorkoutSession? =
+        withContext(Dispatchers.IO) { runtimeStore.updateActiveWorkoutRestTimer(change)?.toDomain() }
 
     suspend fun finishActiveWorkout(dayId: Long): WorkoutCompletionResult {
         val active = runtimeStore.state.value.activeWorkoutSession?.takeIf { it.dayId == dayId }
@@ -2144,6 +2129,10 @@ internal fun ActiveWorkoutSessionStorage.toDomain() = ActiveWorkoutSession(
     collapsedExerciseIds = collapsedExerciseIds,
     restTimerEndsAt = restTimerEndsAt,
     restTimerTotalSeconds = restTimerTotalSeconds,
+    restTimerGeneration = restTimerGeneration,
+    restTimerElapsedDeadline = restTimerElapsedDeadline,
+    restTimerBootId = restTimerBootId,
+    restTimerHandled = restTimerHandled,
 )
 
 private fun ActiveWorkoutSetStorage.toDomain() = ActiveWorkoutSetEntry(

@@ -52,6 +52,9 @@ import com.trainiq.domain.repository.MealSaveTarget
 import com.trainiq.domain.repository.MissingMealEditException
 import com.trainiq.domain.repository.MissingRecipeEditException
 import com.trainiq.domain.repository.mealSaveTargetForExistingId
+import com.trainiq.domain.workout.*
+import com.trainiq.core.workout.AndroidWorkoutRestTimerClock
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.roundToInt
@@ -83,10 +86,12 @@ class RoomTrainIqRuntimeStore internal constructor(
     private val database: TrainIqDatabase,
     private val legacyStore: TrainIqLocalStore,
     private val scope: CoroutineScope,
+    private val restTimers: WorkoutRestTimerCoordinator,
+    private val restClock: WorkoutRestTimerClock,
 ) {
     @Inject
-    constructor(database: TrainIqDatabase, legacyStore: TrainIqLocalStore) :
-        this(database, legacyStore, CoroutineScope(SupervisorJob() + Dispatchers.IO))
+    constructor(database: TrainIqDatabase, legacyStore: TrainIqLocalStore, restTimers: WorkoutRestTimerCoordinator, restClock: AndroidWorkoutRestTimerClock) :
+        this(database, legacyStore, CoroutineScope(SupervisorJob() + Dispatchers.IO), restTimers, restClock)
 
     private val dao = database.dao()
     private val gson = Gson()
@@ -198,9 +203,9 @@ class RoomTrainIqRuntimeStore internal constructor(
     }
 
     suspend fun clearAll() {
-        mutex.withLock {
+        restTimers.mutate { mutex.withLock {
             database.dao().clearMirrorTables()
-        }
+        } }
     }
 
     suspend fun clearProfile() {
@@ -494,9 +499,9 @@ class RoomTrainIqRuntimeStore internal constructor(
     }
 
     suspend fun deleteWorkoutSession(sessionId: Long) {
-        mutex.withLock {
+        restTimers.mutate { mutex.withLock {
             dao.deleteWorkoutSessionCascade(sessionId)
-        }
+        } }
     }
 
     suspend fun saveGeneratedRoutine(
@@ -526,21 +531,20 @@ class RoomTrainIqRuntimeStore internal constructor(
         }
     }
 
-    suspend fun updateActiveWorkoutRestTimer(
-        sessionId: Long,
-        endsAt: Long?,
-        totalSeconds: Int,
-        updatedAt: Long,
-    ) {
-        mutex.withLock {
-            dao.updateActiveWorkoutRestTimer(
-                sessionId = sessionId,
-                endsAt = endsAt,
-                totalSeconds = totalSeconds,
-                updatedAt = updatedAt,
-            )
-        }
-    }
+    suspend fun updateActiveWorkoutRestTimer(change: WorkoutRestTimerChange): ActiveWorkoutSessionStorage? =
+        restTimers.mutate { mutex.withLock {
+            database.withTransaction {
+                val active = readCurrentActiveWorkout() ?: return@withTransaction null
+                check(active.sessionId == change.sessionId && active.startedAt == change.sessionStartedAt &&
+                    active.restTimerGeneration == change.expectedGeneration) { "Rusttimer is intussen veranderd." }
+                val timer = change.timer
+                val updated = active.withRestTimer(timer).copy(updatedAt = restClock.now().wallMillis)
+                dao.updateActiveWorkoutRestTimer(updated.sessionId, updated.restTimerEndsAt,
+                    updated.restTimerTotalSeconds, updated.updatedAt, updated.restTimerGeneration,
+                    updated.restTimerElapsedDeadline, updated.restTimerBootId, updated.restTimerHandled)
+                updated
+            }
+        } }
 
     suspend fun updateActiveWorkoutDraft(
         sessionId: Long,
@@ -569,9 +573,15 @@ class RoomTrainIqRuntimeStore internal constructor(
         draftSession: WorkoutSessionEntity,
         performedExercises: List<PerformedExerciseEntity>,
     ) {
-        mutex.withLock {
+        restTimers.mutate { mutex.withLock {
             dao.startOrResumeActiveWorkoutSession(
-                activeSession = active.toActiveWorkoutSessionEntity(),
+                activeSession = active.toActiveWorkoutSessionEntity().let { candidate ->
+                    val current = dao.readActiveWorkoutSessionsForExport().firstOrNull { it.sessionId == active.sessionId }
+                    if (current == null) candidate else candidate.copy(restTimerEndsAt = current.restTimerEndsAt,
+                        restTimerTotalSeconds = current.restTimerTotalSeconds, restTimerGeneration = current.restTimerGeneration,
+                        restTimerElapsedDeadline = current.restTimerElapsedDeadline, restTimerBootId = current.restTimerBootId,
+                        restTimerHandled = current.restTimerHandled)
+                },
                 draftSession = draftSession,
                 drafts = active.drafts.map { (exerciseId, draft) ->
                     ActiveWorkoutDraftEntity(
@@ -585,7 +595,7 @@ class RoomTrainIqRuntimeStore internal constructor(
                 },
                 performedExercises = performedExercises,
             )
-        }
+        } }
     }
 
     internal suspend fun logActiveWorkoutSet(
@@ -596,7 +606,7 @@ class RoomTrainIqRuntimeStore internal constructor(
         restSeconds: Int,
         now: Long,
     ): LoggedActiveWorkoutSetMutation =
-        mutex.withLock {
+        restTimers.mutate { mutex.withLock {
             database.withTransaction {
                 val activeTables = ActiveWorkoutTables(
                     sessions = dao.readActiveWorkoutSessionsForExport(),
@@ -621,7 +631,8 @@ class RoomTrainIqRuntimeStore internal constructor(
                     restSeconds = restSeconds,
                     now = now,
                 )
-                val active = mutation.active
+                val active = mutation.active.withRestTimer(newWorkoutRestTimer(mutation.active.sessionId,
+                    mutation.active.dayId, restSeconds, restClock.now(), UUID.randomUUID().toString()))
                 val loggedSet = requireNotNull(active.loggedSets.lastOrNull()) {
                     "Active workout set logging did not produce a stored set."
                 }
@@ -638,6 +649,10 @@ class RoomTrainIqRuntimeStore internal constructor(
                         updatedAt = active.updatedAt,
                         restTimerEndsAt = active.restTimerEndsAt,
                         restTimerTotalSeconds = active.restTimerTotalSeconds,
+                        restTimerGeneration = active.restTimerGeneration,
+                        restTimerElapsedDeadline = active.restTimerElapsedDeadline,
+                        restTimerBootId = active.restTimerBootId,
+                        restTimerHandled = active.restTimerHandled,
                     ),
                     draft = ActiveWorkoutDraftEntity(
                         sessionId = active.sessionId,
@@ -654,14 +669,17 @@ class RoomTrainIqRuntimeStore internal constructor(
                 )
                 LoggedActiveWorkoutSetMutation(active = active, undoEventId = event.id)
             }
-        }
+        } }
 
     suspend fun updateActiveWorkoutSet(
         active: ActiveWorkoutSessionStorage,
         set: ActiveWorkoutSetStorage,
         draft: ActiveWorkoutDraftStorage,
-    ) {
-        mutex.withLock {
+    ): ActiveWorkoutSessionStorage =
+        restTimers.mutate { mutex.withLock {
+            val timer = newWorkoutRestTimer(active.sessionId, active.dayId,
+                active.restTimerTotalSeconds, restClock.now(), UUID.randomUUID().toString())
+            val saved = active.withRestTimer(timer)
             dao.updateActiveWorkoutSet(
                 sessionId = active.sessionId,
                 draft = ActiveWorkoutDraftEntity(
@@ -673,12 +691,16 @@ class RoomTrainIqRuntimeStore internal constructor(
                     setType = draft.setType.name,
                 ),
                 set = set.toActiveWorkoutSetEntity(sessionId = active.sessionId),
-                restTimerEndsAt = active.restTimerEndsAt,
-                restTimerTotalSeconds = active.restTimerTotalSeconds,
+                restTimerEndsAt = saved.restTimerEndsAt,
+                restTimerTotalSeconds = saved.restTimerTotalSeconds,
+                        restTimerGeneration = saved.restTimerGeneration,
+                        restTimerElapsedDeadline = saved.restTimerElapsedDeadline,
+                        restTimerBootId = saved.restTimerBootId,
+                        restTimerHandled = saved.restTimerHandled,
                 updatedAt = active.updatedAt,
             )
-        }
-    }
+            saved
+        } }
 
     suspend fun setActiveWorkoutCollapsedExercise(
         sessionId: Long,
@@ -851,9 +873,9 @@ class RoomTrainIqRuntimeStore internal constructor(
     }
 
     suspend fun discardActiveWorkoutSession(sessionId: Long) {
-        mutex.withLock {
+        restTimers.mutate { mutex.withLock {
             dao.discardActiveWorkoutSession(sessionId)
-        }
+        } }
     }
 
     suspend fun finishActiveWorkoutSession(
@@ -862,7 +884,7 @@ class RoomTrainIqRuntimeStore internal constructor(
         sets: List<WorkoutSetEntity>,
         activeSessionId: Long?,
     ) {
-        mutex.withLock {
+        restTimers.mutate { mutex.withLock {
             database.withTransaction {
                 val savedNotes = activeSessionId?.let { id ->
                     dao.readActiveWorkoutSessionsForExport().firstOrNull { it.sessionId == id }?.notes
@@ -874,7 +896,7 @@ class RoomTrainIqRuntimeStore internal constructor(
                     activeSessionId = activeSessionId,
                 )
             }
-        }
+        } }
     }
 
     suspend fun getWorkoutDebriefRefreshSnapshot(sessionId: Long): WorkoutDebriefRefreshSnapshot =
@@ -945,13 +967,13 @@ class RoomTrainIqRuntimeStore internal constructor(
         routineSets = dao.readRoutineSetsForExport(),
     )
 
-    private suspend fun readCurrentActiveWorkout() = ActiveWorkoutTables(
+    suspend fun readCurrentActiveWorkout() = database.withTransaction { ActiveWorkoutTables(
         sessions = dao.readActiveWorkoutSessionsForExport(),
         drafts = dao.readActiveWorkoutDraftsForExport(),
         collapsed = dao.readActiveWorkoutCollapsedExercisesForExport(),
         sets = dao.readActiveWorkoutSetsForExport(),
         events = emptyList(),
-    ).toStorage()
+    ).toStorage() }
 }
 
 data class WorkoutDebriefRefreshSnapshot(
@@ -1015,6 +1037,10 @@ private data class ActiveWorkoutTables(
             collapsedExerciseIds = collapsed.filter { it.sessionId == session.sessionId }.map { it.exerciseId }.toSet(),
             restTimerEndsAt = session.restTimerEndsAt,
             restTimerTotalSeconds = session.restTimerTotalSeconds,
+                        restTimerGeneration = session.restTimerGeneration,
+                        restTimerElapsedDeadline = session.restTimerElapsedDeadline,
+                        restTimerBootId = session.restTimerBootId,
+                        restTimerHandled = session.restTimerHandled,
         )
     }
 }
@@ -1145,6 +1171,10 @@ private fun ActiveWorkoutSessionStorage.toActiveWorkoutSessionEntity() = ActiveW
     updatedAt = updatedAt,
     restTimerEndsAt = restTimerEndsAt,
     restTimerTotalSeconds = restTimerTotalSeconds,
+    restTimerGeneration = restTimerGeneration,
+    restTimerElapsedDeadline = restTimerElapsedDeadline,
+    restTimerBootId = restTimerBootId,
+    restTimerHandled = restTimerHandled,
 )
 
 private fun ActiveWorkoutSetEntity.toStorage() = ActiveWorkoutSetStorage(

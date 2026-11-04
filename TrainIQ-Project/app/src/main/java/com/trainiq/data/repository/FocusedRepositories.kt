@@ -78,8 +78,8 @@ class RoomWorkoutRepository @Inject constructor(
     override suspend fun undoWorkoutLogEvent(eventId: Long): ActiveWorkoutSession? = delegate.undoWorkoutLogEvent(eventId)
     override suspend fun setActiveWorkoutCollapsed(exerciseId: Long, collapsed: Boolean): ActiveWorkoutSession? =
         delegate.setActiveWorkoutCollapsed(exerciseId, collapsed)
-    override suspend fun updateActiveWorkoutRestTimer(endsAt: Long?, totalSeconds: Int): ActiveWorkoutSession? =
-        delegate.updateActiveWorkoutRestTimer(endsAt, totalSeconds)
+    override suspend fun updateActiveWorkoutRestTimer(change: com.trainiq.domain.workout.WorkoutRestTimerChange): ActiveWorkoutSession? =
+        delegate.updateActiveWorkoutRestTimer(change)
     override suspend fun finishActiveWorkout(dayId: Long): WorkoutCompletionResult = delegate.finishActiveWorkout(dayId)
     override suspend fun refreshWorkoutDebrief(sessionId: Long, generationId: String?): WorkoutDebriefRefreshOutcome =
         delegate.refreshWorkoutDebrief(sessionId, generationId)

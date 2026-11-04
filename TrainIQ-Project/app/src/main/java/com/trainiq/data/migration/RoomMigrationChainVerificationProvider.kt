@@ -59,7 +59,7 @@ class RoomMigrationChainVerificationProvider @Inject constructor(
 
     companion object {
         const val RequiredMigrationStartVersion = 2
-        const val CurrentRoomVersion = 20
+        const val CurrentRoomVersion = 21
         const val MaxVerificationAgeMillis = 30L * 24L * 60L * 60L * 1000L
 
         fun expectedMarker(): String =

@@ -416,6 +416,10 @@ data class ActiveWorkoutSessionEntity(
     val updatedAt: Long,
     val restTimerEndsAt: Long? = null,
     val restTimerTotalSeconds: Int = 0,
+    val restTimerGeneration: String? = null,
+    val restTimerElapsedDeadline: Long? = null,
+    val restTimerBootId: String? = null,
+    @ColumnInfo(defaultValue = "0") val restTimerHandled: Boolean = false,
     @ColumnInfo(defaultValue = "''") val notes: String = "",
 )
 

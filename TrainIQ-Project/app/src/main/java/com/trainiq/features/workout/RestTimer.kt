@@ -5,12 +5,14 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-internal data class RestTimerValue(val endsAt: Long?, val seconds: Int)
+internal data class RestTimerValue(val endsAt: Long?, val seconds: Int,
+    val timer: com.trainiq.domain.workout.ScheduledWorkoutRestTimer? = null,
+    val sessionId: Long = 0, val sessionStartedAt: Long = 0)
 
 /** Keep taps responsive while persisting in order; roll back to the last successful write. */
 internal class RestTimerWrites(
     private val scope: CoroutineScope,
-    private val persist: suspend (RestTimerValue) -> Unit,
+    private val persist: suspend (RestTimerValue, RestTimerValue) -> Unit,
     private val publish: (RestTimerValue) -> Unit,
     private val onFailure: (Exception) -> Unit,
 ) {
@@ -18,17 +20,27 @@ internal class RestTimerWrites(
     private var revision = 0L
     private var pending = 0
     private var confirmed = RestTimerValue(null, 0)
+    private var epoch = 0L
+
+    fun supersede(value: RestTimerValue) {
+        epoch++
+        revision++
+        confirmed = value
+    }
 
     fun submit(previous: RestTimerValue, next: RestTimerValue) {
         if (pending == 0) confirmed = previous
         val token = ++revision
+        val submittedEpoch = epoch
         pending++
         publish(next)
         scope.launchUserAction(onFailure) {
             try {
                 mutex.withLock {
-                    persist(next)
-                    confirmed = next
+                    if (submittedEpoch == epoch) {
+                        persist(confirmed, next)
+                        if (submittedEpoch == epoch) confirmed = next
+                    }
                 }
             } finally {
                 pending--

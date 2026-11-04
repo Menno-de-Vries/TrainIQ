@@ -112,8 +112,9 @@ class JsonRoomImportPlanner(
                         routineId = it.routineId,
                         startedAt = it.startedAt,
                         updatedAt = it.updatedAt,
-                        restTimerEndsAt = it.restTimerEndsAt,
-                        restTimerTotalSeconds = it.restTimerTotalSeconds,
+                        // Elapsed time and boot counts are device-local, never portable backup data.
+                        restTimerEndsAt = null,
+                        restTimerTotalSeconds = 0,
                     ),
                 )
             }.orEmpty(),
@@ -460,7 +461,7 @@ fun JsonRoomImportPlan.importedRowCount(): Int =
         workoutLogEventSets.size +
         measurements.size
 
-private const val TrainIqDatabaseVersion = 20
+private const val TrainIqDatabaseVersion = 21
 internal const val TrainIqJsonExportFormat = "trainiq-json-export"
 
 sealed interface JsonRoomImportOutcome {

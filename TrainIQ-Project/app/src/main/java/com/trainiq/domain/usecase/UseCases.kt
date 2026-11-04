@@ -226,8 +226,8 @@ class SetActiveWorkoutCollapsedUseCase @Inject constructor(private val repositor
 }
 
 class UpdateActiveWorkoutRestTimerUseCase @Inject constructor(private val repository: WorkoutRepository) {
-    suspend operator fun invoke(endsAt: Long?, totalSeconds: Int) =
-        repository.updateActiveWorkoutRestTimer(endsAt, totalSeconds)
+    suspend operator fun invoke(change: com.trainiq.domain.workout.WorkoutRestTimerChange) =
+        repository.updateActiveWorkoutRestTimer(change)
 }
 
 class FinishActiveWorkoutUseCase @Inject constructor(
@@ -609,18 +609,19 @@ class PreviewAppDataImportUseCase @Inject constructor() {
 
 class ImportAppDataUseCase @Inject constructor(
     private val database: TrainIqDatabase,
+    private val restTimers: com.trainiq.domain.workout.WorkoutRestTimerCoordinator,
 ) {
     private val planner = JsonRoomImportPlanner()
 
     suspend operator fun invoke(json: String): AppDataImportResult {
         val preview = PreviewAppDataImportUseCase().invoke(json)
-        val outcome = JsonRoomImportCoordinator(
+        val outcome = restTimers.mutate { JsonRoomImportCoordinator(
             planner = planner,
             sink = RoomJsonImportSink(database),
         ).tryImport(
             sourceJson = json,
             fallbackState = TrainIqStorageState(),
-        )
+        ).also { if (it is JsonRoomImportOutcome.Failed) throw it.cause } }
         return when (outcome) {
             is JsonRoomImportOutcome.Imported -> AppDataImportResult(
                 preview = preview,

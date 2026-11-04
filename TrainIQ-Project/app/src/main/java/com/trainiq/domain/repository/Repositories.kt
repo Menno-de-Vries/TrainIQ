@@ -60,7 +60,7 @@ interface WorkoutRepository {
     suspend fun deleteActiveWorkoutSet(setId: Long): ActiveWorkoutSession?
     suspend fun undoWorkoutLogEvent(eventId: Long): ActiveWorkoutSession?
     suspend fun setActiveWorkoutCollapsed(exerciseId: Long, collapsed: Boolean): ActiveWorkoutSession?
-    suspend fun updateActiveWorkoutRestTimer(endsAt: Long?, totalSeconds: Int): ActiveWorkoutSession?
+    suspend fun updateActiveWorkoutRestTimer(change: com.trainiq.domain.workout.WorkoutRestTimerChange): ActiveWorkoutSession?
     suspend fun finishActiveWorkout(dayId: Long): WorkoutCompletionResult
     suspend fun refreshWorkoutDebrief(sessionId: Long, generationId: String? = null): WorkoutDebriefRefreshOutcome
     suspend fun getWorkoutCompletionSummary(sessionId: Long): WorkoutCompletionSummary?

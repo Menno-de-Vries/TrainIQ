@@ -101,6 +101,8 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -192,6 +194,8 @@ import com.trainiq.core.ui.SecondaryActionButton
 import com.trainiq.core.ui.TapOnlyOutlinedTextField
 import com.trainiq.core.ui.WrappingActionRow
 import com.trainiq.core.ui.bringIntoViewOnFocus
+import com.trainiq.domain.workout.*
+import com.trainiq.core.workout.*
 import com.trainiq.core.audio.RestTimerSoundPlayer
 import com.trainiq.core.datastore.UserPreferencesRepository
 import com.trainiq.core.datastore.WorkoutFeedbackPreferences
@@ -340,6 +344,8 @@ data class ActiveWorkoutUiState(
     val needsFinishConfirmation: Boolean = false,
     val loggingSummary: WorkoutLoggingSummary = WorkoutLoggingSummary(),
     val activeFocusTarget: ActiveWorkoutFocusTarget? = null,
+    val restNotificationStatus: WorkoutRestNotificationStatus? = null,
+    val restExactAllowed: Boolean = false,
     val pendingStartConflict: ActiveWorkoutStartConflict? = null,
     val message: String? = null,
 )
@@ -355,8 +361,10 @@ internal fun activeWorkoutClockUiState(
     restTimerEndsAt: Long?,
     restTimerTotalSeconds: Int,
     now: Long,
+    timer: ScheduledWorkoutRestTimer? = null,
+    timerNow: WorkoutRestTimerNow? = null,
 ): ActiveWorkoutClockUiState {
-    val remaining = remainingRestSeconds(restTimerEndsAt, now)
+    val remaining = if (timerNow != null) timer?.remainingSeconds(timerNow) ?: 0 else remainingRestSeconds(restTimerEndsAt, now)
     return ActiveWorkoutClockUiState(
         elapsedSeconds = activeWorkoutElapsedSeconds(startedAt = startedAt, now = now),
         restTimerSeconds = remaining,
@@ -367,6 +375,9 @@ internal fun activeWorkoutClockUiState(
 @Composable
 private fun rememberActiveWorkoutClock(activeSession: ActiveWorkoutSession?): State<ActiveWorkoutClockUiState> {
     val startedAt = activeSession?.startedAt ?: 0L
+    val context = LocalContext.current
+    val restClock = remember(context) { AndroidWorkoutRestTimerClock(context) }
+    val timer = activeSession?.scheduledRestTimer()
     val restTimerEndsAt = activeSession?.restTimerEndsAt
     val restTimerTotalSeconds = activeSession?.restTimerTotalSeconds ?: 0
     return produceState(
@@ -375,9 +386,10 @@ private fun rememberActiveWorkoutClock(activeSession: ActiveWorkoutSession?): St
             restTimerEndsAt = restTimerEndsAt,
             restTimerTotalSeconds = restTimerTotalSeconds,
             now = System.currentTimeMillis(),
+            timer = timer, timerNow = restClock.now(),
         ),
         key1 = startedAt,
-        key2 = restTimerEndsAt,
+        key2 = timer,
         key3 = restTimerTotalSeconds,
     ) {
         while (true) {
@@ -386,6 +398,7 @@ private fun rememberActiveWorkoutClock(activeSession: ActiveWorkoutSession?): St
                 restTimerEndsAt = restTimerEndsAt,
                 restTimerTotalSeconds = restTimerTotalSeconds,
                 now = System.currentTimeMillis(),
+            timer = timer, timerNow = restClock.now(),
             )
             delay(1_000L)
         }
@@ -554,6 +567,10 @@ class WorkoutViewModel @Inject constructor(
     private val undoWorkoutLogEventUseCase: UndoWorkoutLogEventUseCase,
     private val setActiveWorkoutCollapsedUseCase: SetActiveWorkoutCollapsedUseCase,
     private val updateActiveWorkoutRestTimerUseCase: UpdateActiveWorkoutRestTimerUseCase,
+    private val restTimers: WorkoutRestTimerCoordinator,
+    private val restClock: AndroidWorkoutRestTimerClock,
+    private val restNotifications: WorkoutRestTimerNotifications,
+    private val restScheduler: WorkoutRestTimerScheduler,
     private val finishActiveWorkoutUseCase: FinishActiveWorkoutUseCase,
     private val discardActiveWorkoutUseCase: DiscardActiveWorkoutUseCase,
     private val discardActiveWorkoutSessionUseCase: DiscardActiveWorkoutSessionUseCase,
@@ -624,6 +641,24 @@ class WorkoutViewModel @Inject constructor(
     private val _isGeneratingAiRoutine = MutableStateFlow(false)
     private val isGeneratingAiRoutine: StateFlow<Boolean> = _isGeneratingAiRoutine.asStateFlow()
 
+    private val _restStatus = MutableStateFlow<WorkoutRestNotificationStatus?>(null)
+    private val _restExactAllowed = MutableStateFlow(false)
+    val restCues = restTimers.cues
+
+    fun refreshRestStatus() {
+        _restStatus.value = restNotifications.status()
+        _restExactAllowed.value = restScheduler.exactAllowed()
+        launchAction { restTimers.reconcile() }
+    }
+    fun setRestSoundEnabled(enabled: Boolean) { launchAction { preferencesRepository.setRestTimerSoundEnabled(enabled) } }
+    suspend fun acceptRestCue(cue: WorkoutRestTimerCue): Boolean {
+        val timer = restTimers.current() ?: return false
+        return timer.identity == cue.identity && _activeSession.value?.sessionId == cue.identity.sessionId &&
+            _activeSession.value?.restTimerGeneration == cue.identity.generation &&
+            (cue.silent || restClock.now().elapsedMillis - timer.elapsedDeadline <= 30_000)
+    }
+    fun localRestSoundAllowed(): Boolean = restNotifications.status().let { !it.appAllowed && it.channelAllowed && it.channelSound && it.systemSound }
+
     private val _events = MutableSharedFlow<WorkoutUiEvent>(extraBufferCapacity = 1)
     val events: SharedFlow<WorkoutUiEvent> = _events.asSharedFlow()
     private val _workoutCompletions = MutableSharedFlow<Long>(extraBufferCapacity = 1)
@@ -675,7 +710,9 @@ class WorkoutViewModel @Inject constructor(
         state.copy(pendingStartConflict = pendingStartConflict)
     }.combine(_message) { state, message ->
         state.copy(message = message)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ActiveWorkoutUiState())
+    }.combine(_restStatus) { state, status -> state.copy(restNotificationStatus = status) }
+        .combine(_restExactAllowed) { state, allowed -> state.copy(restExactAllowed = allowed) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ActiveWorkoutUiState())
 
     val uiState: StateFlow<ScreenUiState<WorkoutUiContent>> = combine(
         combine(
@@ -710,24 +747,26 @@ class WorkoutViewModel @Inject constructor(
     private var restTimerJob: Job? = null
     private var loggingSummaryJob: Job? = null
     private var lastGenerationRequest: RoutineGenerationRequest? = null
-    private var observedRestTimerEndsAt: Long? = null
+    private var completingRestGeneration: String? = null
     private val restTimerWrites = RestTimerWrites(
         scope = viewModelScope,
-        persist = { timer -> updateActiveWorkoutRestTimerUseCase(timer.endsAt, timer.seconds) },
-        publish = { timer ->
+        persist = { previous, value -> updateActiveWorkoutRestTimerUseCase(WorkoutRestTimerChange(value.sessionId, value.sessionStartedAt, previous.timer?.identity?.generation, value.timer)) },
+        publish = { value ->
             _activeSession.value = _activeSession.value?.copy(
-                restTimerEndsAt = timer.endsAt,
-                restTimerTotalSeconds = timer.seconds,
+                restTimerEndsAt = value.timer?.wallDeadline,
+                restTimerTotalSeconds = value.timer?.totalSeconds ?: 0,
+                restTimerGeneration = value.timer?.identity?.generation,
+                restTimerElapsedDeadline = value.timer?.elapsedDeadline,
+                restTimerBootId = value.timer?.bootId,
+                restTimerHandled = value.timer?.handled ?: false,
             )
-            observedRestTimerEndsAt = timer.endsAt
-            restTimerSeconds = remainingRestSeconds(timer.endsAt, System.currentTimeMillis())
-            restTimerFinishHandled = restTimerSeconds == 0
-            restTimerClearRequested = restTimerSeconds == 0
+            restTimerSeconds = value.timer?.remainingSeconds(restClock.now()) ?: 0
         },
-        onFailure = { _message.value = "Rusttimer kon niet worden bijgewerkt. Probeer opnieuw." },
+        onFailure = {
+            _message.value = "Rusttimer kon niet worden bijgewerkt. Probeer opnieuw."
+            launchAction { getCurrentActiveWorkoutSessionUseCase()?.let(::applyActiveSession) }
+        },
     )
-    private var restTimerFinishHandled = true
-    private var restTimerClearRequested = false
     private var eventId = 0L
 
     internal fun observeExerciseHistory(exerciseId: Long) =
@@ -1442,44 +1481,30 @@ class WorkoutViewModel @Inject constructor(
     }
 
     private fun startRestTimer(restSeconds: Int) {
+        val active = _activeSession.value ?: return
         if (restSeconds <= 0) return
         diagnosticsTracker.state("Workout:TimerStarted")
-        val endsAt = System.currentTimeMillis() + restSeconds * 1_000L
-        observedRestTimerEndsAt = endsAt
-        restTimerFinishHandled = false
-        restTimerClearRequested = false
-        persistRestTimer(endsAt, restSeconds)
+        persistRestTimer(newWorkoutRestTimer(active.sessionId, active.dayId, restSeconds, restClock.now(), java.util.UUID.randomUUID().toString()))
     }
 
     private fun stopRestTimer(persist: Boolean = false) {
         restTimerSeconds = 0
-        observedRestTimerEndsAt = null
-        restTimerFinishHandled = true
-        restTimerClearRequested = true
-        if (persist) {
-            persistRestTimer(null, 0)
-        }
+        if (persist) persistRestTimer(null)
     }
 
     fun adjustRestTimer(deltaSeconds: Int) {
-        val now = System.currentTimeMillis()
-        val next = adjustedRestSeconds(_activeSession.value?.restTimerEndsAt, deltaSeconds, now)
-        if (next == 0) {
-            stopRestTimer(persist = true)
-            return
-        }
-        val endsAt = now + next * 1_000L
-        observedRestTimerEndsAt = endsAt
-        restTimerFinishHandled = false
-        restTimerClearRequested = false
-        persistRestTimer(endsAt, next)
+        val active = _activeSession.value ?: return
+        val now = restClock.now()
+        val current = active.scheduledRestTimer()
+        val seconds = ((current?.remainingSeconds(now) ?: 0).toLong() + deltaSeconds).coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
+        persistRestTimer(newWorkoutRestTimer(active.sessionId, active.dayId, seconds, now, java.util.UUID.randomUUID().toString()))
     }
 
-    private fun persistRestTimer(endsAt: Long?, seconds: Int) {
+    private fun persistRestTimer(timer: ScheduledWorkoutRestTimer?) {
         val previous = _activeSession.value ?: return
         restTimerWrites.submit(
-            previous = RestTimerValue(previous.restTimerEndsAt, previous.restTimerTotalSeconds),
-            next = RestTimerValue(endsAt, seconds),
+            previous = RestTimerValue(previous.restTimerEndsAt, previous.restTimerTotalSeconds, previous.scheduledRestTimer(), previous.sessionId, previous.startedAt),
+            next = RestTimerValue(timer?.wallDeadline, timer?.totalSeconds ?: 0, timer, previous.sessionId, previous.startedAt),
         )
     }
     fun skipRestTimer() {
@@ -1508,6 +1533,7 @@ class WorkoutViewModel @Inject constructor(
     }
 
     private fun applyActiveSession(session: ActiveWorkoutSession) {
+        restTimerWrites.supersede(RestTimerValue(session.restTimerEndsAt, session.restTimerTotalSeconds, session.scheduledRestTimer(), session.sessionId, session.startedAt))
         val previousDrafts = _drafts.value
         _activeSession.value = session
         _loggedSetsThisSession.value = session.loggedSets
@@ -1527,30 +1553,17 @@ class WorkoutViewModel @Inject constructor(
     }
 
     private fun updateRestTimerFromSession() {
-        val active = _activeSession.value
-        val endsAt = active?.restTimerEndsAt
-        val remaining = remainingRestSeconds(endsAt, System.currentTimeMillis())
-        val previousRemaining = restTimerSeconds
-        if (endsAt != observedRestTimerEndsAt) {
-            observedRestTimerEndsAt = endsAt
-            restTimerFinishHandled = remaining == 0
-            restTimerClearRequested = endsAt == null
-        }
-        restTimerSeconds = remaining
-        if (endsAt != null && previousRemaining > 0 && remaining == 0 && !restTimerFinishHandled) {
-            restTimerFinishHandled = true
-            restTimerClearRequested = true
-            _message.value = restTimerFinishedMessage()
-            _events.tryEmit(
-                WorkoutUiEvent.RestTimerFinished(
-                    id = ++eventId,
-                    message = restTimerFinishedMessage(),
-                ),
-            )
-            persistRestTimer(null, 0)
-        } else if (endsAt != null && remaining == 0 && !restTimerClearRequested) {
-            restTimerClearRequested = true
-            persistRestTimer(null, 0)
+        val timer = _activeSession.value?.scheduledRestTimer() ?: return
+        restTimerSeconds = timer.remainingSeconds(restClock.now())
+        if (restTimerSeconds > 0 || timer.handled || completingRestGeneration == timer.identity.generation) return
+        completingRestGeneration = timer.identity.generation
+        launchAction {
+            try {
+                val result = restTimers.completeIfCurrent(timer.identity)
+                if (result != RestTimerCompletion.EARLY && _activeSession.value?.restTimerGeneration == timer.identity.generation) {
+                    _activeSession.value = _activeSession.value?.copy(restTimerEndsAt = null, restTimerTotalSeconds = 0, restTimerHandled = true)
+                }
+            } finally { completingRestGeneration = null }
         }
     }
     private fun launchAction(action: suspend kotlinx.coroutines.CoroutineScope.() -> Unit) =
@@ -4860,15 +4873,37 @@ fun ActiveWorkoutRoute(
     val snackbarHostState = remember { SnackbarHostState() }
     val soundPlayer = remember { RestTimerSoundPlayer() }
     val currentFeedbackPreferences by rememberUpdatedState(workoutFeedbackPreferences)
+    val restSettingsFocus = LocalFocusManager.current
+    val restSettingsKeyboard = LocalSoftwareKeyboardController.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val cueScope = rememberCoroutineScope()
+    var showRestSettings by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            viewModel.refreshRestStatus()
+            viewModel.restCues.collect { cue ->
+                if (viewModel.acceptRestCue(cue) && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                    if (!cue.silent && !cue.notificationPosted && currentFeedbackPreferences.restTimerSoundEnabled && viewModel.localRestSoundAllowed()) soundPlayer.play()
+                    if (!cue.silent && currentFeedbackPreferences.workoutHapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    snackbarHostState.currentSnackbarData?.dismiss()
+                    cueScope.launch { snackbarHostState.showSnackbar(if (cue.silent) "Rusttijd verstreken" else "Rust voorbij — klaar voor je volgende set") }
+                }
+            }
+        }
+    }
+    if (showRestSettings) WorkoutRestSettingsSheet(
+        status = uiState.restNotificationStatus, soundEnabled = workoutFeedbackPreferences.restTimerSoundEnabled,
+        exactAllowed = uiState.restExactAllowed, onSoundChanged = viewModel::setRestSoundEnabled,
+        onRefresh = viewModel::refreshRestStatus, onDismiss = { showRestSettings = false },
+    )
+
 
     LaunchedEffect(dayId) { viewModel.loadWorkout(dayId) }
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
                 is WorkoutUiEvent.RestTimerFinished -> {
-                    if (currentFeedbackPreferences.restTimerSoundEnabled) {
-                        soundPlayer.play()
-                    }
+
                     if (currentFeedbackPreferences.workoutHapticsEnabled) {
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     }
@@ -4932,6 +4967,13 @@ fun ActiveWorkoutRoute(
         onAdjustRestTimer = viewModel::adjustRestTimer,
         onSkipRestTimer = viewModel::skipRestTimer,
         onRestartRestTimer = viewModel::restartRestTimer,
+        onRestSettingsClick = {
+            restSettingsFocus.clearFocus()
+            restSettingsKeyboard?.hide()
+            showRestSettings = true
+            viewModel.refreshRestStatus()
+        },
+        restSoundEnabled = workoutFeedbackPreferences.restTimerSoundEnabled,
         onToggleExerciseCollapsed = viewModel::setExerciseCollapsed,
         onReplaceActiveExercise = viewModel::replaceExerciseInActiveWorkout,
         onReplaceActiveExerciseWithCustom = viewModel::replaceActiveExerciseWithCustom,
@@ -5504,6 +5546,8 @@ fun ActiveWorkoutScreen(
     onFinish: () -> Unit,
     onDiscard: () -> Unit,
     onSaveNotes: (String, (Boolean) -> Unit) -> Unit = { _, callback -> callback(false) },
+    onRestSettingsClick: () -> Unit = {},
+    restSoundEnabled: Boolean = true,
 ) {
     val haptics = LocalHapticFeedback.current
     var showFinishConfirm by remember { mutableStateOf(false) }
@@ -5624,6 +5668,8 @@ fun ActiveWorkoutScreen(
                     onAdjustRestTimer = onAdjustRestTimer,
                     onSkipRestTimer = onSkipRestTimer,
                     onRestartRestTimer = onRestartRestTimer,
+                    onRestSettingsClick = onRestSettingsClick,
+                    restSoundEnabled = restSoundEnabled,
                     onFinishClick = {
                         saveNotesThen {
                             if (uiState.needsFinishConfirmation) showFinishConfirm = true else onFinish()
@@ -5930,6 +5976,8 @@ private fun ActiveWorkoutBottomBar(
     onSkipRestTimer: () -> Unit,
     onRestartRestTimer: (Int) -> Unit,
     onFinishClick: () -> Unit,
+    onRestSettingsClick: () -> Unit,
+    restSoundEnabled: Boolean,
 ) {
     val clock by clockState
     Surface(
@@ -5971,6 +6019,13 @@ private fun ActiveWorkoutBottomBar(
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.primary,
                             )
+
+                            IconButton(onClick = onRestSettingsClick, modifier = Modifier.size(48.dp).semantics {
+                                contentDescription = "Rustmelding: " + (uiState.restNotificationStatus?.label(restSoundEnabled) ?: "Status laden") + ". Instellingen openen"
+                            }) {
+                                Icon(if (uiState.restNotificationStatus?.let { it.appAllowed && it.channelAllowed && it.channelSound && it.systemSound && restSoundEnabled } == true)
+                                    Icons.Rounded.Notifications else Icons.Rounded.NotificationsOff, contentDescription = null)
+                            }
                             Text(
                                 activeLoggedSetCountText(uiState.visibleLoggedSetCount),
                                 style = MaterialTheme.typography.bodySmall,
@@ -6029,6 +6084,13 @@ private fun ActiveWorkoutBottomBar(
                 }
             } else {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+                            IconButton(onClick = onRestSettingsClick, modifier = Modifier.size(48.dp).semantics {
+                                contentDescription = "Rustmelding: " + (uiState.restNotificationStatus?.label(restSoundEnabled) ?: "Status laden") + ". Instellingen openen"
+                            }) {
+                                Icon(if (uiState.restNotificationStatus?.let { it.appAllowed && it.channelAllowed && it.channelSound && it.systemSound && restSoundEnabled } == true)
+                                    Icons.Rounded.Notifications else Icons.Rounded.NotificationsOff, contentDescription = null)
+                            }
+
                     Text(
                         activeWorkoutBottomBarStatusText(clock.restTimerSeconds),
                         style = MaterialTheme.typography.labelMedium,

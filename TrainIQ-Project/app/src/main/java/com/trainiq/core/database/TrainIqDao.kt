@@ -555,11 +555,21 @@ interface TrainIqDao {
     @Query("SELECT * FROM active_workout_sessions ORDER BY updatedAt DESC LIMIT 1")
     suspend fun readActiveWorkoutSessionsForExport(): List<ActiveWorkoutSessionEntity>
 
+    @Query("""UPDATE active_workout_sessions SET restTimerHandled = 1,
+        restTimerEndsAt = NULL, restTimerTotalSeconds = 0
+        WHERE sessionId = :sessionId AND restTimerHandled = 0
+        AND (restTimerGeneration = :generation OR (restTimerGeneration IS NULL AND :generation = 'legacy:' || sessionId))""")
+    suspend fun claimWorkoutRestTimer(sessionId: Long, generation: String): Int
+
     @Query(
         """
         UPDATE active_workout_sessions
         SET restTimerEndsAt = :endsAt,
             restTimerTotalSeconds = :totalSeconds,
+            restTimerGeneration = :generation,
+            restTimerElapsedDeadline = :elapsedDeadline,
+            restTimerBootId = :bootId,
+            restTimerHandled = :handled,
             updatedAt = :updatedAt
         WHERE sessionId = :sessionId
         """,
@@ -569,6 +579,10 @@ interface TrainIqDao {
         endsAt: Long?,
         totalSeconds: Int,
         updatedAt: Long,
+        generation: String? = null,
+        elapsedDeadline: Long? = null,
+        bootId: String? = null,
+        handled: Boolean = false,
     )
 
     @Query("UPDATE active_workout_sessions SET updatedAt = :updatedAt WHERE sessionId = :sessionId")
@@ -759,6 +773,10 @@ interface TrainIqDao {
         restTimerEndsAt: Long?,
         restTimerTotalSeconds: Int,
         updatedAt: Long,
+        restTimerGeneration: String? = null,
+        restTimerElapsedDeadline: Long? = null,
+        restTimerBootId: String? = null,
+        restTimerHandled: Boolean = false,
     ) {
         insertActiveWorkoutDrafts(listOf(draft))
         insertActiveWorkoutSets(listOf(set))
@@ -782,6 +800,10 @@ interface TrainIqDao {
             endsAt = restTimerEndsAt,
             totalSeconds = restTimerTotalSeconds,
             updatedAt = updatedAt,
+            generation = restTimerGeneration,
+            elapsedDeadline = restTimerElapsedDeadline,
+            bootId = restTimerBootId,
+            handled = restTimerHandled,
         )
     }
 

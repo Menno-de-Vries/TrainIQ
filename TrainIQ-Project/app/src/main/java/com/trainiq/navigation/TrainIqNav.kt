@@ -179,8 +179,13 @@ fun TrainIqApp(
     onboardingPreferences: OnboardingPreferences = OnboardingPreferences(completed = true, guidedTourCompleted = true),
     markGuidedTourCompleted: () -> Unit = {},
     markGuidedTourSkipped: () -> Unit = {},
+    restTargetDayId: Long? = null,
+    onRestTargetConsumed: () -> Unit = {},
 ) {
     val navController = rememberNavController()
+    LaunchedEffect(restTargetDayId) {
+        restTargetDayId?.let { navController.navigateToActiveWorkout(it); onRestTargetConsumed() }
+    }
     val haptics = LocalHapticFeedback.current
     val configuration = LocalConfiguration.current
     val items = topLevelDestinations()
