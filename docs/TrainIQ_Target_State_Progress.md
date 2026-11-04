@@ -1,5 +1,12 @@
 # TrainIQ Target-State Progress
 
+## 2026-11-04 Actieve training, setfeiten en rustmelding
+
+- Gerichte uitvoering van het door de gebruiker gekozen gecombineerde ontwerp: rustigere setkaarten, twee veilige logacties, feitelijke voltooide-setanalyse en RPE-dekking, reactieve trainingsafronding en een duurzame rustmelding op basis van Room 21.
+- Afzonderlijke taken, finale fixwave en lifecycle-addendum N1 zijn onafhankelijk goedgekeurd. Volledige JVM-baseline van 1.052 tests plus gerichte N1-tests (34), 24 unieke native hoofdcases en gerichte portret-, landschap- en N1-herstelproeven zijn groen; lint: 0 errors, 27 bestaande warnings. Echte notificationtap, gewone procesdood en geaccepteerd sessieherstel zijn op de eigen emulator vastgelegd.
+- Het [uitvoerings- en verificatieverslag](qa/TrainIQ_Active_Workout_2026-11-04.md) onderscheidt de bronversies, herbruikbare lokale gates, werkelijk uitgevoerde meldings-/procesherstelproeven en niet-uitgevoerde hardware-, audio- en menselijke toegankelijkheidscontroles.
+- Dit werkt alleen de actieve-trainingcomponent van QA-2026-05-09-011 bij. De bredere routine- en toegankelijkheidsacceptatie blijft partially-done; geen globale alignmentscore of andere P0/P1/P2/P3-status wordt opnieuw vastgesteld. Geen push, PR, release of live AI-proef.
+
 ## 2026-10-22 Food scan and workout clarity
 
 - Bounded food boundary and workout-control improvements target Blueprint §§7–9.

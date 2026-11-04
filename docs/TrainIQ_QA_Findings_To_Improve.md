@@ -1,5 +1,13 @@
 # TrainIQ QA Findings To Improve
 
+## 2026-11-04 Actieve training — gekozen ontwerp en betrouwbare setfeedback
+
+- Status: done voor deze gerichte uitvoering en de gereproduceerde randgevallen; finale fixwave en N1 zijn onafhankelijk Approved. Hardware-, OS- en menselijke toegankelijkheidsgrenzen blijven afzonderlijk vermeld.
+- Scope: setkaarten, knop-/tekstuitlijning, veilig opnieuw toevoegen van de laatst voltooide set, gedeelde setfeiten voor scherm/lokale fallback/AI-request, late opgeslagen debrief en rustgeluid/notificatie met Room 21.
+- De vier herstelpunten zijn opgelost: foutknoppen zijn bereikbaar, notificaties hervatten alleen de bedoelde bestaande sessie, nulrust blijft 0 seconden en correctie opent één typepopup. Enkelvoud, correctiecontext en drie nieuwe lintwaarschuwingen zijn afgewerkt. N1 borgt na acceptatie herstel van dezelfde sessie na timerwijziging; verse verouderde meldingen blijven geweigerd.
+- Bestanden, exacte lokale commands, bron-/APKherkomst, primaire bronnen, runtimebewijs en resterende grenzen staan in het [gerichte verificatieverslag](qa/TrainIQ_Active_Workout_2026-11-04.md). Er is geen live AI-, fysiek audio-, TalkBack- of performancebewijs geclaimd.
+- QA-2026-05-09-011 blijft als bredere bevinding partially-done. Deze uitvoering sluit geen niet-onderzochte routinegeneratie- of overige appbevindingen.
+
 ## 2026-10-22 Food scan and active workout
 
 Status: done for the reproduced scoped defects; the original live scan incident

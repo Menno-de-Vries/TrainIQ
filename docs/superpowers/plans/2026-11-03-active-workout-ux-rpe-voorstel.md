@@ -1,6 +1,8 @@
-# Actieve training: UI/UX en betrouwbare inspanningsfeedback — uitvoeringsvoorstel
+# Actieve training: UI/UX en betrouwbare inspanningsfeedback — ontwerp en uitvoering
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. De gebruiker heeft onderdelen van de drie beelden gecombineerd; die richting is hieronder uitgewerkt in een nieuw beeld ter beoordeling. Appcode is niet gewijzigd.
+> **Uitvoeringsstatus, 4 november 2026:** de gebruiker heeft het gecombineerde ontwerp en de uitvoering met subagents goedgekeurd. Taken 1–4 en 6 zijn gebouwd en afzonderlijk beoordeeld; de optionele RPE-invoer uit taak 5 is niet gekozen. De gezamenlijke eindcontrole vond vier functionele randgevallen en drie afwerkingspunten; die en het gerichte lifecycle-addendum N1 zijn opgelost en onafhankelijk goedgekeurd. Het definitieve bewijs staat in [het verificatieverslag](../../qa/TrainIQ_Active_Workout_2026-11-04.md). De oorspronkelijke ontwerpfase hieronder blijft als geschiedenis herkenbaar.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. De oorspronkelijke ontwerpfase combineerde drie beelden en wijzigde toen geen appcode. De goedgekeurde uitvoering is inmiddels afgerond; zie de status en het verificatieverslag hierboven.
 
 **Goal:** De bestaande actieve training herkenbaar behouden, bediening en witruimte verbeteren en feedback aantoonbaar baseren op werkelijk uitgevoerde sets.
 
@@ -14,14 +16,14 @@
 
 ## Doel, scope en grenzen
 
-- Oplevering van deze ronde: onderbouwde bevindingen, drie Image Gen-voorstellen en dit uitvoerbare plan.
-- Latere uitvoering: actieve setkaarten, knoppen, tekstuitlijning, ruimte, rust/afrondbediening en de feitelijke set → samenvatting → feedback-keten.
+- Ontwerpfase: onderbouwde bevindingen, drie Image Gen-voorstellen en dit uitvoerbare plan.
+- Goedgekeurde uitvoering: actieve setkaarten, knoppen, tekstuitlijning, ruimte, rust/afrondbediening en de feitelijke set → samenvatting → feedback-keten.
 - Bestaande stijl, settypen, supersets, notities, undo, corrigeren/verwijderen/opnieuw loggen, navigatie, herstel en afrondbevestiging behouden.
 - Geen voedingswerk, algemene herbouw van `WorkoutScreen.kt`, nieuwe trainingsmodus, providers, permissions, dependencies, release of remote handelingen.
 - Optionele RPE-invoer is een voorgestelde productkeuze, geen bestaande functie of al gekozen eis. De drie beeldvoorstellen behouden de huidige drie invoervelden.
 - Aanvulling na gebruikersfeedback: twee aangrenzende logacties en een kort geluid plus Android-notificatie bij afgelopen rust. De slaapwekker dient als patroon; haar dagelijkse schema, herhaalalarm, fullscreenpresentatie en aanhoudende audio vallen buiten deze uitbreiding.
 
-## Vastgestelde bevindingen
+## Vastgestelde bevindingen bij de oorspronkelijke nulmeting
 
 ### Layout: code plus opgeslagen beelden
 
@@ -128,7 +130,7 @@ Rekenvoorbeeld voor acceptatie: warming-up 20 × 10/RPE 3, normale set 60 × 8/R
 - Architectuur, Room-authoriteit, gerichte transacties, nullable AI-invoer en generation-fences behouden.
 - Schema-backed JSON, huidige Gemini 2.5 Flash en bestaande opt-in/timeout/retry/privacygrenzen behouden; geen live betaalde AI-call nodig voor testen.
 - Bestaande nulwaarde voor onbekende RPE in opslag handhaven; in analyse en AI `null`. De RPE-kern vraagt geen nieuwe opslagvelden. De nieuwe duurzame rustmelding vraagt wel een gerichte Room-migratie voor timeridentiteit en monotone tijd; behandel dit als een afzonderlijke taak met migratiebewijs.
-- Alleen lokale tests/evidence; geen CI, upload, push, PR, release, signing, nieuwe emulator-download of toestelpermission-wijziging.
+- Alleen lokale tests/evidence; geen CI, upload, push, PR, release, signing, nieuwe emulator-download of permissiewijziging op een onbekend of persoonlijk gebruikerstoestel. De bestaande POST_NOTIFICATIONS-aanvraag via de normale appdialoog op het eigen veilige agentprofiel valt binnen de goedgekeurde meldingsproef; er komt geen nieuwe manifestpermissie bij.
 - Ontwerpbeelden en testuitvoer blijven ongetrackt. Alleen gerichte bron-/test-/documentpaden committen bij latere uitvoering.
 
 ## Review Focus
@@ -146,11 +148,11 @@ Rekenvoorbeeld voor acceptatie: warming-up 20 × 10/RPE 3, normale set 60 × 8/R
 
 **Produceert:** bovenstaande pure snapshotinterface voor taak 2/3; bestaande per-oefening-effort blijft herbruikbaar.
 
-- [ ] Leg eerst fixtures vast voor het rekenvoorbeeld, uitsluitend onbekende RPE, incomplete/gemengde settypen, nul externe kg en geen sets. Test ook historische onvoltooide rows, historie zonder NORMAL/BACK_OFF en ontbrekende oefenmetadata. Assert de exacte waarden, dezelfde selectiebasis aan beide kanten en behoud van setdetails.
-- [ ] Voer de nieuwe gerichte JVM-tests uit en bevestig de bedoelde ontbrekende/onjuiste contracten voordat de implementatie wijzigt.
-- [ ] Bouw de snapshot en gebruik die in afronden, refresh en relevante schermtotalen. Bereken spiergroepclaims uit de uitgevoerde exercise-ID's; geen niet-uitgevoerde planonderdelen als prestatie presenteren.
-- [ ] Breid fake-requestdekking uit: corrigeer een set, verwijder een set, rond af en controleer de daadwerkelijk geserialiseerde request op de overblijvende waarden en expliciete nulls. Gebruik bestaande repository-fixtures.
-- [ ] Controleer unit- en repositorycontracten; maak een gericht lokaal commit na review van de staged diff.
+- [x] Leg eerst fixtures vast voor het rekenvoorbeeld, uitsluitend onbekende RPE, incomplete/gemengde settypen, nul externe kg en geen sets. Test ook historische onvoltooide rows, historie zonder NORMAL/BACK_OFF en ontbrekende oefenmetadata. Assert de exacte waarden, dezelfde selectiebasis aan beide kanten en behoud van setdetails.
+- [x] Voer de nieuwe gerichte JVM-tests uit en bevestig de bedoelde ontbrekende/onjuiste contracten voordat de implementatie wijzigt.
+- [x] Bouw de snapshot en gebruik die in afronden, refresh en relevante schermtotalen. Bereken spiergroepclaims uit de uitgevoerde exercise-ID's; geen niet-uitgevoerde planonderdelen als prestatie presenteren.
+- [x] Breid fake-requestdekking uit: corrigeer een set, verwijder een set, rond af en controleer de daadwerkelijk geserialiseerde request op de overblijvende waarden en expliciete nulls. Gebruik bestaande repository-fixtures. **Uitvoering:** gerichte bestaande storage-/adapterhelpers en geserialiseerd transportcontract, aangevuld met echte Room-finish-/mutatieproeven; geen nieuwe volledige repositoryfixture.
+- [x] Controleer unit- en repositorycontracten; maak een gericht lokaal commit na review van de staged diff.
 
 ## Taak 2 — Lokale feedback die de gegevens verklaart
 
@@ -158,11 +160,11 @@ Rekenvoorbeeld voor acceptatie: warming-up 20 × 10/RPE 3, normale set 60 × 8/R
 
 **Consumeert:** `WorkoutAnalysisSnapshot`; bestaande vergelijkingsbasis/historie en foutcontext. **Produceert:** lokale `WorkoutDebrief` plus AI-request met dezelfde feiten en gelabelde selectiebasis.
 
-- [ ] Leg tests vast voor onbekende RPE, gedeeltelijke dekking, bekende hoge/lage RPE en geen vergelijkbare historie. Assert feiten en reden voor terughoudend advies, geen onbewezen verhoog-/herstelclaims.
-- [ ] Laat de lokale samenvatting set-/reptellingen, werkelijk volume en RPE-dekking gebruiken. Verwijder de vaste RPE<8-tekst als automatische verklaring van deze training; onbekende inspanning duidelijk benoemen.
-- [ ] Houd de bestaande conservatieve progressieregel intact waar gegevens ontbreken, maar maak de reden zichtbaar. Geen nieuwe universele trainingsdrempels uitvinden.
-- [ ] Houd notities buiten de AI-invoer; behoud schema, budget, opt-in, cancellation en fallback. Test aan fake transportgrens, niet met live accountgegevens.
-- [ ] Draai gerichte fallback/request-/progressietests en commit uitsluitend deze afgeronde taak.
+- [x] Leg tests vast voor onbekende RPE, gedeeltelijke dekking, bekende hoge/lage RPE en geen vergelijkbare historie. Assert feiten en reden voor terughoudend advies, geen onbewezen verhoog-/herstelclaims.
+- [x] Laat de lokale samenvatting set-/reptellingen, werkelijk volume en RPE-dekking gebruiken. Verwijder de vaste RPE<8-tekst als automatische verklaring van deze training; onbekende inspanning duidelijk benoemen.
+- [x] Houd de bestaande conservatieve progressieregel intact waar gegevens ontbreken, maar maak de reden zichtbaar. Geen nieuwe universele trainingsdrempels uitvinden.
+- [x] Houd notities buiten de AI-invoer; behoud schema, budget, opt-in, cancellation en fallback. Test aan fake transportgrens, niet met live accountgegevens.
+- [x] Draai gerichte fallback/request-/progressietests en commit uitsluitend deze afgeronde taak.
 
 ## Taak 3 — Betrouwbaar verversen van de debrief
 
@@ -170,11 +172,11 @@ Rekenvoorbeeld voor acceptatie: warming-up 20 × 10/RPE 3, normale set 60 × 8/R
 
 **Interfacevoorstel:** `observeWorkoutCompletionSummary(sessionId: Long): Flow<WorkoutCompletionSummary?>`; collectie alleen tijdens relevante schermlifecycle. Geen onbegrensd pollwerk of hele-app-state-mirror op de hot path.
 
-- [ ] Fake klok/Flow-test: eerst lokale samenvatting, AI pas op seconde 15, daarna tweede sessie. Assert zichtbaar nieuw resultaat en geen oud resultaat op nieuwe sessie.
-- [ ] Vervang de beperkte polling door gerichte observatie en behoud cancellation/revision-/generation-beveiliging. Een geforceerde reload mag opgeslagen training niet dupliceren.
-- [ ] Maak lokaal resultaat en eventuele bestaande fout-/retrycontext begrijpelijk. Claim `wacht op verbinding` of `bezig` alleen met echte workerstatus; nieuwe persistente jobstatus valt buiten dit voorstel tenzij implementatie die noodzakelijk maakt.
-- [ ] Behoud de bestaande automatische terugkeerpolicy; de seconde-15-proef houdt het scherm volgens de bestaande interactiepolicy open. Veranderen van de terugkeerpolicy is een afzonderlijke ontwerpkeuze.
-- [ ] Verifieer offline/timeout, retry, delete en late oude generatie; commit de afgeronde wijziging.
+- [x] Fake klok/Flow-test: eerst lokale samenvatting, AI pas op seconde 15, daarna tweede sessie. Assert zichtbaar nieuw resultaat en geen oud resultaat op nieuwe sessie.
+- [x] Vervang de beperkte polling door gerichte observatie en behoud cancellation/revision-/generation-beveiliging. Een geforceerde reload mag opgeslagen training niet dupliceren.
+- [x] Maak lokaal resultaat en eventuele bestaande fout-/retrycontext begrijpelijk. Claim `wacht op verbinding` of `bezig` alleen met echte workerstatus; nieuwe persistente jobstatus valt buiten dit voorstel tenzij implementatie die noodzakelijk maakt.
+- [x] Behoud de bestaande automatische terugkeerpolicy; de seconde-15-proef houdt het scherm volgens de bestaande interactiepolicy open. Veranderen van de terugkeerpolicy is een afzonderlijke ontwerpkeuze.
+- [x] Verifieer offline/timeout, retry, delete en late oude generatie; commit de afgeronde wijziging.
 
 ## Taak 4 — Gekozen visuele verfijning uitvoeren
 
@@ -182,14 +184,16 @@ Rekenvoorbeeld voor acceptatie: warming-up 20 × 10/RPE 3, normale set 60 × 8/R
 
 **Consumeert:** gekozen beeld plus bovenstaande maatvoering. **Produceert:** dezelfde werkende trainingsflow met rustiger hiërarchie en passende groottes.
 
-- [ ] Maak representatieve previews/fixtures voor current, completed, fout, rust actief/inactief en lange naam. Eerst actuele nulmeting op veilige emulator zodra ADB werkt.
-- [ ] Pas gericht de binnenruimte, knop-/veldgeometrie en groepsuitlijning aan. Verplaats bediening alleen volgens de gekozen richting; behoud discoverability en bestaande bevestigingen.
-- [ ] Implementeer de twee aangrenzende logacties met bovenstaand append-contract. Test geen vorige set, correctiemodus, onopgeslagen gewijzigde invoer, opslagfout, snelle afwisselende taps en undo. Bestaande `relogSet` blijft een afzonderlijke menuactie met haar eigen duidelijke tekst.
-- [ ] Leg op semantiek/geometrie vast: minimaal 48 dp targets, geen overlap, gelijke invoerveldhoogtes waar op één rij, bereikbare log-/afrondactie en correcte IME-focus. Test geen broncodevorm of exacte decoratieve pixels.
-- [ ] Inspecteer 360 × 640 en 360 × 800, font 1,3/1,5, light/dark met actuele set, rust en IME. Kies alleen combinaties met uniek risico; voeg tablet/landscape toe als gewijzigde layout daarop doorwerkt. Bekijk scherm én UI-tree; TalkBack/Switch Access apart vastleggen.
-- [ ] Verifieer notes, settype, supersets, correctie/verwijderen/relog, undo, achtergrond/terugkeer, herstel en eenmaal afronden voor de werkelijk geraakte grenzen. Commit alleen de complete visuele wijziging.
+- [x] Maak representatieve previews/fixtures voor current, completed, fout, rust actief/inactief en lange naam. Eerst actuele nulmeting op veilige emulator zodra ADB werkt.
+- [x] Pas gericht de binnenruimte, knop-/veldgeometrie en groepsuitlijning aan. Verplaats bediening alleen volgens de gekozen richting; behoud discoverability en bestaande bevestigingen.
+- [x] Implementeer de twee aangrenzende logacties met bovenstaand append-contract. Test geen vorige set, correctiemodus, onopgeslagen gewijzigde invoer, opslagfout, snelle afwisselende taps en undo. Bestaande `relogSet` blijft een afzonderlijke menuactie met haar eigen duidelijke tekst.
+- [x] Leg op semantiek/geometrie vast: minimaal 48 dp targets, geen overlap, gelijke invoerveldhoogtes waar op één rij, bereikbare log-/afrondactie en correcte IME-focus. Test geen broncodevorm of exacte decoratieve pixels.
+- [x] Inspecteer 360 × 640 en 360 × 800, font 1,3/1,5, light/dark met actuele set, rust en IME. Kies alleen combinaties met uniek risico; voeg tablet/landscape toe als gewijzigde layout daarop doorwerkt. Bekijk scherm én UI-tree; TalkBack/Switch Access apart vastleggen. **Uitvoering:** de gekozen compacte/grote-letter-, 390 × 844-, liggende en brede varianten zijn vastgelegd; een afzonderlijke 360 × 800-proef en menselijk TalkBack zijn niet uitgevoerd.
+- [x] Verifieer notes, settype, supersets, correctie/verwijderen/relog, undo, achtergrond/terugkeer, herstel en eenmaal afronden voor de werkelijk geraakte grenzen. Commit alleen de complete visuele wijziging.
 
 ## Taak 5 — Optionele RPE-invoer, uitsluitend als gekozen
+
+**Niet geselecteerd en niet uitgevoerd.** De onderstaande checklist is het bewaarde optionele voorstel; zij vormt geen open implementatietaak.
 
 **Paden:** `SetInputDraft`/`commitActiveSetDraft` en set-log-/correctieroute in `WorkoutScreen.kt`; bestaande opgeslagen draft/RPE-velden en mappers controleren; `WorkoutInputValidationTest.kt`, `ActiveWorkoutSessionMutationsTest.kt`, `ActiveWorkoutSetActionsInstrumentedTest.kt`, `WorkoutEffortRequestTest.kt`.
 
@@ -228,12 +232,12 @@ Rekenvoorbeeld voor acceptatie: warming-up 20 × 10/RPE 3, normale set 60 × 8/R
 
 **Stappen en bewijs:**
 
-- [ ] Domeintests vóór implementatie: deadline/partial seconds, tijdwijziging, nieuwe generatie, dubbele UI/receiver-callback, stale callback >30 s, iedere cancelroute, geluidskeuze en opslagfout/rollback. Fake schedulerfout en onderbroken planning bewijzen herplanning bij de volgende geschikte start zonder oude timers te laten herleven.
-- [ ] Room-contract en migratietests: v20 → volgende versie, veilige oude defaults, transactionele claim, herstel met dezelfde boot en invalidatie na reboot, finish/discard zonder herlevende timer.
-- [ ] Bouw de kleine scheduler/receiver/notificatie-adapters en koppel alle timerwijzigingen aan persist-resultaten. Laat UI-expiry de deadline niet onafhankelijk wissen vóór gedeelde completion.
-- [ ] Veilig agentprofiel: werkelijke OS-planning/melding, foreground zonder dubbel geluid, achtergrond/lock/processtop, correcte sessie openen, melding geweigerd, kanaal gedempt, per-meldingstilte bij uitgeschakeld appgeluid, exact access geweigerd/ingetrokken, twee korte timers onder Doze en reboot/stale afhandeling. Controleer dat kanaalkeuzes intact blijven.
-- [ ] Voeg nieuwe gerichte `WorkoutRestTimerPolicyTest`, `WorkoutRestTimerDeliveryTest` en `WorkoutRestTimerNotificationInstrumentedTest` toe; hergebruik `RestTimerTest` en actieve-workouttests. Controleer met bestaande slaapregressies dat IDs, kanaal en planning van slaap intact blijven.
-- [ ] Scheid bewijs van notificatieflags/AudioService van werkelijk hoorbaar beluisterde output. Geen fysiek hoorbare werking claimen op basis van alleen emulatorinspectie. Voer lokale baseline plus geraakte Android- en Room-migratiegates uit; commit apart na scoped review.
+- [x] Domeintests vóór implementatie: deadline/partial seconds, tijdwijziging, nieuwe generatie, dubbele UI/receiver-callback, stale callback >30 s, iedere cancelroute, geluidskeuze en opslagfout/rollback. Fake schedulerfout en onderbroken planning bewijzen herplanning bij de volgende geschikte start zonder oude timers te laten herleven.
+- [x] Room-contract en migratietests: v20 → volgende versie, veilige oude defaults, transactionele claim, herstel met dezelfde boot en invalidatie na reboot, finish/discard zonder herlevende timer.
+- [x] Bouw de kleine scheduler/receiver/notificatie-adapters en koppel alle timerwijzigingen aan persist-resultaten. Laat UI-expiry de deadline niet onafhankelijk wissen vóór gedeelde completion.
+- [ ] Veilig agentprofiel: werkelijke OS-planning/melding, foreground zonder dubbel geluid, achtergrond/lock/processtop, correcte sessie openen, melding geweigerd, kanaal gedempt, per-meldingstilte bij uitgeschakeld appgeluid, exact access geweigerd/ingetrokken, twee korte timers onder Doze en reboot/stale afhandeling. Controleer dat kanaalkeuzes intact blijven. **Gedeeltelijke OS-matrix:** echte melding, toestemming, procesdood, typed openen en herstel zijn bewezen; lock/Doze/exact-revocation/reboot en fysiek luisteren zijn niet uitgevoerd. Zie het verslag voor laaggebonden beleidsbewijs en beperkingen.
+- [x] Voeg nieuwe gerichte `WorkoutRestTimerPolicyTest`, `WorkoutRestTimerDeliveryTest` en `WorkoutRestTimerNotificationInstrumentedTest` toe; hergebruik `RestTimerTest` en actieve-workouttests. Controleer met bestaande slaapregressies dat IDs, kanaal en planning van slaap intact blijven.
+- [x] Scheid bewijs van notificatieflags/AudioService van werkelijk hoorbaar beluisterde output. Geen fysiek hoorbare werking claimen op basis van alleen emulatorinspectie. Voer lokale baseline plus geraakte Android- en Room-migratiegates uit; commit apart na scoped review.
 
 ## Verificatie en oplevercriteria bij latere uitvoering
 
@@ -252,7 +256,7 @@ Alle opdrachten vanuit `TrainIQ-Project/`, met lokaal ontdekte JBR/SDK. Geen `cl
 
 Acceptatie: herkenbare bestaande opzet; consistente ruimte/uitlijning; bereikbare acties bij grote tekst/IME; twee veilige logacties; werkelijk uitgevoerde actuele sets als bron; onbekende inspanning blijft onbekend; dezelfde feiten in UI/lokaal/AI; late feedback ververst; rustmelding volgens de werkelijk beschikbare toestemmingen; geen dataverlies of dubbele save. De rusttimeruitbreiding verandert opslag, dus voer aanvullend de gerichte migratietests en `:app:generateDebugRoomMigrationChainVerificationMarker` na connected migratiebewijs uit. Geen release- of fysieke prestatieclaim onderdeel van dit werk.
 
-## Bewijsstatus van deze planronde
+## Historische bewijsstatus van de ontwerpfase op 3 november
 
 - Uitgevoerd: repository/code-/testbrononderzoek, onafhankelijke bevindingen van drie agents, relevante richtlijnen gelezen, historische screenshots werkelijk bekeken, drie afzonderlijke Image Gen-calls met echte beeldreferenties, visuele beoordeling van de voorstellen.
 - Onafhankelijke planreview: QA-agent controleerde scope, bewijsstatus en uitvoerbaarheid. Aanvullingen voor symmetrische historische vergelijking en de afzonderlijke metadata-adapter zijn verwerkt.
@@ -260,7 +264,16 @@ Acceptatie: herkenbare bestaande opzet; consistente ruimte/uitlijning; bereikbar
 - Beperking: ADB kon zijn daemon niet starten. Product Design-contextpreflight kon niet als Python-script draaien omdat Python niet op PATH staat; de verwachte opgeslagen context bestaat niet. Repo en bekeken lokale beelden zijn de gebruikte ontwerpbron.
 - Vervolgonderzoek op `77b3ac7`: Terra/high onderzocht logactiebetekenis en geometrie; Sol/high onderzocht rust/slaap, OS-planning en officiële Android-grenzen. Eén gecombineerd Image Gen-beeld met drie echte referentiebeelden en exacte prompt is toegevoegd. Nog steeds geen appcode, build of runtime gewijzigd.
 - Delta-eindcontrole door QA/Terra/high: herstel tussen opslag en planning en per-notificatie stilte zonder kanaaloverschrijving zijn verwerkt.
-- Open beoordeling: het gecombineerde beeld en de expliciete betekenis van de twee logknoppen. Optionele RPE-invoer is nog niet gekozen; de eerder geplande kernverbeteringen blijven onderdeel van de opdracht.
+- Destijds nog open: beoordeling van het gecombineerde beeld en de expliciete betekenis van de twee logknoppen. De gebruiker heeft deze vervolgens goedgekeurd en uitvoering gevraagd. Optionele RPE-invoer is niet geselecteerd; ontbrekende RPE blijft onbekend.
+
+## Uitvoering afgerond op 4 november
+
+- Gebruikersakkoord: ‘Ja zo down bro lets go gebruik sub agents’. Uitvoeringsbasis `2e0fd9b`, primaire checkout/branch behouden. Taken 1–4 en 6 gereed; taak 5 niet gekozen.
+- De gedeelde snapshot en feitelijke fallback/request, reactieve afronding, gekozen hybride layout met veilig append en Room 21-rustmelding zijn gebouwd en gericht beoordeeld. De finale wave en het begrensde N1-addendum zijn Approved. Normale start blijft start-capabel, notification-open blijft resume-only en geaccepteerd sessieherstel verdraagt timerwijzigingen.
+- Volledige JVM-baseline: 1.052 tests/146 suites groen; daarna N1-gerichte 34 tests/7 suites groen. Laatste lint: 0 errors en 27 bestaande warnings. Native: 24 unieke hoofdcases via 23 + 1; foutknoppen in portret/landschap en twee N1-cases gericht groen. Migratie: 16 gevallen plus echte marker 21 in APK geverifieerd; ongewijzigde gates niet onnodig herhaald.
+- Gerichte fake-transport/adaptercontracten bewijzen actuele requestfeiten; dit is geen volledige nieuw opgebouwde repositoryfixture of live AI-call. Werkelijke Room-finish/error/retry, notification-open, generatiebarrières en procesherstel leveren aanvullend nativebewijs.
+- Actuele compacte, donkere, grote-letter-, IME-, liggende en 900 × 640-beelden plus UI-trees zijn daadwerkelijk bekeken. Een afzonderlijke 360 × 800-variant is niet herhaald: geen unieke feedback boven de gekozen matrix. Menselijk TalkBack/Switch Access en fysieke audio/performance blijven ongeclaimd. De onvolledige OS-matrix is hierboven bewust niet als afgevinkt voorgesteld.
+- Alleen lokale bron-, test- en documentcommits. Exact bewijs, compatibiliteitskeuzes, tussenfailures en grenzen staan in het verificatieverslag. Eigen emulatorinstellingen zijn hersteld en de emulator is gestopt; de AVD is behouden.
 
 ## Bronnen en toepassing
 
