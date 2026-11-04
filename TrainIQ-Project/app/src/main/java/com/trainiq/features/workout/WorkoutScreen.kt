@@ -551,6 +551,7 @@ internal fun GeneratedRoutine.withRemovedExercise(dayIndex: Int, exerciseIndex: 
 
 @HiltViewModel
 class WorkoutViewModel @Inject constructor(
+    savedStateHandle: androidx.lifecycle.SavedStateHandle,
     observeWorkoutOverviewUseCase: ObserveWorkoutOverviewUseCase,
     private val preferencesRepository: UserPreferencesRepository,
     private val observeExerciseHistoryUseCase: ObserveExerciseHistoryUseCase,
@@ -599,6 +600,7 @@ class WorkoutViewModel @Inject constructor(
     private val moveRoutineSetUseCase: MoveRoutineSetUseCase,
     private val diagnosticsTracker: DiagnosticsTracker,
 ) : ViewModel() {
+    private val notificationResume = WorkoutNotificationResumeState(savedStateHandle, resumeWorkoutFromRestNotificationUseCase)
     private val observations = WorkoutObservations(viewModelScope, observeWorkoutOverviewUseCase::invoke,
         { preferencesRepository.workoutFeedbackPreferences })
     private val overview: StateFlow<WorkoutOverview?> = observations.overview.map { it?.getOrNull() }
@@ -782,7 +784,7 @@ class WorkoutViewModel @Inject constructor(
             _message.value = null
             _pendingStartConflict.value = null
             val started = runUserActionCatching {
-                if (restOpenRequest != null) resumeWorkoutFromRestNotificationUseCase(restOpenRequest)
+                if (restOpenRequest != null) notificationResume.resume(restOpenRequest)
                 else startWorkoutSessionUseCase(dayId)
             }
                 .getOrElse {

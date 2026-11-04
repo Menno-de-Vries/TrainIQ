@@ -188,13 +188,18 @@ class StartWorkoutSessionUseCase @Inject constructor(private val repository: Wor
 }
 
 class ResumeWorkoutFromRestNotificationUseCase @Inject constructor(private val repository: WorkoutRepository) {
-    suspend operator fun invoke(request: com.trainiq.domain.workout.WorkoutRestOpenRequest): StartedWorkoutSession? {
+    suspend operator fun invoke(
+        request: com.trainiq.domain.workout.WorkoutRestOpenRequest,
+        acceptedStartedAt: Long? = null,
+    ): StartedWorkoutSession? {
         val workout = repository.getWorkoutDay(request.dayId) ?: return null
         val suggestions = repository.getProgressionSuggestions(request.dayId)
         // This final fresh, transaction-backed read is the only session access. Never call start
         // after an earlier identity check: finish/discard/replacement may commit during the reads above.
         val session = repository.getCurrentActiveWorkoutSession()?.takeIf {
-            it.dayId == request.dayId && it.sessionId == request.sessionId && it.restTimerGeneration == request.generation
+            it.dayId == request.dayId && it.sessionId == request.sessionId &&
+                if (acceptedStartedAt == null) it.restTimerGeneration == request.generation
+                else it.startedAt == acceptedStartedAt
         } ?: return null
         return StartedWorkoutSession(workout, suggestions, session)
     }

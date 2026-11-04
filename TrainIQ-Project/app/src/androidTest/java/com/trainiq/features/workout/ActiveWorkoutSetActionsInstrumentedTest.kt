@@ -255,6 +255,39 @@ class ActiveWorkoutSetActionsInstrumentedTest {
                 androidx.test.espresso.Espresso.pressBack()
                 compose.onNodeWithContentDescription("Rusttimer overslaan", useUnmergedTree = true).performClick()
                 compose.waitUntil(10_000) { runBlocking { database.dao().readActiveWorkoutSessionsForExport().single().restTimerGeneration == null } }
+                scenario.recreate()
+                compose.waitForText("Bench Press")
+                compose.onNodeWithText("Bench Press", useUnmergedTree = true).assertIsDisplayed()
+                assertEquals(12L, runBlocking { database.dao().readActiveWorkoutSessionsForExport().single().sessionId })
+                assertEquals(1, runBlocking { database.dao().readActiveWorkoutSetsForExport().size })
+                compose.onNodeWithContentDescription("Set toevoegen aan Bench Press").performScrollTo().performClick()
+                compose.onNodeWithText("Opnieuw loggen").performScrollTo().performClick()
+                waitForSetCount(2)
+                val next = runBlocking { database.dao().readActiveWorkoutSessionsForExport().single() }
+                assertTrue(next.restTimerGeneration != null && next.restTimerGeneration != "notification-open")
+                scenario.recreate()
+                compose.waitForText("Bench Press")
+                compose.onNodeWithContentDescription("Rusttimer overslaan", useUnmergedTree = true).assertIsDisplayed()
+                compose.onNodeWithContentDescription("Open geschiedenis voor Bench Press").performScrollTo().performClick()
+                compose.waitForText("Terug")
+                compose.onNodeWithText("Terug").assertIsDisplayed().performClick()
+                compose.waitForText("Actieve training")
+                val afterReturn = runBlocking { database.dao().readActiveWorkoutSessionsForExport().single() }
+                assertEquals(next.sessionId, afterReturn.sessionId)
+                assertEquals(next.startedAt, afterReturn.startedAt)
+                assertEquals(next.restTimerGeneration, afterReturn.restTimerGeneration)
+                assertEquals(next.restTimerElapsedDeadline, afterReturn.restTimerElapsedDeadline)
+                assertEquals(2, runBlocking { database.dao().readActiveWorkoutSetsForExport().size })
+                // A new delivery of the now-stale original intent must not reopen from Home.
+                compose.onNodeWithContentDescription("Terug naar Training").performScrollTo().performClick()
+                compose.waitUntil(30_000) { compose.onAllNodes((hasText("Training") or hasContentDescription("Training")) and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
+                notifications.notification(timer, silent = true).contentIntent.send()
+                val rejectedAt = android.os.SystemClock.elapsedRealtime()
+                compose.waitUntil(5_000) {
+                    compose.onAllNodesWithText("Actieve training").assertCountEquals(0)
+                    android.os.SystemClock.elapsedRealtime() - rejectedAt >= 1_000
+                }
+                assertEquals(next.restTimerGeneration, runBlocking { database.dao().readActiveWorkoutSessionsForExport().single().restTimerGeneration })
             }
         } finally {
             runBlocking { preferences.setRestTimerSoundEnabled(originalSound) }
