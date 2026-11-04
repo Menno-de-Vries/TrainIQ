@@ -5,7 +5,7 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
+import androidx.core.net.toUri
 import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
@@ -51,7 +51,7 @@ class WorkoutRestTimerScheduler @Inject constructor(
 
     private fun pending(identity: WorkoutRestTimerIdentity) = PendingIntent.getBroadcast(context, RestNotificationId,
         Intent(context, WorkoutRestTimerReceiver::class.java).setAction(RestTimerAction)
-            .setData(Uri.parse("trainiq-rest://${identity.sessionId}/${identity.generation}"))
+            .setData("trainiq-rest://${identity.sessionId}/${identity.generation}".toUri())
             .putExtra(RestSessionExtra, identity.sessionId).putExtra(RestGenerationExtra, identity.generation),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 }

@@ -133,7 +133,11 @@ data object Settings
 data object SleepPreparation
 
 @Serializable
-data class ActiveWorkout(val dayId: Long)
+data class ActiveWorkout(val dayId: Long, val restSessionId: Long? = null, val restGeneration: String? = null) {
+    fun restOpenRequest(): com.trainiq.domain.workout.WorkoutRestOpenRequest? =
+        if (restSessionId == null && restGeneration == null) null
+        else com.trainiq.domain.workout.WorkoutRestOpenRequest(dayId, restSessionId ?: -1, restGeneration.orEmpty())
+}
 
 @Serializable
 data class WorkoutProcessing(val dayId: Long)
@@ -179,12 +183,15 @@ fun TrainIqApp(
     onboardingPreferences: OnboardingPreferences = OnboardingPreferences(completed = true, guidedTourCompleted = true),
     markGuidedTourCompleted: () -> Unit = {},
     markGuidedTourSkipped: () -> Unit = {},
-    restTargetDayId: Long? = null,
-    onRestTargetConsumed: () -> Unit = {},
+    restTarget: com.trainiq.domain.workout.WorkoutRestOpenRequest? = null,
+    onRestTargetConsumed: (com.trainiq.domain.workout.WorkoutRestOpenRequest) -> Unit = {},
 ) {
     val navController = rememberNavController()
-    LaunchedEffect(restTargetDayId) {
-        restTargetDayId?.let { navController.navigateToActiveWorkout(it); onRestTargetConsumed() }
+    LaunchedEffect(restTarget) {
+        restTarget?.let {
+            navController.navigate(ActiveWorkout(it.dayId, it.sessionId, it.generation)) { launchSingleTop = true }
+            onRestTargetConsumed(it)
+        }
     }
     val haptics = LocalHapticFeedback.current
     val configuration = LocalConfiguration.current
@@ -915,6 +922,7 @@ private fun TrainIqNavHost(
             val route = entry.toRoute<ActiveWorkout>()
             ActiveWorkoutRoute(
                 dayId = route.dayId,
+                restOpenRequest = route.restOpenRequest(),
                 onBack = { navController.popBackStack() },
                 onSwitchActiveWorkout = { nextDayId -> navController.navigateToActiveWorkout(nextDayId) },
                 onOpenExerciseHistory = { exerciseId -> navController.navigate(ExerciseHistory(exerciseId)) },

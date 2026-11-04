@@ -16,6 +16,7 @@ import com.trainiq.domain.model.WorkoutExercisePlan
 import com.trainiq.domain.model.WorkoutLoggingSummary
 import com.trainiq.domain.model.WorkoutOverview
 import com.trainiq.domain.repository.WorkoutRepository
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
@@ -25,6 +26,37 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 class StartWorkoutSessionUseCaseTest {
+    @Test
+    fun notificationResumeChecksFreshIdentityAfterSuspendingReadsAndNeverStarts() = runTest {
+        val day = WorkoutDay(7, 1, "Push", 0, listOf(WorkoutExercisePlan(
+            id = 4, exercise = Exercise(3, "Bench", "Chest", "Barbell"), targetSets = 1,
+            repRange = "5", restSeconds = 90)))
+        val original = ActiveWorkoutSession(sessionId = 12, dayId = 7, routineId = 1,
+            startedAt = 1, updatedAt = 1, loggedSets = emptyList(), drafts = emptyMap(),
+            collapsedExerciseIds = emptySet(), restTimerEndsAt = 1000, restTimerTotalSeconds = 90,
+            restTimerGeneration = "original")
+        val request = com.trainiq.domain.workout.WorkoutRestOpenRequest(7, 12, "original")
+        for (successor in listOf(null, original.copy(sessionId = 99), original.copy(dayId = 8),
+            original.copy(restTimerGeneration = "replacement"))) {
+            val repository = FakeWorkoutRepository(day, session = original)
+            val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+            repository.beforeSuggestions = { entered.complete(Unit); release.await() }
+            val pending = async { ResumeWorkoutFromRestNotificationUseCase(repository)(request) }
+            entered.await()
+            repository.session = successor
+            release.complete(Unit)
+            assertEquals(null, pending.await())
+            assertEquals(0, repository.startCalls)
+            assertEquals(successor, repository.session)
+        }
+        val valid = FakeWorkoutRepository(day, session = original)
+        assertEquals(original, ResumeWorkoutFromRestNotificationUseCase(valid)(request)?.session)
+        assertEquals(0, valid.startCalls)
+        StartWorkoutSessionUseCase(valid)(7)
+        assertEquals(1, valid.startCalls)
+    }
+
     @Test
     fun failsBeforeRepositoryStartWhenWorkoutHasNoExercises() = runTest {
         val repository = FakeWorkoutRepository(
@@ -123,20 +155,23 @@ class StartWorkoutSessionUseCaseTest {
 private class FakeWorkoutRepository(
     private val day: WorkoutDay?,
     private val suggestions: List<ProgressionSuggestion> = emptyList(),
-    private val session: ActiveWorkoutSession? = null,
+    var session: ActiveWorkoutSession? = null,
 ) : WorkoutRepository {
     override suspend fun refreshWorkoutDebrief(sessionId: Long, generationId: String?) =
         com.trainiq.domain.repository.WorkoutDebriefRefreshOutcome.SESSION_MISSING
+    var beforeSuggestions: suspend () -> Unit = {}
+    var startCalls = 0
     var startedDrafts: Map<Long, ActiveWorkoutSetDraft> = emptyMap()
     var discardedSessionId: Long? = null
 
     override suspend fun getWorkoutDay(dayId: Long): WorkoutDay? = day
-    override suspend fun getProgressionSuggestions(dayId: Long): List<ProgressionSuggestion> = suggestions
+    override suspend fun getProgressionSuggestions(dayId: Long): List<ProgressionSuggestion> { beforeSuggestions(); return suggestions }
     override suspend fun getCurrentActiveWorkoutSession(): ActiveWorkoutSession? = session
     override suspend fun getOrStartActiveWorkoutSession(
         dayId: Long,
         initialDrafts: Map<Long, ActiveWorkoutSetDraft>,
     ): ActiveWorkoutSession {
+        startCalls++
         startedDrafts = initialDrafts
         return requireNotNull(session)
     }

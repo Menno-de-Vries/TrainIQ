@@ -31,6 +31,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.isPopup
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.lifecycle.Lifecycle
@@ -58,6 +59,9 @@ import com.trainiq.testing.resetTrainIqAndroidTestDatabase
 import com.trainiq.testing.trainIqAndroidTestDatabase
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -67,6 +71,157 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class ActiveWorkoutSetActionsInstrumentedTest {
+    @Test
+    fun correctionProgressExplainsSavedSetsAndClearsAfterSave() {
+        runBlocking {
+            val original = database.dao().readActiveWorkoutSetsForExport().single()
+            database.dao().insertActiveWorkoutSets(listOf(original.copy(id = 2, orderIndex = 1)))
+            database.dao().insertRoutineSets(listOf(
+                RoutineSetEntity(id = 11, workoutExerciseId = 4, orderIndex = 1, setType = "NORMAL", targetReps = 5),
+                RoutineSetEntity(id = 12, workoutExerciseId = 4, orderIndex = 2, setType = "NORMAL", targetReps = 5),
+            ))
+        }
+        ActivityScenario.launch(MainActivity::class.java).use {
+            val training = (hasText("Training") or hasContentDescription("Training")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(training).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(training).performClick()
+            compose.waitForText("QA Upper")
+            compose.onNodeWithText("Training starten").performClick()
+            compose.waitForText("Actieve training")
+            compose.onAllNodes(hasContentDescription("Gelogde set corrigeren"))[0].performScrollTo().performClick()
+            compose.waitForText("1 set in correctie")
+            compose.onNodeWithText("1 oefening · Voortgang 1/3 · 1 set in correctie", useUnmergedTree = true).assertExists()
+            compose.onNodeWithText("2 sets gelogd", useUnmergedTree = true).assertExists()
+            compose.onNode(hasContentDescription("1 set in correctie", substring = true)).assertExists()
+            compose.onNode(hasContentDescription("volume 800 kg", substring = true)).assertExists()
+            capture("correction-progress")
+            compose.onNodeWithText("Wijzig loggen").performScrollTo().performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("1 set in correctie", substring = true).fetchSemanticsNodes().isEmpty() }
+            compose.onNodeWithText("1 oefening · Voortgang 2/3", useUnmergedTree = true).assertExists()
+            assertEquals(2, runBlocking { database.dao().readActiveWorkoutSetsForExport().size })
+        }
+    }
+
+    @Test
+    fun delayedNotificationResumeCannotRecreateFinishedDiscardedOrReplacedRoomSession() = runBlocking {
+        val entry = dagger.hilt.android.EntryPointAccessors.fromApplication(context,
+            com.trainiq.core.testing.TrainIqDebugDatabaseEntryPoint::class.java)
+        val repository = com.trainiq.data.repository.RoomWorkoutRepository(entry.dataCoordinator())
+        UserPreferencesRepository(context).setAiEnabled(false)
+        for (mutation in listOf("finish", "discard", "replace")) {
+            seedActiveWorkout()
+            val active = database.dao().readActiveWorkoutSessionsForExport().single()
+            database.dao().insertActiveWorkoutSessions(listOf(active.copy(restTimerGeneration = "notification-$mutation")))
+            withTimeout(10_000) { while (repository.getWorkoutDay(7) == null) kotlinx.coroutines.delay(10) }
+            val request = com.trainiq.domain.workout.WorkoutRestOpenRequest(7, 12, "notification-$mutation")
+            val entered = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            val delayed = object : com.trainiq.domain.repository.WorkoutRepository by repository {
+                override suspend fun getProgressionSuggestions(dayId: Long): List<com.trainiq.domain.model.ProgressionSuggestion> {
+                    entered.complete(Unit)
+                    release.await()
+                    return repository.getProgressionSuggestions(dayId)
+                }
+            }
+            val pending = async { com.trainiq.domain.usecase.ResumeWorkoutFromRestNotificationUseCase(delayed)(request) }
+            withTimeout(10_000) { entered.await() }
+            val draft = database.dao().readWorkoutSessionsForExport().single()
+            if (mutation == "finish") {
+                database.dao().finishActiveWorkoutSession(draft.copy(completed = true, status = "COMPLETED"),
+                    database.dao().readPerformedExercisesForExport(), listOf(com.trainiq.core.database.WorkoutSetEntity(
+                        id = 1, sessionId = 12, exerciseId = 3, performedExerciseId = 21,
+                        weight = 80.0, reps = 5, rpe = 8.0,
+                    )), activeSessionId = 12)
+            } else database.dao().discardActiveWorkoutSession(12)
+            if (mutation == "replace") {
+                database.dao().insertWorkoutSession(draft.copy(id = 99))
+                database.dao().insertActiveWorkoutSessions(listOf(active.copy(sessionId = 99, restTimerGeneration = "replacement")))
+            }
+            val sessionsAfterMutation = database.dao().readWorkoutSessionsForExport()
+            val activeAfterMutation = database.dao().readActiveWorkoutSessionsForExport()
+            release.complete(Unit)
+            assertEquals(null, withTimeout(10_000) { pending.await() })
+            assertEquals(sessionsAfterMutation, database.dao().readWorkoutSessionsForExport())
+            assertEquals(activeAfterMutation, database.dao().readActiveWorkoutSessionsForExport())
+        }
+    }
+
+    @Test
+    fun appendExplicitZeroRestKeepsPerformanceWithoutPlanningAnotherAlarm() {
+        runBlocking {
+            val set = database.dao().readActiveWorkoutSetsForExport().single()
+            database.dao().insertActiveWorkoutSets(listOf(set.copy(restSeconds = 0, setType = "BACK_OFF")))
+            database.openHelper.writableDatabase.execSQL("UPDATE workout_exercises SET restSeconds = 90")
+        }
+        try { ActivityScenario.launch(MainActivity::class.java).use {
+            val training = (hasText("Training") or hasContentDescription("Training")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(training).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(training).performClick()
+            compose.waitForText("QA Upper")
+            compose.onNodeWithText("Training starten").performClick()
+            compose.waitForText("Actieve training")
+            compose.onNodeWithContentDescription("Set toevoegen aan Bench Press").performScrollTo().performClick()
+            compose.onNodeWithText("Opnieuw loggen").performScrollTo().performClick()
+            waitForSetCount(2)
+            val sets = runBlocking { database.dao().readActiveWorkoutSetsForExport().sortedBy { it.orderIndex } }
+            assertEquals(0, sets.last().restSeconds)
+            assertEquals(sets.first().weight, sets.last().weight, 0.0)
+            assertEquals(sets.first().reps, sets.last().reps)
+            assertEquals("BACK_OFF", sets.last().setType)
+            assertEquals(0.0, sets.last().rpe, 0.0)
+            assertEquals(null, sets.last().repsInReserve)
+            val active = runBlocking { database.dao().readActiveWorkoutSessionsForExport().single() }
+            assertEquals(null, active.restTimerGeneration)
+            assertEquals(null, active.restTimerElapsedDeadline)
+            assertEquals(0, pendingRestAlarmCount())
+        } } finally {
+            val active = runBlocking { database.dao().readActiveWorkoutSessionsForExport().firstOrNull() }
+            active?.restTimerGeneration?.let { generation ->
+                com.trainiq.core.workout.WorkoutRestTimerScheduler(context,
+                    com.trainiq.core.workout.WorkoutRestTimerNotifications(context, UserPreferencesRepository(context)))
+                    .cancel(com.trainiq.domain.workout.WorkoutRestTimerIdentity(active.sessionId, generation))
+            }
+        }
+    }
+
+    @Test
+    fun correctionTypePickerHasOnePopupFromBothEntrancesAndPersistsSameSet() {
+        ActivityScenario.launch(MainActivity::class.java).use {
+            val training = (hasText("Training") or hasContentDescription("Training")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(training).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(training).performClick()
+            compose.waitForText("QA Upper")
+            compose.onNodeWithText("Training starten").performClick()
+            compose.waitForText("Actieve training")
+            compose.onNodeWithContentDescription("Gelogde set corrigeren").performScrollTo().performClick()
+            compose.waitForText("Wijzig loggen")
+            compose.onNodeWithContentDescription("Settype wijzigen").performScrollTo().performClick()
+            compose.onAllNodes(isPopup()).assertCountEquals(1)
+            compose.onAllNodesWithText("Warm-up").assertCountEquals(1)
+            compose.onNodeWithText("Warm-up").performClick()
+            compose.onAllNodes(isPopup()).assertCountEquals(0)
+            assertEquals("NORMAL", readActiveWorkoutSet().setType)
+            compose.onNodeWithContentDescription("Gelogde set acties").performScrollTo().performClick()
+            compose.onNodeWithText("Settype wijzigen").performClick()
+            compose.onAllNodes(isPopup()).assertCountEquals(1)
+            compose.onAllNodesWithText("Back-off").assertCountEquals(1)
+            compose.onNodeWithText("Back-off").performClick()
+            compose.onAllNodes(isPopup()).assertCountEquals(0)
+            compose.onNodeWithText("Wijzig loggen").performScrollTo().performClick()
+            compose.waitUntil(10_000) { readActiveWorkoutSet().setType == "BACK_OFF" }
+            assertEquals(1L, readActiveWorkoutSet().id)
+            assertEquals(1, runBlocking { database.dao().readActiveWorkoutSetsForExport().size })
+            compose.onNodeWithContentDescription("Set toevoegen aan Bench Press").performScrollTo().performClick()
+            compose.onNodeWithContentDescription("Settype wijzigen").performScrollTo().performClick()
+            compose.onAllNodes(isPopup()).assertCountEquals(1)
+            compose.onNodeWithText("Warm-up").performClick()
+            compose.onAllNodes(isPopup()).assertCountEquals(0)
+            compose.onNodeWithText("Extra set loggen").performScrollTo().performClick()
+            waitForSetCount(2)
+            assertEquals("WARM_UP", runBlocking { database.dao().readActiveWorkoutSetsForExport().maxBy { it.orderIndex }.setType })
+        }
+    }
+
     @Test
     fun restNotificationOpensValidatedTypedSessionAndBellShowsRealPreferences() {
         val clock = com.trainiq.core.workout.AndroidWorkoutRestTimerClock(context)
@@ -82,10 +237,13 @@ class ActiveWorkoutSetActionsInstrumentedTest {
                 restTimerElapsedDeadline = timer.elapsedDeadline, restTimerBootId = timer.bootId)))
         }
         try {
-            ActivityScenario.launch(MainActivity::class.java).use {
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 compose.waitUntil(30_000) { compose.onAllNodes((hasText("Training") or hasContentDescription("Training")) and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
                 notifications.notification(timer, silent = true).contentIntent.send()
                 compose.waitForText("Actieve training")
+                scenario.recreate()
+                compose.waitForText("Actieve training")
+                assertEquals("notification-open", runBlocking { database.dao().readActiveWorkoutSessionsForExport().single().restTimerGeneration })
                 compose.onNodeWithText("Bench Press", useUnmergedTree = true).assertIsDisplayed()
                 val bell = hasContentDescription("Rustmelding:", substring = true) and hasClickAction()
                 compose.onNode(bell).assertIsDisplayed().performClick()
@@ -109,6 +267,16 @@ class ActiveWorkoutSetActionsInstrumentedTest {
 
     private lateinit var context: Context
     private lateinit var database: TrainIqDatabase
+
+    @org.junit.After
+    fun cancelFixtureRestAlarm() {
+        val active = runBlocking { database.dao().readActiveWorkoutSessionsForExport().firstOrNull() }
+        active?.restTimerGeneration?.let { generation ->
+            com.trainiq.core.workout.WorkoutRestTimerScheduler(context,
+                com.trainiq.core.workout.WorkoutRestTimerNotifications(context, UserPreferencesRepository(context)))
+                .cancel(com.trainiq.domain.workout.WorkoutRestTimerIdentity(active.sessionId, generation))
+        }
+    }
 
     @Test
     fun appendPreviousSetIsDisabledDuringCorrectionAndKeepsOriginal() {
@@ -815,8 +983,8 @@ class ActiveWorkoutSetActionsInstrumentedTest {
                 compose.waitUntil(30_000) { compose.onAllNodes(training).fetchSemanticsNodes().isNotEmpty() }
                 compose.onNode(training).performClick()
                 compose.waitForText("QA Upper")
-                compose.onNodeWithText("Training starten").performClick()
-                compose.waitForText("Actieve training")
+                compose.onNodeWithText("Training starten").performScrollTo().assertIsDisplayed().performTouchInput { click() }
+                compose.waitUntil(30_000) { compose.onAllNodes(hasContentDescription("Rusttimer overslaan"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
                 compose.waitUntil(10_000) { pendingRestAlarms() == 1 }
                 val before = runBlocking { database.dao().readActiveWorkoutSessionsForExport().single() }
                 // The existing draft is updated by Room's upsert; active-session timer writes remain permitted.
@@ -837,15 +1005,19 @@ class ActiveWorkoutSetActionsInstrumentedTest {
                 assertEquals(1, pendingRestAlarms())
                 assertEquals(1, runBlocking { database.dao().readActiveWorkoutSetsForExport().size })
                 assertEquals(false, runBlocking { database.dao().readWorkoutSessionsForExport().single().completed })
-                // Platform Back also returns to the still-active session from the error route.
-                androidx.test.espresso.Espresso.pressBack()
-                compose.waitForText("Actieve training")
+                compose.onAllNodesWithText("Training verwerken...").assertCountEquals(0)
+                compose.onNodeWithText("Opnieuw proberen").performScrollTo().assertIsDisplayed()
+                compose.onNodeWithText("Terug naar training").performScrollTo().assertIsDisplayed().performTouchInput { click() }
+                compose.waitUntil(30_000) { compose.onAllNodes(hasContentDescription("Rusttimer overslaan"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
                 compose.onNodeWithContentDescription("Rusttimer overslaan", useUnmergedTree = true).assertIsDisplayed()
 
-                sql.execSQL("DROP TRIGGER IF EXISTS codex_test_fail_workout_finish")
                 compose.onNodeWithContentDescription("Training afronden").performClick()
                 compose.waitForText("Training afronden?")
                 compose.onNodeWithText("Opslaan").performClick()
+                compose.waitForText("Training afronden is mislukt. Probeer opnieuw.")
+                capture("finish-error-actions")
+                sql.execSQL("DROP TRIGGER IF EXISTS codex_test_fail_workout_finish")
+                compose.onNodeWithText("Opnieuw proberen").performScrollTo().assertIsDisplayed().performTouchInput { click() }
                 compose.waitForText("Voltooid")
                 assertEquals(0, runBlocking { database.dao().readActiveWorkoutSessionsForExport().size })
                 assertEquals(true, runBlocking { database.dao().readWorkoutSessionsForExport().single().completed })
@@ -1061,6 +1233,13 @@ class ActiveWorkoutSetActionsInstrumentedTest {
             )
         }
         return action
+    }
+
+    private fun pendingRestAlarmCount(): Int {
+        val descriptor = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
+            .executeShellCommand("dumpsys alarm")
+        val dump = android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { it.readBytes().decodeToString() }
+        return Regex("ELAPSED_WAKEUP #\\d+: Alarm\\{[^\\n]* com\\.trainiq\\}").findAll(dump).count()
     }
 
     private fun capture(state: String) {

@@ -23,6 +23,22 @@ import org.junit.Test
 
 class WorkoutInputValidationTest {
     @Test
+    fun progressLabelPluralizesExercisesAndExplainsCorrectionWithoutChangingSavedCount() {
+        val plan = WorkoutExercisePlan(id = 4, exercise = Exercise(3, "Bench", "Chest", "Barbell"),
+            targetSets = 3, repRange = "5", restSeconds = 90)
+        for (count in 0..2) {
+            val state = ActiveWorkoutUiState(workout = WorkoutDay(7, 1, "Push", 0, List(count) { plan }),
+                completedSets = 1, targetSets = 3, correctingSets = 1, totalVolume = 800.0)
+            assertEquals("$count ${if (count == 1) "oefening" else "oefeningen"} · Voortgang 1/3 · 1 set in correctie",
+                activeWorkoutProgressText(state))
+            assertTrue(activeWorkoutStickyStatusContentDescription(state, 1, 0).contains("1 set in correctie"))
+            assertFalse(activeWorkoutProgressText(state.copy(correctingSets = 0)).contains("correctie"))
+            assertEquals(800.0, state.totalVolume, 0.0)
+        }
+        assertTrue(activeWorkoutProgressText(ActiveWorkoutUiState(correctingSets = 2)).endsWith("2 sets in correctie"))
+    }
+
+    @Test
     fun `active workout clock derives elapsed and remaining time from persisted timestamps`() {
         val clock = activeWorkoutClockUiState(
             startedAt = 1_000L,

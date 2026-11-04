@@ -338,6 +338,7 @@ data class ActiveWorkoutUiState(
     val exerciseRestOverrides: Map<Long, Int> = emptyMap(),
     val collapsedExerciseIds: Set<Long> = emptySet(),
     val completedSets: Int = 0,
+    val correctingSets: Int = 0,
     val targetSets: Int = 0,
     val totalVolume: Double = 0.0,
     val canFinish: Boolean = false,
@@ -557,6 +558,7 @@ class WorkoutViewModel @Inject constructor(
     private val getWorkoutDayUseCase: GetWorkoutDayUseCase,
     private val getProgressionSuggestionsUseCase: GetProgressionSuggestionsUseCase,
     private val startWorkoutSessionUseCase: StartWorkoutSessionUseCase,
+    private val resumeWorkoutFromRestNotificationUseCase: com.trainiq.domain.usecase.ResumeWorkoutFromRestNotificationUseCase,
     private val getCurrentActiveWorkoutSessionUseCase: GetCurrentActiveWorkoutSessionUseCase,
     private val updateActiveWorkoutDraftUseCase: UpdateActiveWorkoutDraftUseCase,
     private val updateActiveWorkoutNotesUseCase: UpdateActiveWorkoutNotesUseCase,
@@ -693,6 +695,7 @@ class WorkoutViewModel @Inject constructor(
         state.copy(
             pendingCorrectionSetIds = pendingCorrectionSetIds,
             completedSets = (state.completedSets - correctionCount).coerceAtLeast(0),
+            correctingSets = correctionCount,
         )
     }.combine(_debrief) { state, debrief ->
         state.copy(debrief = debrief)
@@ -772,14 +775,21 @@ class WorkoutViewModel @Inject constructor(
     internal fun observeExerciseHistory(exerciseId: Long) =
         ExerciseHistoryObservation(viewModelScope) { observeExerciseHistoryUseCase(exerciseId) }
 
-    fun loadWorkout(dayId: Long) {
+    fun loadWorkout(dayId: Long, restOpenRequest: WorkoutRestOpenRequest? = null) {
         diagnosticsTracker.state("Workout:Start")
         launchAction {
             _debrief.value = null
             _message.value = null
             _pendingStartConflict.value = null
-            val started = runUserActionCatching { startWorkoutSessionUseCase(dayId) }
+            val started = runUserActionCatching {
+                if (restOpenRequest != null) resumeWorkoutFromRestNotificationUseCase(restOpenRequest)
+                else startWorkoutSessionUseCase(dayId)
+            }
                 .getOrElse {
+                    if (restOpenRequest != null) {
+                        _message.value = "Deze rustmelding hoort niet meer bij de actieve training."
+                        return@launchAction
+                    }
                     val currentActive = getCurrentActiveWorkoutSessionUseCase()
                     if (currentActive != null && currentActive.dayId != dayId) {
                         _pendingStartConflict.value = ActiveWorkoutStartConflict(
@@ -791,6 +801,13 @@ class WorkoutViewModel @Inject constructor(
                     } else {
                         _message.value = it.message ?: ActiveWorkoutStartBlockedMessage
                     }
+                    return@launchAction
+                } ?: run {
+                    _activeWorkout.value = null
+                    _activeSession.value = null
+                    _loggedSetsThisSession.value = emptyMap()
+                    _drafts.value = emptyMap()
+                    _message.value = "Deze rustmelding hoort niet meer bij de actieve training."
                     return@launchAction
                 }
             val workout = started.workout
@@ -1018,7 +1035,7 @@ class WorkoutViewModel @Inject constructor(
         val key = plan.activeKey
         if (key in _pendingCorrectionSetIds.value || key in _pendingLoggingExerciseIds.value) return false
         val lastSet = _loggedSetsThisSession.value[key].orEmpty().lastOrNull { it.completed } ?: return false
-        return logSet(plan, lastSet.toDraft())
+        return logSet(plan, lastSet.toDraft().copy(restSeconds = lastSet.restSeconds.toString()))
     }
     fun saveWorkoutNotes(notes: String, onSaved: (Boolean) -> Unit) {
         viewModelScope.launch {
@@ -4857,6 +4874,7 @@ private fun EmptyExerciseHistoryState() {
 @Composable
 fun ActiveWorkoutRoute(
     dayId: Long,
+    restOpenRequest: WorkoutRestOpenRequest? = null,
     onBack: () -> Unit,
     onSwitchActiveWorkout: (Long) -> Unit,
     onOpenExerciseHistory: (Long) -> Unit,
@@ -4898,7 +4916,7 @@ fun ActiveWorkoutRoute(
     )
 
 
-    LaunchedEffect(dayId) { viewModel.loadWorkout(dayId) }
+    LaunchedEffect(dayId, restOpenRequest) { viewModel.loadWorkout(dayId, restOpenRequest) }
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
@@ -5020,6 +5038,7 @@ private fun WorkoutProcessingScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .consumeWindowInsets(padding)
+                .verticalScroll(rememberScrollState())
                 .padding(MaterialTheme.spacing.large),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -5030,14 +5049,15 @@ private fun WorkoutProcessingScreen(
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    if (workoutProcessingUsesShimmerLoading()) {
+                    if (uiState !is WorkoutProcessingUiState.Error && workoutProcessingUsesShimmerLoading()) {
                         repeat(3) {
                             ShimmerCardPlaceholder(lineCount = 1, modifier = Modifier.fillMaxWidth())
                         }
-                    } else {
+                    } else if (uiState !is WorkoutProcessingUiState.Error) {
                         CircularProgressIndicator()
                     }
-                    Text("Training verwerken...", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+                    Text(if (uiState is WorkoutProcessingUiState.Error) "Afronden niet gelukt" else "Training verwerken...",
+                        style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
                     Text(
                         when (uiState) {
                             WorkoutProcessingUiState.SavingWorkout -> "Workout opslaan"
@@ -5048,7 +5068,7 @@ private fun WorkoutProcessingScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.trainIqColors.mutedText,
                     )
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (uiState !is WorkoutProcessingUiState.Error) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         AppChip(label = "Opslaan", accent = MaterialTheme.colorScheme.primary)
                         AppChip(label = "AI-terugblik", accent = MaterialTheme.colorScheme.secondary)
                         AppChip(label = "Lokale fallback", accent = MaterialTheme.colorScheme.tertiary)
@@ -5961,7 +5981,7 @@ private fun ActiveWorkoutSessionSummary(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("${uiState.workout?.exercises?.size ?: 0} oefeningen · ${uiState.completedSets}/${uiState.targetSets} sets", style = MaterialTheme.typography.bodySmall)
+                Text(activeWorkoutProgressText(uiState), style = MaterialTheme.typography.bodySmall)
                 Text(activeWorkoutBottomBarStatusText(clock.restTimerSeconds), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
             AppLinearProgress(progress = progress, accent = MaterialTheme.trainIqColors.amber)
@@ -6948,9 +6968,11 @@ private fun SetRow(
                         DropdownMenuItem(text = { Text("Settype wijzigen") }, onClick = { actionsExpanded = false; setTypeMenuExpanded = true })
                         DropdownMenuItem(text = { Text("Set verwijderen") }, onClick = { actionsExpanded = false; showDeleteConfirm = true })
                     }
-                    DropdownMenu(expanded = setTypeMenuExpanded, onDismissRequest = { setTypeMenuExpanded = false }) {
-                        SetType.entries.forEach { type ->
-                            DropdownMenuItem(text = { Text(type.label()) }, onClick = { setTypeMenuExpanded = false; onSetTypeSelected(type) })
+                    if (!isInputExpanded) {
+                        DropdownMenu(expanded = setTypeMenuExpanded, onDismissRequest = { setTypeMenuExpanded = false }) {
+                            SetType.entries.forEach { type ->
+                                DropdownMenuItem(text = { Text(type.label()) }, onClick = { setTypeMenuExpanded = false; onSetTypeSelected(type) })
+                            }
                         }
                     }
                 }
@@ -7451,8 +7473,17 @@ internal fun activeWorkoutStickyStatusContentDescription(
     val restText = if (restTimerSeconds > 0) formatTimer(restTimerSeconds) else "klaar"
     return "Actieve training: tijd ${formatTimer(elapsedSeconds.toInt())}, " +
         "sets ${uiState.completedSets} van ${uiState.targetSets}, " +
+        uiState.correctingSets.takeIf { it > 0 }?.let { "${correctionProgressText(it)}, " }.orEmpty() +
         "volume ${uiState.totalVolume.toInt()} kg, rust $restText."
 }
+
+internal fun activeWorkoutProgressText(uiState: ActiveWorkoutUiState): String {
+    val exercises = uiState.workout?.exercises?.size ?: 0
+    return "$exercises ${if (exercises == 1) "oefening" else "oefeningen"} · Voortgang ${uiState.completedSets}/${uiState.targetSets}" +
+        uiState.correctingSets.takeIf { it > 0 }?.let { " · ${correctionProgressText(it)}" }.orEmpty()
+}
+
+private fun correctionProgressText(count: Int) = "$count ${if (count == 1) "set" else "sets"} in correctie"
 
 internal val ActiveWorkoutUiState.visibleLoggedSetCount: Int
     get() = loggedSetsThisSession.values.sumOf { it.size }

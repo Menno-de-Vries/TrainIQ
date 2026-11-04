@@ -55,7 +55,7 @@ class MainActivity : ComponentActivity() {
             val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
             val telemetryOptIn by viewModel.telemetryOptIn.collectAsStateWithLifecycle()
             val onboardingState by viewModel.onboardingState.collectAsStateWithLifecycle()
-            val restTargetDayId by viewModel.restTargetDayId.collectAsStateWithLifecycle()
+            val restTarget by viewModel.restTarget.collectAsStateWithLifecycle()
             val windowSizeClass = calculateWindowSizeClass(this)
             LaunchedEffect(telemetryOptIn) {
                 telemetryExporter.setUserOptIn(telemetryOptIn)
@@ -69,7 +69,7 @@ class MainActivity : ComponentActivity() {
                         onboardingPreferences = onboardingState.preferences,
                         markGuidedTourCompleted = viewModel::markGuidedTourCompleted,
                         markGuidedTourSkipped = viewModel::markGuidedTourSkipped,
-                        restTargetDayId = restTargetDayId,
+                        restTarget = restTarget,
                         onRestTargetConsumed = viewModel::consumeRestTarget,
                     )
                 }

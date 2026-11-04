@@ -2,7 +2,7 @@ package com.trainiq.features.workout
 
 import android.Manifest
 import android.content.Intent
-import android.net.Uri
+import androidx.core.net.toUri
 import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -49,7 +49,7 @@ internal fun WorkoutRestSettingsSheet(status: WorkoutRestNotificationStatus?, so
                 .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName).putExtra(Settings.EXTRA_CHANNEL_ID, RestChannelId)) },
                 modifier = Modifier.fillMaxWidth()) { Text("Geluid en meldingen beheren") }
             if (!exactAllowed && Build.VERSION.SDK_INT >= 31) TextButton(onClick = {
-                settings.launch(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}")))
+                settings.launch(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, "package:${context.packageName}".toUri()))
             }, modifier = Modifier.fillMaxWidth()) { Text("Nauwkeurige planning beheren") }
         }
     }
