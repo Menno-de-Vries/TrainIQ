@@ -713,7 +713,7 @@ fun NutritionScreen(
     var selectedTab by rememberSaveable { mutableStateOf(0) }
     val nutritionListState = nutritionListStates[selectedTab.coerceIn(nutritionListStates.indices)]
     var aiResultTarget by rememberSaveable { mutableStateOf(NutritionScanDestination.MealDraft) }
-    var showAddToMealActions by remember { mutableStateOf(false) }
+    var showAddToMealActions by rememberSaveable { mutableStateOf(false) }
     var showSectionMenu by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<PendingNutritionDelete?>(null) }
     var addToMealType by rememberSaveable { mutableStateOf(MealType.BREAKFAST) }
@@ -777,6 +777,10 @@ fun NutritionScreen(
     var mealNotes by rememberSaveable { mutableStateOf("") }
     var editingMealId by rememberSaveable { mutableStateOf<Long?>(null) }
     var mealSaveId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var lastMealSaveId by rememberSaveable { mutableStateOf(0L) }
+    var originalMealTimestamp by rememberSaveable { mutableStateOf<Long?>(null) }
+    var mealDraftGeneration by rememberSaveable { mutableStateOf(0L) }
+    var pendingMealDestination by rememberSaveable { mutableStateOf<MealDraftDestination?>(null) }
     val mealDraft = rememberSaveable(saver = MealDraftSaver) { mutableStateListOf<EditableMealEntryRequest>() }
     var mealErrors by remember { mutableStateOf(MealFieldErrors()) }
 
@@ -801,25 +805,93 @@ fun NutritionScreen(
     val isAiSaving = !aiSaveProgress.isFinished || isAiBatchPending
 
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
-    fun cancelMealEdit() {
-        focusManager.clearFocus(force = true)
+    fun resetMealDraft() {
         editingMealId = null
         mealSaveId = null
+        originalMealTimestamp = null
         mealName = ""
         mealNotes = ""
         mealDateOverride = null
+        mealType = MealType.LUNCH
         mealDraft.clear()
         mealErrors = MealFieldErrors()
+        hasAddToMealTarget = false
+        addToMealType = MealType.BREAKFAST
+        pendingAiMealType = null
+        barcodeMealTarget = null
+        aiContext = ""
+        pendingMealDestination = null
+        showAddToMealActions = false
+        mealDraftGeneration++
+    }
+    fun cancelMealEdit() {
+        if (isMealSaving) return
+        focusManager.clearFocus(force = true)
+        resetMealDraft()
         selectedTab = 0
     }
     BackHandler(enabled = selectedTab == 1 && editingMealId != null && !isMealSaving) { cancelMealEdit() }
 
-    fun selectMealDraftTarget(type: MealType) {
-        editingMealId = null
-        mealType = type
-        mealErrors = MealFieldErrors()
-        addToMealType = type
-        hasAddToMealTarget = true
+    fun openMealDestination(destination: MealDraftDestination) {
+        if (isMealSaving) return
+        when (destination) {
+            is MealDraftDestination.New -> {
+                // A same-target new draft is resumed, never cleared or turned into an edit.
+                if (mealType != destination.type || editingMealId != null) resetMealDraft()
+                mealType = destination.type
+                addToMealType = destination.type
+                hasAddToMealTarget = true
+                showAddToMealActions = true
+            }
+            else -> {
+                val id = when (destination) {
+                    is MealDraftDestination.Edit -> destination.id
+                    is MealDraftDestination.Reuse -> destination.id
+                    else -> error("Unexpected meal destination")
+                }
+                if (destination is MealDraftDestination.Edit && editingMealId == id) {
+                    selectedTab = 1
+                    return
+                }
+                val meal = overview?.meals?.firstOrNull { it.id == id } ?: run {
+                    onSetMessage("Deze maaltijd is niet meer beschikbaar. Je concept blijft behouden.")
+                    return
+                }
+                resetMealDraft()
+                if (destination is MealDraftDestination.Edit) {
+                    editingMealId = meal.id
+                    originalMealTimestamp = meal.timestamp
+                    mealDateOverride = Instant.ofEpochMilli(meal.timestamp).atZone(ZoneId.systemDefault()).toLocalDate().toString()
+                }
+                mealType = meal.mealType
+                mealName = meal.name
+                mealNotes = meal.notes.orEmpty()
+                mealDraft.addAll(meal.items.map {
+                    MealEntryRequest(
+                        itemType = it.itemType.toMealEntryType(),
+                        referenceId = it.referenceId,
+                        hydrationMl = it.hydrationMl,
+                        gramsUsed = it.gramsUsed,
+                        servingCount = it.servingCount,
+                        notes = it.notes,
+                        snapshot = it.takeIf { item -> item.itemType.name == "SNAPSHOT" }?.toMealEntrySnapshot(),
+                    ).toEditableMealEntryRequest()
+                })
+                selectedTab = 1
+            }
+        }
+    }
+
+    // All entry points that start another registration/edit/reuse must use this guard.
+    fun requestMealDestination(destination: MealDraftDestination) {
+        if (isMealSaving) return
+        focusManager.clearFocus(force = true)
+        if (requiresMealDraftReplacement(destination, mealType, editingMealId, mealSaveId,
+                mealDraft.isNotEmpty(), mealName, mealNotes, mealDateOverride)) {
+            pendingMealDestination = destination
+        } else {
+            openMealDestination(destination)
+        }
     }
 
     fun preserveContextualMealTarget() {
@@ -1265,31 +1337,8 @@ fun NutritionScreen(
                                     overview = overview,
                                     detail = mealDetail,
                                     onOpenMeal = onOpenMeal,
-                                    onAddToMeal = { type ->
-                                        selectMealDraftTarget(type)
-                                        showAddToMealActions = true
-                                    },
-                                    onEditMeal = { meal ->
-                                        mealDateOverride = java.time.Instant.ofEpochMilli(meal.timestamp).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString()
-                                        editingMealId = meal.id
-                                        mealType = meal.mealType
-                                        mealName = meal.name
-                                        mealNotes = meal.notes.orEmpty()
-                                        mealDraft.clear()
-                                        mealDraft.addAll(meal.items.map {
-                                            MealEntryRequest(
-                                                itemType = it.itemType.toMealEntryType(),
-                                                referenceId = it.referenceId,
-                                                hydrationMl = it.hydrationMl,
-                                                gramsUsed = it.gramsUsed,
-                                                servingCount = it.servingCount,
-                                                notes = it.notes,
-                                                snapshot = it.takeIf { item -> item.itemType.name == "SNAPSHOT" }?.toMealEntrySnapshot(),
-                                            ).toEditableMealEntryRequest()
-                                        })
-                                        selectedTab = 1
-                                        coroutineScope.launch { nutritionListState.animateScrollToItem(1) }
-                                    },
+                                    onAddToMeal = { type -> requestMealDestination(MealDraftDestination.New(type)) },
+                                    onEditMeal = { meal -> requestMealDestination(MealDraftDestination.Edit(meal.id)) },
                                     onDeleteMeal = { pendingDelete = PendingNutritionDelete.Meal(it) },
                                 )
                             }
@@ -1345,7 +1394,7 @@ fun NutritionScreen(
                                     },
                                     onRemoveDraftItem = { index -> mealDraft.removeAt(index) },
                                     onSave = {
-                                        val loggedAt = runCatching { java.time.LocalDate.parse(mealDateOverride ?: currentDate().toString()).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli() }.getOrNull()
+                                        val loggedAt = mealDraftLoggedAt(mealDate, originalMealTimestamp, Instant.now(), ZoneId.systemDefault())
                                         if (loggedAt == null) { mealErrors = MealFieldErrors(items = "Vul een geldige datum in (jjjj-mm-dd)."); return@MealDraftReviewCard }
                                         val requests = mealDraft.toMealEntryRequestsOrNull()?.map { it.copy(loggedAt = loggedAt) }
                                         val errors = if (requests == null) {
@@ -1357,17 +1406,19 @@ fun NutritionScreen(
                                         if (errors.hasErrors || isMealSaving) return@MealDraftReviewCard
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                         val saveTarget = editingMealId?.let { MealSaveTarget.Edit(it) }
-                                            ?: MealSaveTarget.Create(mealSaveId ?: System.currentTimeMillis().also { mealSaveId = it })
+                                            ?: MealSaveTarget.Create(mealSaveId ?: maxOf(System.currentTimeMillis(), lastMealSaveId + 1L,
+                                                (overview?.meals?.maxOfOrNull { it.id } ?: 0L) + 1L).also {
+                                                mealSaveId = it
+                                                lastMealSaveId = it
+                                            })
+                                        val savedGeneration = mealDraftGeneration
                                         onSaveMeal(saveTarget, mealType, mealName, mealNotes, requests.orEmpty()) {
-                                            mealSaveId = null
-                                            editingMealId = null
-                                            mealDateOverride = null
-                                            mealName = ""
-                                            mealNotes = ""
-                                            mealDraft.clear()
-                                            mealErrors = MealFieldErrors()
-                                            onSetScanResult(null)
-                                            selectedTab = 0
+                                            // A late/repeated callback may only clear the submitted draft.
+                                            if (mealDraftGeneration == savedGeneration) {
+                                                resetMealDraft()
+                                                onSetScanResult(null)
+                                                selectedTab = 0
+                                            }
                                         }
                                     },
                                 )
@@ -1535,24 +1586,7 @@ fun NutritionScreen(
                                     meals = overview?.meals.orEmpty(),
                                     foods = overview?.foods.orEmpty(),
                                     recipes = overview?.recipes.orEmpty(),
-                                    onReuseMeal = { meal ->
-                                        mealType = meal.mealType
-                                        mealName = meal.name
-                                        mealNotes = meal.notes.orEmpty()
-                                        mealDraft.clear()
-                                        mealDraft.addAll(meal.items.map {
-                                            MealEntryRequest(
-                                                itemType = it.itemType.toMealEntryType(),
-                                                referenceId = it.referenceId,
-                                                hydrationMl = it.hydrationMl,
-                                                gramsUsed = it.gramsUsed,
-                                                servingCount = it.servingCount,
-                                                notes = it.notes,
-                                                snapshot = it.takeIf { item -> item.itemType.name == "SNAPSHOT" }?.toMealEntrySnapshot(),
-                                            ).toEditableMealEntryRequest()
-                                        })
-                                        selectedTab = 1
-                                    },
+                                    onReuseMeal = { meal -> requestMealDestination(MealDraftDestination.Reuse(meal.id)) },
                                     onDeleteMeal = { pendingDelete = PendingNutritionDelete.Meal(it) },
                                 )
                             }
@@ -1949,6 +1983,40 @@ fun NutritionScreen(
                 },
             )
         }
+    }
+    pendingMealDestination?.let { destination ->
+        fun preserveMealDraft() {
+            pendingMealDestination = null
+            selectedTab = 1
+        }
+        AlertDialog(
+            onDismissRequest = { preserveMealDraft() },
+            title = { Text("Maaltijdconcept vervangen?") },
+            text = { Text("Je hebt nog een maaltijdconcept of bewerking. Bij vervangen vervalt deze invoer. Opgeslagen maaltijden blijven behouden.") },
+            dismissButton = {
+                TextButton(onClick = { preserveMealDraft() }) { Text("Concept behouden") }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !isMealSaving,
+                    onClick = {
+                        // Resolve the source before discarding: it may have been deleted while this dialog was open.
+                        val exists = when (destination) {
+                            is MealDraftDestination.New -> true
+                            is MealDraftDestination.Edit -> overview?.meals?.any { it.id == destination.id } == true
+                            is MealDraftDestination.Reuse -> overview?.meals?.any { it.id == destination.id } == true
+                        }
+                        if (exists) {
+                            resetMealDraft()
+                            openMealDestination(destination)
+                        } else {
+                            preserveMealDraft()
+                            onSetMessage("Deze maaltijd is niet meer beschikbaar. Je concept blijft behouden.")
+                        }
+                    },
+                ) { Text("Vervangen en doorgaan") }
+            },
+        )
     }
     pendingDelete?.let { delete ->
         ConfirmNutritionDeleteDialog(

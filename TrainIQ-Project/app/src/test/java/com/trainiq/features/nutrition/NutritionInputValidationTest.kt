@@ -345,13 +345,15 @@ class NutritionInputValidationTest {
         val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
         val dailyAddBody = source.substringAfter("onAddToMeal = { type ->").substringBefore("onEditMeal = { meal ->")
         val editBody = source.substringAfter("onEditMeal = { meal ->").substringBefore("onDeleteMeal =")
+        val destinationBody = source.substringAfter("fun openMealDestination(").substringBefore("fun preserveContextualMealTarget()")
 
-        assertTrue(dailyAddBody.contains("showAddToMealActions = true"))
+        assertTrue(dailyAddBody.contains("requestMealDestination(MealDraftDestination.New(type))"))
         assertFalse(dailyAddBody.contains("selectedTab = 1"))
-        assertTrue(editBody.contains("editingMealId = meal.id"))
-        assertTrue(editBody.contains("mealDraft.clear()"))
-        assertTrue(editBody.contains("mealDraft.addAll"))
-        assertTrue(editBody.contains("selectedTab = 1"))
+        assertTrue(editBody.contains("requestMealDestination(MealDraftDestination.Edit(meal.id))"))
+        assertTrue(destinationBody.contains("editingMealId = meal.id"))
+        assertTrue(destinationBody.contains("resetMealDraft()"))
+        assertTrue(destinationBody.contains("mealDraft.addAll"))
+        assertTrue(destinationBody.contains("selectedTab = 1"))
     }
 
     @Test
@@ -489,7 +491,7 @@ class NutritionInputValidationTest {
         val aiSnapshotHelper = source.substringAfter("fun addAiBatchItemsAsMealSnapshots(").substringBefore("LaunchedEffect(pendingBarcode)")
         val savedRecipeAdd = source.substringAfter("onUseInMeal = { recipe ->").substringBefore("onDelete = { pendingDelete = PendingNutritionDelete.Recipe")
         val savedFoodAdd = source.substringAfter("onQuickAdd = { food ->").substringBefore("onDelete = { pendingDelete = PendingNutritionDelete.Food")
-        val reuseMeal = source.substringAfter("onReuseMeal = { meal ->").substringBefore("onDeleteMeal = { pendingDelete = PendingNutritionDelete.Meal")
+        val reuseMeal = source.substringAfter("fun openMealDestination(").substringBefore("fun preserveContextualMealTarget()")
 
         assertTrue(addSheet.contains("mealType = addToMealType"))
         assertTrue(addSheet.contains("pendingAiMealType = addToMealType"))
@@ -508,7 +510,7 @@ class NutritionInputValidationTest {
     @Test
     fun contextualMealAdd_usesFirstItemNameAsDraftMealNameInsteadOfMealTypeLabel() {
         val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
-        val selectMealDraftTarget = source.substringAfter("fun selectMealDraftTarget(type: MealType) {").substringBefore("fun preserveContextualMealTarget()")
+        val selectMealDraftTarget = source.substringAfter("fun openMealDestination(").substringBefore("fun preserveContextualMealTarget()")
         val contextualTargetHelper = source.substringAfter("fun preserveContextualMealTarget()").substringBefore("fun resetFoodEditor()")
         val savedFoodAdd = source.substringAfter("onQuickAdd = { food ->").substringBefore("onDelete = { pendingDelete = PendingNutritionDelete.Food")
         val savedRecipeAdd = source.substringAfter("onUseInMeal = { recipe ->").substringBefore("onDelete = { pendingDelete = PendingNutritionDelete.Recipe")
@@ -684,13 +686,13 @@ class NutritionInputValidationTest {
     @Test
     fun mealHistoryReuse_restoresSnapshotItemsIntoEditableDraft() {
         val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
-        val reuseMeal = source.substringAfter("onReuseMeal = { meal ->").substringBefore("onDeleteMeal = { pendingDelete = PendingNutritionDelete.Meal")
+        val reuseMeal = source.substringAfter("fun openMealDestination(").substringBefore("fun preserveContextualMealTarget()")
         val mealHistoryCard = source.substringAfter("private fun MealHistoryCard(").substringBefore("@Composable\nprivate fun EditableAiItemCard")
 
         assertTrue(reuseMeal.contains("mealType = meal.mealType"))
         assertTrue(reuseMeal.contains("mealName = meal.name"))
         assertTrue(reuseMeal.contains("mealNotes = meal.notes.orEmpty()"))
-        assertTrue(reuseMeal.contains("mealDraft.clear()"))
+        assertTrue(reuseMeal.contains("resetMealDraft()"))
         assertTrue(reuseMeal.contains("mealDraft.addAll(meal.items.map"))
         assertTrue(reuseMeal.contains("itemType = it.itemType.toMealEntryType()"))
         assertTrue(reuseMeal.contains("snapshot = it.takeIf"))
