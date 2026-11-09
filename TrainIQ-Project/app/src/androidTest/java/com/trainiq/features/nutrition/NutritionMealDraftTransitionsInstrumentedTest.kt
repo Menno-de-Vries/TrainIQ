@@ -13,6 +13,7 @@ import com.trainiq.domain.repository.MealSaveTarget
 import com.trainiq.testing.resetTrainIqAndroidTestDatabase
 import dagger.hilt.android.EntryPointAccessors
 import java.time.LocalDate
+import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
@@ -21,6 +22,36 @@ import org.junit.Test
 /** Exercises reachable NutritionScreen callbacks, not a separate transition simulation. */
 @OptIn(ExperimentalTestApi::class)
 class NutritionMealDraftTransitionsInstrumentedTest {
+    @Test fun implicitDateIsResolvedAtSaveAfterDayChangeWithoutRecomposition() = runComposeUiTest {
+        // This clock/date source deliberately is not Compose state: midnight does not trigger recomposition.
+        var today = LocalDate.now().minusDays(1)
+        val renderedDate = today.toString()
+        var dateReads = 0
+        val writes = mutableListOf<Write>()
+        setContent { Fixture(currentDate = { dateReads++; today }) { writes += it } }
+        section("Historie")
+        onNodeWithText("Opnieuw gebruiken").performScrollTo().performClick()
+        onNodeWithContentDescription("Datum (jjjj-mm-dd)").performScrollTo().assertTextContains(renderedDate)
+        val save = onNodeWithText("Maaltijd opslaan").performScrollTo()
+        waitForIdle()
+        var readsBeforeMidnight = 0
+        runOnIdle {
+            readsBeforeMidnight = dateReads
+            today = LocalDate.now()
+        }
+        // Querying semantics causes no input/scroll/state change. The old date must remain rendered until the click.
+        onNodeWithContentDescription("Datum (jjjj-mm-dd)").assertTextContains(renderedDate)
+        runOnIdle { assertEquals(readsBeforeMidnight, dateReads) }
+        val beforeSave = Instant.now().toEpochMilli()
+        save.performClick()
+        runOnIdle {
+            val loggedAt = requireNotNull(writes.single().items.single().loggedAt)
+            assertTrue("Implicit date must use save-time now, not yesterday at noon", loggedAt >= beforeSave)
+            assertTrue(loggedAt <= Instant.now().toEpochMilli())
+            assertEquals(today, Instant.ofEpochMilli(loggedAt).atZone(ZoneId.systemDefault()).toLocalDate())
+        }
+    }
+
     @Test fun historyReuseWhileEditingRequiresChoiceAndCreatesDistinctIdentity() = runComposeUiTest {
         val writes = mutableListOf<Write>()
         setContent { Fixture { writes += it; it.saved() } }
@@ -173,10 +204,10 @@ class NutritionMealDraftTransitionsInstrumentedTest {
 
     private data class Write(val target: MealSaveTarget, val name: String, val items: List<MealEntryRequest>, val saved: () -> Unit)
 
-    @Composable private fun Fixture(write: (Write) -> Unit) {
+    @Composable private fun Fixture(currentDate: () -> LocalDate = { LocalDate.now() }, write: (Write) -> Unit) {
         TrainIqTheme(dynamicColor = false) {
             NutritionScreen(
-                currentDate = { LocalDate.now() },
+                currentDate = currentDate,
                 uiState = NutritionUiState.Success(overview, AiPreferences(false, "")),
                 onSaveFood = { _, _, _, _, _, _, _, _, _, _, _ -> },
                 onSaveRecipe = { _, _, _, _, _, _ -> },

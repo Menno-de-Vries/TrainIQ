@@ -652,7 +652,7 @@ fun NutritionRoute(
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun NutritionScreen(
-    currentDate: () -> java.time.LocalDate = { java.time.LocalDate.now() },
+    currentDate: (() -> java.time.LocalDate)? = null,
     hydrationContent: @Composable () -> Unit = {},
     mealDetail: MealType? = null,
     onOpenMeal: ((MealType) -> Unit)? = null,
@@ -773,7 +773,7 @@ fun NutritionScreen(
     var mealName by rememberSaveable { mutableStateOf("") }
     // Only persist an explicit date. A restored default must still mean today.
     var mealDateOverride by rememberSaveable { mutableStateOf<String?>(null) }
-    val mealDate = mealDateOverride ?: currentDate().toString()
+    val mealDate = mealDateOverride ?: (currentDate?.invoke() ?: java.time.LocalDate.now()).toString()
     var mealNotes by rememberSaveable { mutableStateOf("") }
     var editingMealId by rememberSaveable { mutableStateOf<Long?>(null) }
     var mealSaveId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -1394,7 +1394,13 @@ fun NutritionScreen(
                                     },
                                     onRemoveDraftItem = { index -> mealDraft.removeAt(index) },
                                     onSave = {
-                                        val loggedAt = mealDraftLoggedAt(mealDate, originalMealTimestamp, Instant.now(), ZoneId.systemDefault())
+                                        // Midnight does not recompose the screen. Resolve an implicit date at the click,
+                                        // using one instant/zone pair; keep an explicitly selected date authoritative.
+                                        val saveNow = Instant.now()
+                                        val saveZone = ZoneId.systemDefault()
+                                        val saveDate = mealDateOverride ?: (currentDate?.invoke()
+                                            ?: saveNow.atZone(saveZone).toLocalDate()).toString()
+                                        val loggedAt = mealDraftLoggedAt(saveDate, originalMealTimestamp, saveNow, saveZone)
                                         if (loggedAt == null) { mealErrors = MealFieldErrors(items = "Vul een geldige datum in (jjjj-mm-dd)."); return@MealDraftReviewCard }
                                         val requests = mealDraft.toMealEntryRequestsOrNull()?.map { it.copy(loggedAt = loggedAt) }
                                         val errors = if (requests == null) {
