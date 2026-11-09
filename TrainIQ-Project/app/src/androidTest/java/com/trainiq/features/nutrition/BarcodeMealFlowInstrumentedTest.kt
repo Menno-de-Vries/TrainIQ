@@ -356,7 +356,6 @@ class BarcodeMealFlowInstrumentedTest {
                                 done()
                             },
                             onDeleteMeal = {}, onDeleteFood = {}, onDeleteRecipe = {},
-                            onTryStartAiBatchSave = { true }, onFinishAiBatchSave = {},
                             onSetScanResult = {}, onSetMessage = { state = state.copy(message = it) }, onDismissMessage = {}, onRetry = {}, onAiScanner = {},
                             onOpenBarcodeScanner = { nav.navigate(CameraScanner(scannerMode = ScannerMode.BARCODE)) },
                             pendingBarcode = barcode.takeIf { it.isNotBlank() },

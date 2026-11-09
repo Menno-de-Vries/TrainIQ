@@ -942,6 +942,7 @@ fun TrainIqFormField(
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     imeSettledDelayMillis: Long = 320L,
+    enabled: Boolean = true,
 ) {
     val colors = MaterialTheme.trainIqColors
     val accent = when (context) {
@@ -961,6 +962,7 @@ fun TrainIqFormField(
     val activeSupportingText = errorText?.takeIf { isError } ?: supportingText
     OutlinedTextField(
         value = value,
+        enabled = enabled,
         onValueChange = onValueChange,
         label = { Text(label) },
         modifier = modifier

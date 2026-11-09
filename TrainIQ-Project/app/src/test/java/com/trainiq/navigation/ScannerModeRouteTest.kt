@@ -7,6 +7,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ScannerModeRouteTest {
+    @Test fun mealCameraProviderRoundTripAndLegacyRouteDefaultAreExplicit() {
+        val route = CameraScanner(contextHint = "Brood", foodProviderMode = com.trainiq.domain.model.FoodProviderMode.FATSECRET,
+            reviewRequestId = "review")
+        val encoded = kotlinx.serialization.json.Json.encodeToString(CameraScanner.serializer(), route)
+        assertEquals(route, kotlinx.serialization.json.Json.decodeFromString(CameraScanner.serializer(), encoded))
+        assertEquals(com.trainiq.domain.model.FoodProviderMode.AUTOMATIC,
+            kotlinx.serialization.json.Json.decodeFromString(CameraScanner.serializer(), "{}").foodProviderMode)
+    }
     @Test
     fun cameraScannerRoute_keepsScannerModeTyped() {
         val route = CameraScanner(scannerMode = ScannerMode.BARCODE)

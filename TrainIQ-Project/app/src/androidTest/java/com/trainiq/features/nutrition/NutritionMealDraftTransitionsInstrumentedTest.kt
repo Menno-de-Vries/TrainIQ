@@ -115,7 +115,9 @@ class NutritionMealDraftTransitionsInstrumentedTest {
         setContent { Fixture { writes += it /* failure: no success callback */ } }
         editOriginal()
         onNodeWithContentDescription("Maaltijdnaam").performScrollTo().performTextReplacement("Retry edit")
-        onNodeWithText("Wijzigingen opslaan").performScrollTo().performClick()
+        onNodeWithText("Wijzigingen opslaan").performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
+        if (runOnIdle { writes.isEmpty() }) captureTask4Evidence("meal-first-save-failure", onRoot().printToString())
+        runOnIdle { assertEquals("The first valid edit save must reach its callback", 1, writes.size) }
         section("Vandaag")
         onNodeWithText("Original meal").performScrollTo().performClick()
         onNodeWithText("Hoeveelheid wijzigen").performClick()
@@ -213,7 +215,7 @@ class NutritionMealDraftTransitionsInstrumentedTest {
                 onSaveRecipe = { _, _, _, _, _, _ -> },
                 onSaveMeal = { target, _, name, _, items, saved -> write(Write(target, name, items, saved)) },
                 onDeleteMeal = {}, onDeleteFood = {}, onDeleteRecipe = {},
-                onTryStartAiBatchSave = { true }, onFinishAiBatchSave = {}, onSetScanResult = {},
+                onSetScanResult = {},
                 onSetMessage = {}, onDismissMessage = {}, onRetry = {}, onAiScanner = {}, onOpenBarcodeScanner = {},
             )
         }

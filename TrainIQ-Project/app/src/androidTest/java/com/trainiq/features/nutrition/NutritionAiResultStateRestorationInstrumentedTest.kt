@@ -145,8 +145,6 @@ private fun SyntheticNutritionScreen(
             onDeleteMeal = {},
             onDeleteFood = {},
             onDeleteRecipe = {},
-            onTryStartAiBatchSave = { true },
-            onFinishAiBatchSave = {},
             onSetScanResult = {},
             onSetMessage = {},
             onDismissMessage = {},

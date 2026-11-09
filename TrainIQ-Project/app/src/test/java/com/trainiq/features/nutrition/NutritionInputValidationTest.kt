@@ -486,7 +486,7 @@ class NutritionInputValidationTest {
     fun contextualAddActions_preserveOriginMealTypeAndOpenDraftAfterMutation() {
         val source = File("src/main/java/com/trainiq/features/nutrition/NutritionScreen.kt").readText()
         val addSheet = source.substringAfter("AddToMealActionSheet(").substringBefore("pendingDelete?.let")
-        val contextualTargetHelper = source.substringAfter("fun preserveContextualMealTarget()").substringBefore("fun finishAiBatchItem")
+        val contextualTargetHelper = source.substringAfter("fun preserveContextualMealTarget()").substringBefore("fun currentAiTargetToken")
         val aiMealSave = source.substringAfter("NutritionScanDestination.MealDraft -> {").substringBefore("NutritionScanDestination.ProductLibrary ->")
         val aiSnapshotHelper = source.substringAfter("fun addAiBatchItemsAsMealSnapshots(").substringBefore("LaunchedEffect(pendingBarcode)")
         val savedRecipeAdd = source.substringAfter("onUseInMeal = { recipe ->").substringBefore("onDelete = { pendingDelete = PendingNutritionDelete.Recipe")
@@ -498,7 +498,8 @@ class NutritionInputValidationTest {
         assertTrue(addSheet.contains("aiResultTarget = NutritionScanDestination.MealDraft"))
         assertTrue(contextualTargetHelper.contains("mealType = addToMealType"))
         assertTrue(aiMealSave.contains("addAiBatchItemsAsMealSnapshots(batchItems)"))
-        assertTrue(aiSnapshotHelper.contains("selectedTab = 1"))
+        assertTrue(aiSnapshotHelper.contains("submitAiItems(batchItems, NutritionScanDestination.MealDraft)"))
+        assertTrue(aiSnapshotHelper.contains("NutritionScanDestination.MealDraft -> 1"))
         assertTrue(savedRecipeAdd.contains("preserveContextualMealTarget()"))
         assertTrue(savedRecipeAdd.contains("selectedTab = 1"))
         assertTrue(savedFoodAdd.contains("preserveContextualMealTarget()"))
