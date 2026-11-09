@@ -88,6 +88,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.OutlinedButton
@@ -152,6 +155,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -426,6 +431,7 @@ data class WorkoutUiContent(
     val pendingGeneratedRoutine: GeneratedRoutine?,
     val isSavingGeneratedRoutine: Boolean,
     val isGeneratingAiRoutine: Boolean,
+    val routineGenerationError: String? = null,
 )
 
 internal fun workoutScreenUiState(content: WorkoutUiContent): ScreenUiState<WorkoutUiContent> =
@@ -642,8 +648,9 @@ class WorkoutViewModel @Inject constructor(
     private val pendingGeneratedRoutine: StateFlow<GeneratedRoutine?> = _pendingGeneratedRoutine.asStateFlow()
     private val _isSavingGeneratedRoutine = MutableStateFlow(false)
     private val isSavingGeneratedRoutine: StateFlow<Boolean> = _isSavingGeneratedRoutine.asStateFlow()
-    private val _isGeneratingAiRoutine = MutableStateFlow(false)
-    private val isGeneratingAiRoutine: StateFlow<Boolean> = _isGeneratingAiRoutine.asStateFlow()
+    private val routineGeneration = RoutineGenerationState(viewModelScope)
+
+    fun dismissRoutineGenerationError() = routineGeneration.dismissError()
 
     private val _restStatus = MutableStateFlow<WorkoutRestNotificationStatus?>(null)
     private val _restExactAllowed = MutableStateFlow(false)
@@ -738,12 +745,13 @@ class WorkoutViewModel @Inject constructor(
             )
         },
         isSavingGeneratedRoutine,
-        isGeneratingAiRoutine,
-    ) { content, savingGeneratedRoutine, generatingAiRoutine ->
+        routineGeneration.state,
+    ) { content, savingGeneratedRoutine, generation ->
         workoutScreenUiState(
             content.copy(
                 isSavingGeneratedRoutine = savingGeneratedRoutine,
-                isGeneratingAiRoutine = generatingAiRoutine,
+                isGeneratingAiRoutine = generation.isLoading,
+                routineGenerationError = generation.error,
             ),
         )
     }.combine(observations.error) { content, error -> error ?: content }
@@ -1121,7 +1129,7 @@ class WorkoutViewModel @Inject constructor(
         includeDeload: Boolean,
         options: RoutineGenerationOptions = RoutineGenerationOptions(),
     ) {
-        if (_isGeneratingAiRoutine.value) return
+        if (routineGeneration.state.value.isLoading) return
         lastGenerationRequest = RoutineGenerationRequest(
             daysPerWeek = daysPerWeek,
             equipment = equipment,
@@ -1131,34 +1139,24 @@ class WorkoutViewModel @Inject constructor(
             includeDeload = includeDeload,
             options = options,
         )
-        _isGeneratingAiRoutine.value = true
-        _message.value = "AI-routine maken..."
-        launchAction {
-            try {
-                generateAiRoutineUseCase(
-                    daysPerWeek = daysPerWeek,
-                    equipment = equipment,
-                    targetFocus = targetFocus,
-                    experienceLevel = experienceLevel,
-                    sessionDurationMinutes = sessionDurationMinutes,
-                    includeDeload = includeDeload,
-                    options = options,
-                ).also { generated ->
-                    _pendingGeneratedRoutine.value = generated
-                    _message.value = generatedRoutineResultMessage(generated)
-                }
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (throwable: Throwable) {
-                _message.value = throwable.toAiUserMessage("Routine genereren is mislukt.")
-            } finally {
-                _isGeneratingAiRoutine.value = false
+        routineGeneration.submit {
+            generateAiRoutineUseCase(
+                daysPerWeek = daysPerWeek,
+                equipment = equipment,
+                targetFocus = targetFocus,
+                experienceLevel = experienceLevel,
+                sessionDurationMinutes = sessionDurationMinutes,
+                includeDeload = includeDeload,
+                options = options,
+            ).also { generated ->
+                _pendingGeneratedRoutine.value = generated
+                _message.value = generatedRoutineResultMessage(generated)
             }
         }
     }
 
     fun retryGeneratedRoutine() {
-        if (_isSavingGeneratedRoutine.value || _isGeneratingAiRoutine.value) return
+        if (_isSavingGeneratedRoutine.value || routineGeneration.state.value.isLoading) return
         val request = lastGenerationRequest ?: return
         _pendingGeneratedRoutine.value = null
         generateAiRoutine(
@@ -1185,7 +1183,7 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun replacePendingGeneratedExercise(dayIndex: Int, exerciseIndex: Int, replacement: Exercise) {
-        if (_isSavingGeneratedRoutine.value || _isGeneratingAiRoutine.value) return
+        if (_isSavingGeneratedRoutine.value || routineGeneration.state.value.isLoading) return
         val request = lastGenerationRequest ?: return
         val available = request.equipment.split(',', ';').map { it.normalizedRoutineEquipment() }.toSet()
         if (replacement.equipment.normalizedRoutineEquipment() != "lichaamsgewicht" &&
@@ -1208,7 +1206,7 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun removePendingGeneratedExercise(dayIndex: Int, exerciseIndex: Int) {
-        if (_isSavingGeneratedRoutine.value || _isGeneratingAiRoutine.value) return
+        if (_isSavingGeneratedRoutine.value || routineGeneration.state.value.isLoading) return
         val current = _pendingGeneratedRoutine.value ?: return
         _pendingGeneratedRoutine.value = current.withRemovedExercise(dayIndex, exerciseIndex) ?: return
     }
@@ -1613,6 +1611,8 @@ fun WorkoutRoute(
         pendingGeneratedRoutine = content.pendingGeneratedRoutine,
         isSavingGeneratedRoutine = content.isSavingGeneratedRoutine,
         isGeneratingAiRoutine = content.isGeneratingAiRoutine,
+        routineGenerationError = content.routineGenerationError,
+        onDismissRoutineGenerationError = viewModel::dismissRoutineGenerationError,
         onDismissMessage = viewModel::clearMessage,
         onStartWorkout = onStartWorkout,
         onOpenExerciseHistory = onOpenExerciseHistory,
@@ -1689,6 +1689,8 @@ fun WorkoutScreen(
     onDeleteRoutineSet: (Long) -> Unit,
     onMoveRoutineSet: (Long, List<Long>) -> Unit,
     onDeleteWorkoutSession: (Long) -> Unit,
+    routineGenerationError: String? = null,
+    onDismissRoutineGenerationError: () -> Unit = {},
 ) {
     var showAiDialog by rememberSaveable { mutableStateOf(false) }
     var showCreateDialog by rememberSaveable { mutableStateOf(false) }
@@ -1761,7 +1763,13 @@ fun WorkoutScreen(
     if (showAiDialog) {
         RoutineGeneratorDialog(
             isLoading = isGeneratingAiRoutine,
-            onDismiss = { if (!isGeneratingAiRoutine) showAiDialog = false },
+            errorMessage = routineGenerationError,
+            onDismiss = {
+                if (!isGeneratingAiRoutine) {
+                    showAiDialog = false
+                    onDismissRoutineGenerationError()
+                }
+            },
             onGenerate = { days, equipment, focus, level, duration, includeDeload, options ->
                 onGenerateAiRoutine(days, equipment, focus, level, duration, includeDeload, options)
             },
@@ -2381,8 +2389,9 @@ private fun HistoryDebriefBlock(title: String, body: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RoutineGeneratorDialog(
+internal fun RoutineGeneratorDialog(
     isLoading: Boolean,
+    errorMessage: String? = null,
     onDismiss: () -> Unit,
     onGenerate: (Int, String, String, String, Int, Boolean, RoutineGenerationOptions) -> Unit,
 ) {
@@ -2397,20 +2406,31 @@ private fun RoutineGeneratorDialog(
     var preferredExercises by rememberSaveable { mutableStateOf("") }
     var excludedExercises by rememberSaveable { mutableStateOf("") }
     val focusSuggestions = remember { listOf("Push/pull/legs", "Upper/lower", "Volledig lichaam", "Onderlichaam", "Kracht") }
+    val focusManager = LocalFocusManager.current
+    val currentLoading by rememberUpdatedState(isLoading)
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { !currentLoading || it != SheetValue.Hidden },
+    )
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("AI-routine genereren") },
-        text = {
+    ModalBottomSheet(
+        onDismissRequest = { if (!isLoading) onDismiss() },
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.95f)
+                .navigationBarsPadding().imePadding().padding(horizontal = 24.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 560.dp)
+                    .weight(1f)
                     .clearFocusOnScrollOrDrag()
-                    .verticalScroll(rememberScrollState())
-                    .imePadding(),
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                Text("AI-routine genereren", style = MaterialTheme.typography.headlineSmall)
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -2423,20 +2443,20 @@ private fun RoutineGeneratorDialog(
                         )
                     }
                 }
-                TapOnlyOutlinedTextField(focus, { focus = it }, label = { Text("Trainingsfocus / split") }, modifier = Modifier.fillMaxWidth())
+                TapOnlyOutlinedTextField(focus, { focus = it }, label = { Text("Trainingsfocus / split") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
                 TapOnlyOutlinedTextField(
                     value = daysPerWeek,
                     onValueChange = { daysPerWeek = it },
                     label = { Text("Dagen per week (1-7)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
                 )
                 TapOnlyOutlinedTextField(
                     value = equipment,
                     onValueChange = { equipment = it },
                     accessibilityLabel = "Beschikbaar materiaal",
                     label = { Text("Beschikbaar materiaal") },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus(),
                 )
                 ExperienceLevelSelector(experienceLevel, onSelected = { experienceLevel = it })
                 SessionDurationSlider(durationMinutes = sessionDuration.toInt(), onValueChange = { sessionDuration = it })
@@ -2445,36 +2465,51 @@ private fun RoutineGeneratorDialog(
                     Text(if (showMoreOptions) "Minder opties" else "Meer opties")
                 }
                 if (showMoreOptions) {
-                    TapOnlyOutlinedTextField(musclePriorities, { musclePriorities = it }, label = { Text("Spiergroepprioriteiten") }, modifier = Modifier.fillMaxWidth())
-                    TapOnlyOutlinedTextField(preferredExercises, { preferredExercises = it }, label = { Text("Gewenste oefeningen") }, modifier = Modifier.fillMaxWidth())
-                    TapOnlyOutlinedTextField(excludedExercises, { excludedExercises = it }, label = { Text("Uitgesloten oefeningen") }, modifier = Modifier.fillMaxWidth())
+                    TapOnlyOutlinedTextField(musclePriorities, { musclePriorities = it }, label = { Text("Spiergroepprioriteiten") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                    TapOnlyOutlinedTextField(preferredExercises, { preferredExercises = it }, label = { Text("Gewenste oefeningen") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
+                    TapOnlyOutlinedTextField(excludedExercises, { excludedExercises = it }, label = { Text("Uitgesloten oefeningen") }, modifier = Modifier.fillMaxWidth().bringIntoViewOnFocus())
                     Text("Scheid meerdere namen met een komma.", style = MaterialTheme.typography.bodySmall)
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    onGenerate(
-                        daysPerWeek.toInt(), equipment, focus, experienceLevel, sessionDuration.toInt(), includeDeload,
-                        RoutineGenerationOptions(
-                            priorityMuscleGroups = parseRoutineOptionNames(musclePriorities),
-                            preferredExercises = parseRoutineOptionNames(preferredExercises),
-                            excludedExercises = parseRoutineOptionNames(excludedExercises),
-                        ),
-                    )
-                },
-                enabled = !isLoading && daysPerWeek.toIntOrNull() in 1..7,
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                } else {
-                    Text("Genereren")
-                }
+            errorMessage?.let { message ->
+                Text(
+                    message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 80.dp)
+                        .verticalScroll(rememberScrollState())
+                        .semantics { error(message); liveRegion = LiveRegionMode.Polite },
+                )
             }
-        },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !isLoading) { Text("Annuleren") } },
-    )
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Button(
+                    onClick = {
+                        focusManager.clearFocus()
+                        onGenerate(
+                            daysPerWeek.toInt(), equipment, focus, experienceLevel, sessionDuration.toInt(), includeDeload,
+                            RoutineGenerationOptions(
+                                priorityMuscleGroups = parseRoutineOptionNames(musclePriorities),
+                                preferredExercises = parseRoutineOptionNames(preferredExercises),
+                                excludedExercises = parseRoutineOptionNames(excludedExercises),
+                            ),
+                        )
+                    },
+                    enabled = !isLoading && daysPerWeek.toIntOrNull() in 1..7,
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text(if (errorMessage == null) "Genereren" else "Opnieuw proberen")
+                    }
+                }
+                TextButton(onClick = onDismiss, enabled = !isLoading) { Text("Annuleren") }
+            }
+        }
+    }
 }
 
 internal fun parseRoutineOptionNames(input: String): List<String> = input.split(',', ';')

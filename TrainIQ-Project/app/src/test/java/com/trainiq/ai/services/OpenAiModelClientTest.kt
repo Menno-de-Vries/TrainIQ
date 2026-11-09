@@ -28,6 +28,20 @@ import org.junit.Test
 import retrofit2.Response
 
 class OpenAiModelClientTest {
+    @Test fun routineWireSchemaRequiresNullableLibraryReferenceAndNonNullableExerciseName() = runTest {
+        val api = FakeOpenAiApi(Response.success(OpenAiResponse(status = "completed", outputText = "{}")))
+        val request = featureContracts().first { it.request.feature == AiFeature.ROUTINE_GENERATION }.request
+        OpenAiModelClient(api).generateJson("synthetic-secret", request)
+        val json = JsonParser.parseString(Gson().toJson(api.lastRequest)).asJsonObject
+        val schema = json["text"].asJsonObject["format"].asJsonObject["schema"].asJsonObject
+        val exercise = schema["properties"].asJsonObject["days"].asJsonObject["items"].asJsonObject
+            .getAsJsonObject("properties")["exercises"].asJsonObject["items"].asJsonObject
+        assertTrue(exercise["required"].asJsonArray.any { it.asString == "existingExerciseId" })
+        val properties = exercise["properties"].asJsonObject
+        assertTrue(properties["existingExerciseId"].asJsonObject["anyOf"].asJsonArray.any { it.asJsonObject["type"].isJsonPrimitive && it.asJsonObject["type"].asString == "null" })
+        assertEquals("string", properties["exerciseName"].asJsonObject["type"].asString)
+    }
+
     @Test
     fun generateJson_whenDiscoveryListsGpt6AndGpt56_firstRequestUsesGpt6() = runTest {
         val api = FakeOpenAiApi(

@@ -134,14 +134,13 @@ class RoutineGeneratorService internal constructor(
                     ),
                 ),
             )
-            parseGeneratedRoutine(routed.rawJson, fallback, routed.providerUsed)
-                .takeIf { it.source != GeneratedRoutineSource.LOCAL_FALLBACK && it.respectsRequest(daysPerWeek, equipment, sessionDurationMinutes, options, existingExercises) }
-                .let { it ?: fallback.takeIf { fallbackValid } ?: error("Geen passende routine voor dit materiaal, deze voorkeuren en de beschikbare tijd.") }
-                .also { routine ->
-                if (routed.providerUsed == AiProvider.OPENAI && routine.source == GeneratedRoutineSource.LOCAL_FALLBACK) {
-                    throw AiProviderRequestException(AiProvider.OPENAI, AiFeature.ROUTINE_GENERATION, AiFailureCategory.INVALID_RESPONSE)
-                }
-            }.withSettingsSummary(daysPerWeek, equipment, targetFocus, options)
+            val routine = parseGeneratedRoutine(routed.rawJson, fallback, routed.providerUsed)
+            if (routine.source == GeneratedRoutineSource.LOCAL_FALLBACK ||
+                !routine.respectsRequest(daysPerWeek, equipment, sessionDurationMinutes, options, existingExercises)
+            ) {
+                throw AiProviderRequestException(routed.providerUsed, AiFeature.ROUTINE_GENERATION, AiFailureCategory.INVALID_RESPONSE)
+            }
+            routine.withSettingsSummary(daysPerWeek, equipment, targetFocus, options)
         } catch (throwable: Throwable) {
             if (throwable is CancellationException) throw throwable
             val mapped = throwable.asAiRateLimitExceptionIfNeeded()

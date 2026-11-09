@@ -247,7 +247,7 @@ class WorkoutInputValidationTest {
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
         val fieldBody = appDesign.substringAfter("fun TapOnlyOutlinedTextField(")
             .substringBefore("internal fun shouldSuppressTextInputGesture(")
-        val dialogBody = workoutScreen.substringAfter("private fun RoutineGeneratorDialog(")
+        val dialogBody = workoutScreen.substringAfter("internal fun RoutineGeneratorDialog(")
             .substringBefore("private fun ExperienceLevelSelector(")
 
         assertTrue(fieldBody.contains("accessibilityLabel: String? = null"))
@@ -258,7 +258,7 @@ class WorkoutInputValidationTest {
     @Test
     fun `AI routine dialog keeps Dutch labels for generator controls`() {
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
-        val dialogBody = workoutScreen.substringAfter("private fun RoutineGeneratorDialog(")
+        val dialogBody = workoutScreen.substringAfter("internal fun RoutineGeneratorDialog(")
             .substringBefore("private fun RoutineDetailHeader(")
 
         assertTrue(dialogBody.contains("Text(\"Dagen per week (1-7)\")"))
@@ -277,7 +277,7 @@ class WorkoutInputValidationTest {
     @Test
     fun `AI routine dialog wraps compact chip and choice controls`() {
         val workoutScreen = testSourceFile("features/workout/WorkoutScreen.kt").readText()
-        val dialogBody = workoutScreen.substringAfter("private fun RoutineGeneratorDialog(")
+        val dialogBody = workoutScreen.substringAfter("internal fun RoutineGeneratorDialog(")
             .substringBefore("private fun ExperienceLevelSelector(")
         val levelBody = workoutScreen.substringAfter("private fun ExperienceLevelSelector(")
             .substringBefore("private fun SessionDurationSlider(")
@@ -301,7 +301,7 @@ class WorkoutInputValidationTest {
             .substringBefore("if (showCreateDialog)")
         val generatorDialogCall = workoutScreen.substringAfter("RoutineGeneratorDialog(")
             .substringBefore("TrainingWithoutOverscroll")
-        val dialogBody = workoutScreen.substringAfter("private fun RoutineGeneratorDialog(")
+        val dialogBody = workoutScreen.substringAfter("internal fun RoutineGeneratorDialog(")
             .substringBefore("private fun ExperienceLevelSelector(")
 
         assertTrue(savePendingBody.contains("launchSingleSubmission("))
@@ -313,8 +313,9 @@ class WorkoutInputValidationTest {
         assertTrue(dismissPendingBody.contains("_pendingGeneratedRoutine.value = null"))
         assertTrue(previewDialogCall.contains("onSave = onSaveGeneratedRoutine"))
         assertTrue(previewDialogCall.contains("onDismiss = onDismissGeneratedRoutine"))
-        assertTrue(generatorDialogCall.contains("onDismiss = { if (!isGeneratingAiRoutine) showAiDialog = false }"))
-        assertTrue(dialogBody.contains("dismissButton = { TextButton(onClick = onDismiss, enabled = !isLoading) { Text(\"Annuleren\") } }"))
+        assertTrue(generatorDialogCall.contains("if (!isGeneratingAiRoutine)"))
+        assertTrue(generatorDialogCall.contains("onDismissRoutineGenerationError()"))
+        assertTrue(dialogBody.contains("TextButton(onClick = onDismiss, enabled = !isLoading) { Text(\"Annuleren\") }"))
     }
 
     @Test

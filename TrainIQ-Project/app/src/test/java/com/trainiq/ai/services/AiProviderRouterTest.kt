@@ -14,6 +14,44 @@ import retrofit2.Response
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class AiProviderRouterTest {
     @Test
+    fun strictSchemasPreserveOptionalAbsenceAndRequiredTypesRecursively() {
+        fun verify(original: Map<*, *>, strict: Map<*, *>) {
+            if (original["type"] == "object") {
+                val properties = original["properties"] as Map<*, *>
+                val required = (original["required"] as? List<*>).orEmpty()
+                val strictProperties = strict["properties"] as Map<*, *>
+                assertEquals(properties.keys.toList(), strict["required"])
+                assertEquals(false, strict["additionalProperties"])
+                properties.forEach { (name, value) ->
+                    val converted = strictProperties[name] as Map<*, *>
+                    if (name in required) {
+                        assertEquals("Required $name", (value as Map<*, *>)["type"], converted["type"])
+                        verify(value, converted)
+                    } else {
+                        val branches = converted["anyOf"] as? List<*>
+                        assertTrue("Optional $name must permit null", branches?.contains(mapOf("type" to "null")) == true)
+                        verify(value as Map<*, *>, branches!!.first() as Map<*, *>)
+                    }
+                }
+            } else if (original["type"] == "array") {
+                verify(original["items"] as Map<*, *>, strict["items"] as Map<*, *>)
+            }
+        }
+        listOf(AiJsonSchemas.routineGenerator, AiJsonSchemas.mealScan, AiJsonSchemas.goalAdvice,
+            AiJsonSchemas.weeklyReport, AiJsonSchemas.bodyMeasurementPhoto, AiJsonSchemas.workoutDebrief)
+            .forEach { schema -> verify(schema, schema.toOpenAiStrictSchema()) }
+    }
+
+    @Test
+    fun strictSchemaRetainsAlreadyNullableRequiredFields() {
+        val schema = mapOf("type" to "object", "properties" to mapOf(
+            "known" to mapOf("type" to listOf("integer", "null")),
+        ), "required" to listOf("known"))
+        val result = schema.toOpenAiStrictSchema()
+        assertEquals(listOf("integer", "null"), ((result["properties"] as Map<*, *>)["known"] as Map<*, *>)["type"])
+    }
+
+    @Test
     fun geminiHttpFailureRecordsSafeStatusWithoutResponseBody() = runTest {
         val diagnostics = mutableListOf<Map<String, String>>()
         val failure = HttpException(Response.error<Unit>(400, "private user meal details".toResponseBody()))

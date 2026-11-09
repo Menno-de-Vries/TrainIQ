@@ -28,6 +28,43 @@ import retrofit2.Response
 import kotlin.coroutines.CoroutineContext
 
 class AiServicesTest {
+    @Test fun optionalNullMealMetadataPreservesRequiredItemsAndDefaultNutritionBasis() = runTest {
+        val api = FakeGeminiApi(response = mealScanResponse("""{"items":[{"name":"Brood","estimatedGrams":50,"calories":125,"protein":5,"carbs":20,"fat":2,"productName":null,"brand":null,"variant":null,"barcode":null,"amountUnit":null,"nutritionBasis":null,"confidence":null,"notes":null}],"suggestedMealType":"LUNCH","notes":null}"""))
+        val service = MealAnalysisService(api = api, isAiReady = { true }, apiKeyProvider = { "key" }, imageBytesProvider = { byteArrayOf(1) })
+        val result = service.analyzeMealImage(tempImagePath(), "", 0)
+        assertEquals(MealAnalysisSource.API, result.source)
+        assertEquals("Brood", result.items.single().name)
+        assertEquals(125.0, result.items.single().nutrition.calories, 0.0)
+        assertNull(result.items.single().brand)
+    }
+
+    @Test fun optionalNullWeeklyAndDebriefFieldsKeepProviderResult() {
+        val weekly = parseWeeklyReportResponse("""{"summary":"Goed herstel deze week.","nextWeekFocus":"Rustig opbouwen.","wins":null,"risks":null,"rationaleBullets":null}""", 80, AiProvider.OPENAI)
+        assertEquals(WeeklyReportSource.OPENAI, weekly.source)
+        assertTrue(weekly.wins.isEmpty())
+        val debrief = parseWorkoutDebriefResponse("""{"summary":"Training goed afgerond.","recommendation":"Rustig opbouwen.","nextSessionFocus":"Techniek behouden.","recoveryScore":80,"intensitySignal":"MAINTAIN","progressionFeedback":null,"wins":null,"risks":null,"nextLoadTarget":null,"recoveryAdvice":null}""", 1000.0, null, AiProvider.OPENAI)
+        assertEquals(com.trainiq.domain.model.WorkoutDebriefSource.OPENAI, debrief.source)
+        assertEquals("Training goed afgerond.", debrief.summary)
+    }
+
+    @Test fun optionalNullGoalAdviceKeepsRequiredProviderCopy() = runTest {
+        val api = FakeGeminiApi(response = mealScanResponse("""{"trainingFocus":"Rustig trainen.","korteSamenvatting":"Goed herstel.","calorieAdvies":"Houd je doel stabiel.","macroAdvies":null,"activiteitUitleg":null,"aandachtspunten":null,"advies":null,"dataKwaliteit":null}"""))
+        val result = GoalAdvisorService(api, isAiReady = { true }, apiKeyProvider = { "key" })
+            .generateGoalAdvice(180.0, 80.0, 20.0, 30, BiologicalSex.MALE, "Licht actief", "Kracht")
+        assertEquals(GoalAdviceSource.GEMINI_2_5_FLASH, result.source)
+        assertEquals("Goed herstel.", result.summary)
+    }
+
+    @Test fun optionalNullBodyPhotoNotesKeepProviderMeasurement() = runTest {
+        val service = BodyMeasurementPhotoService(object : AiJsonGenerator {
+            override suspend fun generateJson(request: AiRouteRequest) = AiRouteResult(AiProvider.OPENAI, "fixture",
+                """{"weight":80,"bodyFat":20,"muscleMass":55,"unit":"kg","confidence":"high","notes":null}""")
+        }, { AiReadiness.CONFIGURED }, { byteArrayOf(1) })
+        val result = service.analyzeScaleImage("fixture.jpg", "")
+        assertEquals(com.trainiq.domain.model.BodyMeasurementPhotoSource.OPENAI, result.source)
+        assertEquals(80.0, result.weight, 0.0)
+    }
+
     @Test
     fun parseMealContextOverrides_acceptsBulletedNumberedAndParenthesizedWeights() {
         val overrides = parseMealContextOverrides("- brood 35 g\n2. boter: 5 g\n• kiprollade (25 g)\n4) 20 g kaas")

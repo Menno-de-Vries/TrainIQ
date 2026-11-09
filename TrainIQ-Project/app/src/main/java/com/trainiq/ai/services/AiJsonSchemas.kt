@@ -111,7 +111,7 @@ object AiJsonSchemas {
                                     "targetWeightKg" to numberSchema(),
                                     "targetRpe" to numberSchema(),
                                     "coachingCue" to stringSchema(maxLength = MaxGeneratedRoutineTextChars),
-                                    "existingExerciseId" to integerSchema(),
+                                    "existingExerciseId" to mapOf("type" to listOf("integer", "null")),
                                 ),
                                 required = listOf(
                                     "exerciseName",

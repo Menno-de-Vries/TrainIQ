@@ -1,6 +1,7 @@
 package com.trainiq.features.workout
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -9,6 +10,9 @@ import androidx.compose.ui.test.StateRestorationTester
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -31,15 +35,53 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class WorkoutAiRoutineGenerationStateRestorationInstrumentedTest {
     @OptIn(ExperimentalTestApi::class)
+    @Test fun generatorErrorAndActionsRemainReachableAtLargeFontWithFocusedInput() = runComposeUiTest {
+        var loading by mutableStateOf(false)
+        var error by mutableStateOf<String?>("Gemini gaf geen volledig antwoord. Probeer opnieuw.")
+        var calls = 0
+        setContent {
+            TrainIqTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 1.5f)) {
+                    RoutineGeneratorDialog(isLoading = loading, errorMessage = error, onDismiss = {},
+                        onGenerate = { _, _, _, _, _, _, _ -> calls++; loading = true; error = null })
+                }
+            }
+        }
+        onNode(hasSetTextAction() and hasText("Trainingsfocus / split")).performScrollTo().performClick()
+        onNodeWithText("Gemini gaf geen volledig antwoord. Probeer opnieuw.").assertIsDisplayed()
+        onNodeWithText("Opnieuw proberen").assertIsDisplayed().performClick()
+        assertEquals(1, calls)
+        onNodeWithText("Annuleren").assertIsDisplayed().assertIsNotEnabled()
+        onNodeWithText("Opnieuw proberen").assertDoesNotExist()
+    }
+
+    @OptIn(ExperimentalTestApi::class)
     @Test fun failedGenerationKeepsDraftForRetryAndUnrelatedErrorsDoNotDismissIt() = runComposeUiTest {
         var message by mutableStateOf<String?>(null)
-        setContent { SyntheticWorkoutScreen(message, {}, { _, _, _, _, _, _, _ -> }) }
+        var generationError by mutableStateOf<String?>(null)
+        var requestedFocus: String? = null
+        setContent { SyntheticWorkoutScreen(message, {}, { _, _, focus, _, _, _, _ ->
+            requestedFocus = focus
+            generationError = null
+        }, generationError = generationError, onDismissGenerationError = { generationError = null }) }
         onNodeWithContentDescription("Met AI genereren").performScrollTo().performClick()
         onAllNodes(hasSetTextAction())[0].performTextReplacement("Mijn herstelplan")
-        runOnIdle { message = "Routine genereren is mislukt." }
+        runOnIdle { generationError = "Routine genereren is mislukt." }
+        onNodeWithText("Routine genereren is mislukt.").assertIsDisplayed()
+        onNodeWithText("Opnieuw proberen").assertIsDisplayed()
+        onNodeWithText("Annuleren").assertIsDisplayed()
         onNode(hasSetTextAction() and hasText("Mijn herstelplan")).assertExists()
         runOnIdle { message = "Instelling bijwerken mislukt." }
         onNode(hasSetTextAction() and hasText("Mijn herstelplan")).assertExists()
+        onNodeWithText("Opnieuw proberen").performClick()
+        assertEquals("Mijn herstelplan", requestedFocus)
+        onNodeWithText("Routine genereren is mislukt.").assertDoesNotExist()
+        onNodeWithText("Genereren").assertIsDisplayed()
+        runOnIdle { generationError = "Routine genereren is mislukt." }
+        onNodeWithText("Annuleren").performClick()
+        assertEquals(null, generationError)
+        onNodeWithContentDescription("Met AI genereren").performScrollTo().performClick()
+        onNodeWithText("Opnieuw proberen").assertDoesNotExist()
     }
     @OptIn(ExperimentalTestApi::class)
     @Test
@@ -161,6 +203,8 @@ private fun SyntheticWorkoutScreen(
     message: String?,
     onCreateRoutine: (String) -> Unit,
     onGenerate: (Int, String, String, String, Int, Boolean, com.trainiq.domain.model.RoutineGenerationOptions) -> Unit,
+    generationError: String? = null,
+    onDismissGenerationError: () -> Unit = {},
 ) {
     TrainIqTheme(dynamicColor = false) {
         WorkoutScreen(
@@ -174,6 +218,8 @@ private fun SyntheticWorkoutScreen(
             pendingGeneratedRoutine = null,
             isSavingGeneratedRoutine = false,
             isGeneratingAiRoutine = message == "AI-routine maken...",
+            routineGenerationError = generationError,
+            onDismissRoutineGenerationError = onDismissGenerationError,
             onDismissMessage = {},
             onStartWorkout = {},
             onOpenExerciseHistory = {},

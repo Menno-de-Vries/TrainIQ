@@ -255,6 +255,7 @@ object AiPrompts {
         - Kies eerst een bestaande oefening als die inhoudelijk overeenkomt met wat je wilt programmeren.
         - Zet dan existingExerciseId op het ID uit de bestaande oefeningenbibliotheek.
         - Maak alleen een nieuwe oefening wanneer geen bestaande oefening sterk genoeg overeenkomt.
+        - Zet existingExerciseId op null voor een nieuwe oefening; verzin nooit een bibliotheek-ID.
         - Houd oefeningnamen concreet; gebruik geen varianten die alleen anders gespeld zijn.
 
         Return JSON only, no markdown. Alle strings zijn Nederlands, behalve oefeningnamen als gebruikersinput Engels is:

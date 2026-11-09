@@ -299,7 +299,7 @@ class BodyMeasurementPhotoService internal constructor(
                 throw AiProviderRequestException(AiProvider.OPENAI, AiFeature.BODY_MEASUREMENT_PHOTO, AiFailureCategory.INVALID_RESPONSE)
             }
             return fallbackBodyMeasurementPhoto(
-                notes = root.get("notes")?.asString ?: "AI kon het gewicht niet betrouwbaar uitlezen. Voeg het gewicht als context toe of vul het handmatig in.",
+                notes = root.get("notes")?.takeUnless { it.isJsonNull }?.asString ?: "AI kon het gewicht niet betrouwbaar uitlezen. Voeg het gewicht als context toe of vul het handmatig in.",
                 rawResponse = boundedText,
                 source = source,
             )
@@ -309,7 +309,7 @@ class BodyMeasurementPhotoService internal constructor(
             bodyFat = bodyFat,
             muscleMass = muscleMass,
             confidence = root.get("confidence")?.asString,
-            notes = buildBodyMeasurementNotes(root.get("notes")?.asString, contextOverrides),
+            notes = buildBodyMeasurementNotes(root.get("notes")?.takeUnless { it.isJsonNull }?.asString, contextOverrides),
             rawResponse = boundedText,
             source = source,
         )
@@ -889,11 +889,11 @@ class GoalAdvisorService internal constructor(
                 root.get("trainingFocus")?.asString.orEmpty(),
                 root.get("korteSamenvatting")?.asString ?: root.get("summary")?.asString.orEmpty(),
                 root.get("calorieAdvies")?.asString.orEmpty(),
-                root.get("macroAdvies")?.asString.orEmpty(),
-                root.get("activiteitUitleg")?.asString.orEmpty(),
-                root.get("advies")?.asString.orEmpty(),
-                root.get("dataKwaliteit")?.asString.orEmpty(),
-            ) + root.getAsJsonArray("aandachtspunten")?.map { it.asString }.orEmpty()
+                root.get("macroAdvies")?.takeUnless { it.isJsonNull }?.asString.orEmpty(),
+                root.get("activiteitUitleg")?.takeUnless { it.isJsonNull }?.asString.orEmpty(),
+                root.get("advies")?.takeUnless { it.isJsonNull }?.asString.orEmpty(),
+                root.get("dataKwaliteit")?.takeUnless { it.isJsonNull }?.asString.orEmpty(),
+            ) + root.get("aandachtspunten")?.takeUnless { it.isJsonNull }?.asJsonArray?.map { it.asString }.orEmpty()
             if (!textFields.isUsableDutchAiText()) return baseline
             baseline.copy(
                 trainingFocus = root.get("trainingFocus")?.asString ?: baseline.trainingFocus,
@@ -901,12 +901,12 @@ class GoalAdvisorService internal constructor(
                     ?: root.get("summary")?.asString
                     ?: baseline.summary,
                 calorieAdvice = root.get("calorieAdvies")?.asString ?: baseline.calorieAdvice,
-                macroAdvice = root.get("macroAdvies")?.asString ?: baseline.macroAdvice,
-                activityExplanation = root.get("activiteitUitleg")?.asString ?: baseline.activityExplanation,
-                attentionPoints = root.getAsJsonArray("aandachtspunten")?.map { it.asString }.orEmpty()
+                macroAdvice = root.get("macroAdvies")?.takeUnless { it.isJsonNull }?.asString ?: baseline.macroAdvice,
+                activityExplanation = root.get("activiteitUitleg")?.takeUnless { it.isJsonNull }?.asString ?: baseline.activityExplanation,
+                attentionPoints = root.get("aandachtspunten")?.takeUnless { it.isJsonNull }?.asJsonArray?.map { it.asString }.orEmpty()
                     .ifEmpty { baseline.attentionPoints },
-                advice = root.get("advies")?.asString ?: baseline.advice,
-                dataQuality = root.get("dataKwaliteit")?.asString ?: baseline.dataQuality,
+                advice = root.get("advies")?.takeUnless { it.isJsonNull }?.asString ?: baseline.advice,
+                dataQuality = root.get("dataKwaliteit")?.takeUnless { it.isJsonNull }?.asString ?: baseline.dataQuality,
                 source = provider.toGoalAdviceSource(),
                 rawResponse = boundedText,
             )
@@ -1047,12 +1047,12 @@ internal fun parseWeeklyReportResponse(text: String, adherence: Int, provider: A
         val root = JsonParser.parseString(boundedText).asJsonObject
         val summary = root.get("summary")?.asString?.trim().orEmpty()
         if (summary.isBlank()) return fallbackWeeklyReport(adherence)
-        val wins = root.getAsJsonArray("wins")?.map { it.asString }.orEmpty()
-        val risks = root.getAsJsonArray("risks")?.map { it.asString }.orEmpty()
+        val wins = root.get("wins")?.takeUnless { it.isJsonNull }?.asJsonArray?.map { it.asString }.orEmpty()
+        val risks = root.get("risks")?.takeUnless { it.isJsonNull }?.asJsonArray?.map { it.asString }.orEmpty()
         val nextWeekFocus = root.get("nextWeekFocus")?.asString ?: "Bescherm herstel voordat je extra volume toevoegt."
         val rationaleBullets = (
-            root.getAsJsonArray("rationaleBullets")
-                ?: root.getAsJsonArray("coachReasoningSummary")
+            root.get("rationaleBullets")?.takeUnless { it.isJsonNull }?.asJsonArray
+                ?: root.get("coachReasoningSummary")?.takeUnless { it.isJsonNull }?.asJsonArray
                 ?: root.getAsJsonArray(LegacyWeeklyReportReasoningKey)
             )?.map { it.asString }.orEmpty()
         val fields = listOf(summary, nextWeekFocus) + wins + risks + rationaleBullets
@@ -1104,15 +1104,15 @@ internal fun parseWorkoutDebriefResponse(
     val boundedText = requireAiRawResponseWithinLimit(text)
     val root = JsonParser.parseString(boundedText).asJsonObject
     val summary = root.get("summary")?.asString ?: "Training opgeslagen."
-    val progressionFeedback = root.get("progressionFeedback")?.asString ?: "Progressie bleef stabiel."
+    val progressionFeedback = root.get("progressionFeedback")?.takeUnless { it.isJsonNull }?.asString ?: "Progressie bleef stabiel."
     val recommendation = root.get("recommendation")?.asString
         ?: "Herhaal deze sessie en mik op een extra herhaling bij de belangrijkste oefeningen."
     val nextSessionFocus = root.get("nextSessionFocus")?.asString?.trim().orEmpty()
         .ifBlank { "Huidige gewichten vasthouden" }
-    val wins = root.getAsJsonArray("wins")?.map { it.asString }.orEmpty()
-    val risks = root.getAsJsonArray("risks")?.map { it.asString }.orEmpty()
-    val nextLoadTarget = root.get("nextLoadTarget")?.asString?.trim().orEmpty()
-    val recoveryAdvice = root.get("recoveryAdvice")?.asString?.trim().orEmpty()
+    val wins = root.get("wins")?.takeUnless { it.isJsonNull }?.asJsonArray?.map { it.asString }.orEmpty()
+    val risks = root.get("risks")?.takeUnless { it.isJsonNull }?.asJsonArray?.map { it.asString }.orEmpty()
+    val nextLoadTarget = root.get("nextLoadTarget")?.takeUnless { it.isJsonNull }?.asString?.trim().orEmpty()
+    val recoveryAdvice = root.get("recoveryAdvice")?.takeUnless { it.isJsonNull }?.asString?.trim().orEmpty()
     val fields = listOf(
         summary,
         progressionFeedback,

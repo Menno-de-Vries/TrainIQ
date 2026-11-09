@@ -101,11 +101,11 @@ class GeminiModelClient @Inject constructor(
             )
         } catch (error: KotlinNullPointerException) {
             // Retrofit 2.11 rejects successful null/204 bodies before returning the DTO.
-            if (request.feature == AiFeature.MEAL_SCAN) invalid(AiFailureCategory.INVALID_RESPONSE)
+            if (request.feature == AiFeature.MEAL_SCAN || request.feature == AiFeature.ROUTINE_GENERATION) invalid(AiFailureCategory.INVALID_RESPONSE)
             throw error
         }
         // Other feature parsers own their existing local fallback contracts.
-        if (request.feature != AiFeature.MEAL_SCAN) {
+        if (request.feature != AiFeature.MEAL_SCAN && request.feature != AiFeature.ROUTINE_GENERATION) {
             return AiRouteResult(
                 providerUsed = provider, model = GEMINI_FLASH_MODEL,
                 rawJson = response?.candidates.orEmpty().filterNotNull().firstOrNull()
@@ -636,6 +636,11 @@ internal fun Map<String, Any?>.toOpenAiStrictSchema(): Map<String, Any?> {
             mapped.remove("maximum")
             if (mapped["type"] == "object") {
                 val properties = mapped["properties"] as? Map<String, Any?> ?: emptyMap()
+                val originallyRequired = (value["required"] as? List<*>).orEmpty()
+                mapped["properties"] = properties.mapValues { (name, schema) ->
+                    if (name in originallyRequired) schema
+                    else mapOf("anyOf" to listOf(schema, mapOf("type" to "null")))
+                }
                 mapped["additionalProperties"] = false
                 mapped["required"] = properties.keys.toList()
             }
