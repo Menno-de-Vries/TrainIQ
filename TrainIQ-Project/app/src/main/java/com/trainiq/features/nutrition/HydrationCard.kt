@@ -81,7 +81,12 @@ fun HydrationCard(
     var editing by rememberSaveable { mutableStateOf(false) }
     var submitted by rememberSaveable { mutableStateOf(false) }
     var submittedAfterToken by rememberSaveable { mutableStateOf<String?>(null) }
+    var showManual by rememberSaveable { mutableStateOf(false) }
+    var showRecords by rememberSaveable { mutableStateOf(false) }
     var showEarlier by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (amount.isNotBlank() || editing || submitted) showManual = true
+    }
     fun clearSubmittedEntry() {
         amount = ""; editing = false; submitted = false; entryId = UUID.randomUUID().toString()
     }
@@ -111,36 +116,52 @@ fun HydrationCard(
                 is HydrationUiState.Success -> {
                     Text("${state.totalMl.toLong()} ml", style = MaterialTheme.typography.headlineSmall)
                     if (state.records.isEmpty()) Text("Nog geen vocht geregistreerd vandaag.")
-                    listOf(250, 500).forEach { volume ->
-                        OutlinedButton(onClick = { submit(volume.toString()) },
-                            enabled = !state.saving && !editing && !submitted && amount.isBlank(),
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("$volume ml toevoegen") }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(250, 500).forEach { volume ->
+                            OutlinedButton(onClick = { submit(volume.toString()) },
+                                enabled = !state.saving && !editing && !submitted && amount.isBlank(),
+                                modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("+$volume ml") }
+                        }
                     }
-                    OutlinedTextField(amount, { amount = it }, label = { Text("Hoeveelheid (ml)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true, enabled = !state.saving && !submitted, modifier = Modifier.fillMaxWidth())
-                    Button(onClick = { submit(amount) }, enabled = !state.saving && explicitVolumeMl(amount, "ml") != null, modifier = Modifier.fillMaxWidth()) {
-                        Text(if (state.saving) "Opslaan…" else if (editing) "Wijziging opslaan" else "Vocht toevoegen")
+                    if (!editing && !submitted) {
+                        TextButton(onClick = { showManual = !showManual }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                            Text(if (showManual) "Andere hoeveelheid verbergen" else "Andere hoeveelheid")
+                        }
                     }
-                    if (editing) TextButton(onClick = {
-                        editing = false; submitted = false; amount = ""; entryId = UUID.randomUUID().toString()
-                    }, enabled = !state.saving) { Text("Annuleren") }
+                    if (showManual || editing || submitted) {
+                        OutlinedTextField(amount, { amount = it }, label = { Text("Hoeveelheid (ml)") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true, enabled = !state.saving && !submitted, modifier = Modifier.fillMaxWidth())
+                        Button(onClick = { submit(amount) }, enabled = !state.saving && explicitVolumeMl(amount, "ml") != null, modifier = Modifier.fillMaxWidth()) {
+                            Text(if (state.saving) "Opslaan…" else if (editing) "Wijziging opslaan" else "Vocht toevoegen")
+                        }
+                        if (editing) TextButton(onClick = {
+                            editing = false; submitted = false; amount = ""; entryId = UUID.randomUUID().toString()
+                        }, enabled = !state.saving) { Text("Annuleren") }
+                    }
                     state.message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-                    if (state.earlierRecords.isNotEmpty()) TextButton(onClick = { showEarlier = !showEarlier }) {
-                        Text(if (showEarlier) "Eerdere vochtinvoer verbergen" else "Eerdere vochtinvoer bekijken")
+                    if (state.records.isNotEmpty() || state.earlierRecords.isNotEmpty()) {
+                        TextButton(onClick = { showRecords = !showRecords }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                            Text(if (showRecords) "Registraties verbergen" else "Registraties (${state.records.size})")
+                        }
                     }
-                    (state.records + if (showEarlier) state.earlierRecords else emptyList()).forEach { record ->
-                        if (record in state.earlierRecords) Text(
-                            Instant.ofEpochMilli(record.timestamp).atZone(ZoneId.systemDefault()).toLocalDate().toString(),
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                        Text("${record.label}: ${record.volumeMl.toLong()} ml")
-                        if (record.mealId == null) {
-                            Row {
-                                TextButton(onClick = { entryId = record.id; timestamp = record.timestamp; amount = record.volumeMl.toString(); editing = true }, enabled = !state.saving) { Text("Corrigeren") }
-                                TextButton(onClick = { delete(record.id) }, enabled = !state.saving) { Text("Verwijderen") }
-                            }
-                        } else Text("Pas deze bijdrage aan via de maaltijd hieronder.", style = MaterialTheme.typography.bodySmall)
+                    if (showRecords) {
+                        if (state.earlierRecords.isNotEmpty()) TextButton(onClick = { showEarlier = !showEarlier }) {
+                            Text(if (showEarlier) "Eerdere vochtinvoer verbergen" else "Eerdere vochtinvoer bekijken")
+                        }
+                        (state.records + if (showEarlier) state.earlierRecords else emptyList()).forEach { record ->
+                            if (record in state.earlierRecords) Text(
+                                Instant.ofEpochMilli(record.timestamp).atZone(ZoneId.systemDefault()).toLocalDate().toString(),
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                            Text("${record.label}: ${record.volumeMl.toLong()} ml")
+                            if (record.mealId == null) {
+                                Row {
+                                    TextButton(onClick = { entryId = record.id; timestamp = record.timestamp; amount = record.volumeMl.toString(); editing = true; showManual = true }, enabled = !state.saving) { Text("Corrigeren") }
+                                    TextButton(onClick = { delete(record.id) }, enabled = !state.saving) { Text("Verwijderen") }
+                                }
+                            } else Text("Pas deze bijdrage aan via de maaltijd hieronder.", style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                 }
             }

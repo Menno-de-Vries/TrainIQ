@@ -17,6 +17,31 @@ import org.junit.Test
 
 class HydrationUiTest {
     @OptIn(ExperimentalTestApi::class)
+    @Test fun compactDisclosureRestoresTypedDraftAndKeepsHistoryReachable() = runComposeUiTest {
+        val restoration = StateRestorationTester(this)
+        val record = HydrationRecord("record", 1L, 200.0, null, "Handmatig vocht")
+        val earlier = HydrationRecord("earlier", 2L, 300.0, null, "Eerder vocht")
+        restoration.setContent {
+            TrainIqTheme {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    HydrationCard(HydrationUiState.Success(listOf(record), 200.0, false, null, earlierRecords = listOf(earlier)), {}, { _, _, _, _ -> }, {})
+                }
+            }
+        }
+        onNodeWithText("+250 ml").assertExists()
+        onNodeWithText("Hoeveelheid (ml)").assertDoesNotExist()
+        onNodeWithText("Andere hoeveelheid").performClick()
+        onNodeWithText("Hoeveelheid (ml)").performTextInput("175")
+        onNodeWithText("Andere hoeveelheid verbergen").performScrollTo().performClick()
+        onNodeWithText("Hoeveelheid (ml)").assertDoesNotExist()
+        restoration.emulateSaveAndRestore()
+        onNodeWithText("Hoeveelheid (ml)").assertTextContains("175")
+        onNodeWithText("Registraties (1)").performScrollTo().performClick()
+        onNodeWithText("Handmatig vocht: 200 ml").assertExists()
+        onNodeWithText("Eerdere vochtinvoer bekijken").performScrollTo().performClick()
+        onNodeWithText("Eerder vocht: 300 ml").assertExists()
+    }
+    @OptIn(ExperimentalTestApi::class)
     @Test fun realViewModelGuardsRapidWritesAndStoresOneRecord() = runComposeUiTest {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val db = resetTrainIqAndroidTestDatabase(context)
@@ -48,10 +73,10 @@ class HydrationUiTest {
                 }
             }
         }
-        onNodeWithText("250 ml toevoegen").performScrollTo().performClick()
+        onNodeWithText("+250 ml").performScrollTo().performClick()
         restoration.emulateSaveAndRestore()
         runOnIdle { completedId = ids.single(); busy = false }
-        onNodeWithText("500 ml toevoegen").performScrollTo().assertIsEnabled().performClick()
+        onNodeWithText("+500 ml").performScrollTo().assertIsEnabled().performClick()
         runOnIdle { assertEquals(2, ids.size); assertNotEquals(ids[0], ids[1]) }
     }
     @OptIn(ExperimentalTestApi::class)
@@ -68,22 +93,23 @@ class HydrationUiTest {
                 }
             }
         }
-        onNodeWithText("250 ml toevoegen").performScrollTo().performClick()
-        onNodeWithText("250 ml toevoegen").assertIsNotEnabled()
+        onNodeWithText("+250 ml").performScrollTo().performClick()
+        onNodeWithText("+250 ml").assertIsNotEnabled()
         runOnIdle { assertEquals(1, calls.size); assertEquals("250", calls.single().third); busy = false; message = "Opslaan mislukt. Probeer opnieuw." }
         onNodeWithText("Opslaan mislukt. Probeer opnieuw.").assertExists()
         onNodeWithText("Vocht toevoegen").performScrollTo().performClick()
         runOnIdle { assertEquals(2, calls.size); assertEquals(calls[0], calls[1]); callback?.invoke(); busy = false }
-        onNodeWithText("500 ml toevoegen").performScrollTo().performClick()
+        onNodeWithText("+500 ml").performScrollTo().performClick()
         runOnIdle { assertEquals(3, calls.size); assertNotEquals(calls[0].first, calls[2].first); assertEquals("500", calls[2].third) }
     }
 
     @OptIn(ExperimentalTestApi::class)
     @Test fun quickDrinksDoNotOverwriteManualDraft() = runComposeUiTest {
         setContent { TrainIqTheme { HydrationCard(HydrationUiState.Success(emptyList(), 0.0, false, null), {}, { _, _, _, _ -> }, {}) } }
+        onNodeWithText("Andere hoeveelheid").performClick()
         onNodeWithText("Hoeveelheid (ml)").performTextInput("175")
-        onNodeWithText("250 ml toevoegen").assertIsNotEnabled()
-        onNodeWithText("500 ml toevoegen").assertIsNotEnabled()
+        onNodeWithText("+250 ml").assertIsNotEnabled()
+        onNodeWithText("+500 ml").assertIsNotEnabled()
         onNodeWithText("Hoeveelheid (ml)").assertTextContains("175")
     }
 
@@ -101,6 +127,7 @@ class HydrationUiTest {
                 }
             }
         }
+        onNodeWithText("Registraties (1)").performScrollTo().performClick()
         onNodeWithText("Corrigeren").performScrollTo().performClick()
         onNodeWithText("Hoeveelheid (ml)").performTextReplacement("300")
         onNodeWithText("Wijziging opslaan").performScrollTo().performClick()
@@ -125,10 +152,12 @@ class HydrationUiTest {
             }
         }
         onNodeWithText("Nog geen vocht geregistreerd vandaag.").assertExists()
+        onNodeWithText("Andere hoeveelheid").performScrollTo().performClick()
         onNodeWithText("Hoeveelheid (ml)").performTextInput("250")
         onNodeWithText("Vocht toevoegen").performScrollTo().performClick()
         onNodeWithText("250 ml").assertExists()
         val id = lastId
+        onNodeWithText("Registraties (1)").performScrollTo().performClick()
         onNodeWithText("Corrigeren").performScrollTo().performClick()
         onNodeWithText("Hoeveelheid (ml)").performTextReplacement("200")
         onNodeWithText("Wijziging opslaan").performScrollTo().performClick()
