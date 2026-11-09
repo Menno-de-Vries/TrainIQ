@@ -5,24 +5,11 @@ description: "Use for codebase research, subagent orchestration, autonomous issu
 
 # Superpowers
 
-Use this skill when a task needs disciplined repo research, parallel investigation, issue triage, or verification before completion.
+Use AGENTS.md's efficient execution rules for research, delegation and review. Do not automatically start the broader improvement cycle.
 
-## Workflow
-
-1. Research before judging or editing.
-2. Identify independent workstreams and delegate read-only investigation when useful.
-3. Keep handoffs concise and evidence-based.
-4. Triage risks by user impact, data safety, regression likelihood, and verification cost.
-5. Prefer small, reversible changes and preserve existing architecture.
-6. Verify before claiming success.
-
-## Handoff Format
-
-- task:
-- scope:
-- status: done | blocked | risky
-- findings:
-- changed files:
-- verification:
-- risks:
-- handoff_needed:
+- Inspect the affected source/tests and choose the smallest complete change.
+- When delegation is authorized, use independent ownership and one concise handoff: goal, paths, model/effort, acceptance, result/evidence and remaining issues. No separate handoff file unless needed for recovery.
+- Reuse capable agents after allocator failures; avoid repeated unchanged spawn attempts. Shared files/index/device operations need coordination; independent work can run in parallel.
+- Combine spec and quality review per cohesive batch. Whole-change review is for requested or materially cross-feature work; after fixes review their diff and consequences, not the entire repository again.
+- Keep one task summary and one evidence index for long work. Reference logs rather than repeatedly copying them into reports. No automatic skill bootstrap, global scoring or workflow-engine implementation.
+- Resolve concrete material findings, verify at the owning layer and stop at acceptance. Keep self-review and independent review distinct.

@@ -3,13 +3,8 @@ name: android-quality-gate
 description: Use when validating Android app quality, lifecycle, permissions, accessibility, emulator/device behavior, Gradle builds, tests, adb/logcat, and release-readiness.
 ---
 
-Use this skill to:
-- check Gradle/build health;
-- check Android lifecycle, configuration changes, process death risk, and state preservation;
-- check permissions, privacy, storage/media access, network behavior, and background behavior where relevant;
-- check navigation, loading states, empty states, error states, offline states, and retry behavior;
-- check responsive layouts, dark mode, font scaling, touch targets, TalkBack labels, and accessibility semantics;
-- check startup, crash risk, ANR risk, jank risk, memory risk, and severe logcat warnings;
-- run the smallest relevant checks first;
-- if emulator/device access exists, launch the app, exercise core flows, inspect adb logcat, and capture screenshots if useful;
-- report exact commands and PASS/FAIL/not run with reason.
+# Android Quality Gate
+
+Use test-android-apps (../test-android-apps/SKILL.md) and docs/agent-guides/local-testing.md as the single verification workflow. Do not launch a duplicate gate because both skills were selected.
+
+Select only risks changed by this task: state/lifecycle, navigation, Room, permissions, remote boundaries, accessibility or performance. Preserve required happy-path, boundary and failure/recovery proof at the lowest reliable layer. Reuse valid prior results. Docs-only edits do not require an emulator/build; a device being available is not by itself a reason to run it. Report exact results and evidence limits, without formal certification claims.

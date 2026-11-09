@@ -5,16 +5,13 @@ description: "Use for Android build/test/emulator/device QA, Gradle diagnosis, a
 
 # Test Android Apps
 
-Use this skill when validating Android app quality, release readiness, emulator behavior, or device-specific risks.
+AGENTS.md and docs/agent-guides/local-testing.md own test selection, safety and canonical commands. Read them once; this skill adds no second checklist or mandatory report.
 
-## Workflow
+1. Identify changed behavior and transitive risk, then select its cheapest reliable proof. Docs/skills-only work needs content/frontmatter/link checks, not Android execution.
+2. Run focused tests while editing. Batch one integration baseline when warranted: :app:assembleDebug, :app:testDebugUnitTest, :app:lintDebug and relevant Android-test compilation. Do not use generic test tasks or rerun all gates for each agent/commit.
+3. Add canonical :app:connectedDebugAndroidTest only for affected Android, Room, navigation, lifecycle or semantics boundaries. Reuse uninvalidated evidence; retain failing regression tests and diagnose failures before retrying.
+4. Use one known isolated serial. Verify ownership/boot, scope every adb call, preserve user data, and use installed tooling. For temporary display changes on an owned AVD include restoration in the same bounded operation.
+5. Inspect changed UI using representative states and the smallest useful viewport/font/IME/theme matrix, with screenshots plus semantics. Avoid every-state cross products; record fixture versus actual app boundaries.
+6. Record source, exact commands, counts/results and evidence paths once. Capture only necessary logs/images. Emulator evidence is not physical performance, heard audio or human TalkBack evidence.
 
-1. Detect modules, variants, package id, min/target SDK, and test tasks.
-2. Run the smallest relevant Gradle checks first.
-3. If a device or emulator is available, install and launch the app.
-4. Inspect lifecycle, permissions, navigation, loading/error/offline states, and crash risk.
-5. Capture adb logcat crash evidence when launch is possible.
-6. Check accessibility basics: labels, touch targets, font scaling risk, dark mode, and TalkBack semantics where inspectable.
-7. Record exact PASS, FAIL, or NOT RUN reasons for every check.
-
-Do not install external dependencies unless the repository already uses them.
+For APK update proof, finish instrumentation first (the runner can uninstall the target). Then verify the exact old APK/signature, install the exact final APK with install -r and prove selected data preservation. Do not run instrumentation afterwards.
