@@ -1,5 +1,13 @@
 # TrainIQ Target-State Progress
 
+## 2026-11-09 Betrouwbare routine- en voedingsflows
+
+- Afgerond binnen bestaande architectuur: routinecontracten en herstel, veilige maaltijdconcepten/hergebruik/tijdstippen, direct productzoeken, compacte vochtinvoer en providerbewuste AI-voedselbatch met deelretry en eigenaars-/navigatiebewaking. Geen nieuwe dienst, dependency, model of schema in deze nieuwe batch.
+- Eén volledige onafhankelijke Astra/high-review omvat alle eerdere branchwijzigingen plus dit werk. De gezamenlijke fixwave corrigeert bevestigd setverlies bij afronden, een ongewijzigde refresh die timerwrites annuleerde en een typed enum-lintpunt; scoped herreview Approved op `db3c27a`, geen open blokkerende bevinding.
+- Volledige lokale baseline 1.102 JVM-tests/153 suites, assemble/lint/Android-testcompile groen, lint 0 errors/27 bestaande warnings. Gerichte native Room-/Hilt-/timer-/navigatieproeven en compacte/groot-font/IME/donkere plus brede lichte modalcontrole zijn in het [verificatieverslag](qa/TrainIQ_Routine_Nutrition_2026-11-09.md) begrensd beschreven.
+- De gebruiker autoriseerde alles naar main en daarna één update via de bestaande bezorgroute. Versie 1.0.2-B/code 4 behoudt voor compatibiliteit de debughandtekening van de APK van 22 oktober; de schone remote-mainbuild, verse migratiemarker, daadwerkelijke updateproef en private Drive-/emailstatus worden na dit bronverslag afzonderlijk vastgelegd.
+- Geen globale alignmentscore, live-AI-kwaliteit, algemene process-deathgarantie of menselijke/fysieke certificering geclaimd; retired eigenaarspoorten zijn niet heringevoerd.
+
 ## 2026-11-04 Actieve training, setfeiten en rustmelding
 
 - Gerichte uitvoering van het door de gebruiker gekozen gecombineerde ontwerp: rustigere setkaarten, twee veilige logacties, feitelijke voltooide-setanalyse en RPE-dekking, reactieve trainingsafronding en een duurzame rustmelding op basis van Room 21.

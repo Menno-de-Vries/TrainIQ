@@ -1,5 +1,14 @@
 # TrainIQ QA Findings To Improve
 
+## 2026-11-09 Routinegeneratie en betrouwbare voedingsinvoer
+
+- Status: gerichte implementatie en onafhankelijke reviews gereed; alle concrete bevindingen opgelost. De volledige Astra/high-review van het hele te mergen bereik vond twee Important-punten en één Minor; de ene gezamenlijke fixwave is scoped Approved op `db3c27a`, zonder open Critical/Important/Minor uit die lijst.
+- Routine-JSON/nullreferenties, zichtbare fout/herstel en profielvervolgstap; expliciete maaltijdconcept-/hergebruikidentiteit en tijdstippen; direct opgeslagen producten zoeken; compacte snelle/vrije vochtinvoer; camera-providerkeuze en ViewModel-owned AI-batch met veilige deelretry, actuele context en cumulatieve succesgrammen zijn verbeterd.
+- De eindreview vond een bestaande finishrace die een bevestigde tweede set kon verliezen en een timerrefresh die een geldige queued tik kon annuleren. Verse transactionele finishinhoud/feedback en afzonderlijke timerbron-/optimistische state herstellen dit; de nieuwe typed enum heeft Keep. Geldige RED-regressies zijn behouden.
+- Finale lokale baseline: 1.102 JVM-tests/153 suites, debugbuild/lint/Android-testcompile geslaagd; lint 0 errors/27 bestaande warnings. Gerichte Room-/timer-/Hilt-VM-proeven en de laatste zes finishcases groen; afzonderlijke runs worden niet opgeteld tot één suite.
+- Zie [volledig scoped verificatieverslag](qa/TrainIQ_Routine_Nutrition_2026-11-09.md) voor bron, exacte opdrachten, reviewketen, compacte/brede beelden, eerdere mislukte tussenruns en bewijsgrenzen. Geen liveprovider-/oorspronkelijke-foto-, fysieke audio-/prestatie- of menselijke toegankelijkheidscertificering. Main-build, updatebewijs en bezorgstatus worden afzonderlijk in de ignored afleverledger vastgelegd.
+- Geen globale target-state-score of niet-onderzochte appbevinding gesloten. De eerdere actieve-training/RPE/timerverbeteringen gaan mee naar main; hun historische bewijs blijft afzonderlijk bewaard.
+
 ## 2026-11-04 Actieve training — gekozen ontwerp en betrouwbare setfeedback
 
 - Status: done voor deze gerichte uitvoering en de gereproduceerde randgevallen; finale fixwave en N1 zijn onafhankelijk Approved. Hardware-, OS- en menselijke toegankelijkheidsgrenzen blijven afzonderlijk vermeld.
