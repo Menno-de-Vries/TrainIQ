@@ -878,26 +878,30 @@ class RoomTrainIqRuntimeStore internal constructor(
         } }
     }
 
-    suspend fun finishActiveWorkoutSession(
-        session: WorkoutSessionEntity,
-        performedExercises: List<PerformedExerciseEntity>,
-        sets: List<WorkoutSetEntity>,
-        activeSessionId: Long?,
-    ) {
+    internal suspend fun finishActiveWorkoutSession(
+        expected: ActiveWorkoutFinishIdentity?,
+        build: (TrainIqStorageState) -> WorkoutFinishWrite,
+    ): com.trainiq.domain.model.WorkoutCompletionResult =
         restTimers.mutate { mutex.withLock {
             database.withTransaction {
-                val savedNotes = activeSessionId?.let { id ->
-                    dao.readActiveWorkoutSessionsForExport().firstOrNull { it.sessionId == id }?.notes
+                val active = readCurrentActiveWorkout()
+                if (expected != null) {
+                    check(active?.sessionId == expected.sessionId && active.dayId == expected.dayId &&
+                        active.startedAt == expected.startedAt) { "The intended active workout was replaced or removed." }
                 }
-                dao.finishActiveWorkoutSession(
-                    session = session.copy(notes = savedNotes ?: session.notes),
-                    performedExercises = performedExercises,
-                    sets = sets,
-                    activeSessionId = activeSessionId,
+                val fresh = readCurrentPlan().copy(
+                    activeWorkoutSession = active,
+                    sessions = dao.readWorkoutSessionsForExport(),
+                    performedExercises = dao.readPerformedExercisesForExport(),
+                    workoutSets = dao.readWorkoutSetsForExport(),
                 )
+                val write = build(fresh)
+                write.session?.let { session ->
+                    dao.finishActiveWorkoutSession(session, write.performedExercises, write.sets, expected?.sessionId)
+                }
+                write.result
             }
         } }
-    }
 
     suspend fun getWorkoutDebriefRefreshSnapshot(sessionId: Long): WorkoutDebriefRefreshSnapshot =
         database.withTransaction {

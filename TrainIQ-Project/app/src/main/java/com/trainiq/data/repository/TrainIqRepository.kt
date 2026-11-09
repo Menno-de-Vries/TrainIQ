@@ -442,21 +442,13 @@ class TrainIqDataCoordinator @Inject constructor(
         withContext(Dispatchers.IO) { runtimeStore.updateActiveWorkoutRestTimer(change)?.toDomain() }
 
     suspend fun finishActiveWorkout(dayId: Long): WorkoutCompletionResult {
-        val active = runtimeStore.state.value.activeWorkoutSession?.takeIf { it.dayId == dayId }
-        val now = System.currentTimeMillis()
-        val durationSeconds = active?.let {
-            activeWorkoutDurationSeconds(startedAt = it.startedAt, now = now)
-        } ?: 1L
-        val result = finishWorkout(
-            dayId = dayId,
-            durationSeconds = durationSeconds,
-            loggedSets = active?.loggedSets.orEmpty().map { it.toDomain().toLoggedSet() },
-            activeSessionId = active?.sessionId,
-            activeStartedAt = active?.startedAt,
-        )
-        return result
+        // Capture intent only. Sets and every derived value are loaded inside the finish transaction.
+        val active = requireNotNull((runtimeStore.state.value.activeWorkoutSession
+            ?: runtimeStore.readCurrentActiveWorkout())?.takeIf { it.dayId == dayId }) {
+            "The intended active workout no longer exists."
+        }
+        return finishWorkout(dayId, 0L, emptyList(), active.sessionId, active.startedAt)
     }
-
     suspend fun getWorkoutCompletionSummary(sessionId: Long): WorkoutCompletionSummary? =
         observeWorkoutCompletionSummary(sessionId).first()
 
@@ -505,88 +497,21 @@ class TrainIqDataCoordinator @Inject constructor(
         loggedSets: List<LoggedSet>,
         activeSessionId: Long?,
         activeStartedAt: Long?,
-    ): WorkoutCompletionResult {
-        val analysis = buildWorkoutAnalysisSnapshot(loggedSets)
-        if (analysis.completedSets.isEmpty()) {
-            return WorkoutCompletionResult(
-                sessionId = 0L,
-                debrief = WorkoutDebrief(
-                summary = "Geen sets gelogd.",
-                progressionFeedback = "Log minimaal een set om voortgang op te slaan.",
-                recommendation = "Voeg tijdens je training sets toe voordat je afrondt.",
-                nextSessionFocus = "Huidige gewichten vasthouden",
-                recoveryScore = null,
-                intensitySignal = "MAINTAIN",
-                source = WorkoutDebriefSource.LOCAL_FALLBACK,
-                ),
-            )
-        }
-
-        val beforeSnapshot = snapshotState.value
-        val current = runtimeStore.state.value
+    ): WorkoutCompletionResult = runtimeStore.finishActiveWorkoutSession(
+        expected = activeSessionId?.let { ActiveWorkoutFinishIdentity(it, dayId, requireNotNull(activeStartedAt)) },
+    ) { current ->
         val now = System.currentTimeMillis()
-        val sessionId = activeSessionId?.takeIf { it > 0L } ?: ((current.sessions.maxOfOrNull { it.id } ?: 0L) + 1L)
-        val generationId = UUID.randomUUID().toString()
-        val startedAt = activeStartedAt?.takeIf { it > 0L } ?: (now - durationSeconds * 1_000L).coerceAtLeast(0L)
-        val newSession = WorkoutSessionEntity(
-            notes = current.activeWorkoutSession?.takeIf { it.sessionId == sessionId }?.notes.orEmpty(),
-            id = sessionId,
-            date = startedAt,
-            duration = durationSeconds,
-            caloriesBurned = estimateStrengthTrainingCalories(durationSeconds),
-            routineId = beforeSnapshot.days.firstOrNull { it.id == dayId }?.routineId,
-            workoutDayId = dayId,
-            startedAt = startedAt,
-            endedAt = now,
-            status = "COMPLETED",
-            completed = true,
-            debriefGenerationId = generationId,
-        )
-        val performedExercises = current.ensurePerformedExercisesForCompletedSets(dayId, sessionId, loggedSets)
-        val newSets = loggedSets.mapIndexed { index, set ->
-            val performedExerciseId = set.performedExerciseId.takeIf { it > 0L }
-                ?: performedExercises.firstOrNull { it.sessionId == sessionId && it.exerciseId == set.exerciseId }?.id
-                ?: 0L
-            WorkoutSetEntity(
-                id = (current.workoutSets.maxOfOrNull { it.id } ?: 0L) + index + 1L,
-                sessionId = sessionId,
-                exerciseId = set.exerciseId,
-                weight = set.weight,
-                reps = set.reps,
-                rpe = set.rpe,
-                repsInReserve = set.repsInReserve,
-                performedExerciseId = performedExerciseId,
-                setType = set.setType.name,
-                restSeconds = set.restSeconds,
-                orderIndex = set.orderIndex.takeIf { it > 0 } ?: index,
-                completed = set.completed,
-                loggedAt = completedWorkoutSetLoggedAt(set = set, fallback = now + index),
-                completedAt = now + index,
-            )
-        }
-        val currentVolume = analysis.totalVolumeKg
-        val comparison = buildWorkoutProgressComparison(
+        val active = current.activeWorkoutSession.takeIf { activeSessionId != null }
+        buildWorkoutFinishWrite(
+            current = current,
             dayId = dayId,
-            routineId = newSession.routineId,
-            startedAt = startedAt,
+            durationSeconds = active?.let { activeWorkoutDurationSeconds(it.startedAt, now) } ?: durationSeconds,
+            loggedSets = active?.loggedSets?.map { it.toDomain().toLoggedSet() } ?: loggedSets,
             activeSessionId = activeSessionId,
-            currentSets = analysis.completedSets,
-            sessions = beforeSnapshot.sessions,
-            sets = beforeSnapshot.sets,
-            days = beforeSnapshot.days,
-            exercises = beforeSnapshot.exercises,
+            activeStartedAt = active?.startedAt,
+            now = now,
         )
-        val progression = comparison?.progressionPercent
-        val localDebrief = fallbackWorkoutDebriefResult(currentVolume, progression, analysisSnapshot = analysis)
-        runtimeStore.finishActiveWorkoutSession(
-            session = newSession.withDebrief(localDebrief),
-            performedExercises = performedExercises,
-            sets = newSets,
-            activeSessionId = activeSessionId,
-        )
-        return WorkoutCompletionResult(sessionId = sessionId, debrief = localDebrief, generationId = generationId)
     }
-
     suspend fun refreshWorkoutDebrief(
         sessionId: Long,
         generationId: String? = null,
@@ -1768,6 +1693,99 @@ internal fun TrainIqStorageState.workoutLoggingSummary(dayId: Long, now: Long): 
 internal fun TrainIqStorageState.finalizeWorkoutLogEventsForCompletedSession(sessionId: Long): TrainIqStorageState =
     copy(workoutLogEvents = workoutLogEvents.filterNot { it.sessionId == sessionId })
 
+internal data class ActiveWorkoutFinishIdentity(val sessionId: Long, val dayId: Long, val startedAt: Long)
+
+internal data class WorkoutFinishWrite(
+    val result: WorkoutCompletionResult,
+    val session: WorkoutSessionEntity? = null,
+    val performedExercises: List<PerformedExerciseEntity> = emptyList(),
+    val sets: List<WorkoutSetEntity> = emptyList(),
+)
+
+/** Pure completion contents and local analysis, using exactly the snapshot that will be committed. */
+internal fun buildWorkoutFinishWrite(
+    current: TrainIqStorageState,
+    dayId: Long,
+    durationSeconds: Long,
+    loggedSets: List<LoggedSet>,
+    activeSessionId: Long?,
+    activeStartedAt: Long?,
+    now: Long,
+): WorkoutFinishWrite {
+    val analysis = buildWorkoutAnalysisSnapshot(loggedSets)
+    if (analysis.completedSets.isEmpty()) return WorkoutFinishWrite(WorkoutCompletionResult(
+        sessionId = 0L,
+        debrief = WorkoutDebrief(
+            summary = "Geen sets gelogd.",
+            progressionFeedback = "Log minimaal een set om voortgang op te slaan.",
+            recommendation = "Voeg tijdens je training sets toe voordat je afrondt.",
+            nextSessionFocus = "Huidige gewichten vasthouden",
+            recoveryScore = null,
+            intensitySignal = "MAINTAIN",
+            source = WorkoutDebriefSource.LOCAL_FALLBACK,
+        ),
+    ))
+    val beforeSnapshot = current
+    val sessionId = activeSessionId?.takeIf { it > 0L } ?: ((current.sessions.maxOfOrNull { it.id } ?: 0L) + 1L)
+    val generationId = UUID.randomUUID().toString()
+    val startedAt = activeStartedAt?.takeIf { it > 0L } ?: (now - durationSeconds * 1_000L).coerceAtLeast(0L)
+    val newSession = WorkoutSessionEntity(
+        notes = current.activeWorkoutSession?.takeIf { it.sessionId == sessionId }?.notes.orEmpty(),
+        id = sessionId,
+        date = startedAt,
+        duration = durationSeconds,
+        caloriesBurned = estimateStrengthTrainingCalories(durationSeconds),
+        routineId = beforeSnapshot.days.firstOrNull { it.id == dayId }?.routineId,
+        workoutDayId = dayId,
+        startedAt = startedAt,
+        endedAt = now,
+        status = "COMPLETED",
+        completed = true,
+        debriefGenerationId = generationId,
+    )
+    val performedExercises = current.ensurePerformedExercisesForCompletedSets(dayId, sessionId, loggedSets)
+    val newSets = loggedSets.mapIndexed { index, set ->
+        val performedExerciseId = set.performedExerciseId.takeIf { it > 0L }
+            ?: performedExercises.firstOrNull { it.sessionId == sessionId && it.exerciseId == set.exerciseId }?.id
+            ?: 0L
+        WorkoutSetEntity(
+            id = (current.workoutSets.maxOfOrNull { it.id } ?: 0L) + index + 1L,
+            sessionId = sessionId,
+            exerciseId = set.exerciseId,
+            weight = set.weight,
+            reps = set.reps,
+            rpe = set.rpe,
+            repsInReserve = set.repsInReserve,
+            performedExerciseId = performedExerciseId,
+            setType = set.setType.name,
+            restSeconds = set.restSeconds,
+            orderIndex = set.orderIndex.takeIf { it > 0 } ?: index,
+            completed = set.completed,
+            loggedAt = completedWorkoutSetLoggedAt(set = set, fallback = now + index),
+            completedAt = now + index,
+        )
+    }
+    val currentVolume = analysis.totalVolumeKg
+    val comparison = buildWorkoutProgressComparison(
+        dayId = dayId,
+        routineId = newSession.routineId,
+        startedAt = startedAt,
+        activeSessionId = activeSessionId,
+        currentSets = analysis.completedSets,
+        sessions = beforeSnapshot.sessions,
+        sets = beforeSnapshot.workoutSets,
+        days = beforeSnapshot.days,
+        exercises = beforeSnapshot.exercises,
+    )
+    val progression = comparison?.progressionPercent
+    val localDebrief = fallbackWorkoutDebriefResult(currentVolume, progression, analysisSnapshot = analysis)
+    return WorkoutFinishWrite(
+        result = WorkoutCompletionResult(sessionId, localDebrief, generationId),
+        session = newSession.withDebrief(localDebrief),
+        performedExercises = performedExercises,
+        sets = newSets,
+    )
+}
 internal fun completedWorkoutSetLoggedAt(set: LoggedSet, fallback: Long): Long =
     set.loggedAt.takeIf { it > 0L } ?: fallback
 

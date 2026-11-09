@@ -766,13 +766,14 @@ class WorkoutViewModel @Inject constructor(
         scope = viewModelScope,
         persist = { previous, value -> updateActiveWorkoutRestTimerUseCase(WorkoutRestTimerChange(value.sessionId, value.sessionStartedAt, previous.timer?.identity?.generation, value.timer)) },
         publish = { value ->
+            val metadata = value.metadata
             _activeSession.value = _activeSession.value?.copy(
-                restTimerEndsAt = value.timer?.wallDeadline,
-                restTimerTotalSeconds = value.timer?.totalSeconds ?: 0,
-                restTimerGeneration = value.timer?.identity?.generation,
-                restTimerElapsedDeadline = value.timer?.elapsedDeadline,
-                restTimerBootId = value.timer?.bootId,
-                restTimerHandled = value.timer?.handled ?: false,
+                restTimerEndsAt = metadata.endsAt,
+                restTimerTotalSeconds = metadata.seconds,
+                restTimerGeneration = metadata.generation,
+                restTimerElapsedDeadline = metadata.elapsedDeadline,
+                restTimerBootId = metadata.bootId,
+                restTimerHandled = metadata.handled,
             )
             restTimerSeconds = value.timer?.remainingSeconds(restClock.now()) ?: 0
         },
@@ -1521,7 +1522,7 @@ class WorkoutViewModel @Inject constructor(
     private fun persistRestTimer(timer: ScheduledWorkoutRestTimer?) {
         val previous = _activeSession.value ?: return
         restTimerWrites.submit(
-            previous = RestTimerValue(previous.restTimerEndsAt, previous.restTimerTotalSeconds, previous.scheduledRestTimer(), previous.sessionId, previous.startedAt),
+            previous = previous.timerValue(),
             next = RestTimerValue(timer?.wallDeadline, timer?.totalSeconds ?: 0, timer, previous.sessionId, previous.startedAt),
         )
     }
@@ -1550,8 +1551,8 @@ class WorkoutViewModel @Inject constructor(
         }
     }
 
-    private fun applyActiveSession(session: ActiveWorkoutSession) {
-        restTimerWrites.supersede(RestTimerValue(session.restTimerEndsAt, session.restTimerTotalSeconds, session.scheduledRestTimer(), session.sessionId, session.startedAt))
+    private fun applyActiveSession(fresh: ActiveWorkoutSession) {
+        val session = restTimerWrites.mergeSession(fresh)
         val previousDrafts = _drafts.value
         _activeSession.value = session
         _loggedSetsThisSession.value = session.loggedSets
