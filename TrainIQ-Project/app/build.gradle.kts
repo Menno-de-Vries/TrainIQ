@@ -42,8 +42,8 @@ android {
         applicationId = "com.trainiq"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.0.1-B"
+        versionCode = 4
+        versionName = "1.0.2-B"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
         buildConfigField(
