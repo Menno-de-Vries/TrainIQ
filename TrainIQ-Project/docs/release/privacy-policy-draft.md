@@ -50,6 +50,8 @@ For a smart-scale/body-measurement reading, the selected image and any context t
 
 ## Telemetry and Diagnostics
 
+An AI meal scan can also briefly verify a recognized product through Open Food Facts or the existing selected barcode provider. The product lookup sends only the barcode or product name, brand and variant, without the image, meal context, amount, notes or health data. Product results and misses may be cached in memory for five minutes (up to 32 products). Uncertain matches and lookup failures keep the AI estimate for review. Workout notes stay local; workout debriefs can include completed set details and per-exercise reported effort summaries.
+
 Technical telemetry is off by default. If enabled and configured in a production build, TrainIQ is designed to upload privacy-safe technical events and performance summaries. Health data, notes, API keys, and meal photos must not be uploaded as telemetry.
 
 OWNER_CONFIRMATION_REQUIRED: confirm telemetry endpoint, processor, retention period, and whether telemetry is enabled in production.

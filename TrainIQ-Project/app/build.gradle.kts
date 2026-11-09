@@ -42,8 +42,8 @@ android {
         applicationId = "com.trainiq"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.0.1-B"
+        versionCode = 4
+        versionName = "1.0.2-B"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
         buildConfigField(
@@ -278,17 +278,17 @@ fun registerRoomMigrationChainVerificationMarkerTask(
     )
 
     doLast {
-        val marker = "trainiq-room-migration-chain-v2-to-v19"
+        val marker = "trainiq-room-migration-chain-v2-to-v21"
         val testTask = "connectedDebugAndroidTest"
-        val currentRoomVersion = 19
+        val currentRoomVersion = 21
         val requiredStartVersion = 2
-        val requiredEndVersion = 19
+        val requiredEndVersion = 21
         val coveredStartVersion = 2
-        val coveredEndVersion = 19
+        val coveredEndVersion = 21
         val verifiedAtMillis = verifiedAtMillisProperty
             .map(String::toLong)
             .getOrElse(System.currentTimeMillis())
-        val migrationCount = 14
+        val migrationCount = 16
         val payloadForHash = listOf(
             marker,
             buildVariant,

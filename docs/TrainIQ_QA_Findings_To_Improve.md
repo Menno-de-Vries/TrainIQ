@@ -1,5 +1,34 @@
 # TrainIQ QA Findings To Improve
 
+## 2026-11-09 Routinegeneratie en betrouwbare voedingsinvoer
+
+- Status: gerichte implementatie en onafhankelijke reviews gereed; alle concrete bevindingen opgelost. De volledige Astra/high-review van het hele te mergen bereik vond twee Important-punten en één Minor; de ene gezamenlijke fixwave is scoped Approved op `db3c27a`, zonder open Critical/Important/Minor uit die lijst.
+- Routine-JSON/nullreferenties, zichtbare fout/herstel en profielvervolgstap; expliciete maaltijdconcept-/hergebruikidentiteit en tijdstippen; direct opgeslagen producten zoeken; compacte snelle/vrije vochtinvoer; camera-providerkeuze en ViewModel-owned AI-batch met veilige deelretry, actuele context en cumulatieve succesgrammen zijn verbeterd.
+- De eindreview vond een bestaande finishrace die een bevestigde tweede set kon verliezen en een timerrefresh die een geldige queued tik kon annuleren. Verse transactionele finishinhoud/feedback en afzonderlijke timerbron-/optimistische state herstellen dit; de nieuwe typed enum heeft Keep. Geldige RED-regressies zijn behouden.
+- Finale lokale baseline: 1.102 JVM-tests/153 suites, debugbuild/lint/Android-testcompile geslaagd; lint 0 errors/27 bestaande warnings. Gerichte Room-/timer-/Hilt-VM-proeven en de laatste zes finishcases groen; afzonderlijke runs worden niet opgeteld tot één suite.
+- Zie [volledig scoped verificatieverslag](qa/TrainIQ_Routine_Nutrition_2026-11-09.md) voor bron, exacte opdrachten, reviewketen, compacte/brede beelden, eerdere mislukte tussenruns en bewijsgrenzen. Geen liveprovider-/oorspronkelijke-foto-, fysieke audio-/prestatie- of menselijke toegankelijkheidscertificering. Main-build, updatebewijs en bezorgstatus worden afzonderlijk in de ignored afleverledger vastgelegd.
+- Geen globale target-state-score of niet-onderzochte appbevinding gesloten. De eerdere actieve-training/RPE/timerverbeteringen gaan mee naar main; hun historische bewijs blijft afzonderlijk bewaard.
+
+## 2026-11-04 Actieve training — gekozen ontwerp en betrouwbare setfeedback
+
+- Status: done voor deze gerichte uitvoering en de gereproduceerde randgevallen; finale fixwave en N1 zijn onafhankelijk Approved. Hardware-, OS- en menselijke toegankelijkheidsgrenzen blijven afzonderlijk vermeld.
+- Scope: setkaarten, knop-/tekstuitlijning, veilig opnieuw toevoegen van de laatst voltooide set, gedeelde setfeiten voor scherm/lokale fallback/AI-request, late opgeslagen debrief en rustgeluid/notificatie met Room 21.
+- De vier herstelpunten zijn opgelost: foutknoppen zijn bereikbaar, notificaties hervatten alleen de bedoelde bestaande sessie, nulrust blijft 0 seconden en correctie opent één typepopup. Enkelvoud, correctiecontext en drie nieuwe lintwaarschuwingen zijn afgewerkt. N1 borgt na acceptatie herstel van dezelfde sessie na timerwijziging; verse verouderde meldingen blijven geweigerd.
+- Bestanden, exacte lokale commands, bron-/APKherkomst, primaire bronnen, runtimebewijs en resterende grenzen staan in het [gerichte verificatieverslag](qa/TrainIQ_Active_Workout_2026-11-04.md). Er is geen live AI-, fysiek audio-, TalkBack- of performancebewijs geclaimd.
+- QA-2026-05-09-011 blijft als bredere bevinding partially-done. Deze uitvoering sluit geen niet-onderzochte routinegeneratie- of overige appbevindingen.
+
+## 2026-10-22 Food scan and active workout
+
+Status: done for the reproduced scoped defects; the original live scan incident
+remains unconfirmed. Confirmed findings cover
+list-prefix/repeated-food quantity handling, premature 6 MiB source rejection,
+Gemini meal-response classification and a hidden finish label/duplicate rest
+controls. The [scoped analysis and verification](qa/TrainIQ_Food_Workout_2026-10-22.md)
+compares all seven supplied design concepts, records RED regressions and final
+passing local build/JVM/lint/scoped Android evidence, and separates
+confirmed defects from the user's unconfirmed live scan failure. Preserve existing
+coaching fallback and manual meal entry; no model/schema/permission changes.
+
 ## 2026-09-30 Full audit package
 
 Selected current-run findings TECH-01–04 and B1-01–04 map to FIX-01–08 in [the scoped improvement plan](qa/2026-09-30/improvement-plan.md). Status: all eight selected changes accepted locally after 992 JVM tests, 202/202 Android tests, debug/compile/lint, Room marker and changed-screen visual/interaction checks. Independent review caught the initial reserved-positive meal ID assumption before delivery; explicit create/edit intent is required. See [verification](qa/2026-09-30/verification.md) for actual executed results and external NOT RUN boundaries. Historical findings below remain preserved.
@@ -1012,6 +1041,7 @@ Scope: target-state blueprint, Android app source, Gradle/CI, docs, tests, emula
 - status: partially-done
 - owner suggestion: Android UI owner
 - current evidence with file references:
+  - 2026-09-30 targeted Active Workout refinement uses compact metric containers, coherent active/upcoming/completed surfaces, quieter previous/target context and an integrated adaptive bottom bar. Scope and local/runtime verification are recorded in [Active Workout polish evidence](qa/TrainIQ_Active_Workout_Polish_2026-09-30.md). This updates the workout portion only; routine-generation and wider device/accessibility acceptance remain outside this batch, so the finding stays partially-done.
   - Prior runtime artifact `runtime-gemini-test/active-workout-start.xml` shows dense active-workout rows with clipped/tiny bounds for `Set 1`.
   - Prior runtime artifact `runtime-gemini-test/routine-ai-dialog.xml` includes `NAF="true"` nodes and English labels such as `Days per week`, `Available equipment`, and `Experience level`.
   - Current worktree uses a `ModalBottomSheet` for generated routine preview and replaces no-op metadata `AssistChip` controls with non-clickable `GeneratedRoutineInfoPill` labels in `TrainIQ-Project/app/src/main/java/com/trainiq/features/workout/RoutineDialogs.kt`.

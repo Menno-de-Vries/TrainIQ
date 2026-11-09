@@ -16,14 +16,89 @@ import com.trainiq.domain.model.WorkoutExercisePlan
 import com.trainiq.domain.model.WorkoutLoggingSummary
 import com.trainiq.domain.model.WorkoutOverview
 import com.trainiq.domain.repository.WorkoutRepository
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.fail
 import org.junit.Test
 
 class StartWorkoutSessionUseCaseTest {
+    @Test
+    fun acceptedNotificationRestoresSessionLifetimeAfterSkipOrNewTimerButFreshRequestsStayStrict() = runTest {
+        val day = WorkoutDay(7, 1, "Push", 0, listOf(WorkoutExercisePlan(
+            id = 4, exercise = Exercise(3, "Bench", "Chest", "Barbell"), targetSets = 1,
+            repRange = "5", restSeconds = 90)))
+        val original = ActiveWorkoutSession(sessionId = 12, dayId = 7, routineId = 1,
+            startedAt = 41, updatedAt = 41, loggedSets = emptyList(), drafts = emptyMap(),
+            collapsedExerciseIds = emptySet(), restTimerEndsAt = 1000, restTimerTotalSeconds = 90,
+            restTimerGeneration = "original")
+        val request = com.trainiq.domain.workout.WorkoutRestOpenRequest(7, 12, "original")
+        val repository = FakeWorkoutRepository(day, session = original)
+        val useCase = ResumeWorkoutFromRestNotificationUseCase(repository)
+        val saved = androidx.lifecycle.SavedStateHandle()
+        val state = com.trainiq.features.workout.WorkoutNotificationResumeState(saved, useCase)
+        assertEquals(original, state.resume(request)?.session)
+        // Reconstruct a new owner from saved values: saved-state contract, not a process-death claim.
+        fun restored() = com.trainiq.features.workout.WorkoutNotificationResumeState(
+            androidx.lifecycle.SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) }), useCase)
+        for (generation in listOf(null, "next-timer")) {
+            repository.session = original.copy(restTimerGeneration = generation)
+            assertEquals(repository.session, restored().resume(request)?.session)
+            assertEquals(null, com.trainiq.features.workout.WorkoutNotificationResumeState(
+                androidx.lifecycle.SavedStateHandle(), useCase).resume(request))
+        }
+        val unknownRequest = request.copy(generation = "unaccepted-old")
+        assertEquals(null, restored().resume(unknownRequest))
+        for (successor in listOf(null, original.copy(sessionId = 99), original.copy(dayId = 8),
+            original.copy(startedAt = 42))) {
+            repository.session = original.copy(restTimerGeneration = "next-timer")
+            val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+            repository.beforeSuggestions = { entered.complete(Unit); release.await() }
+            val pending = async { restored().resume(request) }
+            entered.await()
+            repository.session = successor
+            release.complete(Unit)
+            assertEquals(null, pending.await())
+            assertEquals(successor, repository.session)
+        }
+        assertEquals(0, repository.startCalls)
+    }
+
+    @Test
+    fun notificationResumeChecksFreshIdentityAfterSuspendingReadsAndNeverStarts() = runTest {
+        val day = WorkoutDay(7, 1, "Push", 0, listOf(WorkoutExercisePlan(
+            id = 4, exercise = Exercise(3, "Bench", "Chest", "Barbell"), targetSets = 1,
+            repRange = "5", restSeconds = 90)))
+        val original = ActiveWorkoutSession(sessionId = 12, dayId = 7, routineId = 1,
+            startedAt = 1, updatedAt = 1, loggedSets = emptyList(), drafts = emptyMap(),
+            collapsedExerciseIds = emptySet(), restTimerEndsAt = 1000, restTimerTotalSeconds = 90,
+            restTimerGeneration = "original")
+        val request = com.trainiq.domain.workout.WorkoutRestOpenRequest(7, 12, "original")
+        for (successor in listOf(null, original.copy(sessionId = 99), original.copy(dayId = 8),
+            original.copy(restTimerGeneration = "replacement"))) {
+            val repository = FakeWorkoutRepository(day, session = original)
+            val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+            repository.beforeSuggestions = { entered.complete(Unit); release.await() }
+            val pending = async { ResumeWorkoutFromRestNotificationUseCase(repository)(request) }
+            entered.await()
+            repository.session = successor
+            release.complete(Unit)
+            assertEquals(null, pending.await())
+            assertEquals(0, repository.startCalls)
+            assertEquals(successor, repository.session)
+        }
+        val valid = FakeWorkoutRepository(day, session = original)
+        assertEquals(original, ResumeWorkoutFromRestNotificationUseCase(valid)(request)?.session)
+        assertEquals(0, valid.startCalls)
+        StartWorkoutSessionUseCase(valid)(7)
+        assertEquals(1, valid.startCalls)
+    }
+
     @Test
     fun failsBeforeRepositoryStartWhenWorkoutHasNoExercises() = runTest {
         val repository = FakeWorkoutRepository(
@@ -122,20 +197,23 @@ class StartWorkoutSessionUseCaseTest {
 private class FakeWorkoutRepository(
     private val day: WorkoutDay?,
     private val suggestions: List<ProgressionSuggestion> = emptyList(),
-    private val session: ActiveWorkoutSession? = null,
+    var session: ActiveWorkoutSession? = null,
 ) : WorkoutRepository {
     override suspend fun refreshWorkoutDebrief(sessionId: Long, generationId: String?) =
         com.trainiq.domain.repository.WorkoutDebriefRefreshOutcome.SESSION_MISSING
+    var beforeSuggestions: suspend () -> Unit = {}
+    var startCalls = 0
     var startedDrafts: Map<Long, ActiveWorkoutSetDraft> = emptyMap()
     var discardedSessionId: Long? = null
 
     override suspend fun getWorkoutDay(dayId: Long): WorkoutDay? = day
-    override suspend fun getProgressionSuggestions(dayId: Long): List<ProgressionSuggestion> = suggestions
+    override suspend fun getProgressionSuggestions(dayId: Long): List<ProgressionSuggestion> { beforeSuggestions(); return suggestions }
     override suspend fun getCurrentActiveWorkoutSession(): ActiveWorkoutSession? = session
     override suspend fun getOrStartActiveWorkoutSession(
         dayId: Long,
         initialDrafts: Map<Long, ActiveWorkoutSetDraft>,
     ): ActiveWorkoutSession {
+        startCalls++
         startedDrafts = initialDrafts
         return requireNotNull(session)
     }
@@ -151,9 +229,10 @@ private class FakeWorkoutRepository(
     override suspend fun deleteActiveWorkoutSet(setId: Long): ActiveWorkoutSession? = null
     override suspend fun undoWorkoutLogEvent(eventId: Long): ActiveWorkoutSession? = null
     override suspend fun setActiveWorkoutCollapsed(exerciseId: Long, collapsed: Boolean): ActiveWorkoutSession? = null
-    override suspend fun updateActiveWorkoutRestTimer(endsAt: Long?, totalSeconds: Int): ActiveWorkoutSession? = null
+    override suspend fun updateActiveWorkoutRestTimer(change: com.trainiq.domain.workout.WorkoutRestTimerChange): ActiveWorkoutSession? = null
     override suspend fun finishActiveWorkout(dayId: Long): WorkoutCompletionResult = error("unused")
     override suspend fun getWorkoutCompletionSummary(sessionId: Long): WorkoutCompletionSummary? = null
+    override fun observeWorkoutCompletionSummary(sessionId: Long): Flow<WorkoutCompletionSummary?> = flowOf(null)
     override suspend fun discardActiveWorkout(dayId: Long) = Unit
     override suspend fun discardActiveWorkoutSession(sessionId: Long) {
         discardedSessionId = sessionId

@@ -17,6 +17,44 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class TrainIqDatabaseMigrationTest {
     @Test
+    fun migration20To21PreservesTrainingAndDefaultsLegacyTimersToUntrusted() {
+        helper.createDatabase(TEST_DB, 20).apply {
+            seedVersion11RelationalData()
+            execSQL("UPDATE active_workout_sessions SET restTimerEndsAt = 9999999, restTimerTotalSeconds = 120, notes = 'Keep notes'")
+            close()
+        }
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 21, true)
+        migrated.assertVersion11RelationalDataSurvived()
+        migrated.query("SELECT restTimerGeneration, restTimerElapsedDeadline, restTimerBootId, restTimerHandled, notes FROM active_workout_sessions").use {
+            assertTrue(it.moveToFirst())
+            assertTrue(it.isNull(0)); assertTrue(it.isNull(1)); assertTrue(it.isNull(2))
+            assertEquals(0, it.getInt(3)); assertEquals("Keep notes", it.getString(4))
+        }
+        migrated.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
+        migrated.close()
+    }
+
+    @Test
+    fun migration19To20PreservesWorkoutHistoryAndInitializesEmptyNotes() {
+        helper.createDatabase(TEST_DB, 19).apply {
+            seedVersion11RelationalData()
+            close()
+        }
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 20, true)
+        migrated.assertVersion11RelationalDataSurvived()
+        migrated.query("SELECT COUNT(*) FROM workout_sessions WHERE notes != ''").use {
+            assertTrue(it.moveToFirst())
+            assertEquals(0, it.getInt(0))
+        }
+        migrated.query("SELECT COUNT(*) FROM active_workout_sessions WHERE notes != ''").use {
+            assertTrue(it.moveToFirst())
+            assertEquals(0, it.getInt(0))
+        }
+        migrated.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
+        migrated.close()
+    }
+
+    @Test
     fun migration18To19BackfillsDistinctDebriefGenerationsForExistingWorkouts() {
         helper.createDatabase(TEST_DB, 18).apply {
             execSQL("INSERT INTO workout_sessions (id, date, duration, caloriesBurned) VALUES (41, 1000, 60, 0)")

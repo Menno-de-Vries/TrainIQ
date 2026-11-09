@@ -485,6 +485,10 @@ interface TrainIqDao {
     @Query("SELECT * FROM workout_sessions WHERE id = :sessionId AND completed = 1 AND status = 'COMPLETED' LIMIT 1")
     suspend fun getCompletedWorkoutSession(sessionId: Long): WorkoutSessionEntity?
 
+    @Transaction
+    @Query("SELECT * FROM workout_sessions WHERE id = :sessionId AND completed = 1 AND status = 'COMPLETED' LIMIT 1")
+    fun observeWorkoutCompletionSnapshot(sessionId: Long): Flow<WorkoutCompletionSnapshot?>
+
     @Query("SELECT debrief_generation_id FROM workout_sessions WHERE id = :sessionId LIMIT 1")
     suspend fun getWorkoutSessionDebriefGenerationId(sessionId: Long): String?
 
@@ -551,11 +555,21 @@ interface TrainIqDao {
     @Query("SELECT * FROM active_workout_sessions ORDER BY updatedAt DESC LIMIT 1")
     suspend fun readActiveWorkoutSessionsForExport(): List<ActiveWorkoutSessionEntity>
 
+    @Query("""UPDATE active_workout_sessions SET restTimerHandled = 1,
+        restTimerEndsAt = NULL, restTimerTotalSeconds = 0
+        WHERE sessionId = :sessionId AND restTimerHandled = 0
+        AND (restTimerGeneration = :generation OR (restTimerGeneration IS NULL AND :generation = 'legacy:' || sessionId))""")
+    suspend fun claimWorkoutRestTimer(sessionId: Long, generation: String): Int
+
     @Query(
         """
         UPDATE active_workout_sessions
         SET restTimerEndsAt = :endsAt,
             restTimerTotalSeconds = :totalSeconds,
+            restTimerGeneration = :generation,
+            restTimerElapsedDeadline = :elapsedDeadline,
+            restTimerBootId = :bootId,
+            restTimerHandled = :handled,
             updatedAt = :updatedAt
         WHERE sessionId = :sessionId
         """,
@@ -565,10 +579,17 @@ interface TrainIqDao {
         endsAt: Long?,
         totalSeconds: Int,
         updatedAt: Long,
+        generation: String? = null,
+        elapsedDeadline: Long? = null,
+        bootId: String? = null,
+        handled: Boolean = false,
     )
 
     @Query("UPDATE active_workout_sessions SET updatedAt = :updatedAt WHERE sessionId = :sessionId")
     suspend fun updateActiveWorkoutSessionUpdatedAt(sessionId: Long, updatedAt: Long)
+
+    @Query("UPDATE active_workout_sessions SET notes = :notes, updatedAt = :updatedAt WHERE sessionId = :sessionId")
+    suspend fun updateActiveWorkoutNotes(sessionId: Long, notes: String, updatedAt: Long)
 
     @Transaction
     suspend fun updateActiveWorkoutDraft(
@@ -752,6 +773,10 @@ interface TrainIqDao {
         restTimerEndsAt: Long?,
         restTimerTotalSeconds: Int,
         updatedAt: Long,
+        restTimerGeneration: String? = null,
+        restTimerElapsedDeadline: Long? = null,
+        restTimerBootId: String? = null,
+        restTimerHandled: Boolean = false,
     ) {
         insertActiveWorkoutDrafts(listOf(draft))
         insertActiveWorkoutSets(listOf(set))
@@ -775,6 +800,10 @@ interface TrainIqDao {
             endsAt = restTimerEndsAt,
             totalSeconds = restTimerTotalSeconds,
             updatedAt = updatedAt,
+            generation = restTimerGeneration,
+            elapsedDeadline = restTimerElapsedDeadline,
+            bootId = restTimerBootId,
+            handled = restTimerHandled,
         )
     }
 

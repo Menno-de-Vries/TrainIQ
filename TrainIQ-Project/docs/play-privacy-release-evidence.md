@@ -2,7 +2,7 @@
 
 > Release scope update (2026-09-06): [itch.io release policy](release/itch-release-policy.md) supersedes the owner-approval and mandatory certification release gates below. LEGAL-001, PERF-001, A11Y-001, and AI-001 are retired for this personal itch.io project. Older BLOCKED/OPEN statements are historical or refer to optional certification/future Play submission, not current itch.io delivery. Preserve actual test results and technical findings; do not claim missing evidence passed.
 
-Last updated: 2026-09-28
+Last updated: 2026-09-30
 
 This file is a local evidence pack. It does not claim Play Console submission, legal approval, or published policy verification.
 
@@ -74,6 +74,10 @@ A published policy should cover:
 - Contact channel for privacy requests.
 
 ## AI Boundary Evidence
+
+### Product verification after meal analysis
+
+An explicit AI meal scan may perform a short product verification using the selected food-provider mode. Only a recognized barcode or product name, brand and variant goes to Open Food Facts (or the existing configured barcode gateway); photos, meal context, amounts, notes and health data are not sent to food providers. One distinct product lookup is attempted per meal, with duplicate reuse and a bounded in-memory cache of 32 entries for five minutes. Misses, ambiguity and failures retain the editable AI estimate. Gram amounts are normalized locally; liquid/unknown bases are not converted by guessing density. Workout notes remain local; deferred strength debriefs now include completed set details and nullable exercise RPE/RIR summaries.
 
 Local client state:
 

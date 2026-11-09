@@ -85,6 +85,7 @@ import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import com.trainiq.BuildConfig
 import com.trainiq.ai.services.AiUsageGate
+import com.trainiq.ai.services.MaxMealImageSourceBytes
 import com.trainiq.ai.services.hasAnyReadyProvider
 import com.trainiq.ai.services.toAiUserMessage
 import com.trainiq.core.datastore.AiPreferences
@@ -95,6 +96,7 @@ import com.trainiq.core.ui.ShimmerCardPlaceholder
 import com.trainiq.domain.model.MealAnalysisResult
 import com.trainiq.domain.model.MealAnalysisSource
 import com.trainiq.domain.model.MealType
+import com.trainiq.domain.model.FoodProviderMode
 import com.trainiq.domain.model.BodyMeasurementPhotoResult
 import com.trainiq.domain.model.BodyMeasurementPhotoSource
 import com.trainiq.domain.usecase.AnalyzeBodyMeasurementPhotoUseCase
@@ -163,13 +165,22 @@ internal fun cameraScreenUiState(scannerState: CameraScannerUiState): ScreenUiSt
     ScreenUiState.Success(CameraUiContent(scannerState))
 
 @HiltViewModel
-class CameraScannerViewModel @Inject constructor(
-    preferencesRepository: UserPreferencesRepository,
-    aiUsageGate: AiUsageGate,
-    private val analyzeMealUseCase: AnalyzeMealUseCase,
-    private val analyzeBodyMeasurementPhotoUseCase: AnalyzeBodyMeasurementPhotoUseCase,
-    private val clearLastScanResultUseCase: ClearLastScanResultUseCase,
+class CameraScannerViewModel internal constructor(
+    preferences: kotlinx.coroutines.flow.Flow<AiPreferences>,
+    private val analyzeMeal: suspend (String, String, Long, FoodProviderMode) -> MealAnalysisResult,
+    private val analyzeScale: suspend (String, String) -> BodyMeasurementPhotoResult,
+    private val clearLastScan: () -> Unit,
 ) : ViewModel() {
+    @Inject constructor(
+        preferencesRepository: UserPreferencesRepository,
+        aiUsageGate: AiUsageGate,
+        analyzeMealUseCase: AnalyzeMealUseCase,
+        analyzeBodyMeasurementPhotoUseCase: AnalyzeBodyMeasurementPhotoUseCase,
+        clearLastScanResultUseCase: ClearLastScanResultUseCase,
+    ) : this(preferencesRepository.aiPreferences.mapResolvedAiPreferences(aiUsageGate),
+        { path, context, captured, mode -> analyzeMealUseCase(path, context, captured, mode) },
+        { path, context -> analyzeBodyMeasurementPhotoUseCase(path, context) },
+        { clearLastScanResultUseCase() })
     private data class ScannerEphemeralState(
         val contextHint: String = "",
         val phase: Phase = Phase.Preview,
@@ -177,12 +188,12 @@ class CameraScannerViewModel @Inject constructor(
         val suggestedMealType: MealType? = null,
         val itemCount: Int = 0,
         val bodyMeasurement: BodyMeasurementPhotoResult? = null,
+        val mealResult: MealAnalysisResult? = null,
     )
 
     private enum class Phase { Preview, Processing, Completed, CompletedScale, Empty, NoConfig, LocalFallback, Error }
 
-    private val aiPreferences: StateFlow<AiPreferences> = preferencesRepository.aiPreferences
-        .mapResolvedAiPreferences(aiUsageGate)
+    private val aiPreferences: StateFlow<AiPreferences> = preferences
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AiPreferences(false, ""))
     private val ephemeral = MutableStateFlow(ScannerEphemeralState())
 
@@ -238,7 +249,7 @@ class CameraScannerViewModel @Inject constructor(
         analyze(path = path, scannerMode = ScannerMode.AI_MEAL)
     }
 
-    fun analyze(path: String, scannerMode: ScannerMode) {
+    fun analyze(path: String, scannerMode: ScannerMode, foodProviderMode: FoodProviderMode = FoodProviderMode.AUTOMATIC) {
         if (ephemeral.value.phase == Phase.Processing) return
         val capturedAtMillis = System.currentTimeMillis()
         val contextHint = ephemeral.value.contextHint
@@ -259,18 +270,18 @@ class CameraScannerViewModel @Inject constructor(
             path = path,
             analyze = {
                 if (scannerMode == ScannerMode.AI_SCALE) {
-                    val result = analyzeBodyMeasurementPhotoUseCase(path, contextHint)
+                    val result = analyzeScale(path, contextHint)
                     if (result.source == BodyMeasurementPhotoSource.LOCAL_FALLBACK || result.weight <= 0.0) {
                         processing.copy(phase = Phase.LocalFallback, message = result.notes)
                     } else {
                         processing.copy(phase = Phase.CompletedScale, bodyMeasurement = result, message = result.notes)
                     }
                 } else {
-                    val result = analyzeMealUseCase(path, contextHint, capturedAtMillis)
+                    val result = analyzeMeal(path, contextHint, capturedAtMillis, foodProviderMode)
                     when (val state = classifyMealScanResultForScanner(result, contextHint)) {
                         is CameraScannerUiState.Completed -> processing.copy(
                             phase = Phase.Completed, suggestedMealType = state.suggestedMealType,
-                            itemCount = state.itemCount, message = null,
+                            itemCount = state.itemCount, message = null, mealResult = result,
                         )
                         is CameraScannerUiState.Empty -> processing.copy(
                             phase = Phase.Empty, suggestedMealType = result.suggestedMealType,
@@ -298,13 +309,14 @@ class CameraScannerViewModel @Inject constructor(
 
     fun resetToPreview(clearScanResult: Boolean = true) {
         scanRequest.cancel()
-        if (clearScanResult) clearLastScanResultUseCase()
+        if (clearScanResult) clearLastScan()
         ephemeral.update { it.copy(phase = Phase.Preview, message = null) }
     }
 
     fun clearScanResult() {
         resetToPreview(clearScanResult = true)
     }
+    fun completedMealResult(): MealAnalysisResult? = ephemeral.value.takeIf { it.phase == Phase.Completed }?.mealResult
 }
 
 private fun kotlinx.coroutines.flow.Flow<AiPreferences>.mapResolvedAiPreferences(
@@ -357,6 +369,8 @@ fun CameraScannerRoute(
     onScaleMeasurementScanned: (BodyMeasurementPhotoResult) -> Unit = {},
     onCancel: () -> Unit = onBack,
     viewModel: CameraScannerViewModel = hiltViewModel(),
+    foodProviderMode: FoodProviderMode = FoodProviderMode.AUTOMATIC,
+    onMealAnalysisScanned: (MealAnalysisResult) -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val haptics = LocalHapticFeedback.current
@@ -378,10 +392,10 @@ fun CameraScannerRoute(
     CameraScannerScreen(
         uiState = uiState.cameraScannerStateOrPreview(),
         scannerMode = scannerMode,
-        onAnalyze = { path -> viewModel.analyze(path, scannerMode) },
+        onAnalyze = { path -> viewModel.analyze(path, scannerMode, foodProviderMode) },
         onDismissError = { viewModel.resetToPreview(clearScanResult = true) },
         onScanAgain = { viewModel.resetToPreview(clearScanResult = true) },
-        onReviewItems = onBack,
+        onReviewItems = { viewModel.completedMealResult()?.let(onMealAnalysisScanned); onBack() },
         onReviewScaleMeasurement = { result ->
             onScaleMeasurementScanned(result)
             onBack()
@@ -460,7 +474,7 @@ internal fun CameraScannerScreen(
             importScannerImage(
                 copy = { copyScannerImageFromUri(context, uri) },
                 consume = { path -> if (screenActive.get()) onAnalyze(path) else deleteScannerTemporaryImage(path) },
-                failed = { restorableState = restorableState.copy(cameraError = "Foto importeren mislukt. Kies een duidelijke JPG of PNG.") },
+                failed = { restorableState = restorableState.copy(cameraError = "Foto importeren mislukt. Kies een andere duidelijke JPG of PNG van maximaal 32 MB.") },
             )
         }
     }
@@ -1214,4 +1228,4 @@ private fun InputStream.copyToLimit(output: OutputStream, maxBytes: Long) {
 private class ScannerImportTooLargeException : RuntimeException()
 
 private const val ScannerLogTag = "TrainIQ"
-private const val MaxScannerImportBytes = 6L * 1024L * 1024L
+private const val MaxScannerImportBytes = MaxMealImageSourceBytes

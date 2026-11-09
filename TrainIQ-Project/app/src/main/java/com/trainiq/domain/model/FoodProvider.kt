@@ -1,5 +1,6 @@
 package com.trainiq.domain.model
 
+@androidx.annotation.Keep
 enum class FoodProviderMode(val label: String) {
     AUTOMATIC("Automatisch"), OPEN_FOOD_FACTS("Open Food Facts"), FATSECRET("FatSecret")
 }

@@ -67,6 +67,9 @@ class GeminiModelClient @Inject constructor(
     override val provider: AiProvider = AiProvider.GEMINI
 
     override suspend fun generateJson(apiKey: String, request: AiRouteRequest): AiRouteResult {
+        fun invalid(category: AiFailureCategory): Nothing = throw AiProviderRequestException(
+            provider = provider, feature = request.feature, category = category,
+        )
         val parts = buildList {
             add(com.trainiq.data.model.GeminiRequest.Part(text = request.prompt))
             request.imageJpegBytes?.let { imageBytes ->
@@ -80,25 +83,63 @@ class GeminiModelClient @Inject constructor(
                 )
             }
         }
-        val response = geminiApi.generateContent(
-            model = GEMINI_FLASH_MODEL,
-            apiKey = apiKey,
-            request = com.trainiq.data.model.GeminiRequest(
-                contents = listOf(com.trainiq.data.model.GeminiRequest.Content(parts = parts)),
-                generationConfig = com.trainiq.data.model.GeminiRequest.GenerationConfig(
-                    responseMimeType = "application/json",
-                    responseJsonSchema = request.responseJsonSchema,
-                    thinkingConfig = com.trainiq.data.model.GeminiRequest.ThinkingConfig(
-                        includeThoughts = false,
-                        thinkingBudget = request.thinkingBudget,
+        val response: com.trainiq.data.model.GeminiResponse? = try {
+            geminiApi.generateContent(
+                model = GEMINI_FLASH_MODEL,
+                apiKey = apiKey,
+                request = com.trainiq.data.model.GeminiRequest(
+                    contents = listOf(com.trainiq.data.model.GeminiRequest.Content(parts = parts)),
+                    generationConfig = com.trainiq.data.model.GeminiRequest.GenerationConfig(
+                        responseMimeType = "application/json",
+                        responseJsonSchema = request.responseJsonSchema,
+                        thinkingConfig = com.trainiq.data.model.GeminiRequest.ThinkingConfig(
+                            includeThoughts = false,
+                            thinkingBudget = request.thinkingBudget,
+                        ),
                     ),
                 ),
-            ),
-        )
+            )
+        } catch (error: KotlinNullPointerException) {
+            // Retrofit 2.11 rejects successful null/204 bodies before returning the DTO.
+            if (request.feature == AiFeature.MEAL_SCAN || request.feature == AiFeature.ROUTINE_GENERATION) invalid(AiFailureCategory.INVALID_RESPONSE)
+            throw error
+        }
+        // Other feature parsers own their existing local fallback contracts.
+        if (request.feature != AiFeature.MEAL_SCAN && request.feature != AiFeature.ROUTINE_GENERATION) {
+            return AiRouteResult(
+                providerUsed = provider, model = GEMINI_FLASH_MODEL,
+                rawJson = response?.candidates.orEmpty().filterNotNull().firstOrNull()
+                    ?.content?.parts.orEmpty().filterNotNull().filterNot { it.thought == true }
+                    .mapNotNull { it.text }.joinToString(" "),
+            )
+        }
+        if (response == null) invalid(AiFailureCategory.INVALID_RESPONSE)
+        if (response.promptFeedback?.blockReason?.let { it != "BLOCK_REASON_UNSPECIFIED" && it.isNotBlank() } == true) {
+            invalid(AiFailureCategory.REFUSAL)
+        }
+        // Gson can receive explicit nulls despite Kotlin collection defaults.
+        val candidate = response.candidates.orEmpty().filterNotNull().firstOrNull()
+            ?: invalid(AiFailureCategory.INVALID_RESPONSE)
+        when (candidate.finishReason) {
+            "MAX_TOKENS" -> invalid(AiFailureCategory.INCOMPLETE_RESPONSE)
+            "SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY" -> invalid(AiFailureCategory.REFUSAL)
+            null, "STOP" -> Unit
+            else -> invalid(AiFailureCategory.INVALID_RESPONSE)
+        }
+        val rawJson = candidate.content?.parts.orEmpty().filterNotNull()
+            .filterNot { it.thought == true }.mapNotNull { it.text }.joinToString(" ").trim()
+        try {
+            requireAiRawResponseWithinLimit(rawJson)
+        } catch (_: AiRawResponseTooLargeException) {
+            invalid(AiFailureCategory.INVALID_RESPONSE)
+        }
+        if (rawJson.isBlank() || runCatching { JsonParser.parseString(rawJson).asJsonObject }.isFailure) {
+            invalid(AiFailureCategory.INVALID_RESPONSE)
+        }
         return AiRouteResult(
             providerUsed = provider,
             model = GEMINI_FLASH_MODEL,
-            rawJson = response.candidates.firstOrNull()?.content?.parts?.joinToString(" ") { it.text }.orEmpty(),
+            rawJson = rawJson,
         )
     }
 }
@@ -549,9 +590,7 @@ internal suspend fun routeAiProviderRequest(
             if (provider == AiProvider.OPENAI) {
                 runNonMaskingOpenAiVerificationUpdate { onOpenAiFailure(safeFailure) }
             }
-            if (provider == AiProvider.OPENAI || error is AiProviderRequestException) {
-                onFailureDiagnostic(safeFailure.safeDiagnosticAttributes())
-            }
+            onFailureDiagnostic(safeFailure.safeDiagnosticAttributes())
             failures += "${provider.name}:${error::class.simpleName.orEmpty()}"
             if (!error.isTransientAiProviderFailure()) {
                 if (hasRecoverableFailure) {
@@ -597,6 +636,11 @@ internal fun Map<String, Any?>.toOpenAiStrictSchema(): Map<String, Any?> {
             mapped.remove("maximum")
             if (mapped["type"] == "object") {
                 val properties = mapped["properties"] as? Map<String, Any?> ?: emptyMap()
+                val originallyRequired = (value["required"] as? List<*>).orEmpty()
+                mapped["properties"] = properties.mapValues { (name, schema) ->
+                    if (name in originallyRequired) schema
+                    else mapOf("anyOf" to listOf(schema, mapOf("type" to "null")))
+                }
                 mapped["additionalProperties"] = false
                 mapped["required"] = properties.keys.toList()
             }

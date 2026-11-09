@@ -1,5 +1,37 @@
 # TrainIQ Target-State Progress
 
+## 2026-11-09 Betrouwbare routine- en voedingsflows
+
+- Afgerond binnen bestaande architectuur: routinecontracten en herstel, veilige maaltijdconcepten/hergebruik/tijdstippen, direct productzoeken, compacte vochtinvoer en providerbewuste AI-voedselbatch met deelretry en eigenaars-/navigatiebewaking. Geen nieuwe dienst, dependency, model of schema in deze nieuwe batch.
+- Eén volledige onafhankelijke Astra/high-review omvat alle eerdere branchwijzigingen plus dit werk. De gezamenlijke fixwave corrigeert bevestigd setverlies bij afronden, een ongewijzigde refresh die timerwrites annuleerde en een typed enum-lintpunt; scoped herreview Approved op `db3c27a`, geen open blokkerende bevinding.
+- Volledige lokale baseline 1.102 JVM-tests/153 suites, assemble/lint/Android-testcompile groen, lint 0 errors/27 bestaande warnings. Gerichte native Room-/Hilt-/timer-/navigatieproeven en compacte/groot-font/IME/donkere plus brede lichte modalcontrole zijn in het [verificatieverslag](qa/TrainIQ_Routine_Nutrition_2026-11-09.md) begrensd beschreven.
+- De gebruiker autoriseerde alles naar main en daarna één update via de bestaande bezorgroute. Versie 1.0.2-B/code 4 behoudt voor compatibiliteit de debughandtekening van de APK van 22 oktober; de schone remote-mainbuild, verse migratiemarker, daadwerkelijke updateproef en private Drive-/emailstatus worden na dit bronverslag afzonderlijk vastgelegd.
+- Geen globale alignmentscore, live-AI-kwaliteit, algemene process-deathgarantie of menselijke/fysieke certificering geclaimd; retired eigenaarspoorten zijn niet heringevoerd.
+
+## 2026-11-04 Actieve training, setfeiten en rustmelding
+
+- Gerichte uitvoering van het door de gebruiker gekozen gecombineerde ontwerp: rustigere setkaarten, twee veilige logacties, feitelijke voltooide-setanalyse en RPE-dekking, reactieve trainingsafronding en een duurzame rustmelding op basis van Room 21.
+- Afzonderlijke taken, finale fixwave en lifecycle-addendum N1 zijn onafhankelijk goedgekeurd. Volledige JVM-baseline van 1.052 tests plus gerichte N1-tests (34), 24 unieke native hoofdcases en gerichte portret-, landschap- en N1-herstelproeven zijn groen; lint: 0 errors, 27 bestaande warnings. Echte notificationtap, gewone procesdood en geaccepteerd sessieherstel zijn op de eigen emulator vastgelegd.
+- Het [uitvoerings- en verificatieverslag](qa/TrainIQ_Active_Workout_2026-11-04.md) onderscheidt de bronversies, herbruikbare lokale gates, werkelijk uitgevoerde meldings-/procesherstelproeven en niet-uitgevoerde hardware-, audio- en menselijke toegankelijkheidscontroles.
+- Dit werkt alleen de actieve-trainingcomponent van QA-2026-05-09-011 bij. De bredere routine- en toegankelijkheidsacceptatie blijft partially-done; geen globale alignmentscore of andere P0/P1/P2/P3-status wordt opnieuw vastgesteld. Geen push, PR, release of live AI-proef.
+
+## 2026-10-22 Food scan and workout clarity
+
+- Bounded food boundary and workout-control improvements target Blueprint §§7–9.
+  Local debug build, 1,027 JVM tests, lint and scoped food/scanner/workout Android
+  evidence pass, including compact dark/font 1.5 and expanded critical flows.
+  Failed development aggregates and scoped reruns remain explicit in the evidence;
+  no global alignment score is reassessed.
+- The [analysis, concept comparison and evidence](qa/TrainIQ_Food_Workout_2026-10-22.md)
+  retains the uncertain cause of the original live scan failure and the limits of
+  deterministic local proof. No live AI upload or release is claimed.
+
+## 2026-09-30 Targeted Active Workout polish
+
+- The workout portion of QA-2026-05-09-011 now has coherent set surfaces, compact labelled metric inputs, differentiated typography and integrated adaptive bottom controls. Existing workout state logic, persistence and architecture are retained.
+- See [scope, exact local verification and runtime evidence](qa/TrainIQ_Active_Workout_Polish_2026-09-30.md). The broader finding remains partially done; no other P0/P1/P2/P3 status is changed and global alignment is not reassessed.
+- No external research or service change was required for this local presentation refinement. Remaining acceptance limits and the next safe verification scope are recorded in the evidence document.
+
 ## 2026-09-28 Autonomous whole-app quality cycle
 
 - Reproduced and fixed expanded-route width/centering, first-run onboarding actions below the fold, Health Connect full-sync token ordering, long custom exercise-name truncation, instrumentation focus/back harness issues, and the missing cancel action for new scanned products.

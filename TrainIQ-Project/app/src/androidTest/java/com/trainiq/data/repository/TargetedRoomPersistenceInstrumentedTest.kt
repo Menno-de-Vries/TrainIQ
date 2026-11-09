@@ -66,6 +66,30 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class TargetedRoomPersistenceInstrumentedTest {
+    @Test
+    fun restTimerCommandsRejectStaleGenerationAndPreserveSameBootMetadataAfterReopen() = runTest {
+        val dao = database.dao()
+        dao.insertRoutines(listOf(WorkoutRoutineEntity(1, "Timer", "", true)))
+        dao.insertWorkoutDays(listOf(WorkoutDayEntity(2, 1, "Day", 0)))
+        dao.insertActiveWorkoutSessions(listOf(ActiveWorkoutSessionEntity(7, 2, 1, 1, 1, notes = "Keep")))
+        val now = com.trainiq.domain.workout.WorkoutRestTimerNow(System.currentTimeMillis(), android.os.SystemClock.elapsedRealtime(), "fixture")
+        val timer = com.trainiq.domain.workout.newWorkoutRestTimer(7, 2, 120, now, "current")!!
+        val store = runtimeStore()
+        store.updateActiveWorkoutRestTimer(com.trainiq.domain.workout.WorkoutRestTimerChange(7, 1, null, timer))
+        val rejected = runCatching { store.updateActiveWorkoutRestTimer(com.trainiq.domain.workout.WorkoutRestTimerChange(7, 1, "older", null)) }
+        assertTrue(rejected.isFailure)
+        assertEquals("current", dao.readActiveWorkoutSessionsForExport().single().restTimerGeneration)
+        closeDatabase()
+        database = openDatabase()
+        val restored = runtimeStore().readCurrentActiveWorkout()!!
+        assertEquals("current", restored.restTimerGeneration)
+        assertEquals(timer.elapsedDeadline, restored.restTimerElapsedDeadline)
+        assertEquals("fixture", restored.restTimerBootId)
+        assertEquals("Keep", restored.notes)
+        runtimeStore().updateActiveWorkoutRestTimer(com.trainiq.domain.workout.WorkoutRestTimerChange(7, 1, "current", null))
+        assertEquals(null, database.dao().readActiveWorkoutSessionsForExport().single().restTimerGeneration)
+    }
+
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private val dbName = "targeted-room-persistence-test.db"
     private lateinit var database: TrainIqDatabase
@@ -1826,7 +1850,16 @@ class TargetedRoomPersistenceInstrumentedTest {
         // The fixture owns observation jobs and joins them before closing the database.
         runBlocking { legacyStore.exportLegacyState() }
         val job = SupervisorJob().also { storeJobs.add(it) }
-        return RoomTrainIqRuntimeStore(database, legacyStore, CoroutineScope(job + Dispatchers.IO))
+        val clock = object : com.trainiq.domain.workout.WorkoutRestTimerClock {
+            override fun now() = com.trainiq.domain.workout.WorkoutRestTimerNow(System.currentTimeMillis(), android.os.SystemClock.elapsedRealtime(), "fixture")
+        }
+        val delivery = object : com.trainiq.domain.workout.WorkoutRestTimerDelivery {
+            override fun schedule(timer: com.trainiq.domain.workout.ScheduledWorkoutRestTimer) = Unit
+            override fun cancel(identity: com.trainiq.domain.workout.WorkoutRestTimerIdentity) = Unit
+            override suspend fun show(timer: com.trainiq.domain.workout.ScheduledWorkoutRestTimer, silent: Boolean) = false
+        }
+        val restTimers = com.trainiq.domain.workout.WorkoutRestTimerCoordinator(RoomWorkoutRestTimerStore(database), delivery, clock)
+        return RoomTrainIqRuntimeStore(database, legacyStore, CoroutineScope(job + Dispatchers.IO), restTimers, clock)
     }
 
     private fun closeDatabase() {

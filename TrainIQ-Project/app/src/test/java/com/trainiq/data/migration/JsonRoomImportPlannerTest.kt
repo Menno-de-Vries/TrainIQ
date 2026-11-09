@@ -11,6 +11,40 @@ import org.junit.Test
 
 class JsonRoomImportPlannerTest {
     @Test
+    fun importedActiveWorkoutPreservesWorkButNeverRearmsPortableTimerMetadata() {
+        val root = com.google.gson.JsonParser.parseString(fixture("valid-representative-trainiq-state.json")).asJsonObject
+        val active = root.getAsJsonObject("activeWorkoutSession")
+        active.addProperty("restTimerEndsAt", 9_999_999L)
+        active.addProperty("restTimerTotalSeconds", 120)
+        for (hasNewMetadata in listOf(false, true)) {
+            if (hasNewMetadata) {
+                active.addProperty("restTimerGeneration", "same-device-count-can-collide")
+                active.addProperty("restTimerElapsedDeadline", 9_999_999L)
+                active.addProperty("restTimerBootId", "1")
+            }
+            val imported = JsonRoomImportPlanner().plan(root.toString())
+            assertEquals(null, imported.activeWorkoutSessions.single().restTimerEndsAt)
+            assertEquals(0, imported.activeWorkoutSessions.single().restTimerTotalSeconds)
+            assertEquals(1, imported.activeWorkoutSets.size)
+            assertEquals(1, imported.activeWorkoutDrafts.size)
+        }
+    }
+
+    @Test
+    fun workoutNotesRoundTripAndLegacyMissingNotesStayEmpty() {
+        val legacy = JsonRoomImportPlanner().plan(fixture("valid-representative-trainiq-state.json"))
+        assertEquals("", legacy.activeWorkoutSessions.single().notes)
+        assertEquals("", legacy.sessions.single().notes)
+        val state = TrainIqStorageState(
+            sessions = listOf(com.trainiq.core.database.WorkoutSessionEntity(id = 1, date = 1, duration = 60, notes = "Sessie-notitie")),
+            activeWorkoutSession = com.trainiq.data.local.ActiveWorkoutSessionStorage(sessionId = 1, dayId = 7, notes = "Actieve notitie"),
+        )
+        val imported = JsonRoomImportPlanner().plan(com.google.gson.Gson().toJson(state))
+        assertEquals("Sessie-notitie", imported.sessions.single().notes)
+        assertEquals("Actieve notitie", imported.activeWorkoutSessions.single().notes)
+    }
+
+    @Test
     fun representativeJsonMapsToRoomCompatibleTablesAndReportsParityGaps() {
         val source = fixture("valid-representative-trainiq-state.json")
 

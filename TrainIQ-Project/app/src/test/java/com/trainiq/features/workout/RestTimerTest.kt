@@ -9,6 +9,27 @@ import kotlinx.coroutines.test.runTest
 
 class RestTimerTest {
     @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun newerPersistedSetSupersedesQueuedTimerWritesAndRetainsAllClockMetadata() = runTest {
+        val oldTimer = com.trainiq.domain.workout.ScheduledWorkoutRestTimer(
+            com.trainiq.domain.workout.WorkoutRestTimerIdentity(7, "old"), 8, 60_000, 50_000, "boot", 60)
+        val old = RestTimerValue(60_000, 60, oldTimer, 7, 1)
+        val pending = old.copy(timer = oldTimer.copy(identity = oldTimer.identity.copy(generation = "pending")))
+        val newer = old.copy(timer = oldTimer.copy(identity = oldTimer.identity.copy(generation = "set-log")))
+        var displayed = old
+        var writes = 0
+        val writer = RestTimerWrites(backgroundScope, persist = { _, _ -> writes++ },
+            publish = { displayed = it }, onFailure = { throw it })
+        writer.submit(old, pending)
+        writer.supersede(newer)
+        displayed = newer
+        runCurrent()
+        assertEquals(0, writes)
+        assertEquals(newer, displayed)
+        assertEquals("boot", displayed.timer!!.bootId)
+        assertEquals(50_000L, displayed.timer!!.elapsedDeadline)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
     @Test fun queuedWritesStayOrderedAndFailuresRestoreOnlyConfirmedDeadlines() = runTest {
         val original = RestTimerValue(60_000, 60)
         val first = RestTimerValue(75_000, 75)
@@ -18,10 +39,10 @@ class RestTimerTest {
         var gate = CompletableDeferred<Unit>()
         val attempts = mutableListOf<RestTimerValue>()
         var errors = 0
-        val writes = RestTimerWrites(backgroundScope, persist = {
-            attempts += it
+        val writes = RestTimerWrites(backgroundScope, persist = { _, next ->
+            attempts += next
             gate.await()
-            if (failFirst || it == second) error("storage unavailable")
+            if (failFirst || next == second) error("storage unavailable")
         }, publish = { displayed = it }, onFailure = { errors++ })
         writes.submit(displayed, first)
         writes.submit(displayed, second)

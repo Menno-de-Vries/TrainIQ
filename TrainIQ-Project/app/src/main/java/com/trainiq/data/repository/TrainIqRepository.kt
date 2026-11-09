@@ -67,6 +67,7 @@ import com.trainiq.domain.model.LoggedMeal
 import com.trainiq.domain.model.LoggedMealItem
 import com.trainiq.domain.model.LoggedMealItemType
 import com.trainiq.domain.model.LoggedSet
+import com.trainiq.domain.model.buildWorkoutAnalysisSnapshot
 import com.trainiq.domain.model.MealAnalysisResult
 import com.trainiq.domain.model.MealScanItem
 import com.trainiq.domain.model.MealType
@@ -112,6 +113,8 @@ import com.trainiq.domain.repository.ProgressRepository
 import com.trainiq.domain.repository.WorkoutRepository
 import com.trainiq.domain.repository.WorkoutDebriefRefreshOutcome
 import com.trainiq.domain.repository.WorkoutDebriefScheduler
+import com.trainiq.domain.repository.requireRoutineGenerationProfile
+import com.trainiq.domain.repository.MissingProfileForAiRoutineMessage
 import javax.inject.Inject
 import javax.inject.Singleton
 import java.util.Locale
@@ -124,6 +127,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -264,7 +269,7 @@ class TrainIqDataCoordinator @Inject constructor(
 
     suspend fun getCurrentActiveWorkoutSession(): ActiveWorkoutSession? =
         withContext(Dispatchers.IO) {
-            runtimeStore.state.value.activeWorkoutSession?.toDomain()
+            runtimeStore.readCurrentActiveWorkout()?.toDomain()
         }
 
     suspend fun getOrStartActiveWorkoutSession(
@@ -288,7 +293,11 @@ class TrainIqDataCoordinator @Inject constructor(
             )
             mutation.active
         }
-        return active.toDomain()
+        return (runtimeStore.readCurrentActiveWorkout() ?: active).toDomain()
+    }
+
+    suspend fun updateActiveWorkoutNotes(notes: String): ActiveWorkoutSession? = withContext(Dispatchers.IO) {
+        runtimeStore.updateActiveWorkoutNotes(notes)?.toDomain()
     }
 
     suspend fun updateActiveWorkoutDraft(exerciseId: Long, draft: ActiveWorkoutSetDraft): ActiveWorkoutSession? =
@@ -359,12 +368,12 @@ class TrainIqDataCoordinator @Inject constructor(
                 restTimerEndsAt = if (restSeconds > 0) now + restSeconds * 1_000L else null,
                 restTimerTotalSeconds = restSeconds.coerceAtLeast(0),
             )
-        runtimeStore.updateActiveWorkoutSet(
+        val persisted = runtimeStore.updateActiveWorkoutSet(
             active = updated,
             set = updatedSet,
             draft = requireNotNull(updated.drafts[updatedSet.activeKey]),
         )
-        return updated.toDomain()
+        return persisted.toDomain()
     }
 
     suspend fun updateActiveWorkoutSetType(setId: Long, setType: SetType): ActiveWorkoutSession? {
@@ -378,7 +387,7 @@ class TrainIqDataCoordinator @Inject constructor(
             setType = setType,
             updatedAt = updated.updatedAt,
         )
-        return updated.toDomain()
+        return (runtimeStore.readCurrentActiveWorkout() ?: updated).toDomain()
     }
 
     suspend fun deleteActiveWorkoutSet(setId: Long): ActiveWorkoutSession? {
@@ -391,7 +400,7 @@ class TrainIqDataCoordinator @Inject constructor(
             setId = setId,
             updatedAt = updated.updatedAt,
         )
-        return updated.toDomain()
+        return (runtimeStore.readCurrentActiveWorkout() ?: updated).toDomain()
     }
 
     suspend fun undoWorkoutLogEvent(eventId: Long): ActiveWorkoutSession? {
@@ -406,7 +415,7 @@ class TrainIqDataCoordinator @Inject constructor(
             it.type == WorkoutLogEventType.UNDO_SET && it.targetEventId == eventId
         } ?: return active.toDomain()
         runtimeStore.undoActiveWorkoutLogEvent(active = active, undoEvent = undoEvent)
-        return active.toDomain()
+        return (runtimeStore.readCurrentActiveWorkout() ?: active).toDomain()
     }
 
     suspend fun setActiveWorkoutCollapsed(exerciseId: Long, collapsed: Boolean): ActiveWorkoutSession? {
@@ -426,58 +435,38 @@ class TrainIqDataCoordinator @Inject constructor(
             collapsed = collapsed,
             updatedAt = updated.updatedAt,
         )
-        return updated.toDomain()
+        return (runtimeStore.readCurrentActiveWorkout() ?: updated).toDomain()
     }
 
-    suspend fun updateActiveWorkoutRestTimer(endsAt: Long?, totalSeconds: Int): ActiveWorkoutSession? =
-        withContext(Dispatchers.IO) {
-            val active = runtimeStore.state.value.activeWorkoutSession ?: return@withContext null
-            val now = System.currentTimeMillis()
-            val updated = active.copy(
-                updatedAt = now,
-                restTimerEndsAt = endsAt,
-                restTimerTotalSeconds = if (endsAt == null) 0 else totalSeconds.coerceAtLeast(0),
-            )
-            runtimeStore.updateActiveWorkoutRestTimer(
-                sessionId = updated.sessionId,
-                endsAt = updated.restTimerEndsAt,
-                totalSeconds = updated.restTimerTotalSeconds,
-                updatedAt = updated.updatedAt,
-            )
-            updated.toDomain()
-        }
+    suspend fun updateActiveWorkoutRestTimer(change: com.trainiq.domain.workout.WorkoutRestTimerChange): ActiveWorkoutSession? =
+        withContext(Dispatchers.IO) { runtimeStore.updateActiveWorkoutRestTimer(change)?.toDomain() }
 
     suspend fun finishActiveWorkout(dayId: Long): WorkoutCompletionResult {
-        val active = runtimeStore.state.value.activeWorkoutSession?.takeIf { it.dayId == dayId }
-        val now = System.currentTimeMillis()
-        val durationSeconds = active?.let {
-            activeWorkoutDurationSeconds(startedAt = it.startedAt, now = now)
-        } ?: 1L
-        val result = finishWorkout(
-            dayId = dayId,
-            durationSeconds = durationSeconds,
-            loggedSets = active?.loggedSets.orEmpty().map { it.toDomain().toLoggedSet() },
-            activeSessionId = active?.sessionId,
-            activeStartedAt = active?.startedAt,
-        )
-        return result
+        // Capture intent only. Sets and every derived value are loaded inside the finish transaction.
+        val active = requireNotNull((runtimeStore.state.value.activeWorkoutSession
+            ?: runtimeStore.readCurrentActiveWorkout())?.takeIf { it.dayId == dayId }) {
+            "The intended active workout no longer exists."
+        }
+        return finishWorkout(dayId, 0L, emptyList(), active.sessionId, active.startedAt)
     }
+    suspend fun getWorkoutCompletionSummary(sessionId: Long): WorkoutCompletionSummary? =
+        observeWorkoutCompletionSummary(sessionId).first()
 
-    suspend fun getWorkoutCompletionSummary(sessionId: Long): WorkoutCompletionSummary? = withContext(Dispatchers.IO) {
-        val state = runtimeStore.state.value
-        val session = state.sessions.firstOrNull { it.id == sessionId && it.completed && it.status == "COMPLETED" }
-            ?: return@withContext null
-        buildWorkoutCompletionSummary(
-            session = session,
-            routines = state.routines,
-            days = state.days,
-            exercises = state.exercises,
-            workoutExercises = state.workoutExercises,
-            performedExercises = state.performedExercises,
-            sets = state.workoutSets,
-            fallbackDebrief = session.toStoredDebrief(),
-        )
-    }
+    fun observeWorkoutCompletionSummary(sessionId: Long): Flow<WorkoutCompletionSummary?> =
+        runtimeStore.observeWorkoutCompletionSnapshot(sessionId).map { snapshot ->
+            snapshot?.let {
+                buildWorkoutCompletionSummary(
+                    session = it.session,
+                    routines = (it.routines + it.days.flatMap { day -> day.routines }).distinctBy { routine -> routine.id },
+                    days = it.days.map { day -> day.day },
+                    exercises = it.sets.flatMap { set -> set.exercises }.distinctBy { exercise -> exercise.id },
+                    workoutExercises = it.days.flatMap { day -> day.workoutExercises },
+                    performedExercises = it.performedExercises,
+                    sets = it.sets.map { set -> set.set },
+                    fallbackDebrief = it.session.toStoredDebrief(),
+                )
+            }
+        }.distinctUntilChanged().flowOn(Dispatchers.IO)
 
     suspend fun discardActiveWorkout(dayId: Long) {
         withContext(Dispatchers.IO) {
@@ -508,111 +497,21 @@ class TrainIqDataCoordinator @Inject constructor(
         loggedSets: List<LoggedSet>,
         activeSessionId: Long?,
         activeStartedAt: Long?,
-    ): WorkoutCompletionResult {
-        if (loggedSets.isEmpty()) {
-            return WorkoutCompletionResult(
-                sessionId = 0L,
-                debrief = WorkoutDebrief(
-                summary = "Geen sets gelogd.",
-                progressionFeedback = "Log minimaal een set om voortgang op te slaan.",
-                recommendation = "Voeg tijdens je training sets toe voordat je afrondt.",
-                nextSessionFocus = "Huidige gewichten vasthouden",
-                recoveryScore = null,
-                intensitySignal = "MAINTAIN",
-                source = WorkoutDebriefSource.LOCAL_FALLBACK,
-                ),
-            )
-        }
-
-        val beforeSnapshot = snapshotState.value
-        val current = runtimeStore.state.value
+    ): WorkoutCompletionResult = runtimeStore.finishActiveWorkoutSession(
+        expected = activeSessionId?.let { ActiveWorkoutFinishIdentity(it, dayId, requireNotNull(activeStartedAt)) },
+    ) { current ->
         val now = System.currentTimeMillis()
-        val sessionId = activeSessionId?.takeIf { it > 0L } ?: ((current.sessions.maxOfOrNull { it.id } ?: 0L) + 1L)
-        val generationId = UUID.randomUUID().toString()
-        val startedAt = activeStartedAt?.takeIf { it > 0L } ?: (now - durationSeconds * 1_000L).coerceAtLeast(0L)
-        val newSession = WorkoutSessionEntity(
-            id = sessionId,
-            date = startedAt,
-            duration = durationSeconds,
-            caloriesBurned = estimateStrengthTrainingCalories(durationSeconds),
-            routineId = beforeSnapshot.days.firstOrNull { it.id == dayId }?.routineId,
-            workoutDayId = dayId,
-            startedAt = startedAt,
-            endedAt = now,
-            status = "COMPLETED",
-            completed = true,
-            debriefGenerationId = generationId,
-        )
-        val performedExercises = current.ensurePerformedExercisesForCompletedSets(dayId, sessionId, loggedSets)
-        val newSets = loggedSets.mapIndexed { index, set ->
-            val performedExerciseId = set.performedExerciseId.takeIf { it > 0L }
-                ?: performedExercises.firstOrNull { it.sessionId == sessionId && it.exerciseId == set.exerciseId }?.id
-                ?: 0L
-            WorkoutSetEntity(
-                id = (current.workoutSets.maxOfOrNull { it.id } ?: 0L) + index + 1L,
-                sessionId = sessionId,
-                exerciseId = set.exerciseId,
-                weight = set.weight,
-                reps = set.reps,
-                rpe = set.rpe,
-                repsInReserve = set.repsInReserve,
-                performedExerciseId = performedExerciseId,
-                setType = set.setType.name,
-                restSeconds = set.restSeconds,
-                orderIndex = set.orderIndex.takeIf { it > 0 } ?: index,
-                completed = set.completed,
-                loggedAt = completedWorkoutSetLoggedAt(set = set, fallback = now + index),
-                completedAt = now + index,
-            )
-        }
-        val debriefSets = loggedSets.filter { it.setType.isProgressionType() }.ifEmpty { loggedSets }
-        val currentVolume = debriefSets.sumOf { it.weight * it.reps }
-        val comparison = buildWorkoutProgressComparison(
+        val active = current.activeWorkoutSession.takeIf { activeSessionId != null }
+        buildWorkoutFinishWrite(
+            current = current,
             dayId = dayId,
-            routineId = newSession.routineId,
-            startedAt = startedAt,
+            durationSeconds = active?.let { activeWorkoutDurationSeconds(it.startedAt, now) } ?: durationSeconds,
+            loggedSets = active?.loggedSets?.map { it.toDomain().toLoggedSet() } ?: loggedSets,
             activeSessionId = activeSessionId,
-            currentSets = debriefSets,
-            sessions = beforeSnapshot.sessions,
-            sets = beforeSnapshot.sets,
-            days = beforeSnapshot.days,
-            exercises = beforeSnapshot.exercises,
+            activeStartedAt = active?.startedAt,
+            now = now,
         )
-        val progression = comparison?.progressionPercent
-        val distribution = buildWorkoutDay(beforeSnapshot, dayId)?.exercises
-            ?.groupBy { it.exercise.muscleGroup }
-            ?.map { "${it.key} ${it.value.size}" }
-            ?.joinToString()
-            .orEmpty()
-        val avgRpe = debriefSets.map { it.rpe }.average().takeIf { !it.isNaN() }?.toFloat() ?: 0f
-        val exerciseNameById = buildWorkoutDay(beforeSnapshot, dayId)
-            ?.exercises
-            ?.associate { it.exercise.id to it.exercise.name }
-            .orEmpty() + beforeSnapshot.exercises.associate { it.id to it.name }
-        val topExercises = debriefSets
-            .sortedByDescending { it.weight * it.reps }
-            .take(3)
-            .joinToString { set ->
-                val exerciseName = exerciseNameById[set.exerciseId] ?: "Oefening ${set.exerciseId}"
-                workoutDebriefTopSetText(exerciseName = exerciseName, weightLabel = formatWeight(set.weight), reps = set.reps)
-            }
-            .ifBlank { workoutDebriefEmptyTopSetsText() }
-        val sevenDaysAgo = System.currentTimeMillis() - (7 * 86_400_000L)
-        val weeklyFrequency = (beforeSnapshot.sessions + newSession)
-            .filter { it.date >= sevenDaysAgo }
-            .map { normalizeToDay(it.date) }
-            .distinct()
-            .count()
-        val localDebrief = fallbackWorkoutDebriefResult(currentVolume, progression)
-        runtimeStore.finishActiveWorkoutSession(
-            session = newSession.withDebrief(localDebrief),
-            performedExercises = performedExercises,
-            sets = newSets,
-            activeSessionId = activeSessionId,
-        )
-        return WorkoutCompletionResult(sessionId = sessionId, debrief = localDebrief, generationId = generationId)
     }
-
     suspend fun refreshWorkoutDebrief(
         sessionId: Long,
         generationId: String? = null,
@@ -627,57 +526,20 @@ class TrainIqDataCoordinator @Inject constructor(
         }
         val dayId = session.workoutDayId ?: return@withContext WorkoutDebriefRefreshOutcome.INVALID_RESULT
         val sessionSets = refreshSnapshot.sets.filter { it.sessionId == sessionId }
-        if (sessionSets.isEmpty()) return@withContext WorkoutDebriefRefreshOutcome.INVALID_RESULT
-        val progressionSets = sessionSets.filter { parseSetType(it.setType).isProgressionType() }.ifEmpty { sessionSets }
-        val currentVolume = progressionSets.sumOf { it.weight * it.reps }
+        val analysis = buildWorkoutDebriefAnalysis(sessionSets.map { it.toAnalysisSet() }, refreshSnapshot.exercises)
+        if (analysis.snapshot.completedSets.isEmpty()) return@withContext WorkoutDebriefRefreshOutcome.INVALID_RESULT
+        val currentVolume = analysis.snapshot.totalVolumeKg
         val comparison = buildWorkoutProgressComparison(
             dayId = dayId,
             routineId = session.routineId,
             startedAt = session.startedAt,
             activeSessionId = sessionId,
-            currentSets = progressionSets.map { set ->
-                LoggedSet(
-                    exerciseId = set.exerciseId,
-                    weight = set.weight,
-                    reps = set.reps,
-                    rpe = set.rpe,
-                    repsInReserve = set.repsInReserve,
-                    setType = parseSetType(set.setType),
-                    restSeconds = set.restSeconds,
-                    orderIndex = set.orderIndex,
-                    completed = set.completed,
-                    loggedAt = set.loggedAt,
-                    performedExerciseId = set.performedExerciseId,
-                )
-            },
+            currentSets = analysis.snapshot.completedSets,
             sessions = refreshSnapshot.sessions,
             sets = refreshSnapshot.sets,
             days = refreshSnapshot.days,
             exercises = refreshSnapshot.exercises,
         )
-        val directSnapshot = RepositorySnapshot(
-            days = refreshSnapshot.days,
-            exercises = refreshSnapshot.exercises,
-            workoutExercises = refreshSnapshot.workoutExercises,
-        )
-        val workoutDay = buildWorkoutDay(directSnapshot, dayId)
-        val distribution = workoutDay?.exercises
-            ?.groupBy { it.exercise.muscleGroup }
-            ?.map { "${it.key} ${it.value.size}" }
-            ?.joinToString()
-            .orEmpty()
-        val exerciseNameById = refreshSnapshot.exercises.associate { it.id to it.name }
-        val topExercises = progressionSets
-            .sortedByDescending { it.weight * it.reps }
-            .take(3)
-            .joinToString { set ->
-                workoutDebriefTopSetText(
-                    exerciseName = exerciseNameById[set.exerciseId] ?: "Oefening ${set.exerciseId}",
-                    weightLabel = formatWeight(set.weight),
-                    reps = set.reps,
-                )
-            }
-            .ifBlank { workoutDebriefEmptyTopSetsText() }
         val sevenDaysAgo = System.currentTimeMillis() - (7 * 86_400_000L)
         val refreshed = runWorkoutDebriefForCurrentGeneration(
             currentGeneration = session.debriefGenerationId,
@@ -690,9 +552,11 @@ class TrainIqDataCoordinator @Inject constructor(
             totalVolume = currentVolume,
             progression = comparison?.progressionPercent,
             comparisonSummary = comparison?.summary ?: "Nog geen eerdere vergelijkbare training gevonden.",
-            distribution = distribution,
-            avgRpe = progressionSets.map { it.rpe }.average().takeIf { !it.isNaN() }?.toFloat() ?: 0f,
-            topExercises = topExercises,
+            distribution = analysis.distribution,
+            avgRpe = analysis.snapshot.reportedMeanRpe?.toFloat(),
+            exerciseEffort = analysis.exerciseEffort,
+            analysisSnapshot = analysis.snapshot,
+            topExercises = analysis.topExercises,
             weeklyFrequency = refreshSnapshot.sessions
                 .filter { it.completed && it.date >= sevenDaysAgo }
                 .map { normalizeToDay(it.date) }
@@ -935,8 +799,7 @@ class TrainIqDataCoordinator @Inject constructor(
         includeDeload: Boolean,
         options: com.trainiq.domain.model.RoutineGenerationOptions = com.trainiq.domain.model.RoutineGenerationOptions(),
     ): GeneratedRoutine = withContext(Dispatchers.IO) {
-        val profile = snapshotState.value.profile
-            ?: error(missingProfileForAiRoutineMessage())
+        val profile = requireRoutineGenerationProfile(snapshotState.value.profile)
         val generated = routineGeneratorService.generateRoutine(
             goal = profile.goal,
             targetFocus = targetFocus.ifBlank { profile.trainingFocus },
@@ -1047,13 +910,14 @@ class TrainIqDataCoordinator @Inject constructor(
     fun observeNutritionOverview(): Flow<NutritionOverview> =
         combine(snapshotState, _cachedSteps) { snapshot, steps -> buildNutritionOverview(snapshot, steps) }
 
-    suspend fun analyzeMealPhoto(path: String, context: String, capturedAtMillis: Long): MealAnalysisResult {
+    suspend fun analyzeMealPhoto(path: String, context: String, capturedAtMillis: Long, mode: com.trainiq.domain.model.FoodProviderMode = com.trainiq.domain.model.FoodProviderMode.AUTOMATIC): MealAnalysisResult {
         scannedMealResult.value = null
         return try {
             val result = mealAnalysisService.analyzeMealImage(
                 path = path,
                 userContext = context,
                 capturedAtMillis = capturedAtMillis,
+                foodProviderMode = mode,
             )
             currentCoroutineContext().ensureActive()
             scannedMealResult.value = result
@@ -1392,6 +1256,7 @@ class TrainIqDataCoordinator @Inject constructor(
         val debriefSource = runCatching { WorkoutDebriefSource.valueOf(session.debriefSource) }
             .getOrDefault(WorkoutDebriefSource.LOCAL_FALLBACK)
         return WorkoutSessionSummary(
+            notes = session.notes,
             id = session.id,
             date = session.endedAt.takeIf { it > 0L } ?: session.date,
             duration = session.duration,
@@ -1828,6 +1693,99 @@ internal fun TrainIqStorageState.workoutLoggingSummary(dayId: Long, now: Long): 
 internal fun TrainIqStorageState.finalizeWorkoutLogEventsForCompletedSession(sessionId: Long): TrainIqStorageState =
     copy(workoutLogEvents = workoutLogEvents.filterNot { it.sessionId == sessionId })
 
+internal data class ActiveWorkoutFinishIdentity(val sessionId: Long, val dayId: Long, val startedAt: Long)
+
+internal data class WorkoutFinishWrite(
+    val result: WorkoutCompletionResult,
+    val session: WorkoutSessionEntity? = null,
+    val performedExercises: List<PerformedExerciseEntity> = emptyList(),
+    val sets: List<WorkoutSetEntity> = emptyList(),
+)
+
+/** Pure completion contents and local analysis, using exactly the snapshot that will be committed. */
+internal fun buildWorkoutFinishWrite(
+    current: TrainIqStorageState,
+    dayId: Long,
+    durationSeconds: Long,
+    loggedSets: List<LoggedSet>,
+    activeSessionId: Long?,
+    activeStartedAt: Long?,
+    now: Long,
+): WorkoutFinishWrite {
+    val analysis = buildWorkoutAnalysisSnapshot(loggedSets)
+    if (analysis.completedSets.isEmpty()) return WorkoutFinishWrite(WorkoutCompletionResult(
+        sessionId = 0L,
+        debrief = WorkoutDebrief(
+            summary = "Geen sets gelogd.",
+            progressionFeedback = "Log minimaal een set om voortgang op te slaan.",
+            recommendation = "Voeg tijdens je training sets toe voordat je afrondt.",
+            nextSessionFocus = "Huidige gewichten vasthouden",
+            recoveryScore = null,
+            intensitySignal = "MAINTAIN",
+            source = WorkoutDebriefSource.LOCAL_FALLBACK,
+        ),
+    ))
+    val beforeSnapshot = current
+    val sessionId = activeSessionId?.takeIf { it > 0L } ?: ((current.sessions.maxOfOrNull { it.id } ?: 0L) + 1L)
+    val generationId = UUID.randomUUID().toString()
+    val startedAt = activeStartedAt?.takeIf { it > 0L } ?: (now - durationSeconds * 1_000L).coerceAtLeast(0L)
+    val newSession = WorkoutSessionEntity(
+        notes = current.activeWorkoutSession?.takeIf { it.sessionId == sessionId }?.notes.orEmpty(),
+        id = sessionId,
+        date = startedAt,
+        duration = durationSeconds,
+        caloriesBurned = estimateStrengthTrainingCalories(durationSeconds),
+        routineId = beforeSnapshot.days.firstOrNull { it.id == dayId }?.routineId,
+        workoutDayId = dayId,
+        startedAt = startedAt,
+        endedAt = now,
+        status = "COMPLETED",
+        completed = true,
+        debriefGenerationId = generationId,
+    )
+    val performedExercises = current.ensurePerformedExercisesForCompletedSets(dayId, sessionId, loggedSets)
+    val newSets = loggedSets.mapIndexed { index, set ->
+        val performedExerciseId = set.performedExerciseId.takeIf { it > 0L }
+            ?: performedExercises.firstOrNull { it.sessionId == sessionId && it.exerciseId == set.exerciseId }?.id
+            ?: 0L
+        WorkoutSetEntity(
+            id = (current.workoutSets.maxOfOrNull { it.id } ?: 0L) + index + 1L,
+            sessionId = sessionId,
+            exerciseId = set.exerciseId,
+            weight = set.weight,
+            reps = set.reps,
+            rpe = set.rpe,
+            repsInReserve = set.repsInReserve,
+            performedExerciseId = performedExerciseId,
+            setType = set.setType.name,
+            restSeconds = set.restSeconds,
+            orderIndex = set.orderIndex.takeIf { it > 0 } ?: index,
+            completed = set.completed,
+            loggedAt = completedWorkoutSetLoggedAt(set = set, fallback = now + index),
+            completedAt = now + index,
+        )
+    }
+    val currentVolume = analysis.totalVolumeKg
+    val comparison = buildWorkoutProgressComparison(
+        dayId = dayId,
+        routineId = newSession.routineId,
+        startedAt = startedAt,
+        activeSessionId = activeSessionId,
+        currentSets = analysis.completedSets,
+        sessions = beforeSnapshot.sessions,
+        sets = beforeSnapshot.workoutSets,
+        days = beforeSnapshot.days,
+        exercises = beforeSnapshot.exercises,
+    )
+    val progression = comparison?.progressionPercent
+    val localDebrief = fallbackWorkoutDebriefResult(currentVolume, progression, analysisSnapshot = analysis)
+    return WorkoutFinishWrite(
+        result = WorkoutCompletionResult(sessionId, localDebrief, generationId),
+        session = newSession.withDebrief(localDebrief),
+        performedExercises = performedExercises,
+        sets = newSets,
+    )
+}
 internal fun completedWorkoutSetLoggedAt(set: LoggedSet, fallback: Long): Long =
     set.loggedAt.takeIf { it > 0L } ?: fallback
 
@@ -1849,6 +1807,7 @@ internal fun buildWorkoutCompletionSummary(
     val sessionSets = sets
         .filter { it.sessionId == session.id && it.completed }
         .sortedWith(compareBy<WorkoutSetEntity> { it.performedExerciseId }.thenBy { it.orderIndex }.thenBy { it.id })
+    val analysis = buildWorkoutAnalysisSnapshot(sessionSets.map { it.toAnalysisSet() })
     val sessionPerformed = performedExercises
         .filter { it.sessionId == session.id }
         .sortedBy { it.orderIndex }
@@ -1879,7 +1838,7 @@ internal fun buildWorkoutCompletionSummary(
                     completed = set.completed,
                 )
             },
-            totalVolume = orderedSets.sumOf { it.weight * it.reps },
+            totalVolume = buildWorkoutAnalysisSnapshot(orderedSets.map { it.toAnalysisSet() }).totalVolumeKg,
             bestSetLabel = orderedSets.maxWithOrNull(compareBy<WorkoutSetEntity> { it.weight }.thenBy { it.reps })?.let { set ->
                 "${formatSummaryWeight(set.weight)} kg x ${set.reps}"
             }.orEmpty(),
@@ -1902,8 +1861,8 @@ internal fun buildWorkoutCompletionSummary(
         endedAt = session.endedAt.takeIf { it > 0L } ?: session.date,
         durationSeconds = session.duration,
         exercisesCompleted = exerciseSummaries.size,
-        setsLogged = sessionSets.size,
-        totalVolume = sessionSets.sumOf { it.weight * it.reps },
+        setsLogged = analysis.completedSetCount,
+        totalVolume = analysis.totalVolumeKg,
         personalBests = 0,
         strongestSetLabel = strongestSet?.let { "${formatSummaryWeight(it.weight)} kg x ${it.reps}" }.orEmpty(),
         debrief = debrief,
@@ -1955,7 +1914,7 @@ private fun WorkoutSessionEntity.toStoredDebrief(): WorkoutDebrief {
     )
 }
 
-private fun formatSummaryWeight(weight: Double): String =
+internal fun formatSummaryWeight(weight: Double): String =
     if (weight % 1.0 == 0.0) weight.toInt().toString() else String.format(Locale.US, "%.1f", weight)
 
 internal data class WorkoutProgressComparison(
@@ -1978,7 +1937,10 @@ internal fun buildWorkoutProgressComparison(
     days: List<WorkoutDayEntity>,
     exercises: List<ExerciseEntity>,
 ): WorkoutProgressComparison? {
-    val currentExerciseIds = currentSets.map { it.exerciseId }.toSet()
+    val currentComparisonSets = buildWorkoutAnalysisSnapshot(
+        currentSets.filter { it.reps > 0 && it.weight >= 0.0 },
+    ).comparisonSets
+    val currentExerciseIds = currentComparisonSets.map { it.exerciseId }.toSet()
     if (currentExerciseIds.isEmpty()) return null
     val exerciseNameById = exercises.associate { it.id to it.name.trim().lowercase(Locale.US) }
     val currentExerciseNames = currentExerciseIds.mapNotNull { exerciseNameById[it] }.toSet()
@@ -1989,7 +1951,10 @@ internal fun buildWorkoutProgressComparison(
         .filter { it.id != activeSessionId }
         .filter { (it.startedAt.takeIf { value -> value > 0L } ?: it.date) < startedAt }
         .mapNotNull { session ->
-            val sessionSets = sets.filter { it.sessionId == session.id && isProgressionSet(it) }
+            val sessionSets = buildWorkoutAnalysisSnapshot(
+                sets.filter { it.sessionId == session.id && it.reps > 0 && it.weight >= 0.0 }
+                    .map { it.toAnalysisSet() },
+            ).comparisonSets
             val sessionExerciseIds = sessionSets.map { it.exerciseId }.toSet()
             val idOverlap = sessionExerciseIds.intersect(currentExerciseIds).size
             val nameOverlap = sessionExerciseIds.mapNotNull { exerciseNameById[it] }.toSet().intersect(currentExerciseNames).size
@@ -2022,7 +1987,7 @@ internal fun buildWorkoutProgressComparison(
         )
         .toList()
     val previous = candidates.firstOrNull() ?: return null
-    val currentVolume = currentSets
+    val currentVolume = currentComparisonSets
         .filter { it.exerciseId in currentExerciseIds || exerciseNameById[it.exerciseId] in currentExerciseNames }
         .sumOf { it.weight * it.reps }
     if (currentVolume <= 0.0 || previous.volume <= 0.0) return null
@@ -2172,6 +2137,7 @@ internal fun TrainIqStorageState.ensurePerformedExercisesForCompletedSets(
 }
 
 internal fun ActiveWorkoutSessionStorage.toDomain() = ActiveWorkoutSession(
+    notes = notes,
     sessionId = sessionId,
     dayId = dayId,
     routineId = routineId,
@@ -2182,6 +2148,10 @@ internal fun ActiveWorkoutSessionStorage.toDomain() = ActiveWorkoutSession(
     collapsedExerciseIds = collapsedExerciseIds,
     restTimerEndsAt = restTimerEndsAt,
     restTimerTotalSeconds = restTimerTotalSeconds,
+    restTimerGeneration = restTimerGeneration,
+    restTimerElapsedDeadline = restTimerElapsedDeadline,
+    restTimerBootId = restTimerBootId,
+    restTimerHandled = restTimerHandled,
 )
 
 private fun ActiveWorkoutSetStorage.toDomain() = ActiveWorkoutSetEntry(
@@ -2635,7 +2605,7 @@ internal fun buildMealItemSnapshots(
 }
 
 internal fun missingProfileForAiRoutineMessage(): String =
-    "Vul eerst je profiel in voordat je een AI-routine maakt."
+    MissingProfileForAiRoutineMessage
 
 internal fun generatedRoutineMissingDaysMessage(): String =
     "AI gaf geen trainingsdagen terug. Probeer een specifiekere trainingsfocus."

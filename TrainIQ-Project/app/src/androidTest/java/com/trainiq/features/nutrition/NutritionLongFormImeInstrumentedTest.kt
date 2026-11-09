@@ -73,6 +73,8 @@ class NutritionLongFormImeInstrumentedTest {
                 .performScrollToNode(hasContentDescription("Toevoegen aan Ochtend"))
             compose.onNodeWithContentDescription("Toevoegen aan Ochtend").performScrollTo().performClick()
             compose.waitForText("Toevoegen aan Ochtend")
+            compose.onNodeWithText("Andere manieren toevoegen").performScrollTo().performClick()
+            compose.onNodeWithText("Foto / AI-inschatting").performScrollTo().performClick()
 
             compose.onNodeWithText("AI-context voor foto")
                 .performScrollTo()

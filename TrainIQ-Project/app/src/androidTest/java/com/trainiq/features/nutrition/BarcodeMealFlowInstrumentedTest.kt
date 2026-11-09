@@ -102,6 +102,11 @@ class BarcodeMealFlowInstrumentedTest {
             }
             imeHidden
         }
+        // The product-added snackbar overlays the lower save action at compact font scale.
+        // Wait for its disappearance before the single physical save tap.
+        compose.waitUntil(timeoutMillis = 10_000) {
+            compose.onAllNodesWithText("Product alleen aan deze maaltijd toegevoegd.").fetchSemanticsNodes().isEmpty()
+        }
         val save = compose.onNodeWithText("Maaltijd opslaan").performScrollTo()
         save.assertIsEnabled().assertIsDisplayed()
         val beforeTap = manualSaveWindowSnapshot()
@@ -308,6 +313,7 @@ class BarcodeMealFlowInstrumentedTest {
     private fun openMealScanner(label: String) {
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasContentDescription("Toevoegen aan $label"))
         compose.onNodeWithContentDescription("Toevoegen aan $label").performScrollTo().performClick()
+        compose.onNodeWithText("Andere manieren toevoegen").performScrollTo().performClick()
         compose.onNodeWithText("Barcode scannen").performScrollTo().performClick()
     }
 
@@ -350,7 +356,6 @@ class BarcodeMealFlowInstrumentedTest {
                                 done()
                             },
                             onDeleteMeal = {}, onDeleteFood = {}, onDeleteRecipe = {},
-                            onTryStartAiBatchSave = { true }, onFinishAiBatchSave = {},
                             onSetScanResult = {}, onSetMessage = { state = state.copy(message = it) }, onDismissMessage = {}, onRetry = {}, onAiScanner = {},
                             onOpenBarcodeScanner = { nav.navigate(CameraScanner(scannerMode = ScannerMode.BARCODE)) },
                             pendingBarcode = barcode.takeIf { it.isNotBlank() },

@@ -21,6 +21,7 @@ import com.trainiq.domain.model.WeeklyReportResult
 import com.trainiq.domain.model.WeeklyReportSource
 import com.trainiq.domain.model.WorkoutDebrief
 import com.trainiq.domain.model.WorkoutDebriefSource
+import com.trainiq.domain.model.WorkoutAnalysisSnapshot
 import java.io.File
 import java.io.ByteArrayOutputStream
 import java.time.Instant
@@ -49,6 +50,7 @@ class MealAnalysisService internal constructor(
     private val readinessProvider: suspend () -> AiReadiness = {
         if (isAiReady()) AiReadiness.CONFIGURED else AiReadiness.NO_DECRYPTABLE_KEY
     },
+    private val productEnricher: suspend (MealAnalysisResult, com.trainiq.domain.model.FoodProviderMode) -> MealAnalysisResult = { result, _ -> result },
 ) {
     internal constructor(
         api: GeminiApi,
@@ -74,17 +76,19 @@ class MealAnalysisService internal constructor(
     constructor(
         aiProviderRouter: AiProviderRouter,
         aiUsageGate: AiUsageGate,
+        mealProductEnricher: com.trainiq.data.remote.MealProductEnricher,
     ) : this(
         aiJsonGenerator = aiProviderRouter,
         isAiReady = { aiUsageGate.isAiReady() },
         imageBytesProvider = ::prepareMealScanImageBytes,
         readinessProvider = aiUsageGate::currentReadiness,
+        productEnricher = mealProductEnricher::enrich,
     )
 
     private val gson = Gson()
     private val captureTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
-    suspend fun analyzeMealImage(path: String, userContext: String, capturedAtMillis: Long): MealAnalysisResult {
+    suspend fun analyzeMealImage(path: String, userContext: String, capturedAtMillis: Long, foodProviderMode: com.trainiq.domain.model.FoodProviderMode = com.trainiq.domain.model.FoodProviderMode.AUTOMATIC): MealAnalysisResult {
         val readiness = readinessProvider()
         if (readiness != AiReadiness.CONFIGURED) {
             val fallbackContext = readiness.toAiFallbackContext()
@@ -106,7 +110,9 @@ class MealAnalysisService internal constructor(
             append("Voorgesteld maaltijdtype: ${suggestedMealType.promptLabel()}. ")
             append(sanitizedUserContext.ifBlank { "Herken de voeding en schat porties en voedingswaarden met passende onzekerheid." })
         }
-        val imageBytes = imageBytesProvider(file) ?: return fallbackMealScan()
+        val imageBytes = imageBytesProvider(file) ?: return fallbackMealScan(
+            notes = "Deze foto kan niet worden gelezen of is te groot. Kies een andere duidelijke foto (maximaal 32 MB) of voeg de maaltijd handmatig toe.",
+        )
         val routed = runCatching {
             aiJsonGenerator.generateJson(
                 AiRouteRequest(
@@ -127,7 +133,7 @@ class MealAnalysisService internal constructor(
             )
         }
         return try {
-            parseMealScan(routed.rawJson, suggestedMealType, routed.providerUsed, contextOverrides)
+            productEnricher(parseMealScan(routed.rawJson, suggestedMealType, routed.providerUsed, contextOverrides), foodProviderMode)
         } catch (error: MealAnalysisUnavailableException) {
             if (routed.providerUsed == AiProvider.OPENAI) {
                 throw AiProviderRequestException(
@@ -175,6 +181,11 @@ class MealAnalysisService internal constructor(
                     nutrition = if (basis == "PER_100_G") scaleNutritionToGrams(reportedNutrition, 100.0, estimatedGrams) else reportedNutrition,
                     confidence = obj.get("confidence").boundedString(MaxMealScanMetaChars),
                     notes = obj.get("notes").boundedString(MaxMealScanNotesChars),
+                    productName = obj.get("productName").boundedString(MaxMealScanNameChars),
+                    brand = obj.get("brand").boundedString(MaxMealScanMetaChars),
+                    variant = obj.get("variant").boundedString(MaxMealScanMetaChars),
+                    barcode = obj.get("barcode").boundedString(14),
+                    amountUnit = obj.get("amountUnit").boundedString(10),
                 )
             }.orEmpty()
             val normalizedItems = applyMealContextOverrides(items, contextOverrides)
@@ -288,7 +299,7 @@ class BodyMeasurementPhotoService internal constructor(
                 throw AiProviderRequestException(AiProvider.OPENAI, AiFeature.BODY_MEASUREMENT_PHOTO, AiFailureCategory.INVALID_RESPONSE)
             }
             return fallbackBodyMeasurementPhoto(
-                notes = root.get("notes")?.asString ?: "AI kon het gewicht niet betrouwbaar uitlezen. Voeg het gewicht als context toe of vul het handmatig in.",
+                notes = root.get("notes")?.takeUnless { it.isJsonNull }?.asString ?: "AI kon het gewicht niet betrouwbaar uitlezen. Voeg het gewicht als context toe of vul het handmatig in.",
                 rawResponse = boundedText,
                 source = source,
             )
@@ -298,7 +309,7 @@ class BodyMeasurementPhotoService internal constructor(
             bodyFat = bodyFat,
             muscleMass = muscleMass,
             confidence = root.get("confidence")?.asString,
-            notes = buildBodyMeasurementNotes(root.get("notes")?.asString, contextOverrides),
+            notes = buildBodyMeasurementNotes(root.get("notes")?.takeUnless { it.isJsonNull }?.asString, contextOverrides),
             rawResponse = boundedText,
             source = source,
         )
@@ -312,9 +323,10 @@ internal data class MealContextOverrides(
     val unresolvedVolumesByName: Map<String, Double> = emptyMap(),
     val hasServingOrPackageScope: Boolean = false,
     val hasRawOrCookedScope: Boolean = false,
+    val items: List<MealContextItemOverride> = emptyList(),
 )
 
-private data class MealContextItemOverride(
+internal data class MealContextItemOverride(
     val normalized: String,
     val displayName: String,
     val grams: Double,
@@ -329,13 +341,14 @@ internal data class BodyMeasurementContextOverrides(
 internal fun parseMealContextOverrides(context: String): MealContextOverrides {
     if (context.isBlank()) return MealContextOverrides()
     val quantity = """(\d+(?:[,.]\d+)?)\s*(kg|kilogram|g|gram|grams|ml|milliliter|milliliters)\b"""
-    val name = """([a-zA-ZÀ-ÿ][a-zA-ZÀ-ÿ0-9 '\-]{0,40}?)"""
-    val before = Regex("""(?i)^\s*$name\s*[:=]?\s*$quantity\s*$""")
+    val name = """([a-zA-ZÀ-ÿ0-9][a-zA-ZÀ-ÿ0-9 '\-]{0,119}?)"""
+    val before = Regex("""(?i)^\s*$name\s*[:=]?\s*\(?\s*$quantity\s*\)?\s*$""")
     val after = Regex("""(?i)^\s*$quantity\s+$name\s*$""")
     var total: Double? = null
     val itemOverrides = mutableListOf<MealContextItemOverride>()
     val volumes = mutableMapOf<String, Double>()
-    context.split(Regex("""(?<!\d)[,;\n]|[,;\n](?!\d)""")).forEach { segment ->
+    context.split(Regex("""(?<!\d)[,;\n]|[,;\n](?!\d)""")).forEach { rawSegment ->
+        val segment = rawSegment.trim().replaceFirst(Regex("""^(?:[-*•]\s+|\d+[.)]\s+)"""), "")
         val matchBefore = before.matchEntire(segment)
         val matchAfter = if (matchBefore == null) after.matchEntire(segment) else null
         val displayName = (matchBefore?.groupValues?.get(1) ?: matchAfter?.groupValues?.get(3))?.trim().orEmpty()
@@ -354,11 +367,12 @@ internal fun parseMealContextOverrides(context: String): MealContextOverrides {
     }
     return MealContextOverrides(
         totalGrams = total,
-        itemGramsByName = itemOverrides.associate { it.normalized to it.grams },
+        itemGramsByName = itemOverrides.groupBy { it.normalized }.mapValues { (_, entries) -> entries.sumOf { it.grams } },
         itemDisplayNamesByName = itemOverrides.associate { it.normalized to it.displayName },
         unresolvedVolumesByName = volumes,
         hasServingOrPackageScope = Regex("""(?i)\b(?:portie|porties|serving|servings|gegeten|opgegeten|aandeel|recept|verpakking|etiket)\b""").containsMatchIn(context),
         hasRawOrCookedScope = Regex("""(?i)\b(?:rauw|rauwe|ongekookt|ongekookte|bereid|bereide|gekookt|gekookte)\b""").containsMatchIn(context),
+        items = itemOverrides,
     )
 }
 internal fun parseBodyMeasurementContextOverrides(context: String): BodyMeasurementContextOverrides {
@@ -407,25 +421,45 @@ private fun applyLockedMealContextItems(
     overrides: MealContextOverrides,
 ): List<MealScanItem> {
     val remaining = items.toMutableList()
-    val matchedPredictions = mutableListOf<MealScanItem>()
-    val locked = overrides.itemGramsByName.entries.mapNotNull { (contextName, grams) ->
-        val matchedIndex = remaining.indexOfFirst { item ->
-            namesMatch(contextName, item.name)
-        }.takeIf { it >= 0 } ?: return@mapNotNull null
-        val matched = remaining.removeAt(matchedIndex)
-        matchedPredictions += matched
-        val displayName = overrides.itemDisplayNamesByName[contextName] ?: contextName
-        matched.copy(
-            name = displayName,
-            estimatedGrams = grams,
-            nutrition = scaleNutritionToGrams(matched.nutrition, matched.estimatedGrams, grams),
-            notes = listOfNotNull(
-                matched.notes,
-                "Gebruikerscontext vergrendelde dit component op ${formatAiOneDecimal(grams)} g.",
-            ).joinToString(" ").ifBlank { null },
-        )
+    val locked = mutableListOf<Pair<Int, MealScanItem>>()
+    val contextItems = overrides.items.ifEmpty {
+        overrides.itemGramsByName.map { (name, grams) -> MealContextItemOverride(name, overrides.itemDisplayNamesByName[name] ?: name, grams) }
     }
-    return locked + remaining.filterNot { candidate -> candidate in matchedPredictions }
+    for ((contextName, entries) in contextItems.withIndex().groupBy { it.value.normalized }) {
+        val predictions = remaining.filter { namesMatch(contextName, it.name) }
+        if (predictions.isEmpty()) continue
+        remaining.removeAll { namesMatch(contextName, it.name) }
+        val pooledGrams = predictions.sumOf { it.estimatedGrams }
+        val pooledNutrition = NutritionFacts(
+            predictions.sumOf { it.nutrition.calories }, predictions.sumOf { it.nutrition.protein },
+            predictions.sumOf { it.nutrition.carbs }, predictions.sumOf { it.nutrition.fat },
+        )
+        val pooled = predictions.size != entries.size
+        val mixedProducts = pooled && predictions.map { listOf(it.productName, it.brand, it.variant, it.barcode) }.distinct().size > 1
+        entries.forEachIndexed { index, entry ->
+            val matched = predictions.getOrNull(index) ?: predictions.first()
+            val grams = entry.value.grams
+            val nutrition = if (predictions.size == entries.size) {
+                scaleNutritionToGrams(matched.nutrition, matched.estimatedGrams, grams)
+            } else {
+                // A grouped prediction supplies one density, never an additional meal portion.
+                scaleNutritionToGrams(pooledNutrition, pooledGrams, grams)
+            }
+            locked += entry.index to matched.copy(
+                name = entry.value.displayName, estimatedGrams = grams, nutrition = nutrition,
+                productName = matched.productName.takeUnless { mixedProducts },
+                brand = matched.brand.takeUnless { mixedProducts },
+                variant = matched.variant.takeUnless { mixedProducts },
+                barcode = matched.barcode.takeUnless { mixedProducts },
+                confidence = if (pooled) "low" else matched.confidence,
+                notes = listOfNotNull(matched.notes,
+                    "Gebruikerscontext vergrendelde dit component op ${formatAiOneDecimal(grams)} g.",
+                    if (pooled) "De AI groepeerde deze onderdelen anders. Controleer de voedingswaarden per onderdeel." else null,
+                ).joinToString(" "),
+            )
+        }
+    }
+    return locked.sortedBy { it.first }.map { it.second } + remaining
 }
 
 private fun namesMatch(contextName: String, itemName: String): Boolean {
@@ -557,7 +591,7 @@ private const val MaxMealScanMetaChars = 40
 private const val MaxMealScanNotesChars = 600
 private const val MaxMealScanContextChars = 2_000
 private const val MaxBodyMeasurementContextChars = 1_000
-private const val MaxMealImageSourceBytes = 6L * 1024L * 1024L
+internal const val MaxMealImageSourceBytes = 32L * 1024L * 1024L
 private const val MaxMealImageUploadBytes = 1_500_000
 private const val MaxMealImageDimensionPx = 1_280
 private const val MaxAiRawResponseChars = 64_000
@@ -578,7 +612,10 @@ internal suspend fun prepareMealScanImageBytes(
     if (sourceLength <= 0L || sourceLength > MaxMealImageSourceBytes) return@withContext null
 
     runCatching { imageCompressor(file) }
-        .getOrNull()
+        .getOrElse { error ->
+            if (error is CancellationException) throw error
+            null
+        }
         ?.takeIf { it.size <= MaxMealImageUploadBytes }
 }
 
@@ -594,7 +631,10 @@ internal fun calculateImageSampleSize(width: Int, height: Int, maxDimensionPx: I
 private fun compressMealImageForAiUpload(file: File): ByteArray? {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeFile(file.absolutePath, bounds)
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0 ||
+        bounds.outWidth.toLong() * bounds.outHeight > 200_000_000L ||
+        maxOf(bounds.outWidth, bounds.outHeight) > 32_768
+    ) return null
 
     val source = BitmapFactory.decodeFile(
         file.absolutePath,
@@ -677,9 +717,11 @@ class WorkoutDebriefService internal constructor(
             "Vergelijking beschikbaar: ${formatAiPercentNl(progression)}%."
         },
         distribution: String,
-        avgRpe: Float,
+        avgRpe: Float?,
         topExercises: String,
         weeklyFrequency: Int,
+        exerciseEffort: List<com.trainiq.domain.model.ExerciseEffortSummary> = emptyList(),
+        analysisSnapshot: WorkoutAnalysisSnapshot? = null,
     ): WorkoutDebrief =
         runCatching {
             generateWorkoutDebriefOrThrow(
@@ -690,6 +732,8 @@ class WorkoutDebriefService internal constructor(
                 avgRpe = avgRpe,
                 topExercises = topExercises,
                 weeklyFrequency = weeklyFrequency,
+                exerciseEffort = exerciseEffort,
+                analysisSnapshot = analysisSnapshot,
             )
         }.getOrElse { error ->
             if (error is CancellationException) throw error
@@ -699,6 +743,7 @@ class WorkoutDebriefService internal constructor(
                 progression = progression,
                 failureMessage = error.toSafeAiFallbackMessage("AI-workoutanalyse is nu niet beschikbaar."),
                 fallbackContext = error.toAiFallbackContext(),
+                analysisSnapshot = analysisSnapshot,
             )
         }
 
@@ -707,28 +752,32 @@ class WorkoutDebriefService internal constructor(
         progression: Double?,
         comparisonSummary: String,
         distribution: String,
-        avgRpe: Float,
+        avgRpe: Float?,
         topExercises: String,
         weeklyFrequency: Int,
+        exerciseEffort: List<com.trainiq.domain.model.ExerciseEffortSummary> = emptyList(),
+        analysisSnapshot: WorkoutAnalysisSnapshot? = null,
     ): WorkoutDebrief {
         val routed = aiJsonGenerator.generateJson(
-                AiRouteRequest(
-                    feature = AiFeature.WORKOUT_DEBRIEF,
-                    schemaName = "workout_debrief",
-                    responseJsonSchema = AiJsonSchemas.workoutDebrief,
-                    thinkingBudget = 1000,
-                    prompt = AiPrompts.workoutDebrief(
-                                        totalVolume = totalVolume,
-                                        progression = progression,
-                                        comparisonSummary = comparisonSummary,
-                                        distribution = distribution,
-                                        avgRpe = avgRpe,
-                                        topExercises = topExercises,
-                                        weeklyFrequency = weeklyFrequency,
-                                    ),
+            AiRouteRequest(
+                feature = AiFeature.WORKOUT_DEBRIEF,
+                schemaName = "workout_debrief",
+                responseJsonSchema = AiJsonSchemas.workoutDebrief,
+                thinkingBudget = 1000,
+                prompt = AiPrompts.workoutDebrief(
+                    totalVolume = totalVolume,
+                    progression = progression,
+                    comparisonSummary = comparisonSummary,
+                    distribution = distribution,
+                    avgRpe = avgRpe,
+                    topExercises = topExercises,
+                    weeklyFrequency = weeklyFrequency,
+                    exerciseEffort = exerciseEffort,
+                    analysisSnapshot = analysisSnapshot,
                 ),
-            )
-        return parseWorkoutDebriefResponse(routed.rawJson, totalVolume, progression, routed.providerUsed).also { debrief ->
+            ),
+        )
+        return parseWorkoutDebriefResponse(routed.rawJson, totalVolume, progression, routed.providerUsed, analysisSnapshot).also { debrief ->
             if (routed.providerUsed == AiProvider.OPENAI && debrief.source == WorkoutDebriefSource.LOCAL_FALLBACK) {
                 throw AiProviderRequestException(AiProvider.OPENAI, AiFeature.WORKOUT_DEBRIEF, AiFailureCategory.INVALID_RESPONSE)
             }
@@ -840,11 +889,11 @@ class GoalAdvisorService internal constructor(
                 root.get("trainingFocus")?.asString.orEmpty(),
                 root.get("korteSamenvatting")?.asString ?: root.get("summary")?.asString.orEmpty(),
                 root.get("calorieAdvies")?.asString.orEmpty(),
-                root.get("macroAdvies")?.asString.orEmpty(),
-                root.get("activiteitUitleg")?.asString.orEmpty(),
-                root.get("advies")?.asString.orEmpty(),
-                root.get("dataKwaliteit")?.asString.orEmpty(),
-            ) + root.getAsJsonArray("aandachtspunten")?.map { it.asString }.orEmpty()
+                root.get("macroAdvies")?.takeUnless { it.isJsonNull }?.asString.orEmpty(),
+                root.get("activiteitUitleg")?.takeUnless { it.isJsonNull }?.asString.orEmpty(),
+                root.get("advies")?.takeUnless { it.isJsonNull }?.asString.orEmpty(),
+                root.get("dataKwaliteit")?.takeUnless { it.isJsonNull }?.asString.orEmpty(),
+            ) + root.get("aandachtspunten")?.takeUnless { it.isJsonNull }?.asJsonArray?.map { it.asString }.orEmpty()
             if (!textFields.isUsableDutchAiText()) return baseline
             baseline.copy(
                 trainingFocus = root.get("trainingFocus")?.asString ?: baseline.trainingFocus,
@@ -852,12 +901,12 @@ class GoalAdvisorService internal constructor(
                     ?: root.get("summary")?.asString
                     ?: baseline.summary,
                 calorieAdvice = root.get("calorieAdvies")?.asString ?: baseline.calorieAdvice,
-                macroAdvice = root.get("macroAdvies")?.asString ?: baseline.macroAdvice,
-                activityExplanation = root.get("activiteitUitleg")?.asString ?: baseline.activityExplanation,
-                attentionPoints = root.getAsJsonArray("aandachtspunten")?.map { it.asString }.orEmpty()
+                macroAdvice = root.get("macroAdvies")?.takeUnless { it.isJsonNull }?.asString ?: baseline.macroAdvice,
+                activityExplanation = root.get("activiteitUitleg")?.takeUnless { it.isJsonNull }?.asString ?: baseline.activityExplanation,
+                attentionPoints = root.get("aandachtspunten")?.takeUnless { it.isJsonNull }?.asJsonArray?.map { it.asString }.orEmpty()
                     .ifEmpty { baseline.attentionPoints },
-                advice = root.get("advies")?.asString ?: baseline.advice,
-                dataQuality = root.get("dataKwaliteit")?.asString ?: baseline.dataQuality,
+                advice = root.get("advies")?.takeUnless { it.isJsonNull }?.asString ?: baseline.advice,
+                dataQuality = root.get("dataKwaliteit")?.takeUnless { it.isJsonNull }?.asString ?: baseline.dataQuality,
                 source = provider.toGoalAdviceSource(),
                 rawResponse = boundedText,
             )
@@ -998,12 +1047,12 @@ internal fun parseWeeklyReportResponse(text: String, adherence: Int, provider: A
         val root = JsonParser.parseString(boundedText).asJsonObject
         val summary = root.get("summary")?.asString?.trim().orEmpty()
         if (summary.isBlank()) return fallbackWeeklyReport(adherence)
-        val wins = root.getAsJsonArray("wins")?.map { it.asString }.orEmpty()
-        val risks = root.getAsJsonArray("risks")?.map { it.asString }.orEmpty()
+        val wins = root.get("wins")?.takeUnless { it.isJsonNull }?.asJsonArray?.map { it.asString }.orEmpty()
+        val risks = root.get("risks")?.takeUnless { it.isJsonNull }?.asJsonArray?.map { it.asString }.orEmpty()
         val nextWeekFocus = root.get("nextWeekFocus")?.asString ?: "Bescherm herstel voordat je extra volume toevoegt."
         val rationaleBullets = (
-            root.getAsJsonArray("rationaleBullets")
-                ?: root.getAsJsonArray("coachReasoningSummary")
+            root.get("rationaleBullets")?.takeUnless { it.isJsonNull }?.asJsonArray
+                ?: root.get("coachReasoningSummary")?.takeUnless { it.isJsonNull }?.asJsonArray
                 ?: root.getAsJsonArray(LegacyWeeklyReportReasoningKey)
             )?.map { it.asString }.orEmpty()
         val fields = listOf(summary, nextWeekFocus) + wins + risks + rationaleBullets
@@ -1050,19 +1099,20 @@ internal fun parseWorkoutDebriefResponse(
     totalVolume: Double,
     progression: Double?,
     provider: AiProvider,
+    analysisSnapshot: WorkoutAnalysisSnapshot? = null,
 ): WorkoutDebrief = runCatching {
     val boundedText = requireAiRawResponseWithinLimit(text)
     val root = JsonParser.parseString(boundedText).asJsonObject
     val summary = root.get("summary")?.asString ?: "Training opgeslagen."
-    val progressionFeedback = root.get("progressionFeedback")?.asString ?: "Progressie bleef stabiel."
+    val progressionFeedback = root.get("progressionFeedback")?.takeUnless { it.isJsonNull }?.asString ?: "Progressie bleef stabiel."
     val recommendation = root.get("recommendation")?.asString
         ?: "Herhaal deze sessie en mik op een extra herhaling bij de belangrijkste oefeningen."
     val nextSessionFocus = root.get("nextSessionFocus")?.asString?.trim().orEmpty()
         .ifBlank { "Huidige gewichten vasthouden" }
-    val wins = root.getAsJsonArray("wins")?.map { it.asString }.orEmpty()
-    val risks = root.getAsJsonArray("risks")?.map { it.asString }.orEmpty()
-    val nextLoadTarget = root.get("nextLoadTarget")?.asString?.trim().orEmpty()
-    val recoveryAdvice = root.get("recoveryAdvice")?.asString?.trim().orEmpty()
+    val wins = root.get("wins")?.takeUnless { it.isJsonNull }?.asJsonArray?.map { it.asString }.orEmpty()
+    val risks = root.get("risks")?.takeUnless { it.isJsonNull }?.asJsonArray?.map { it.asString }.orEmpty()
+    val nextLoadTarget = root.get("nextLoadTarget")?.takeUnless { it.isJsonNull }?.asString?.trim().orEmpty()
+    val recoveryAdvice = root.get("recoveryAdvice")?.takeUnless { it.isJsonNull }?.asString?.trim().orEmpty()
     val fields = listOf(
         summary,
         progressionFeedback,
@@ -1071,7 +1121,7 @@ internal fun parseWorkoutDebriefResponse(
         nextLoadTarget,
         recoveryAdvice,
     ) + wins + risks
-    if (!fields.isUsableDutchAiText()) return fallbackWorkoutDebriefResult(totalVolume, progression)
+    if (!fields.isUsableDutchAiText()) return fallbackWorkoutDebriefResult(totalVolume, progression, analysisSnapshot = analysisSnapshot)
     WorkoutDebrief(
         summary = summary,
         progressionFeedback = progressionFeedback,
@@ -1086,7 +1136,7 @@ internal fun parseWorkoutDebriefResponse(
         recoveryAdvice = recoveryAdvice,
         source = provider.toWorkoutDebriefSource(),
     )
-}.getOrElse { fallbackWorkoutDebriefResult(totalVolume, progression) }
+}.getOrElse { fallbackWorkoutDebriefResult(totalVolume, progression, analysisSnapshot = analysisSnapshot) }
 
 private fun AiProvider.toMealAnalysisSource(): MealAnalysisSource = when (this) {
     AiProvider.GEMINI -> MealAnalysisSource.API
@@ -1130,25 +1180,50 @@ internal fun fallbackWorkoutDebriefResult(
     progression: Double?,
     failureMessage: String? = null,
     fallbackContext: AiFallbackContext? = null,
-) = WorkoutDebrief(
-    summary = listOfNotNull(
-        failureMessage,
-        "Lokale samenvatting: volume ${totalVolume.toInt()} kg.",
-    ).joinToString(" "),
-    progressionFeedback = progression?.let {
-        "Volume veranderde met ${formatAiPercentNl(it)}% ten opzichte van de vorige sessie."
-    } ?: "Nog geen eerdere vergelijkbare training gevonden.",
-    recommendation = "Houd dezelfde opzet aan en verhoog pas als uitvoering en herstel goed blijven.",
-    nextSessionFocus = "Huidige gewichten vasthouden",
-    recoveryScore = null,
-    intensitySignal = "MAINTAIN",
-    wins = listOf("Trainingsvolume lokaal vastgelegd."),
-    risks = if ((progression ?: 0.0) > 5.0) listOf("Volume steeg meer dan 5%; let op herstel.") else emptyList(),
-    nextLoadTarget = "Herhaal de huidige werkgewichten en voeg alleen herhalingen toe als RPE onder 8 blijft.",
-    recoveryAdvice = "Gebruik slaap, stappen en spierpijn om te bepalen of je verhoogt of vasthoudt.",
-    source = WorkoutDebriefSource.LOCAL_FALLBACK,
-    fallbackContext = fallbackContext,
-)
+    analysisSnapshot: WorkoutAnalysisSnapshot? = null,
+): WorkoutDebrief {
+    val volume = analysisSnapshot?.totalVolumeKg ?: totalVolume
+    val effortSummary = analysisSnapshot?.let { snapshot ->
+        val mean = snapshot.reportedMeanRpe?.let(::formatAiPercentNl) ?: "onbekend"
+        "Gemiddelde set-RPE $mean · ${snapshot.reportedRpeCount} van ${snapshot.completedSetCount} sets ingevuld."
+    } ?: "Setdetails en RPE-dekking niet beschikbaar."
+    val adviceReason = when {
+        analysisSnapshot == null -> "Setdetails en RPE-dekking ontbreken voor een onderbouwde aanpassing."
+        analysisSnapshot.reportedRpeCount == 0 -> "RPE ontbreekt; gewicht en herhalingen bepalen je ervaren inspanning niet."
+        analysisSnapshot.reportedRpeCount < analysisSnapshot.completedSetCount ->
+            "RPE is deels ingevuld; het gemiddelde beschrijft alleen die sets."
+        progression == null -> "Er is geen eerdere vergelijkbare training voor een onderbouwde aanpassing."
+        else -> "Set-RPE en vergelijkingsvolume alleen bepalen geen passend volgend gewicht."
+    }
+    return WorkoutDebrief(
+        summary = listOfNotNull(
+            failureMessage,
+            analysisSnapshot?.let {
+                "Lokale samenvatting: ${it.completedSetCount} sets · ${it.totalReps} herhalingen · totaalvolume ${formatWorkoutKgNl(volume)} kg."
+            } ?: "Lokale samenvatting: totaalvolume ${formatWorkoutKgNl(volume)} kg.",
+            effortSummary,
+        ).joinToString(" "),
+        progressionFeedback = progression?.let {
+            val comparisonVolume = analysisSnapshot?.let { snapshot ->
+                "Vergelijkingsvolume ${formatWorkoutKgNl(snapshot.comparisonVolumeKg)} kg; "
+            } ?: "Vergelijkingsvolume: "
+            "${comparisonVolume}verandering ${formatAiPercentNl(it)}% tegenover de vorige vergelijkbare training."
+        } ?: "Nog geen eerdere vergelijkbare training gevonden.",
+        recommendation = "Houd de huidige gewichten aan. $adviceReason",
+        nextSessionFocus = "Huidige gewichten vasthouden",
+        recoveryScore = null,
+        intensitySignal = "MAINTAIN",
+        wins = listOf("Totaalvolume ${formatWorkoutKgNl(volume)} kg lokaal vastgelegd."),
+        risks = emptyList(),
+        nextLoadTarget = "Herhaal de huidige werkgewichten; beoordeel uitvoering en gerapporteerde inspanning per oefening.",
+        recoveryAdvice = "Herstel is niet af te leiden uit deze setgegevens; beoordeel zelf hoe je je voelt.",
+        source = WorkoutDebriefSource.LOCAL_FALLBACK,
+        fallbackContext = fallbackContext,
+    )
+}
+
+private fun formatWorkoutKgNl(value: Double): String =
+    String.format(Locale.forLanguageTag("nl-NL"), "%.1f", value).removeSuffix(",0")
 
 internal fun formatAiPercentNl(value: Double): String =
     String.format(Locale.forLanguageTag("nl-NL"), "%.1f", value)

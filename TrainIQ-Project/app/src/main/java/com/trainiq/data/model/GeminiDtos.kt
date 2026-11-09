@@ -32,8 +32,10 @@ data class GeminiRequest(
 
 data class GeminiResponse(
     val candidates: List<Candidate> = emptyList(),
+    val promptFeedback: PromptFeedback? = null,
 ) {
-    data class Candidate(val content: Content = Content())
+    data class PromptFeedback(val blockReason: String? = null)
+    data class Candidate(val content: Content? = Content(), val finishReason: String? = null)
     data class Content(val parts: List<Part> = emptyList())
-    data class Part(val text: String = "")
+    data class Part(val text: String? = null, val thought: Boolean? = null)
 }

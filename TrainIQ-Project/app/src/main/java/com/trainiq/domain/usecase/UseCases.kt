@@ -187,6 +187,28 @@ class StartWorkoutSessionUseCase @Inject constructor(private val repository: Wor
     }
 }
 
+class ResumeWorkoutFromRestNotificationUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(
+        request: com.trainiq.domain.workout.WorkoutRestOpenRequest,
+        acceptedStartedAt: Long? = null,
+    ): StartedWorkoutSession? {
+        val workout = repository.getWorkoutDay(request.dayId) ?: return null
+        val suggestions = repository.getProgressionSuggestions(request.dayId)
+        // This final fresh, transaction-backed read is the only session access. Never call start
+        // after an earlier identity check: finish/discard/replacement may commit during the reads above.
+        val session = repository.getCurrentActiveWorkoutSession()?.takeIf {
+            it.dayId == request.dayId && it.sessionId == request.sessionId &&
+                if (acceptedStartedAt == null) it.restTimerGeneration == request.generation
+                else it.startedAt == acceptedStartedAt
+        } ?: return null
+        return StartedWorkoutSession(workout, suggestions, session)
+    }
+}
+
+class UpdateActiveWorkoutNotesUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    suspend operator fun invoke(notes: String) = repository.updateActiveWorkoutNotes(notes)
+}
+
 class UpdateActiveWorkoutDraftUseCase @Inject constructor(private val repository: WorkoutRepository) {
     suspend operator fun invoke(exerciseId: Long, draft: ActiveWorkoutSetDraft) =
         repository.updateActiveWorkoutDraft(exerciseId, draft)
@@ -222,8 +244,8 @@ class SetActiveWorkoutCollapsedUseCase @Inject constructor(private val repositor
 }
 
 class UpdateActiveWorkoutRestTimerUseCase @Inject constructor(private val repository: WorkoutRepository) {
-    suspend operator fun invoke(endsAt: Long?, totalSeconds: Int) =
-        repository.updateActiveWorkoutRestTimer(endsAt, totalSeconds)
+    suspend operator fun invoke(change: com.trainiq.domain.workout.WorkoutRestTimerChange) =
+        repository.updateActiveWorkoutRestTimer(change)
 }
 
 class FinishActiveWorkoutUseCase @Inject constructor(
@@ -244,6 +266,10 @@ class RefreshWorkoutDebriefUseCase @Inject constructor(private val repository: W
 
 class GetWorkoutCompletionSummaryUseCase @Inject constructor(private val repository: WorkoutRepository) {
     suspend operator fun invoke(sessionId: Long) = repository.getWorkoutCompletionSummary(sessionId)
+}
+
+class ObserveWorkoutCompletionSummaryUseCase @Inject constructor(private val repository: WorkoutRepository) {
+    operator fun invoke(sessionId: Long) = repository.observeWorkoutCompletionSummary(sessionId)
 }
 
 class DiscardActiveWorkoutUseCase @Inject constructor(private val repository: WorkoutRepository) {
@@ -412,8 +438,8 @@ class ObserveNutritionUseCase @Inject constructor(private val repository: Nutrit
 }
 
 class AnalyzeMealUseCase @Inject constructor(private val repository: NutritionRepository) {
-    suspend operator fun invoke(path: String, context: String, capturedAtMillis: Long) =
-        repository.analyzeMealPhoto(path, context, capturedAtMillis)
+    suspend operator fun invoke(path: String, context: String, capturedAtMillis: Long, mode: com.trainiq.domain.model.FoodProviderMode = com.trainiq.domain.model.FoodProviderMode.AUTOMATIC) =
+        repository.analyzeMealPhoto(path, context, capturedAtMillis, mode)
 }
 
 class LookupBarcodeProductUseCase @Inject constructor(private val repository: NutritionRepository) {
@@ -601,18 +627,19 @@ class PreviewAppDataImportUseCase @Inject constructor() {
 
 class ImportAppDataUseCase @Inject constructor(
     private val database: TrainIqDatabase,
+    private val restTimers: com.trainiq.domain.workout.WorkoutRestTimerCoordinator,
 ) {
     private val planner = JsonRoomImportPlanner()
 
     suspend operator fun invoke(json: String): AppDataImportResult {
         val preview = PreviewAppDataImportUseCase().invoke(json)
-        val outcome = JsonRoomImportCoordinator(
+        val outcome = restTimers.mutate { JsonRoomImportCoordinator(
             planner = planner,
             sink = RoomJsonImportSink(database),
         ).tryImport(
             sourceJson = json,
             fallbackState = TrainIqStorageState(),
-        )
+        ).also { if (it is JsonRoomImportOutcome.Failed) throw it.cause } }
         return when (outcome) {
             is JsonRoomImportOutcome.Imported -> AppDataImportResult(
                 preview = preview,

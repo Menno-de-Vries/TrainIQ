@@ -6,8 +6,57 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNotNull
 import org.junit.Test
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.test.runTest
 
 class RoutineGeneratorServiceTest {
+    private val routineJson = """{"routineName":"Krachtplan","routineDescription":null,"periodizationNote":null,"days":[{"dayName":"Volledig lichaam","exercises":[{"exerciseName":"Squat","muscleGroup":"Benen","equipment":"Lichaamsgewicht","targetSets":3,"repRange":"8-12","restSeconds":60,"coachingCue":null,"existingExerciseId":null}]}]}"""
+
+    private fun service(provider: AiProvider, generate: suspend () -> String) = RoutineGeneratorService(
+        aiJsonGenerator = object : AiJsonGenerator {
+            override suspend fun generateJson(request: AiRouteRequest) = AiRouteResult(provider, "fixture", generate())
+        }, readinessProvider = { AiReadiness.CONFIGURED },
+    )
+
+    @Test fun nullableNewExerciseAndMatchingLibraryReferenceAreAcceptedForBothProviders() = runTest {
+        AiProvider.entries.forEach { provider ->
+            val fresh = service(provider) { routineJson }.generateRoutine("Kracht", "Full body", 1, "Lichaamsgewicht", "beginner", 45, false)
+            assertEquals(if (provider == AiProvider.OPENAI) GeneratedRoutineSource.OPENAI else GeneratedRoutineSource.GEMINI_2_5_FLASH, fresh.source)
+            assertEquals(null, fresh.days.single().exercises.single().existingExerciseId)
+            val existing = service(provider) { routineJson.replace("\"existingExerciseId\":null", "\"existingExerciseId\":7") }
+                .generateRoutine("Kracht", "Full body", 1, "Lichaamsgewicht", "beginner", 45, false,
+                    listOf("7: Squat | Benen | Lichaamsgewicht"))
+            assertEquals(7L, existing.days.single().exercises.single().existingExerciseId)
+        }
+    }
+
+    @Test fun invalidOrMismatchedProviderOutputNeverBecomesSilentLocalSuccess() = runTest {
+        AiProvider.entries.forEach { provider ->
+            val invalidId = routineJson.replace("\"existingExerciseId\":null", "\"existingExerciseId\":7")
+            listOf("", "{}", "{broken", invalidId).forEach { raw ->
+                val failure = runCatching { service(provider) { raw }.generateRoutine("Kracht", "Full body", 1, "Lichaamsgewicht", "beginner", 45, false) }.exceptionOrNull()
+                assertEquals("$provider/$raw", AiFailureCategory.INVALID_RESPONSE, (failure as? AiProviderRequestException)?.category)
+            }
+            val mismatched = runCatching { service(provider) { invalidId }.generateRoutine("Kracht", "Full body", 1, "Lichaamsgewicht", "beginner", 45, false,
+                listOf("7: Andere oefening | Benen | Lichaamsgewicht")) }.exceptionOrNull()
+            assertEquals(AiFailureCategory.INVALID_RESPONSE, (mismatched as? AiProviderRequestException)?.category)
+        }
+    }
+
+    @Test fun routineFailurePolicyAndCancellationRemainTyped() = runTest {
+        AiProvider.entries.forEach { provider ->
+            listOf(AiFailureCategory.REFUSAL, AiFailureCategory.INCOMPLETE_RESPONSE, AiFailureCategory.INVALID_RESPONSE).forEach { category ->
+                val failure = AiProviderRequestException(provider, AiFeature.ROUTINE_GENERATION, category)
+                assertEquals(failure, runCatching { service(provider) { throw failure }.generateRoutine("Kracht", "Full body", 1, "Lichaamsgewicht", "beginner", 45, false) }.exceptionOrNull())
+            }
+            val local = service(provider) { throw AiProviderRequestException(provider, AiFeature.ROUTINE_GENERATION, AiFailureCategory.NETWORK) }
+                .generateRoutine("Kracht", "Full body", 1, "Lichaamsgewicht", "beginner", 45, false)
+            assertEquals(GeneratedRoutineSource.LOCAL_FALLBACK, local.source)
+            assertNotNull(local.fallbackContext)
+            val cancelled = CancellationException("fixture")
+            assertEquals(cancelled, runCatching { service(provider) { throw cancelled }.generateRoutine("Kracht", "Full body", 1, "Lichaamsgewicht", "beginner", 45, false) }.exceptionOrNull())
+        }
+    }
 
     @Test
     fun fallbackRespectsEquipmentExclusionsSplitAndActualTimeBudget() {

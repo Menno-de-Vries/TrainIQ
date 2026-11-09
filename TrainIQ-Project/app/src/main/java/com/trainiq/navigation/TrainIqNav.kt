@@ -87,6 +87,9 @@ import com.trainiq.features.home.HomeRoute
 import com.trainiq.features.nutrition.CameraScannerRoute
 import com.trainiq.features.nutrition.NutritionRoute
 import com.trainiq.features.nutrition.ScannerMode
+import com.trainiq.features.nutrition.NutritionNavigationGate
+import com.trainiq.features.nutrition.rememberNutritionNavigationLease
+import com.trainiq.features.nutrition.NutritionLeaveReviewDialog
 import com.trainiq.features.onboarding.OnboardingRoute
 import com.trainiq.features.onboarding.shouldShowGuidedTour
 import com.trainiq.features.progress.ProgressRoute
@@ -133,7 +136,11 @@ data object Settings
 data object SleepPreparation
 
 @Serializable
-data class ActiveWorkout(val dayId: Long)
+data class ActiveWorkout(val dayId: Long, val restSessionId: Long? = null, val restGeneration: String? = null) {
+    fun restOpenRequest(): com.trainiq.domain.workout.WorkoutRestOpenRequest? =
+        if (restSessionId == null && restGeneration == null) null
+        else com.trainiq.domain.workout.WorkoutRestOpenRequest(dayId, restSessionId ?: -1, restGeneration.orEmpty())
+}
 
 @Serializable
 data class WorkoutProcessing(val dayId: Long)
@@ -150,6 +157,8 @@ data class CameraScanner(
     val scannerMode: ScannerMode = ScannerMode.AI_MEAL,
     val destination: com.trainiq.features.nutrition.NutritionScanDestination = com.trainiq.features.nutrition.NutritionScanDestination.MealDraft,
     val mealType: com.trainiq.domain.model.MealType? = null,
+    val foodProviderMode: com.trainiq.domain.model.FoodProviderMode = com.trainiq.domain.model.FoodProviderMode.AUTOMATIC,
+    val reviewRequestId: String? = null,
 )
 
 enum class TrainIqWindowWidthClass {
@@ -179,8 +188,20 @@ fun TrainIqApp(
     onboardingPreferences: OnboardingPreferences = OnboardingPreferences(completed = true, guidedTourCompleted = true),
     markGuidedTourCompleted: () -> Unit = {},
     markGuidedTourSkipped: () -> Unit = {},
+    restTarget: com.trainiq.domain.workout.WorkoutRestOpenRequest? = null,
+    onRestTargetConsumed: (com.trainiq.domain.workout.WorkoutRestOpenRequest) -> Unit = {},
 ) {
     val navController = rememberNavController()
+    val nutritionNavigation = remember { NutritionNavigationGate() }
+    LaunchedEffect(restTarget) {
+        restTarget?.let {
+            nutritionNavigation.request("active-workout") {
+                navController.navigate(ActiveWorkout(it.dayId, it.sessionId, it.generation)) { launchSingleTop = true }
+            }
+            // A temporarily blocked tap is still handled; a later tap must be a fresh request.
+            onRestTargetConsumed(it)
+        }
+    }
     val haptics = LocalHapticFeedback.current
     val configuration = LocalConfiguration.current
     val items = topLevelDestinations()
@@ -268,7 +289,7 @@ fun TrainIqApp(
                                         if (screen.routeClass == Coach::class) HapticFeedbackType.LongPress else HapticFeedbackType.TextHandleMove,
                                     )
                                     if (selected) return@NavigationRailItem
-                                    navController.navigateTopLevel(screen)
+                                    nutritionNavigation.request(screen.routeClass.qualifiedName.orEmpty()) { navController.navigateTopLevel(screen) }
                                 },
                                 icon = {
                                     Icon(
@@ -320,7 +341,7 @@ fun TrainIqApp(
                                                 if (screen.routeClass == Coach::class) HapticFeedbackType.LongPress else HapticFeedbackType.TextHandleMove,
                                             )
                                             if (isCurrentRoute) return@NavigationBarItem
-                                            navController.navigateTopLevel(screen)
+                                            nutritionNavigation.request(screen.routeClass.qualifiedName.orEmpty()) { navController.navigateTopLevel(screen) }
                                         },
                                         icon = {
                                             Box(
@@ -374,6 +395,7 @@ fun TrainIqApp(
                 windowWidthClass = windowWidthClass,
                 onboardingPreferences = onboardingPreferences,
                 onTrainDetailModeChanged = { trainDetailMode = it },
+                nutritionNavigation = nutritionNavigation,
                 modifier = Modifier
                     .padding(padding)
                     .consumeWindowInsets(padding)
@@ -381,7 +403,10 @@ fun TrainIqApp(
                         if (shouldEnableTopLevelSwipe(useNavigationRail, currentSwipeIndex, imeVisible, trainDetailMode, showGuidedTour)) {
                             Modifier.topLevelTabSwipeNavigation(currentSwipeIndex, navigationItems.size) { direction ->
                                 val target = topLevelSwipeTargetIndex(currentSwipeIndex, direction, navigationItems.size)
-                                target?.let { navController.navigateTopLevel(navigationItems[it]) }
+                                target?.let { index ->
+                                    val targetScreen = navigationItems[index]
+                                    nutritionNavigation.request(targetScreen.routeClass.qualifiedName.orEmpty()) { navController.navigateTopLevel(targetScreen) }
+                                }
                             }
                         } else Modifier,
                     ),
@@ -416,6 +441,7 @@ fun TrainIqApp(
             )
         }
     }
+    NutritionLeaveReviewDialog(nutritionNavigation)
 }
 
 internal fun topLevelSwipeTargetIndex(currentIndex: Int, direction: Int, itemCount: Int): Int? =
@@ -745,6 +771,7 @@ private fun TrainIqNavHost(
     windowWidthClass: TrainIqWindowWidthClass,
     onboardingPreferences: OnboardingPreferences,
     onTrainDetailModeChanged: (Boolean) -> Unit,
+    nutritionNavigation: NutritionNavigationGate,
     modifier: Modifier = Modifier,
 ) {
     AdaptiveRouteViewport(
@@ -785,35 +812,44 @@ private fun TrainIqNavHost(
         composable<Nutrition> { entry ->
             val scanCancelled by entry.savedStateHandle.getStateFlow(ScanCancelledKey, false).collectAsStateWithLifecycle()
             val nutrition: com.trainiq.features.nutrition.NutritionViewModel = androidx.hilt.navigation.compose.hiltViewModel(entry)
+            val nutritionLease = rememberNutritionNavigationLease(entry.id, Nutrition::class.qualifiedName.orEmpty(), nutritionNavigation) { nutrition.aiNavigationBusy }
             val pendingBarcode by entry.savedStateHandle
                 .getStateFlow(BarcodeScanResultKey, "")
                 .collectAsStateWithLifecycle()
             NutritionRoute(
+                viewModel = nutrition,
                 windowWidthClass = windowWidthClass,
-                onAiScanner = { contextHint -> navController.navigate(CameraScanner(contextHint, destination = nutrition.scanDestination, mealType = nutrition.scanMealType)) },
+                onAiScanner = { contextHint -> navController.navigate(CameraScanner(contextHint, destination = nutrition.scanDestination, mealType = nutrition.scanMealType,
+                    foodProviderMode = nutrition.selectedFoodProvider, reviewRequestId = nutrition.pendingReviewId)) },
                 onOpenBarcodeScanner = { navController.navigate(CameraScanner(scannerMode = ScannerMode.BARCODE, destination = nutrition.scanDestination, mealType = nutrition.scanMealType)) },
                 pendingBarcode = pendingBarcode.takeIf { it.isNotEmpty() },
                 onBarcodeClear = { entry.clearBarcodeScanResult() },
                 scanCancelled = scanCancelled,
                 onScanCancelConsumed = { entry.savedStateHandle[ScanCancelledKey] = false },
-                onOpenMeal = { navController.navigate(MealDetail(it)) },
+                onAiNavigationStateChanged = { state, discard -> nutritionNavigation.update(nutritionLease, state, discard, nutrition::setMessage) },
+                onBack = { nutritionNavigation.request("back") { navController.popBackStack() } },
+                onOpenMeal = { type -> nutritionNavigation.request("meal:$type") { navController.navigate(MealDetail(type)) } },
             )
         }
         composable<MealDetail> { entry ->
             val scanCancelled by entry.savedStateHandle.getStateFlow(ScanCancelledKey, false).collectAsStateWithLifecycle()
             val nutrition: com.trainiq.features.nutrition.NutritionViewModel = androidx.hilt.navigation.compose.hiltViewModel(entry)
+            val nutritionLease = rememberNutritionNavigationLease(entry.id, MealDetail::class.qualifiedName.orEmpty(), nutritionNavigation) { nutrition.aiNavigationBusy }
             val route = entry.toRoute<MealDetail>()
             val pendingBarcode by entry.savedStateHandle.getStateFlow(BarcodeScanResultKey, "").collectAsStateWithLifecycle()
             NutritionRoute(
+                viewModel = nutrition,
                 windowWidthClass = windowWidthClass,
                 mealDetail = route.mealType,
-                onBack = { navController.popBackStack() },
-                onAiScanner = { navController.navigate(CameraScanner(it, destination = nutrition.scanDestination, mealType = nutrition.scanMealType)) },
+                onBack = { nutritionNavigation.request("back") { navController.popBackStack() } },
+                onAiScanner = { navController.navigate(CameraScanner(it, destination = nutrition.scanDestination, mealType = nutrition.scanMealType,
+                    foodProviderMode = nutrition.selectedFoodProvider, reviewRequestId = nutrition.pendingReviewId)) },
                 onOpenBarcodeScanner = { navController.navigate(CameraScanner(scannerMode = ScannerMode.BARCODE, destination = nutrition.scanDestination, mealType = nutrition.scanMealType)) },
                 pendingBarcode = pendingBarcode.takeIf { it.isNotEmpty() },
                 onBarcodeClear = { entry.clearBarcodeScanResult() },
                 scanCancelled = scanCancelled,
                 onScanCancelConsumed = { entry.savedStateHandle[ScanCancelledKey] = false },
+                onAiNavigationStateChanged = { state, discard -> nutritionNavigation.update(nutritionLease, state, discard, nutrition::setMessage) },
             )
         }
         composable<Progress> { entry ->
@@ -892,7 +928,11 @@ private fun TrainIqNavHost(
                     },
                     onBack = cancelScan,
                 )
-            } else CameraScannerRoute(
+            } else {
+            val parent = remember(entry) { navController.previousBackStackEntry }
+            val nutrition: com.trainiq.features.nutrition.NutritionViewModel? =
+                if (route.scannerMode == ScannerMode.AI_MEAL && parent != null) androidx.hilt.navigation.compose.hiltViewModel(parent) else null
+            CameraScannerRoute(
                 contextHint = route.contextHint,
                 scannerMode = route.scannerMode,
                 onCancel = cancelScan,
@@ -904,12 +944,16 @@ private fun TrainIqNavHost(
                 onScaleMeasurementScanned = { result ->
                     navController.previousBackStackEntry?.setScaleMeasurementResult(result)
                 },
+                foodProviderMode = route.foodProviderMode,
+                onMealAnalysisScanned = { result -> nutrition?.acceptCameraMealResult(route.reviewRequestId, result, route.contextHint) },
             )
+            }
         }
         composable<ActiveWorkout> { entry ->
             val route = entry.toRoute<ActiveWorkout>()
             ActiveWorkoutRoute(
                 dayId = route.dayId,
+                restOpenRequest = route.restOpenRequest(),
                 onBack = { navController.popBackStack() },
                 onSwitchActiveWorkout = { nextDayId -> navController.navigateToActiveWorkout(nextDayId) },
                 onOpenExerciseHistory = { exerciseId -> navController.navigate(ExerciseHistory(exerciseId)) },

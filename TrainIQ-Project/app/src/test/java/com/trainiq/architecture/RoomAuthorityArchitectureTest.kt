@@ -70,9 +70,11 @@ class RoomAuthorityArchitectureTest {
     fun workoutCompletionPersistsLocalDebriefWithoutLaunchingUnobservedAiWork() {
         val repository = File(mainSources, "data/repository/TrainIqRepository.kt").readText()
         val finishBody = repository.substringAfter("private suspend fun finishWorkout(")
-            .substringBefore("suspend fun refreshWorkoutDebrief(")
+            .substringBefore("suspend fun refreshWorkoutDebrief(") +
+            repository.substringAfter("internal fun buildWorkoutFinishWrite(")
+                .substringBefore("internal fun completedWorkoutSetLoggedAt(")
         val localDebriefIndex = finishBody.indexOf("fallbackWorkoutDebriefResult")
-        val returnIndex = finishBody.lastIndexOf("return WorkoutCompletionResult")
+        val returnIndex = finishBody.lastIndexOf("result = WorkoutCompletionResult")
 
         assertTrue(localDebriefIndex >= 0)
         assertTrue(returnIndex > localDebriefIndex)

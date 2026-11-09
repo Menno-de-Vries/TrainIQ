@@ -35,6 +35,7 @@ import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    @Inject lateinit var restTimers: com.trainiq.domain.workout.WorkoutRestTimerCoordinator
     @Inject lateinit var performanceSessionMonitor: PerformanceSessionMonitor
     @Inject lateinit var diagnosticsTracker: DiagnosticsTracker
     @Inject lateinit var healthConnectBackgroundSyncScheduler: HealthConnectBackgroundSyncScheduler
@@ -49,10 +50,12 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        handleRestIntent(intent)
         setContent {
             val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
             val telemetryOptIn by viewModel.telemetryOptIn.collectAsStateWithLifecycle()
             val onboardingState by viewModel.onboardingState.collectAsStateWithLifecycle()
+            val restTarget by viewModel.restTarget.collectAsStateWithLifecycle()
             val windowSizeClass = calculateWindowSizeClass(this)
             LaunchedEffect(telemetryOptIn) {
                 telemetryExporter.setUserOptIn(telemetryOptIn)
@@ -66,6 +69,8 @@ class MainActivity : ComponentActivity() {
                         onboardingPreferences = onboardingState.preferences,
                         markGuidedTourCompleted = viewModel::markGuidedTourCompleted,
                         markGuidedTourSkipped = viewModel::markGuidedTourSkipped,
+                        restTarget = restTarget,
+                        onRestTargetConsumed = viewModel::consumeRestTarget,
                     )
                 }
             }
@@ -85,6 +90,23 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         performanceSessionMonitor.setEnabled(true)
+        lifecycleScope.launch(Dispatchers.IO) {
+            try { restTimers.reconcile() } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+            catch (_: Exception) { /* Next foreground transition retries persisted future planning. */ }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        // This one-shot request is consumed immediately; keep the Activity's launch intent.
+        handleRestIntent(intent)
+    }
+
+    private fun handleRestIntent(intent: android.content.Intent?) {
+        val generation = intent?.getStringExtra(com.trainiq.core.workout.RestGenerationExtra) ?: return
+        viewModel.openRestTimer(intent.getLongExtra(com.trainiq.core.workout.RestSessionExtra, -1), generation)
+        intent.removeExtra(com.trainiq.core.workout.RestGenerationExtra)
+        intent.removeExtra(com.trainiq.core.workout.RestSessionExtra)
     }
 
     override fun onPause() {

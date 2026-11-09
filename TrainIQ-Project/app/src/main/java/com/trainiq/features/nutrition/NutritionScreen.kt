@@ -139,7 +139,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import javax.inject.Inject
-import kotlinx.coroutines.CompletableDeferred
+import androidx.compose.runtime.key
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -230,6 +230,7 @@ private val EditableAiItemsSaver = Saver<SnapshotStateList<EditableAiItem>, Bund
                     putString("name", item.name); putString("grams", item.grams); putString("calories", item.calories)
                     putString("protein", item.protein); putString("carbs", item.carbs); putString("fat", item.fat)
                     putString("confidence", item.confidence); putString("notes", item.notes)
+                    putString("row_id", item.rowId)
                 }
             }))
         }
@@ -242,6 +243,7 @@ private val EditableAiItemsSaver = Saver<SnapshotStateList<EditableAiItem>, Bund
                     calories = item.getString("calories").orEmpty(), protein = item.getString("protein").orEmpty(),
                     carbs = item.getString("carbs").orEmpty(), fat = item.getString("fat").orEmpty(),
                     confidence = item.getString("confidence"), notes = item.getString("notes"),
+                    rowId = item.getString("row_id") ?: java.util.UUID.randomUUID().toString(),
                 ))
             }
         }
@@ -289,8 +291,13 @@ sealed interface NutritionUiState {
         val isAnalyzing: Boolean = false,
         val barcodeLookupResult: BarcodeLookupUiResult? = null,
         val pendingSubmits: Set<NutritionSubmitKey> = emptySet(),
+        val aiBatch: AiFoodBatchState = AiFoodBatchState(),
+        val reviewId: String? = null,
+        val reviewContext: String = "",
+        val scanMealType: MealType? = null,
+        val scanDestination: NutritionScanDestination? = null,
     ) : NutritionUiState
-    data class Error(val message: String) : NutritionUiState
+    data class Error(val message: String, val aiBatch: AiFoodBatchState = AiFoodBatchState()) : NutritionUiState
 }
 
 @HiltViewModel
@@ -316,14 +323,19 @@ class NutritionViewModel @Inject constructor(
         val isAnalyzing: Boolean = false,
         val barcodeLookupResult: BarcodeLookupUiResult? = null,
         val pendingSubmits: Set<NutritionSubmitKey> = emptySet(),
+        val reviewId: String? = null,
+        val reviewContext: String = "",
     )
 
     val scanDestination: NutritionScanDestination
         get() = savedStateHandle["scan_destination"] ?: NutritionScanDestination.MealDraft
     val scanMealType: MealType? get() = savedStateHandle["scan_meal_type"]
+    val pendingReviewId: String? get() = savedStateHandle["scan_request_id"]
     fun prepareScan(destination: NutritionScanDestination, mealType: MealType?) {
+        if (aiBatch.state.value.busy) return
         savedStateHandle["scan_destination"] = destination
         savedStateHandle["scan_meal_type"] = mealType
+        savedStateHandle["scan_request_id"] = java.util.UUID.randomUUID().toString()
         importedScan.cancel()
         ephemeral.update { it.copy(isAnalyzing = false) }
     }
@@ -336,20 +348,29 @@ class NutritionViewModel @Inject constructor(
             .combineResolvedAiPreferences(aiUsageGate)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     private val ephemeral = MutableStateFlow(NutritionEphemeralState())
+    private val aiBatch = NutritionAiBatch(viewModelScope) { input ->
+        saveFoodItemUseCase(null, input.row.name.trim(), null, input.caloriesPer100g,
+            input.proteinPer100g, input.carbsPer100g, input.fatPer100g, input.grams, FoodSourceType.AI)
+    }
 
-    val uiState: StateFlow<NutritionUiState> = combine(overview, aiPreferences, ephemeral) { currentOverview, currentPreferences, temp ->
+    val uiState: StateFlow<NutritionUiState> = combine(overview, aiPreferences, ephemeral, aiBatch.state) { currentOverview, currentPreferences, temp, batch ->
         when {
             currentOverview == null || currentPreferences == null -> NutritionUiState.Loading
-            currentOverview.isFailure -> NutritionUiState.Error("Voedingsgegevens konden niet worden geladen.")
-            currentPreferences.isFailure -> NutritionUiState.Error("Voedingsvoorkeuren konden niet worden geladen.")
+            currentOverview.isFailure -> NutritionUiState.Error("Voedingsgegevens konden niet worden geladen.", batch)
+            currentPreferences.isFailure -> NutritionUiState.Error("Voedingsvoorkeuren konden niet worden geladen.", batch)
             else -> NutritionUiState.Success(
                 overview = currentOverview.getOrThrow(),
                 aiPreferences = currentPreferences.getOrThrow(),
-                scanResult = temp.scanResult ?: currentOverview.getOrThrow().scannedResult,
+                scanResult = temp.scanResult,
                 message = temp.message,
                 isAnalyzing = temp.isAnalyzing,
                 barcodeLookupResult = temp.barcodeLookupResult,
-                pendingSubmits = temp.pendingSubmits,
+                pendingSubmits = temp.pendingSubmits + if (batch.busy) setOf(NutritionSubmitKey.AiItems) else emptySet(),
+                aiBatch = batch,
+                reviewId = temp.reviewId,
+                reviewContext = temp.reviewContext,
+                scanMealType = scanMealType,
+                scanDestination = scanDestination,
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), NutritionUiState.Loading)
@@ -361,6 +382,8 @@ class NutritionViewModel @Inject constructor(
     private val importedScan = LatestScanRequest(viewModelScope) { deleteScannerTemporaryImage(it) }
 
     fun analyze(path: String, context: String, capturedAtMillis: Long) {
+        if (aiBatch.state.value.busy) { deleteScannerTemporaryImage(path); return }
+        val capturedProvider = foodProvider
         importedScan.cancel()
         val ai = aiPreferences.value?.getOrNull() ?: AiPreferences(false, "")
         if (!ai.hasAnyReadyProvider()) {
@@ -368,11 +391,14 @@ class NutritionViewModel @Inject constructor(
             ephemeral.update { it.copy(isAnalyzing = false, message = "Zet AI aan en voeg een Gemini of OpenAI API-sleutel toe in Instellingen, of voer de maaltijd handmatig in.") }
             return
         }
+        val reviewId = java.util.UUID.randomUUID().toString()
+        savedStateHandle["scan_request_id"] = reviewId
+        aiBatch.beginReview(reviewId)
         clearLastScanResultUseCase()
-        ephemeral.update { it.copy(isAnalyzing = true, scanResult = null, message = null) }
+        ephemeral.update { it.copy(isAnalyzing = true, scanResult = null, message = null, reviewId = reviewId, reviewContext = context) }
         importedScan.start(
             path = path,
-            analyze = { analyzeMealUseCase(path, context, capturedAtMillis) },
+            analyze = { analyzeMealUseCase(path, context, capturedAtMillis, capturedProvider) },
             publish = { result ->
                 ephemeral.update { it.copy(
                     scanResult = result,
@@ -403,8 +429,8 @@ class NutritionViewModel @Inject constructor(
         onSaved: (FoodItem) -> Unit = {},
         onFailure: (Throwable) -> Unit = {},
     ) {
-        val usesFoodGuard = sourceType != FoodSourceType.AI
-        if (usesFoodGuard && NutritionSubmitKey.Food in ephemeral.value.pendingSubmits) return
+        if (aiBatch.state.value.busy) return
+        if (NutritionSubmitKey.Food in ephemeral.value.pendingSubmits) return
         val errors = validateFoodInput(name, calories, protein, carbs, fat, defaultServingGrams)
         if (errors.hasErrors) {
             ephemeral.update { it.copy(message = "Vul eerst een naam en niet-negatieve waarden per 100g in.") }
@@ -415,9 +441,7 @@ class NutritionViewModel @Inject constructor(
         val parsedCarbs = carbs.toNutritionNumberOrNull(max = 1000.0) ?: return
         val parsedFat = fat.toNutritionNumberOrNull(max = 1000.0) ?: return
         val parsedDefaultServingGrams = defaultServingGrams.toNutritionNumberOrNull(max = 100_000.0)?.takeIf { it > 0.0 } ?: return
-        if (usesFoodGuard) {
-            ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits + NutritionSubmitKey.Food, message = null) }
-        }
+        ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits + NutritionSubmitKey.Food, message = null) }
         viewModelScope.launchNutritionSubmit {
             performNutritionWrite(
                 save = { saveFoodItemUseCase(id, name.trim(), barcode?.trim()?.ifBlank { null }, parsedCalories, parsedProtein, parsedCarbs, parsedFat, parsedDefaultServingGrams, sourceType) },
@@ -438,9 +462,7 @@ class NutritionViewModel @Inject constructor(
                     onFailure(error)
                 },
                 onFinished = {
-                    if (usesFoodGuard) {
-                        ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits - NutritionSubmitKey.Food) }
-                    }
+                    ephemeral.update { it.copy(pendingSubmits = it.pendingSubmits - NutritionSubmitKey.Food) }
                 },
             )
         }
@@ -536,28 +558,35 @@ class NutritionViewModel @Inject constructor(
         }
     }
 
-    fun tryStartAiBatchSave(): Boolean {
-        val current = ephemeral.value.pendingSubmits
-        val started = tryStartNutritionSubmit(current, NutritionSubmitKey.AiItems)
-        if (started is NutritionSubmitStartResult.AlreadyPending) return false
-        started as NutritionSubmitStartResult.Started
-        ephemeral.update { it.copy(pendingSubmits = started.pendingKeys, message = null) }
-        return true
-    }
-
-    fun finishAiBatchSave() {
-        ephemeral.update { it.copy(pendingSubmits = finishNutritionSubmit(it.pendingSubmits, NutritionSubmitKey.AiItems)) }
-    }
-
     fun setMessage(message: String?) {
         ephemeral.update { it.copy(message = message) }
     }
 
     fun setScanResult(result: MealAnalysisResult?) {
+        if (aiBatch.state.value.busy) return
         importedScan.cancel()
-        ephemeral.update { it.copy(scanResult = result, isAnalyzing = false) }
+        val id = if (result == null) null else java.util.UUID.randomUUID().toString()
+        if (id != null) aiBatch.beginReview(id)
+        ephemeral.update { it.copy(scanResult = result, isAnalyzing = false, reviewId = id) }
         if (result == null) clearLastScanResultUseCase()
     }
+
+    fun acceptCameraMealResult(id: String?, result: MealAnalysisResult, context: String): Boolean {
+        if (id != pendingReviewId || aiBatch.state.value.busy) return false
+        val acceptedId = id ?: java.util.UUID.randomUUID().toString()
+        if (!aiBatch.beginReview(acceptedId)) return false
+        ephemeral.update { it.copy(scanResult = result, isAnalyzing = false, reviewId = acceptedId, reviewContext = context) }
+        return true
+    }
+
+    fun saveAiBatch(request: AiFoodBatchRequest) {
+        if (ephemeral.value.isAnalyzing || request.reviewId != ephemeral.value.reviewId) return
+        aiBatch.submit(request)
+    }
+    fun acknowledgeAiIntegration(id: String, target: String) = aiBatch.acknowledgeIntegration(id, target)
+    fun acknowledgeAiCompletion(id: String) = aiBatch.acknowledgeCompletion(id)
+    fun rejectAiIntegration(id: String) = aiBatch.rejectIntegration(id)
+    val aiNavigationBusy: Boolean get() = aiBatch.state.value.busy
 
     private var manualBarcode: String? = null
     fun prepareManualBarcode(barcode: String) { manualBarcode = barcode }
@@ -567,7 +596,10 @@ class NutritionViewModel @Inject constructor(
     private var foodProvider: com.trainiq.domain.model.FoodProviderMode
         get() = savedStateHandle["food_provider"] ?: com.trainiq.domain.model.FoodProviderMode.AUTOMATIC
         set(value) { savedStateHandle["food_provider"] = value }
-    fun selectFoodProvider(mode: com.trainiq.domain.model.FoodProviderMode) { if (mode != foodProvider) { foodProvider = mode; clearBarcodeLookupResult() } }
+    fun selectFoodProvider(mode: com.trainiq.domain.model.FoodProviderMode) {
+        if (aiBatch.state.value.busy || ephemeral.value.isAnalyzing) return
+        if (mode != foodProvider) { foodProvider = mode; clearBarcodeLookupResult() }
+    }
 
     private val barcodeLookup = BarcodeLookupRequest(
         scope = viewModelScope,
@@ -615,8 +647,11 @@ fun NutritionRoute(
     mealDetail: MealType? = null,
     onOpenMeal: ((MealType) -> Unit)? = null,
     onBack: () -> Unit = {},
+    onAiNavigationStateChanged: (AiNavigationState, () -> Unit) -> Unit = { _, _ -> },
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var aiNavigationState by remember { mutableStateOf(AiNavigationState()) }
+    NutritionOwnerBackHandler(aiNavigationState, onBack)
     NutritionScreen(
         hydrationContent = { HydrationRoute() },
         mealDetail = mealDetail,
@@ -630,8 +665,10 @@ fun NutritionRoute(
         onDeleteMeal = viewModel::deleteMeal,
         onDeleteFood = viewModel::deleteFood,
         onDeleteRecipe = viewModel::deleteRecipe,
-        onTryStartAiBatchSave = viewModel::tryStartAiBatchSave,
-        onFinishAiBatchSave = viewModel::finishAiBatchSave,
+        onSaveAiBatch = viewModel::saveAiBatch,
+        onAcknowledgeAiIntegration = viewModel::acknowledgeAiIntegration,
+        onAcknowledgeAiCompletion = viewModel::acknowledgeAiCompletion,
+        onRejectAiIntegration = viewModel::rejectAiIntegration,
         onSetScanResult = viewModel::setScanResult,
         onPrepareScan = viewModel::prepareScan,
         onLookupBarcodeProduct = viewModel::lookupBarcodeProduct,
@@ -646,13 +683,17 @@ fun NutritionRoute(
         onBarcodeClear = onBarcodeClear,
         scanCancelled = scanCancelled,
         onScanCancelConsumed = onScanCancelConsumed,
+        onAiNavigationStateChanged = { state, discard ->
+            aiNavigationState = state
+            onAiNavigationStateChanged(state, discard)
+        },
     )
 }
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun NutritionScreen(
-    currentDate: () -> java.time.LocalDate = { java.time.LocalDate.now() },
+    currentDate: (() -> java.time.LocalDate)? = null,
     hydrationContent: @Composable () -> Unit = {},
     mealDetail: MealType? = null,
     onOpenMeal: ((MealType) -> Unit)? = null,
@@ -665,8 +706,6 @@ fun NutritionScreen(
     onDeleteMeal: (Long) -> Unit,
     onDeleteFood: (Long) -> Unit,
     onDeleteRecipe: (Long) -> Unit,
-    onTryStartAiBatchSave: () -> Boolean,
-    onFinishAiBatchSave: () -> Unit,
     onSetScanResult: (MealAnalysisResult?) -> Unit,
     onPrepareScan: (NutritionScanDestination, MealType?) -> Unit = { _, _ -> },
     onLookupBarcodeProduct: (String, BarcodeLookupTarget) -> Unit = { _, _ -> },
@@ -681,6 +720,11 @@ fun NutritionScreen(
     onBarcodeClear: () -> Unit = {},
     scanCancelled: Boolean = false,
     onScanCancelConsumed: () -> Unit = {},
+    onSaveAiBatch: (AiFoodBatchRequest) -> Unit = {},
+    onAcknowledgeAiIntegration: (String, String) -> Boolean = { _, _ -> false },
+    onAcknowledgeAiCompletion: (String) -> Boolean = { false },
+    onRejectAiIntegration: (String) -> Boolean = { false },
+    onAiNavigationStateChanged: (AiNavigationState, () -> Unit) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
     val successState = uiState as? NutritionUiState.Success
@@ -713,7 +757,7 @@ fun NutritionScreen(
     var selectedTab by rememberSaveable { mutableStateOf(0) }
     val nutritionListState = nutritionListStates[selectedTab.coerceIn(nutritionListStates.indices)]
     var aiResultTarget by rememberSaveable { mutableStateOf(NutritionScanDestination.MealDraft) }
-    var showAddToMealActions by remember { mutableStateOf(false) }
+    var showAddToMealActions by rememberSaveable { mutableStateOf(false) }
     var showSectionMenu by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<PendingNutritionDelete?>(null) }
     var addToMealType by rememberSaveable { mutableStateOf(MealType.BREAKFAST) }
@@ -725,6 +769,7 @@ fun NutritionScreen(
     var hydratedFoodId by rememberSaveable { mutableStateOf<Long?>(null) }
     var hydratedRecipeId by rememberSaveable { mutableStateOf<Long?>(null) }
     var hydratedScanResultHash by rememberSaveable { mutableStateOf<Int?>(null) }
+    var hydratedReviewId by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedFood = overview?.foods?.firstOrNull { it.id == selectedFoodId }
     val selectedRecipeIngredientFood = overview?.foods?.firstOrNull { it.id == selectedRecipeIngredientFoodId }
     val selectedRecipe = overview?.recipes?.firstOrNull { it.id == selectedRecipeId }
@@ -758,6 +803,7 @@ fun NutritionScreen(
     var recipeCookedGrams by rememberSaveable { mutableStateOf("") }
     var ingredientGrams by rememberSaveable { mutableStateOf("100") }
     var recipeAiContext by rememberSaveable { mutableStateOf("") }
+    var recipeDraftGeneration by rememberSaveable { mutableStateOf(0L) }
     var quickIngredientName by rememberSaveable { mutableStateOf("") }
     var quickIngredientBarcode by rememberSaveable { mutableStateOf("") }
     var quickIngredientKcal by rememberSaveable { mutableStateOf("") }
@@ -773,53 +819,142 @@ fun NutritionScreen(
     var mealName by rememberSaveable { mutableStateOf("") }
     // Only persist an explicit date. A restored default must still mean today.
     var mealDateOverride by rememberSaveable { mutableStateOf<String?>(null) }
-    val mealDate = mealDateOverride ?: currentDate().toString()
+    val mealDate = mealDateOverride ?: (currentDate?.invoke() ?: java.time.LocalDate.now()).toString()
     var mealNotes by rememberSaveable { mutableStateOf("") }
     var editingMealId by rememberSaveable { mutableStateOf<Long?>(null) }
     var mealSaveId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var lastMealSaveId by rememberSaveable { mutableStateOf(0L) }
+    var originalMealTimestamp by rememberSaveable { mutableStateOf<Long?>(null) }
+    var mealDraftGeneration by rememberSaveable { mutableStateOf(0L) }
+    var pendingMealDestination by rememberSaveable { mutableStateOf<MealDraftDestination?>(null) }
     val mealDraft = rememberSaveable(saver = MealDraftSaver) { mutableStateListOf<EditableMealEntryRequest>() }
     var mealErrors by remember { mutableStateOf(MealFieldErrors()) }
 
     var aiContext by rememberSaveable { mutableStateOf("") }
     val editableAiItems = rememberSaveable(saver = EditableAiItemsSaver) { mutableStateListOf<EditableAiItem>() }
+    var appliedAiIntegrationIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    var photoImporting by remember { mutableStateOf(false) }
     val photoImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
+        photoImporting = true
         val activeContext = if (aiResultTarget == NutritionScanDestination.RecipeDraft) recipeAiContext else aiContext
+        val capturedTarget = aiResultTarget
+        val capturedMeal = pendingAiMealType ?: mealType.takeIf { capturedTarget == NutritionScanDestination.MealDraft }
         coroutineScope.launch {
+            try {
             importScannerImage(
                 copy = { copyScannerImageFromUri(context, uri) },
                 consume = { path ->
+                    onPrepareScan(capturedTarget, capturedMeal)
                     onAnalyzeImportedPhoto(path, activeContext, System.currentTimeMillis())
                     selectedTab = 2
                 },
                 failed = { onSetMessage("Foto importeren mislukt. Kies een duidelijke JPG of PNG.") },
             )
+            } finally { photoImporting = false }
         }
     }
     var aiItemErrors by remember { mutableStateOf<Map<Int, AiItemFieldErrors>>(emptyMap()) }
-    var aiSaveProgress by remember { mutableStateOf(startAiBatchSaveProgress(0)) }
-    val isAiSaving = !aiSaveProgress.isFinished || isAiBatchPending
+    val aiBatchState = successState?.aiBatch ?: (uiState as? NutritionUiState.Error)?.aiBatch ?: AiFoodBatchState()
+    val isAiSaving = aiBatchState.busy || isAiBatchPending
+    LaunchedEffect(isAiSaving, editableAiItems.size, isAnalyzing) {
+        onAiNavigationStateChanged(AiNavigationState(isAiSaving, editableAiItems.isNotEmpty())) {
+            if (!isAiSaving) {
+                editableAiItems.clear()
+                aiItemErrors = emptyMap()
+                onSetScanResult(null)
+            }
+        }
+    }
 
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
-    fun cancelMealEdit() {
-        focusManager.clearFocus(force = true)
+    fun resetMealDraft() {
         editingMealId = null
         mealSaveId = null
+        originalMealTimestamp = null
         mealName = ""
         mealNotes = ""
         mealDateOverride = null
+        mealType = MealType.LUNCH
         mealDraft.clear()
         mealErrors = MealFieldErrors()
+        hasAddToMealTarget = false
+        addToMealType = MealType.BREAKFAST
+        pendingAiMealType = null
+        barcodeMealTarget = null
+        aiContext = ""
+        pendingMealDestination = null
+        showAddToMealActions = false
+        mealDraftGeneration++
+    }
+    fun cancelMealEdit() {
+        if (isMealSaving) return
+        focusManager.clearFocus(force = true)
+        resetMealDraft()
         selectedTab = 0
     }
     BackHandler(enabled = selectedTab == 1 && editingMealId != null && !isMealSaving) { cancelMealEdit() }
 
-    fun selectMealDraftTarget(type: MealType) {
-        editingMealId = null
-        mealType = type
-        mealErrors = MealFieldErrors()
-        addToMealType = type
-        hasAddToMealTarget = true
+    fun openMealDestination(destination: MealDraftDestination) {
+        if (isMealSaving) return
+        when (destination) {
+            is MealDraftDestination.New -> {
+                // A same-target new draft is resumed, never cleared or turned into an edit.
+                if (mealType != destination.type || editingMealId != null) resetMealDraft()
+                mealType = destination.type
+                addToMealType = destination.type
+                hasAddToMealTarget = true
+                showAddToMealActions = true
+            }
+            else -> {
+                val id = when (destination) {
+                    is MealDraftDestination.Edit -> destination.id
+                    is MealDraftDestination.Reuse -> destination.id
+                    else -> error("Unexpected meal destination")
+                }
+                if (destination is MealDraftDestination.Edit && editingMealId == id) {
+                    selectedTab = 1
+                    return
+                }
+                val meal = overview?.meals?.firstOrNull { it.id == id } ?: run {
+                    onSetMessage("Deze maaltijd is niet meer beschikbaar. Je concept blijft behouden.")
+                    return
+                }
+                resetMealDraft()
+                if (destination is MealDraftDestination.Edit) {
+                    editingMealId = meal.id
+                    originalMealTimestamp = meal.timestamp
+                    mealDateOverride = Instant.ofEpochMilli(meal.timestamp).atZone(ZoneId.systemDefault()).toLocalDate().toString()
+                }
+                mealType = meal.mealType
+                mealName = meal.name
+                mealNotes = meal.notes.orEmpty()
+                mealDraft.addAll(meal.items.map {
+                    MealEntryRequest(
+                        itemType = it.itemType.toMealEntryType(),
+                        referenceId = it.referenceId,
+                        hydrationMl = it.hydrationMl,
+                        gramsUsed = it.gramsUsed,
+                        servingCount = it.servingCount,
+                        notes = it.notes,
+                        snapshot = it.takeIf { item -> item.itemType.name == "SNAPSHOT" }?.toMealEntrySnapshot(),
+                    ).toEditableMealEntryRequest()
+                })
+                selectedTab = 1
+            }
+        }
+    }
+
+    // All entry points that start another registration/edit/reuse must use this guard.
+    fun requestMealDestination(destination: MealDraftDestination) {
+        if (isMealSaving) return
+        focusManager.clearFocus(force = true)
+        if (requiresMealDraftReplacement(destination, mealType, editingMealId, mealSaveId,
+                mealDraft.isNotEmpty(), mealName, mealNotes, mealDateOverride)) {
+            pendingMealDestination = destination
+        } else {
+            openMealDestination(destination)
+        }
     }
 
     fun preserveContextualMealTarget() {
@@ -832,6 +967,18 @@ fun NutritionScreen(
         if (editingMealId == null && mealName.isBlank()) {
             mealName = itemName.trim()
         }
+    }
+
+    fun addSavedFoodToMeal(food: FoodItem) {
+        if (isMealSaving) return
+        val grams = food.defaultServingGrams.takeIf { it.isFinite() && it > 0.0 } ?: 100.0
+        preserveContextualMealTarget()
+        applyDefaultMealName(food.name)
+        mealDraft += MealEntryRequest(MealEntryType.FOOD, food.id, grams).toEditableMealEntryRequest()
+        mealErrors = MealFieldErrors()
+        hasAddToMealTarget = false
+        showAddToMealActions = false
+        selectedTab = 1
     }
 
     fun cancelPendingBarcodeLookup() {
@@ -885,6 +1032,8 @@ fun NutritionScreen(
         onOpenBarcodeScanner()
     }
     fun launchAiScanner(hint: String) {
+        if (isAiSaving || isAnalyzing) return
+        if (aiResultTarget == NutritionScanDestination.RecipeDraft) showRecipeEditor = false
         onPrepareScan(aiResultTarget, pendingAiMealType ?: mealType.takeIf { aiResultTarget == NutritionScanDestination.MealDraft })
         onAiScanner(hint)
     }
@@ -897,6 +1046,8 @@ fun NutritionScreen(
     }
 
     fun resetRecipeEditorState() {
+        if (isAiSaving) return
+        recipeDraftGeneration++
         selectedRecipeId = null
         hydratedRecipeId = null
         selectedRecipeIngredientFoodId = null
@@ -933,123 +1084,86 @@ fun NutritionScreen(
         showIngredientEditor = false
     }
 
-    fun finishAiBatchItem(item: EditableAiItem, success: Boolean, onAllSucceeded: () -> Unit) {
-        val next = aiSaveProgress.finishOne(success)
-        aiSaveProgress = next
-        if (success) {
-            editableAiItems.remove(item)
-            aiItemErrors = emptyMap()
-        }
-        if (next.isFinished) {
-            onFinishAiBatchSave()
-        }
-        if (next.allSucceeded) {
-            editableAiItems.clear()
-            aiItemErrors = emptyMap()
-            onAllSucceeded()
-        }
+    fun currentAiTargetToken(target: NutritionScanDestination): String = when (target) {
+        NutritionScanDestination.RecipeDraft -> "recipe:$selectedRecipeId:$recipeDraftGeneration"
+        NutritionScanDestination.MealDraft -> "meal:$editingMealId:$mealDraftGeneration:$mealType"
+        NutritionScanDestination.ProductLibrary -> "products"
     }
 
-    fun saveAiFoodItemSequentially(batchItem: AiBatchItem): CompletableDeferred<Result<FoodItem>> {
-        val result = CompletableDeferred<Result<FoodItem>>()
-        val item = batchItem.item
-        val grams = batchItem.grams
-        onSaveFood(
-            null,
-            item.name,
-            null,
-            per100Value(item.calories, grams),
-            per100Value(item.protein, grams),
-            per100Value(item.carbs, grams),
-            per100Value(item.fat, grams),
-            formatNumber(grams),
-            FoodSourceType.AI,
-            { saved -> result.complete(Result.success(saved)) },
-            { error -> result.complete(Result.failure(error)) },
-        )
-        return result
-    }
-
-    fun startAiFoodBatchSave(
-        batchItems: List<AiBatchItem>,
-        successMessage: (Int) -> String,
-        partialFailureMessage: (Int, Int) -> String,
-        onSavedItem: (FoodItem, Double) -> Unit,
-        onAllSucceeded: () -> Unit,
-    ) {
-        if (!onTryStartAiBatchSave()) return
+    fun submitAiItems(batchItems: List<AiBatchItem>, target: NutritionScanDestination) {
+        if (isAiSaving || isAnalyzing || isMealSaving || isRecipeSaving) return
+        val review = successState?.reviewId ?: hydratedScanResultHash?.toString() ?: return
         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-        aiSaveProgress = startAiBatchSaveProgress(batchItems.size)
-        coroutineScope.launch {
-            var succeeded = 0
-            batchItems.forEach { batchItem ->
-                val saved = saveAiFoodItemSequentially(batchItem).await().getOrNull()
-                if (saved != null) {
-                    succeeded += 1
-                    onSavedItem(saved, batchItem.grams)
-                    finishAiBatchItem(item = batchItem.item, success = true, onAllSucceeded = onAllSucceeded)
-                } else {
-                    finishAiBatchItem(item = batchItem.item, success = false, onAllSucceeded = {})
-                }
-            }
-            onSetMessage(
-                if (succeeded == batchItems.size) {
-                    successMessage(succeeded)
-                } else {
-                    partialFailureMessage(succeeded, batchItems.size - succeeded)
-                },
-            )
-        }
+        val confirmedContext = if (target == NutritionScanDestination.RecipeDraft) recipeAiContext else aiContext
+        onSaveAiBatch(AiFoodBatchRequest(review, target, currentAiTargetToken(target),
+            confirmedContext, batchItems.map { it.item }))
     }
 
     fun addAiBatchItemsAsMealSnapshots(batchItems: List<AiBatchItem>) {
-        batchItems.forEach { batchItem ->
-            val request = batchItem.toSnapshotMealEntry()
-            applyDefaultMealName(request.snapshot?.name.orEmpty())
-            mealDraft += request.toEditableMealEntryRequest()
+        val intended = pendingAiMealType
+        if (intended != null && intended != mealType) {
+            requestMealDestination(MealDraftDestination.New(intended))
+            return
         }
-        editableAiItems.clear()
-        aiItemErrors = emptyMap()
-        pendingAiMealType = null
-        aiResultTarget = NutritionScanDestination.MealDraft
-        selectedTab = 1
-        onSetScanResult(null)
-        onSetMessage("${batchItems.size} AI-items alleen aan deze maaltijd toegevoegd.")
+        submitAiItems(batchItems, NutritionScanDestination.MealDraft)
     }
 
-    fun saveAiBatchAsProducts(batchItems: List<AiBatchItem>) {
-        startAiFoodBatchSave(
-            batchItems = batchItems,
-            successMessage = { count -> "$count AI-producten opgeslagen." },
-            partialFailureMessage = { success, failed -> "$success AI-producten opgeslagen, $failed mislukt. Controleer de overgebleven items." },
-            onSavedItem = { _, _ -> },
-            onAllSucceeded = {
-                aiResultTarget = NutritionScanDestination.MealDraft
-                onSetScanResult(null)
-                selectedTab = 4
-            },
-        )
-    }
+    fun saveAiBatchAsProducts(batchItems: List<AiBatchItem>) =
+        submitAiItems(batchItems, NutritionScanDestination.ProductLibrary)
 
     fun saveAiBatchAsRecipeIngredients(batchItems: List<AiBatchItem>) {
         recipeName = recipeName.ifBlank { "AI-fotorecept" }
-        showRecipeEditor = true
-        startAiFoodBatchSave(
-            batchItems = batchItems,
-            successMessage = { count -> "$count AI-items toegevoegd aan je recept." },
-            partialFailureMessage = { success, failed -> "$success AI-items toegevoegd, $failed mislukt. Controleer de overgebleven items." },
-            onSavedItem = { saved, grams ->
-                recipeDraft += saved.id to grams
-                selectedRecipeIngredientFoodId = saved.id
-            },
-            onAllSucceeded = {
-                aiResultTarget = NutritionScanDestination.MealDraft
-                onSetScanResult(null)
-                selectedTab = 3
-            },
-        )
+        submitAiItems(batchItems, NutritionScanDestination.RecipeDraft)
     }
 
+    LaunchedEffect(aiBatchState) {
+        val rejectedMealRows = mutableSetOf<String>()
+        for (integration in aiBatchState.integrations) {
+            if (integration.id in appliedAiIntegrationIds) {
+                onAcknowledgeAiIntegration(integration.id, integration.targetToken)
+                continue
+            }
+            if (integration.targetToken != currentAiTargetToken(integration.target)) {
+                onRejectAiIntegration(integration.id)
+                if (integration.target == NutritionScanDestination.MealDraft) {
+                    rejectedMealRows += integration.id
+                    onSetMessage("Deze AI-items horen bij een ander maaltijdconcept. Kies het bedoelde concept en probeer opnieuw.")
+                } else onSetMessage("Het product is opgeslagen, maar hoort bij een ander concept. Kies het opgeslagen product handmatig.")
+                continue
+            }
+            if (integration.id !in appliedAiIntegrationIds) {
+                when (integration.target) {
+                    NutritionScanDestination.RecipeDraft -> integration.food?.let { food ->
+                        recipeDraft += food.id to integration.grams
+                        selectedRecipeIngredientFoodId = food.id
+                    }
+                    NutritionScanDestination.MealDraft -> integration.snapshot?.let { snapshot ->
+                        applyDefaultMealName(snapshot.snapshot?.name.orEmpty())
+                        mealDraft += snapshot.toEditableMealEntryRequest()
+                    }
+                    NutritionScanDestination.ProductLibrary -> Unit
+                }
+                appliedAiIntegrationIds = appliedAiIntegrationIds + integration.id
+            }
+            onAcknowledgeAiIntegration(integration.id, integration.targetToken)
+        }
+        editableAiItems.removeAll { it.rowId in aiBatchState.savedRowIds && it.rowId !in rejectedMealRows }
+        appliedAiIntegrationIds = appliedAiIntegrationIds.filter { id -> aiBatchState.integrations.any { it.id == id } }
+        aiItemErrors = emptyMap()
+        aiBatchState.completion?.let { completion ->
+            if (onAcknowledgeAiCompletion(completion.id)) {
+                pendingAiMealType = null
+                onSetScanResult(null)
+                selectedTab = when (completion.target) {
+                    NutritionScanDestination.MealDraft -> 1
+                    NutritionScanDestination.ProductLibrary -> 4
+                    NutritionScanDestination.RecipeDraft -> 3
+                }
+                if (completion.target == NutritionScanDestination.RecipeDraft) showRecipeEditor = true
+                aiResultTarget = NutritionScanDestination.MealDraft
+            }
+        }
+    }
     LaunchedEffect(successState != null) {
         // A restored editor must not remain blocked by a lookup lost with its old process.
         if (resumeBarcodeLookup && successState != null && showFoodEditor &&
@@ -1156,28 +1270,26 @@ fun NutritionScreen(
         }
     }
 
-    LaunchedEffect(scanResult) {
+    LaunchedEffect(scanResult, successState?.reviewId, isAnalyzing) {
         val currentScanResult = scanResult
         if (currentScanResult == null) {
             hydratedScanResultHash = null
+            if (isAnalyzing) { editableAiItems.clear(); aiItemErrors = emptyMap() }
             return@LaunchedEffect
         }
-        if (hydratedScanResultHash == currentScanResult.hashCode()) return@LaunchedEffect
+        if (hydratedScanResultHash == currentScanResult.hashCode() && hydratedReviewId == successState?.reviewId) return@LaunchedEffect
         editableAiItems.clear()
         currentScanResult.items.forEach { editableAiItems += EditableAiItem.from(it) }
+        successState?.scanDestination?.let { aiResultTarget = it }
         if (aiResultTarget == NutritionScanDestination.MealDraft) {
-            (pendingAiMealType ?: currentScanResult.suggestedMealType)?.let {
-                mealType = it
-                if (mealName in listOf("Breakfast", "Lunch", "Dinner", "Snack", "Ochtend", "Middag", "Avond", "Snacks")) {
-                    mealName = it.dutchLabel
-                }
-            }
+            pendingAiMealType = pendingAiMealType ?: successState?.scanMealType ?: currentScanResult.suggestedMealType
         }
         if (editableAiItems.isNotEmpty()) {
             if (aiResultTarget == NutritionScanDestination.RecipeDraft) showRecipeEditor = false
             selectedTab = 2
         }
         hydratedScanResultHash = currentScanResult.hashCode()
+        hydratedReviewId = successState?.reviewId
     }
 
     LaunchedEffect(message) {
@@ -1205,7 +1317,7 @@ fun NutritionScreen(
                         ScreenHeader(title = mealDetail?.dutchLabel ?: "Voeding", subtitle = "Voeding loggen zonder gedoe")
                     }
                     Surface(
-                        onClick = { showSectionMenu = true },
+                        onClick = { if (!isAiSaving) showSectionMenu = true },
                         modifier = Modifier
                             .size(44.dp)
                             .semantics {
@@ -1265,31 +1377,8 @@ fun NutritionScreen(
                                     overview = overview,
                                     detail = mealDetail,
                                     onOpenMeal = onOpenMeal,
-                                    onAddToMeal = { type ->
-                                        selectMealDraftTarget(type)
-                                        showAddToMealActions = true
-                                    },
-                                    onEditMeal = { meal ->
-                                        mealDateOverride = java.time.Instant.ofEpochMilli(meal.timestamp).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString()
-                                        editingMealId = meal.id
-                                        mealType = meal.mealType
-                                        mealName = meal.name
-                                        mealNotes = meal.notes.orEmpty()
-                                        mealDraft.clear()
-                                        mealDraft.addAll(meal.items.map {
-                                            MealEntryRequest(
-                                                itemType = it.itemType.toMealEntryType(),
-                                                referenceId = it.referenceId,
-                                                hydrationMl = it.hydrationMl,
-                                                gramsUsed = it.gramsUsed,
-                                                servingCount = it.servingCount,
-                                                notes = it.notes,
-                                                snapshot = it.takeIf { item -> item.itemType.name == "SNAPSHOT" }?.toMealEntrySnapshot(),
-                                            ).toEditableMealEntryRequest()
-                                        })
-                                        selectedTab = 1
-                                        coroutineScope.launch { nutritionListState.animateScrollToItem(1) }
-                                    },
+                                    onAddToMeal = { type -> requestMealDestination(MealDraftDestination.New(type)) },
+                                    onEditMeal = { meal -> requestMealDestination(MealDraftDestination.Edit(meal.id)) },
                                     onDeleteMeal = { pendingDelete = PendingNutritionDelete.Meal(it) },
                                 )
                             }
@@ -1345,7 +1434,13 @@ fun NutritionScreen(
                                     },
                                     onRemoveDraftItem = { index -> mealDraft.removeAt(index) },
                                     onSave = {
-                                        val loggedAt = runCatching { java.time.LocalDate.parse(mealDateOverride ?: currentDate().toString()).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli() }.getOrNull()
+                                        // Midnight does not recompose the screen. Resolve an implicit date at the click,
+                                        // using one instant/zone pair; keep an explicitly selected date authoritative.
+                                        val saveNow = Instant.now()
+                                        val saveZone = ZoneId.systemDefault()
+                                        val saveDate = mealDateOverride ?: (currentDate?.invoke()
+                                            ?: saveNow.atZone(saveZone).toLocalDate()).toString()
+                                        val loggedAt = mealDraftLoggedAt(saveDate, originalMealTimestamp, saveNow, saveZone)
                                         if (loggedAt == null) { mealErrors = MealFieldErrors(items = "Vul een geldige datum in (jjjj-mm-dd)."); return@MealDraftReviewCard }
                                         val requests = mealDraft.toMealEntryRequestsOrNull()?.map { it.copy(loggedAt = loggedAt) }
                                         val errors = if (requests == null) {
@@ -1357,17 +1452,19 @@ fun NutritionScreen(
                                         if (errors.hasErrors || isMealSaving) return@MealDraftReviewCard
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                         val saveTarget = editingMealId?.let { MealSaveTarget.Edit(it) }
-                                            ?: MealSaveTarget.Create(mealSaveId ?: System.currentTimeMillis().also { mealSaveId = it })
+                                            ?: MealSaveTarget.Create(mealSaveId ?: maxOf(System.currentTimeMillis(), lastMealSaveId + 1L,
+                                                (overview?.meals?.maxOfOrNull { it.id } ?: 0L) + 1L).also {
+                                                mealSaveId = it
+                                                lastMealSaveId = it
+                                            })
+                                        val savedGeneration = mealDraftGeneration
                                         onSaveMeal(saveTarget, mealType, mealName, mealNotes, requests.orEmpty()) {
-                                            mealSaveId = null
-                                            editingMealId = null
-                                            mealDateOverride = null
-                                            mealName = ""
-                                            mealNotes = ""
-                                            mealDraft.clear()
-                                            mealErrors = MealFieldErrors()
-                                            onSetScanResult(null)
-                                            selectedTab = 0
+                                            // A late/repeated callback may only clear the submitted draft.
+                                            if (mealDraftGeneration == savedGeneration) {
+                                                resetMealDraft()
+                                                onSetScanResult(null)
+                                                selectedTab = 0
+                                            }
                                         }
                                     },
                                 )
@@ -1389,8 +1486,10 @@ fun NutritionScreen(
                                 scanNotes = scanResult?.notes,
                                 itemErrors = aiItemErrors,
                                 isSaving = isAiSaving,
-                                isAnalyzing = isAnalyzing,
+                                isAnalyzing = isAnalyzing || photoImporting,
+                                saveMessage = aiBatchState.message,
                                 onContextChange = {
+                                    if (isAiSaving || isAnalyzing || photoImporting) return@AiMealAnalysisCard
                                     if (aiResultTarget == NutritionScanDestination.RecipeDraft) {
                                         recipeAiContext = it
                                     } else {
@@ -1402,28 +1501,30 @@ fun NutritionScreen(
                                     launchAiScanner(if (aiResultTarget == NutritionScanDestination.RecipeDraft) recipeAiContext else aiContext)
                                 },
                                 onImportPhoto = {
-                                    photoImportLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                    if (!isAiSaving && !isAnalyzing && !photoImporting) photoImportLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                                 },
                                 onChangeItem = { index, item ->
-                                    editableAiItems[index] = item
-                                    aiItemErrors = aiItemErrors - index
+                                    if (!isAiSaving && !isAnalyzing && !photoImporting) {
+                                        editableAiItems[index] = item
+                                        aiItemErrors = aiItemErrors - index
+                                    }
                                 },
-                                onDeleteItem = { index -> editableAiItems.removeAt(index) },
+                                onDeleteItem = { index -> if (!isAiSaving && !isAnalyzing && !photoImporting) editableAiItems.removeAt(index) },
                                 onPrimaryAction = {
                                     val errors = editableAiItems.mapIndexedNotNull { index, item ->
                                         validateEditableAiItem(item).takeIf { it.hasErrors }?.let { index to it }
                                     }.toMap()
                                     aiItemErrors = errors
-                                    if (errors.isNotEmpty() || isAiSaving || editableAiItems.isEmpty()) return@AiMealAnalysisCard
+                                    if (errors.isNotEmpty() || isAiSaving || isAnalyzing || photoImporting || editableAiItems.isEmpty()) return@AiMealAnalysisCard
                                     val batchItems = buildValidAiBatchItems(editableAiItems.toList())
                                     if (batchItems == null || batchItems.isEmpty()) {
                                         aiItemErrors = aiBatchNutritionErrors(editableAiItems.size)
                                         return@AiMealAnalysisCard
                                     }
                                     val enteredContext = if (aiResultTarget == NutritionScanDestination.RecipeDraft) recipeAiContext else aiContext
-                                    if (aiItemsExceedDeclaredMealTotal(enteredContext, batchItems.map { it.item })) {
+                                    if (aiItemsExceedDeclaredMealTotal(enteredContext, batchItems.map { it.item }, aiBatchState.confirmedGrams)) {
                                         coroutineScope.launch {
-                                            snackbarHostState.showSnackbar("De hoeveelheden overschrijden je opgegeven totaal. Pas de porties of context aan voordat je toevoegt.")
+                                            snackbarHostState.showSnackbar(AiBatchTotalExceededMessage)
                                         }
                                         return@AiMealAnalysisCard
                                     }
@@ -1515,16 +1616,7 @@ fun NutritionScreen(
                                         selectedFoodId = it
                                         showFoodEditor = true
                                     },
-                                    onQuickAdd = { food ->
-                                        if (isMealSaving) return@SavedFoodsCard
-                                        val grams = food.defaultServingGrams.takeIf { it.isFinite() && it > 0.0 } ?: 100.0
-                                        preserveContextualMealTarget()
-                                        applyDefaultMealName(food.name)
-                                        mealDraft += MealEntryRequest(MealEntryType.FOOD, food.id, grams).toEditableMealEntryRequest()
-                                        mealErrors = MealFieldErrors()
-                                        hasAddToMealTarget = false
-                                        selectedTab = 1
-                                    },
+                                    onQuickAdd = ::addSavedFoodToMeal,
                                     onDelete = { pendingDelete = PendingNutritionDelete.Food(it) },
                                 )
                             }
@@ -1535,24 +1627,7 @@ fun NutritionScreen(
                                     meals = overview?.meals.orEmpty(),
                                     foods = overview?.foods.orEmpty(),
                                     recipes = overview?.recipes.orEmpty(),
-                                    onReuseMeal = { meal ->
-                                        mealType = meal.mealType
-                                        mealName = meal.name
-                                        mealNotes = meal.notes.orEmpty()
-                                        mealDraft.clear()
-                                        mealDraft.addAll(meal.items.map {
-                                            MealEntryRequest(
-                                                itemType = it.itemType.toMealEntryType(),
-                                                referenceId = it.referenceId,
-                                                hydrationMl = it.hydrationMl,
-                                                gramsUsed = it.gramsUsed,
-                                                servingCount = it.servingCount,
-                                                notes = it.notes,
-                                                snapshot = it.takeIf { item -> item.itemType.name == "SNAPSHOT" }?.toMealEntrySnapshot(),
-                                            ).toEditableMealEntryRequest()
-                                        })
-                                        selectedTab = 1
-                                    },
+                                    onReuseMeal = { meal -> requestMealDestination(MealDraftDestination.Reuse(meal.id)) },
                                     onDeleteMeal = { pendingDelete = PendingNutritionDelete.Meal(it) },
                                 )
                             }
@@ -1584,7 +1659,7 @@ fun NutritionScreen(
                     .padding(horizontal = MaterialTheme.spacing.medium)
                     .padding(bottom = 24.dp),
             ) {
-                FoodProviderSelector(foodProvider) { mode ->
+                FoodProviderSelector(foodProvider, enabled = !isAiSaving && !isAnalyzing) { mode ->
                     foodProvider = mode
                     onFoodProviderSelected(mode)
                     if (barcode.isNotBlank()) {
@@ -1783,7 +1858,7 @@ fun NutritionScreen(
         ) {
             RecipeIngredientEditorSheet(
                 providerContent = {
-                    FoodProviderSelector(foodProvider) { mode ->
+                    FoodProviderSelector(foodProvider, enabled = !isAiSaving && !isAnalyzing) { mode ->
                         foodProvider = mode
                         onFoodProviderSelected(mode)
                         if (quickIngredientBarcode.isNotBlank()) {
@@ -1906,7 +1981,11 @@ fun NutritionScreen(
         ) {
             AddToMealActionSheet(
                 mealType = addToMealType,
-                hasSavedFoods = overview?.foods?.isNotEmpty() == true,
+                foods = overview?.foods.orEmpty(),
+                searchQuery = productSearchQuery,
+                onSearchQueryChange = { productSearchQuery = it },
+                onChooseFood = ::addSavedFoodToMeal,
+                isMealSaving = isMealSaving,
                 hasSavedRecipes = overview?.recipes?.isNotEmpty() == true,
                 hasDraft = mealDraft.isNotEmpty(),
                 aiEnabled = aiPreferences.hasAnyReadyProvider(),
@@ -1949,6 +2028,40 @@ fun NutritionScreen(
                 },
             )
         }
+    }
+    pendingMealDestination?.let { destination ->
+        fun preserveMealDraft() {
+            pendingMealDestination = null
+            selectedTab = 1
+        }
+        AlertDialog(
+            onDismissRequest = { preserveMealDraft() },
+            title = { Text("Maaltijdconcept vervangen?") },
+            text = { Text("Je hebt nog een maaltijdconcept of bewerking. Bij vervangen vervalt deze invoer. Opgeslagen maaltijden blijven behouden.") },
+            dismissButton = {
+                TextButton(onClick = { preserveMealDraft() }) { Text("Concept behouden") }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !isMealSaving,
+                    onClick = {
+                        // Resolve the source before discarding: it may have been deleted while this dialog was open.
+                        val exists = when (destination) {
+                            is MealDraftDestination.New -> true
+                            is MealDraftDestination.Edit -> overview?.meals?.any { it.id == destination.id } == true
+                            is MealDraftDestination.Reuse -> overview?.meals?.any { it.id == destination.id } == true
+                        }
+                        if (exists) {
+                            resetMealDraft()
+                            openMealDestination(destination)
+                        } else {
+                            preserveMealDraft()
+                            onSetMessage("Deze maaltijd is niet meer beschikbaar. Je concept blijft behouden.")
+                        }
+                    },
+                ) { Text("Vervangen en doorgaan") }
+            },
+        )
     }
     pendingDelete?.let { delete ->
         ConfirmNutritionDeleteDialog(
@@ -2405,7 +2518,11 @@ private fun RecipeActionBottomSheet(
 @Composable
 private fun AddToMealActionSheet(
     mealType: MealType,
-    hasSavedFoods: Boolean,
+    foods: List<FoodItem>,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    onChooseFood: (FoodItem) -> Unit,
+    isMealSaving: Boolean,
     hasSavedRecipes: Boolean,
     hasDraft: Boolean,
     aiEnabled: Boolean,
@@ -2419,6 +2536,9 @@ private fun AddToMealActionSheet(
     onPhotoAi: () -> Unit,
     onOpenMealDraft: () -> Unit,
 ) {
+    var showOtherMethods by rememberSaveable { mutableStateOf(false) }
+    var showPhotoContext by rememberSaveable { mutableStateOf(false) }
+    val results = remember(foods, searchQuery) { foods.filteredByProductQuery(searchQuery) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -2430,20 +2550,44 @@ private fun AddToMealActionSheet(
     ) {
         BottomSheetHeader(title = "Toevoegen aan ${mealType.dutchLabel}")
         Text("Kies een bron en controleer daarna voor opslaan.", color = MaterialTheme.trainIqColors.mutedText)
-        Button(onClick = onManualFood, modifier = Modifier.fillMaxWidth()) { Text("Handmatig product maken") }
-        OutlinedButton(onClick = onBarcode, modifier = Modifier.fillMaxWidth()) { Text("Barcode scannen") }
-        OutlinedButton(onClick = onSavedFood, enabled = hasSavedFoods, modifier = Modifier.fillMaxWidth()) { Text("Opgeslagen product gebruiken") }
-        OutlinedButton(onClick = onRecipe, enabled = hasSavedRecipes, modifier = Modifier.fillMaxWidth()) { Text("Opgeslagen recept gebruiken") }
-        NutritionTextField(
-            value = aiContext,
-            onValueChange = onAiContextChange,
-            label = "AI-context voor foto",
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = false,
-        )
-        OutlinedButton(onClick = onPhotoAi, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) { Text("Foto / AI-inschatting") }
-        if (!aiEnabled) {
-            NutritionAiSetupHint()
+        ProductSearchField(query = searchQuery, onQueryChange = onSearchQueryChange, label = "Zoek opgeslagen producten")
+        if (foods.isEmpty()) Text("Nog geen opgeslagen producten. Maak een product om te beginnen.")
+        else if (results.isEmpty()) Text("Geen producten gevonden. Pas je zoekterm aan of maak een product.")
+        results.take(5).forEach { food ->
+            val grams = food.defaultServingGrams.takeIf { it.isFinite() && it > 0.0 } ?: 100.0
+            OutlinedButton(onClick = { onChooseFood(food) }, enabled = !isMealSaving,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                Text("${food.name} · ${formatNumber(grams)} g")
+            }
+        }
+        if (results.size > 5) TextButton(onClick = onSavedFood, modifier = Modifier.fillMaxWidth()) { Text("Alle producten bekijken") }
+        if (foods.isEmpty() || results.isEmpty()) {
+            Button(onClick = onManualFood, modifier = Modifier.fillMaxWidth()) { Text("Handmatig product maken") }
+        }
+        TextButton(onClick = { showOtherMethods = !showOtherMethods }, modifier = Modifier.fillMaxWidth()) {
+            Text(if (showOtherMethods) "Andere manieren verbergen" else "Andere manieren toevoegen")
+        }
+        if (showOtherMethods) {
+            if (foods.isNotEmpty() && results.isNotEmpty()) {
+                Button(onClick = onManualFood, modifier = Modifier.fillMaxWidth()) { Text("Handmatig product maken") }
+            }
+            OutlinedButton(onClick = onBarcode, modifier = Modifier.fillMaxWidth()) { Text("Barcode scannen") }
+            OutlinedButton(onClick = onRecipe, enabled = hasSavedRecipes, modifier = Modifier.fillMaxWidth()) { Text("Opgeslagen recept gebruiken") }
+            if (!hasSavedRecipes) Text("Nog geen opgeslagen recepten.")
+            OutlinedButton(onClick = { showPhotoContext = !showPhotoContext }, modifier = Modifier.fillMaxWidth()) { Text("Foto / AI-inschatting") }
+            if (showPhotoContext) {
+                NutritionTextField(
+                    value = aiContext,
+                    onValueChange = onAiContextChange,
+                    label = "AI-context voor foto",
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = false,
+                )
+                OutlinedButton(onClick = onPhotoAi, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) { Text("Foto kiezen") }
+                if (!aiEnabled) {
+                    NutritionAiSetupHint()
+                }
+            }
         }
         if (hasDraft) {
             OutlinedButton(onClick = onOpenMealDraft, modifier = Modifier.fillMaxWidth()) { Text("Huidige maaltijd controleren") }
@@ -2567,6 +2711,7 @@ private fun NutritionNumberField(
     modifier: Modifier = Modifier,
     error: String? = null,
     imeSettledDelayMillis: Long = 320L,
+    enabled: Boolean = true,
 ) {
     TrainIqFormField(
         value = value,
@@ -2580,6 +2725,7 @@ private fun NutritionNumberField(
         isError = error != null,
         errorText = error,
         imeSettledDelayMillis = imeSettledDelayMillis,
+        enabled = enabled,
     )
 }
 
@@ -2591,6 +2737,7 @@ private fun NutritionTextField(
     modifier: Modifier = Modifier,
     singleLine: Boolean = true,
     error: String? = null,
+    enabled: Boolean = true,
 ) {
     TrainIqFormField(
         value = value,
@@ -2602,6 +2749,7 @@ private fun NutritionTextField(
         singleLine = singleLine,
         isError = error != null,
         errorText = error,
+        enabled = enabled,
     )
 }
 
@@ -3383,6 +3531,7 @@ private fun AiMealAnalysisCard(
     itemErrors: Map<Int, AiItemFieldErrors>,
     isSaving: Boolean,
     isAnalyzing: Boolean,
+    saveMessage: String? = null,
     onContextChange: (String) -> Unit,
     onOpenCamera: () -> Unit,
     onImportPhoto: () -> Unit,
@@ -3416,11 +3565,16 @@ private fun AiMealAnalysisCard(
                 },
                 style = MaterialTheme.typography.bodyMedium,
             )
-            NutritionTextField(value = aiContext, onValueChange = onContextChange, label = "Optionele context", modifier = Modifier.fillMaxWidth())
-            Button(onClick = onOpenCamera, enabled = aiPreferences.hasAnyReadyProvider(), modifier = Modifier.fillMaxWidth()) {
+            NutritionTextField(value = aiContext, onValueChange = onContextChange, label = "Optionele context", modifier = Modifier.fillMaxWidth(), enabled = !isSaving && !isAnalyzing)
+            Text(
+                "Herkenbare producten worden kort online gecontroleerd via je voedingsprovider. Alleen productnaam, merk, variant of barcode wordt gedeeld. Controleer de waarden voor je opslaat.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Button(onClick = onOpenCamera, enabled = aiPreferences.hasAnyReadyProvider() && !isSaving && !isAnalyzing, modifier = Modifier.fillMaxWidth()) {
                 Text("Scanner openen")
             }
-            OutlinedButton(onClick = onImportPhoto, enabled = aiPreferences.hasAnyReadyProvider(), modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = onImportPhoto, enabled = aiPreferences.hasAnyReadyProvider() && !isSaving && !isAnalyzing, modifier = Modifier.fillMaxWidth()) {
                 Text("Foto importeren")
             }
             if (isAnalyzing) {
@@ -3434,11 +3588,15 @@ private fun AiMealAnalysisCard(
                 Text(notes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             editableItems.forEachIndexed { index, item ->
-                EditableAiItemCard(item = item, errors = itemErrors[index] ?: AiItemFieldErrors(), onChange = { onChangeItem(index, it) }, onDelete = { onDeleteItem(index) })
+                key(item.rowId) {
+                    EditableAiItemCard(item = item, errors = itemErrors[index] ?: AiItemFieldErrors(), enabled = !isSaving && !isAnalyzing,
+                        onChange = { onChangeItem(index, it) }, onDelete = { onDeleteItem(index) })
+                }
             }
             if (editableItems.isNotEmpty()) {
-                Button(onClick = onPrimaryAction, enabled = !isSaving) { Text(if (isSaving) "Toevoegen..." else primaryLabel) }
+                Button(onClick = onPrimaryAction, enabled = !isSaving && !isAnalyzing) { Text(if (isSaving) "Toevoegen..." else primaryLabel) }
             }
+            saveMessage?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         }
     }
 }
@@ -3687,28 +3845,28 @@ internal fun List<LoggedMeal>.groupedHistoryDays(): List<NutritionHistoryDay> {
 }
 
 @Composable
-private fun EditableAiItemCard(item: EditableAiItem, errors: AiItemFieldErrors, onChange: (EditableAiItem) -> Unit, onDelete: () -> Unit) {
+private fun EditableAiItemCard(item: EditableAiItem, errors: AiItemFieldErrors, onChange: (EditableAiItem) -> Unit, onDelete: () -> Unit, enabled: Boolean = true) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            NutritionTextField(value = item.name, onValueChange = { onChange(item.copy(name = it)) }, label = "Naam", modifier = Modifier.fillMaxWidth(), error = errors.name)
+            NutritionTextField(value = item.name, onValueChange = { onChange(item.copy(name = it)) }, label = "Naam", modifier = Modifier.fillMaxWidth(), error = errors.name, enabled = enabled)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                NutritionNumberField(value = item.grams, onValueChange = { onChange(item.copy(grams = it)) }, label = "Grammen", modifier = Modifier.weight(1f), error = errors.grams)
-                NutritionNumberField(value = item.calories, onValueChange = { onChange(item.copy(calories = it)) }, label = "Calorieën", modifier = Modifier.weight(1f), error = errors.calories)
+                NutritionNumberField(value = item.grams, onValueChange = { onChange(item.copy(grams = it)) }, label = "Grammen", modifier = Modifier.weight(1f), error = errors.grams, enabled = enabled)
+                NutritionNumberField(value = item.calories, onValueChange = { onChange(item.copy(calories = it)) }, label = "Calorieën", modifier = Modifier.weight(1f), error = errors.calories, enabled = enabled)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                NutritionNumberField(value = item.protein, onValueChange = { onChange(item.copy(protein = it)) }, label = "Eiwit", modifier = Modifier.weight(1f), error = errors.protein)
-                NutritionNumberField(value = item.carbs, onValueChange = { onChange(item.copy(carbs = it)) }, label = "Koolhydraten", modifier = Modifier.weight(1f), error = errors.carbs)
+                NutritionNumberField(value = item.protein, onValueChange = { onChange(item.copy(protein = it)) }, label = "Eiwit", modifier = Modifier.weight(1f), error = errors.protein, enabled = enabled)
+                NutritionNumberField(value = item.carbs, onValueChange = { onChange(item.copy(carbs = it)) }, label = "Koolhydraten", modifier = Modifier.weight(1f), error = errors.carbs, enabled = enabled)
             }
-            NutritionNumberField(value = item.fat, onValueChange = { onChange(item.copy(fat = it)) }, label = "Vet", modifier = Modifier.fillMaxWidth(), error = errors.fat)
+            NutritionNumberField(value = item.fat, onValueChange = { onChange(item.copy(fat = it)) }, label = "Vet", modifier = Modifier.fillMaxWidth(), error = errors.fat, enabled = enabled)
             item.confidence?.let { Text("Zekerheid: ${it.toDutchConfidenceLabel()}") }
             item.notes?.let { Text(it) }
             Text("Per 100g: ${per100Value(item.calories, item.grams.toNutritionNumberOrNull(max = 100_000.0) ?: 100.0)} kcal", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.trainIqColors.mutedText)
-            TextButton(onClick = onDelete) { Text("Item verwijderen") }
+            TextButton(onClick = onDelete, enabled = enabled) { Text("Item verwijderen") }
         }
     }
 }
 
-internal data class EditableAiItem(
+data class EditableAiItem(
     val name: String,
     val grams: String,
     val calories: String,
@@ -3717,6 +3875,7 @@ internal data class EditableAiItem(
     val fat: String,
     val confidence: String?,
     val notes: String?,
+    val rowId: String = java.util.UUID.randomUUID().toString(),
 ) {
     companion object {
         fun from(item: MealScanItem) = EditableAiItem(
@@ -3892,10 +4051,10 @@ private fun buildValidAiBatchItems(items: List<EditableAiItem>): List<AiBatchIte
     return batchItems.takeIf { it.size == items.size }
 }
 
-internal fun aiItemsExceedDeclaredMealTotal(context: String, items: List<EditableAiItem>): Boolean {
+internal fun aiItemsExceedDeclaredMealTotal(context: String, items: List<EditableAiItem>, confirmedGrams: Double = 0.0): Boolean {
     val total = parseMealContextOverrides(context).totalGrams ?: return false
     val grams = items.map { it.grams.toNutritionNumberOrNull(max = 100_000.0) ?: return false }
-    return grams.sum() > total * 1.01
+    return confirmedGrams + grams.sum() > total * 1.01
 }
 
 private fun aiBatchNutritionErrors(itemCount: Int): Map<Int, AiItemFieldErrors> =

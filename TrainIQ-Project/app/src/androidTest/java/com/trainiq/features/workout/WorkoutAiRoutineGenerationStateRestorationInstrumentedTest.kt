@@ -1,14 +1,21 @@
 package com.trainiq.features.workout
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.StateRestorationTester
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -24,6 +31,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.trainiq.core.theme.TrainIqTheme
 import com.trainiq.domain.model.WorkoutOverview
+import com.trainiq.domain.repository.requireRoutineGenerationProfile
 import org.junit.Test
 import org.junit.Assert.assertEquals
 import org.junit.runner.RunWith
@@ -31,15 +39,95 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class WorkoutAiRoutineGenerationStateRestorationInstrumentedTest {
     @OptIn(ExperimentalTestApi::class)
-    @Test fun failedGenerationKeepsDraftForRetryAndUnrelatedErrorsDoNotDismissIt() = runComposeUiTest {
-        var message by mutableStateOf<String?>(null)
-        setContent { SyntheticWorkoutScreen(message, {}, { _, _, _, _, _, _, _ -> }) }
+    @Test fun missingProfileRecoveryRetainsOptionsAfterClosingAndRestoringGenerator() = runComposeUiTest {
+        val restorationTester = StateRestorationTester(this)
+        var profileSaved = false
+        val requests = mutableListOf<GeneratedRoutineRequest>()
+        val recovery = "Vul eerst je profiel in. Sla het op en probeer daarna opnieuw."
+        restorationTester.setContent {
+            val scope = rememberCoroutineScope()
+            val generation = remember { RoutineGenerationState(scope) }
+            val state by generation.state.collectAsState()
+            SyntheticWorkoutScreen(message = null, onCreateRoutine = {}, onGenerate = { days, equipment, focus, level, duration, deload, options ->
+                generation.submit {
+                    requests += GeneratedRoutineRequest(days, equipment, focus, level, duration, deload, options)
+                    if (!profileSaved) requireRoutineGenerationProfile(null)
+                }
+            }, generationError = state.error, onDismissGenerationError = generation::dismissError)
+        }
         onNodeWithContentDescription("Met AI genereren").performScrollTo().performClick()
         onAllNodes(hasSetTextAction())[0].performTextReplacement("Mijn herstelplan")
-        runOnIdle { message = "Routine genereren is mislukt." }
+        onAllNodes(hasSetTextAction())[1].performTextReplacement("4")
+        onAllNodes(hasSetTextAction())[2].performTextReplacement("Dumbbells")
+        onNodeWithText("Meer opties").performScrollTo().performClick()
+        onNode(hasSetTextAction() and hasText("Uitgesloten oefeningen")).performScrollTo().performTextReplacement("Plank")
+        onNodeWithText("Genereren").performClick()
+        onNodeWithText(recovery).assertIsDisplayed()
+        onNodeWithText("Opnieuw proberen").assertIsDisplayed()
+        onNodeWithText("Annuleren").performClick()
+        runOnIdle { profileSaved = true }
+        restorationTester.emulateSaveAndRestore()
+        onNodeWithContentDescription("Met AI genereren").performScrollTo().performClick()
+        onNode(hasSetTextAction() and hasText("Mijn herstelplan")).assertExists()
+        onNode(hasSetTextAction() and hasText("Plank")).assertExists()
+        onNodeWithText("Genereren").performClick()
+        assertEquals(2, requests.size)
+        assertEquals(requests[0], requests[1])
+        assertEquals("Mijn herstelplan", requests[1].focus)
+        assertEquals("Dumbbells", requests[1].equipment)
+        assertEquals(4, requests[1].daysPerWeek)
+        assertEquals(listOf("Plank"), requests[1].options.excludedExercises)
+        onNodeWithText(recovery).assertDoesNotExist()
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test fun generatorErrorAndActionsRemainReachableAtLargeFontWithFocusedInput() = runComposeUiTest {
+        var loading by mutableStateOf(false)
+        var error by mutableStateOf<String?>("Gemini gaf geen volledig antwoord. Probeer opnieuw.")
+        var calls = 0
+        setContent {
+            TrainIqTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 1.5f)) {
+                    RoutineGeneratorDialog(isLoading = loading, errorMessage = error, onDismiss = {},
+                        onGenerate = { _, _, _, _, _, _, _ -> calls++; loading = true; error = null })
+                }
+            }
+        }
+        onNode(hasSetTextAction() and hasText("Trainingsfocus / split")).performScrollTo().performClick()
+        onNodeWithText("Gemini gaf geen volledig antwoord. Probeer opnieuw.").assertIsDisplayed()
+        onNodeWithText("Opnieuw proberen").assertIsDisplayed().performClick()
+        assertEquals(1, calls)
+        onNodeWithText("Annuleren").assertIsDisplayed().assertIsNotEnabled()
+        onNodeWithText("Opnieuw proberen").assertDoesNotExist()
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test fun failedGenerationKeepsDraftForRetryAndUnrelatedErrorsDoNotDismissIt() = runComposeUiTest {
+        var message by mutableStateOf<String?>(null)
+        var generationError by mutableStateOf<String?>(null)
+        var requestedFocus: String? = null
+        setContent { SyntheticWorkoutScreen(message, {}, { _, _, focus, _, _, _, _ ->
+            requestedFocus = focus
+            generationError = null
+        }, generationError = generationError, onDismissGenerationError = { generationError = null }) }
+        onNodeWithContentDescription("Met AI genereren").performScrollTo().performClick()
+        onAllNodes(hasSetTextAction())[0].performTextReplacement("Mijn herstelplan")
+        runOnIdle { generationError = "Routine genereren is mislukt." }
+        onNodeWithText("Routine genereren is mislukt.").assertIsDisplayed()
+        onNodeWithText("Opnieuw proberen").assertIsDisplayed()
+        onNodeWithText("Annuleren").assertIsDisplayed()
         onNode(hasSetTextAction() and hasText("Mijn herstelplan")).assertExists()
         runOnIdle { message = "Instelling bijwerken mislukt." }
         onNode(hasSetTextAction() and hasText("Mijn herstelplan")).assertExists()
+        onNodeWithText("Opnieuw proberen").performClick()
+        assertEquals("Mijn herstelplan", requestedFocus)
+        onNodeWithText("Routine genereren is mislukt.").assertDoesNotExist()
+        onNodeWithText("Genereren").assertIsDisplayed()
+        runOnIdle { generationError = "Routine genereren is mislukt." }
+        onNodeWithText("Annuleren").performClick()
+        assertEquals(null, generationError)
+        onNodeWithContentDescription("Met AI genereren").performScrollTo().performClick()
+        onNodeWithText("Opnieuw proberen").assertDoesNotExist()
     }
     @OptIn(ExperimentalTestApi::class)
     @Test
@@ -161,6 +249,8 @@ private fun SyntheticWorkoutScreen(
     message: String?,
     onCreateRoutine: (String) -> Unit,
     onGenerate: (Int, String, String, String, Int, Boolean, com.trainiq.domain.model.RoutineGenerationOptions) -> Unit,
+    generationError: String? = null,
+    onDismissGenerationError: () -> Unit = {},
 ) {
     TrainIqTheme(dynamicColor = false) {
         WorkoutScreen(
@@ -174,6 +264,8 @@ private fun SyntheticWorkoutScreen(
             pendingGeneratedRoutine = null,
             isSavingGeneratedRoutine = false,
             isGeneratingAiRoutine = message == "AI-routine maken...",
+            routineGenerationError = generationError,
+            onDismissRoutineGenerationError = onDismissGenerationError,
             onDismissMessage = {},
             onStartWorkout = {},
             onOpenExerciseHistory = {},
