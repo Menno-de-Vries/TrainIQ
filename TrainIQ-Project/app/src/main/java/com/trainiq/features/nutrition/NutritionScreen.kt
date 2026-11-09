@@ -581,7 +581,7 @@ class NutritionViewModel @Inject constructor(
 
     fun saveAiBatch(request: AiFoodBatchRequest) {
         if (ephemeral.value.isAnalyzing || request.reviewId != ephemeral.value.reviewId) return
-        aiBatch.submit(request.copy(context = ephemeral.value.reviewContext))
+        aiBatch.submit(request)
     }
     fun acknowledgeAiIntegration(id: String, target: String) = aiBatch.acknowledgeIntegration(id, target)
     fun acknowledgeAiCompletion(id: String) = aiBatch.acknowledgeCompletion(id)
@@ -1094,8 +1094,9 @@ fun NutritionScreen(
         if (isAiSaving || isAnalyzing || isMealSaving || isRecipeSaving) return
         val review = successState?.reviewId ?: hydratedScanResultHash?.toString() ?: return
         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        val confirmedContext = if (target == NutritionScanDestination.RecipeDraft) recipeAiContext else aiContext
         onSaveAiBatch(AiFoodBatchRequest(review, target, currentAiTargetToken(target),
-            successState?.reviewContext.orEmpty(), batchItems.map { it.item }))
+            confirmedContext, batchItems.map { it.item }))
     }
 
     fun addAiBatchItemsAsMealSnapshots(batchItems: List<AiBatchItem>) {
@@ -1521,9 +1522,9 @@ fun NutritionScreen(
                                         return@AiMealAnalysisCard
                                     }
                                     val enteredContext = if (aiResultTarget == NutritionScanDestination.RecipeDraft) recipeAiContext else aiContext
-                                    if (aiItemsExceedDeclaredMealTotal(enteredContext, batchItems.map { it.item })) {
+                                    if (aiItemsExceedDeclaredMealTotal(enteredContext, batchItems.map { it.item }, aiBatchState.confirmedGrams)) {
                                         coroutineScope.launch {
-                                            snackbarHostState.showSnackbar("De hoeveelheden overschrijden je opgegeven totaal. Pas de porties of context aan voordat je toevoegt.")
+                                            snackbarHostState.showSnackbar(AiBatchTotalExceededMessage)
                                         }
                                         return@AiMealAnalysisCard
                                     }
@@ -4050,10 +4051,10 @@ private fun buildValidAiBatchItems(items: List<EditableAiItem>): List<AiBatchIte
     return batchItems.takeIf { it.size == items.size }
 }
 
-internal fun aiItemsExceedDeclaredMealTotal(context: String, items: List<EditableAiItem>): Boolean {
+internal fun aiItemsExceedDeclaredMealTotal(context: String, items: List<EditableAiItem>, confirmedGrams: Double = 0.0): Boolean {
     val total = parseMealContextOverrides(context).totalGrams ?: return false
     val grams = items.map { it.grams.toNutritionNumberOrNull(max = 100_000.0) ?: return false }
-    return grams.sum() > total * 1.01
+    return confirmedGrams + grams.sum() > total * 1.01
 }
 
 private fun aiBatchNutritionErrors(itemCount: Int): Map<Int, AiItemFieldErrors> =

@@ -32,9 +32,9 @@ class NutritionAiProductionWiringInstrumentedTest {
                 model = ViewModelProvider(activity)[NutritionViewModel::class.java]
                 model.prepareScan(NutritionScanDestination.ProductLibrary, null)
                 assertTrue(model.acceptCameraMealResult(model.pendingReviewId,
-                    MealAnalysisResult(listOf(MealScanItem("Synthetic review product", 180.0,
-                        NutritionFacts(270.0, 18.0, 30.0, 6.0))), notes = "Controleer de synthetische portie.", source = MealAnalysisSource.API),
-                    "product 180 g"))
+                    MealAnalysisResult(listOf(MealScanItem("Synthetic review product", 100.0,
+                        NutritionFacts(150.0, 18.0, 30.0, 6.0))), notes = "Controleer de synthetische portie.", source = MealAnalysisSource.API),
+                    "totaal 100 g"))
                 activity.setContent { TrainIqTheme(dynamicColor = false) {
                     NutritionRoute(viewModel = model, onAiScanner = {}, onOpenBarcodeScanner = {})
                 } }
@@ -42,14 +42,20 @@ class NutritionAiProductionWiringInstrumentedTest {
             compose.waitUntil(20_000) { compose.onAllNodesWithText("Producten opslaan").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithContentDescription("Grammen").performScrollTo().performTextReplacement("200")
             compose.onNodeWithContentDescription("Calorieën").performScrollTo().performTextReplacement("300")
+            compose.onNodeWithContentDescription("Optionele context").performScrollTo().performTextReplacement("totaal 200 g")
             compose.onNodeWithText("Producten opslaan").performScrollTo().assertIsDisplayed()
             captureTask4Evidence("ai-review", compose.onRoot().printToString())
             compose.onNodeWithText("Producten opslaan").performClick()
             compose.waitUntil(20_000) {
                 (model.uiState.value as? NutritionUiState.Success)?.let { state ->
-                    state.overview.foods.size == 1 && !state.aiBatch.busy && state.scanResult == null
+                    !state.aiBatch.busy && (
+                        (state.overview.foods.size == 1 && state.scanResult == null) ||
+                            state.aiBatch.message.orEmpty().contains("overschrijden"))
                 } == true
             }
+            val state = model.uiState.value as NutritionUiState.Success
+            assertEquals(state.aiBatch.message, 1, state.overview.foods.size)
+            assertEquals("totaal 100 g", state.reviewContext)
             val saved = (model.uiState.value as NutritionUiState.Success).overview.foods.single()
             assertEquals("Synthetic review product", saved.name)
             assertEquals(200.0, saved.defaultServingGrams, 0.0)

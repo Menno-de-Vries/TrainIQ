@@ -41,6 +41,7 @@ class NutritionAiBatchSafetyInstrumentedTest {
         onNodeWithText("Item verwijderen").performScrollTo().assertIsNotEnabled()
         onNodeWithText("Scanner openen").performScrollTo().assertIsNotEnabled()
         onNodeWithText("Foto importeren").performScrollTo().assertIsNotEnabled()
+        onNodeWithContentDescription("Optionele context").performScrollTo().assertIsNotEnabled()
     }
 }
 

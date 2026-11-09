@@ -35,14 +35,19 @@ data class AiFoodBatchCompletion(val id: String, val target: NutritionScanDestin
 
 data class AiFoodBatchState(
     val saving: Boolean = false,
-    val savedRowIds: Set<String> = emptySet(),
+    // Confirmed volume belongs to the whole review, including acknowledged writes/transfers.
+    val successfulGramsByRow: Map<String, Double> = emptyMap(),
     val integrations: List<AiFoodIntegration> = emptyList(),
     val pendingIntegrationIds: Set<String> = emptySet(),
     val completion: AiFoodBatchCompletion? = null,
     val message: String? = null,
 ) {
+    val savedRowIds: Set<String> get() = successfulGramsByRow.keys
+    val confirmedGrams: Double get() = successfulGramsByRow.values.sum()
     val busy: Boolean get() = saving || pendingIntegrationIds.isNotEmpty() || completion != null
 }
+
+internal const val AiBatchTotalExceededMessage = "Opgeslagen en resterende hoeveelheden overschrijden je opgegeven totaal. Controleer de porties of pas de context aan."
 
 internal data class ValidatedAiFood(
     val row: EditableAiItem,
@@ -99,8 +104,8 @@ internal class NutritionAiBatch(
             _state.value = _state.value.copy(message = "Controleer alle porties en voedingswaarden voordat je toevoegt.")
             return false
         } }
-        if (aiItemsExceedDeclaredMealTotal(request.context, rows)) {
-            _state.value = _state.value.copy(message = "De hoeveelheden overschrijden je opgegeven totaal. Controleer de porties.")
+        if (aiItemsExceedDeclaredMealTotal(request.context, rows, _state.value.confirmedGrams)) {
+            _state.value = _state.value.copy(message = AiBatchTotalExceededMessage)
             return false
         }
         _state.value = _state.value.copy(saving = true, message = null)
@@ -121,7 +126,7 @@ internal class NutritionAiBatch(
                                 request.targetToken, item.grams, snapshot = item.snapshot())
                         }
                         _state.value = _state.value.copy(
-                            savedRowIds = _state.value.savedRowIds + item.row.rowId,
+                            successfulGramsByRow = _state.value.successfulGramsByRow + (item.row.rowId to item.grams),
                             integrations = _state.value.integrations + listOfNotNull(integration),
                             pendingIntegrationIds = _state.value.pendingIntegrationIds + listOfNotNull(integration?.id),
                         )
@@ -163,7 +168,8 @@ internal class NutritionAiBatch(
         val integration = _state.value.integrations.firstOrNull { it.id == id } ?: return false
         _state.value = _state.value.copy(integrations = _state.value.integrations - integration,
             pendingIntegrationIds = _state.value.pendingIntegrationIds - integration.id, completion = null,
-            savedRowIds = if (integration.target == NutritionScanDestination.MealDraft) _state.value.savedRowIds - id else _state.value.savedRowIds,
+            successfulGramsByRow = if (integration.target == NutritionScanDestination.MealDraft)
+                _state.value.successfulGramsByRow - id else _state.value.successfulGramsByRow,
             message = if (integration.target == NutritionScanDestination.MealDraft)
                 "Deze AI-items zijn niet aan het gewijzigde maaltijdconcept toegevoegd. Kies het bedoelde concept en probeer opnieuw."
                 else "Het product is opgeslagen, maar niet aan het gewijzigde concept toegevoegd. Kies het opgeslagen product handmatig.")
