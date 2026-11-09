@@ -313,6 +313,7 @@ class BarcodeMealFlowInstrumentedTest {
     private fun openMealScanner(label: String) {
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasContentDescription("Toevoegen aan $label"))
         compose.onNodeWithContentDescription("Toevoegen aan $label").performScrollTo().performClick()
+        compose.onNodeWithText("Andere manieren toevoegen").performScrollTo().performClick()
         compose.onNodeWithText("Barcode scannen").performScrollTo().performClick()
     }
 

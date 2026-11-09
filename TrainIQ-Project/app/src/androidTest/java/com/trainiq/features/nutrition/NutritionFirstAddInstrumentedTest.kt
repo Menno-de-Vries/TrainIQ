@@ -25,6 +25,35 @@ import org.junit.Test
 class NutritionFirstAddInstrumentedTest {
     @get:Rule val compose = createEmptyComposeRule()
 
+    @Test fun savedProductSearchSelectPortionAndSavePersistsToRoom() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        runBlocking { UserPreferencesRepository(context).saveOnboardingPreferences(OnboardingPreferences(completed = true, guidedTourCompleted = true)) }
+        val db = resetTrainIqAndroidTestDatabase(context)
+        lateinit var vm: NutritionViewModel
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                vm = ViewModelProvider(activity)[NutritionViewModel::class.java]
+                activity.lifecycleScope.launch { vm.uiState.collect {} }
+                vm.saveFood(null, "Synthetic Apple", null, "100", "10", "10", "2", "125", FoodSourceType.MANUAL)
+            }
+            compose.waitUntil(15_000) { (vm.uiState.value as? NutritionUiState.Success)?.overview?.foods?.isNotEmpty() == true }
+            val navigation = (hasContentDescription("Voeding") or hasText("Voeding")) and hasClickAction()
+            compose.waitUntil(30_000) { compose.onAllNodes(navigation).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(navigation).performClick()
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Voedingsdag"))
+            compose.onNodeWithContentDescription("Toevoegen aan Middag").performScrollTo().performClick()
+            compose.onNodeWithContentDescription("Zoek opgeslagen producten").performTextInput("no match")
+            compose.onNodeWithText("Geen producten gevonden. Pas je zoekterm aan of maak een product.").assertExists()
+            compose.onNodeWithText("Handmatig product maken").assertExists()
+            compose.onNodeWithContentDescription("Zoek opgeslagen producten").performTextReplacement("  APPLE  ")
+            compose.onNodeWithText("Synthetic Apple · 125 g").performScrollTo().performClick()
+            compose.onNodeWithContentDescription("Gram per portie").performScrollTo().performTextReplacement("150")
+            compose.onNodeWithText("Maaltijd opslaan").performScrollTo().performClick()
+            compose.waitUntil(15_000) { runBlocking { db.dao().readMealsForExport().size == 1 } }
+            assertEquals(150.0, runBlocking { db.dao().readMealItemsForExport().single().gramsUsed }, 0.0)
+        }
+    }
+
     @Test fun firstManualMealTapWithKeyboardReachesRoomAndVisibleToday() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         runBlocking {
@@ -37,7 +66,7 @@ class NutritionFirstAddInstrumentedTest {
             val navigation = (hasContentDescription("Voeding") or hasText("Voeding")) and hasClickAction()
             compose.waitUntil(30_000) { compose.onAllNodes(navigation).fetchSemanticsNodes().isNotEmpty() }
             compose.onNode(navigation).performClick()
-            compose.waitUntil(15_000) { compose.onAllNodesWithText("Voedingsdag").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Voedingsdag"))
             compose.onNodeWithContentDescription("Toevoegen aan Middag").performScrollTo().performClick()
             compose.onNodeWithText("Handmatig product maken").performClick()
             listOf("Productnaam" to "First meal proof", "kcal / 100g" to "100", "Eiwit / 100g" to "10",

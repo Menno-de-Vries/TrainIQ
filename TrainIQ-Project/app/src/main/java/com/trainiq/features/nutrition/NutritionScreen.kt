@@ -906,6 +906,18 @@ fun NutritionScreen(
         }
     }
 
+    fun addSavedFoodToMeal(food: FoodItem) {
+        if (isMealSaving) return
+        val grams = food.defaultServingGrams.takeIf { it.isFinite() && it > 0.0 } ?: 100.0
+        preserveContextualMealTarget()
+        applyDefaultMealName(food.name)
+        mealDraft += MealEntryRequest(MealEntryType.FOOD, food.id, grams).toEditableMealEntryRequest()
+        mealErrors = MealFieldErrors()
+        hasAddToMealTarget = false
+        showAddToMealActions = false
+        selectedTab = 1
+    }
+
     fun cancelPendingBarcodeLookup() {
         onClearBarcodeLookupResult()
         barcodeLookupPending = false
@@ -1572,16 +1584,7 @@ fun NutritionScreen(
                                         selectedFoodId = it
                                         showFoodEditor = true
                                     },
-                                    onQuickAdd = { food ->
-                                        if (isMealSaving) return@SavedFoodsCard
-                                        val grams = food.defaultServingGrams.takeIf { it.isFinite() && it > 0.0 } ?: 100.0
-                                        preserveContextualMealTarget()
-                                        applyDefaultMealName(food.name)
-                                        mealDraft += MealEntryRequest(MealEntryType.FOOD, food.id, grams).toEditableMealEntryRequest()
-                                        mealErrors = MealFieldErrors()
-                                        hasAddToMealTarget = false
-                                        selectedTab = 1
-                                    },
+                                    onQuickAdd = ::addSavedFoodToMeal,
                                     onDelete = { pendingDelete = PendingNutritionDelete.Food(it) },
                                 )
                             }
@@ -1946,7 +1949,11 @@ fun NutritionScreen(
         ) {
             AddToMealActionSheet(
                 mealType = addToMealType,
-                hasSavedFoods = overview?.foods?.isNotEmpty() == true,
+                foods = overview?.foods.orEmpty(),
+                searchQuery = productSearchQuery,
+                onSearchQueryChange = { productSearchQuery = it },
+                onChooseFood = ::addSavedFoodToMeal,
+                isMealSaving = isMealSaving,
                 hasSavedRecipes = overview?.recipes?.isNotEmpty() == true,
                 hasDraft = mealDraft.isNotEmpty(),
                 aiEnabled = aiPreferences.hasAnyReadyProvider(),
@@ -2479,7 +2486,11 @@ private fun RecipeActionBottomSheet(
 @Composable
 private fun AddToMealActionSheet(
     mealType: MealType,
-    hasSavedFoods: Boolean,
+    foods: List<FoodItem>,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    onChooseFood: (FoodItem) -> Unit,
+    isMealSaving: Boolean,
     hasSavedRecipes: Boolean,
     hasDraft: Boolean,
     aiEnabled: Boolean,
@@ -2493,6 +2504,9 @@ private fun AddToMealActionSheet(
     onPhotoAi: () -> Unit,
     onOpenMealDraft: () -> Unit,
 ) {
+    var showOtherMethods by rememberSaveable { mutableStateOf(false) }
+    var showPhotoContext by rememberSaveable { mutableStateOf(false) }
+    val results = remember(foods, searchQuery) { foods.filteredByProductQuery(searchQuery) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -2504,20 +2518,44 @@ private fun AddToMealActionSheet(
     ) {
         BottomSheetHeader(title = "Toevoegen aan ${mealType.dutchLabel}")
         Text("Kies een bron en controleer daarna voor opslaan.", color = MaterialTheme.trainIqColors.mutedText)
-        Button(onClick = onManualFood, modifier = Modifier.fillMaxWidth()) { Text("Handmatig product maken") }
-        OutlinedButton(onClick = onBarcode, modifier = Modifier.fillMaxWidth()) { Text("Barcode scannen") }
-        OutlinedButton(onClick = onSavedFood, enabled = hasSavedFoods, modifier = Modifier.fillMaxWidth()) { Text("Opgeslagen product gebruiken") }
-        OutlinedButton(onClick = onRecipe, enabled = hasSavedRecipes, modifier = Modifier.fillMaxWidth()) { Text("Opgeslagen recept gebruiken") }
-        NutritionTextField(
-            value = aiContext,
-            onValueChange = onAiContextChange,
-            label = "AI-context voor foto",
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = false,
-        )
-        OutlinedButton(onClick = onPhotoAi, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) { Text("Foto / AI-inschatting") }
-        if (!aiEnabled) {
-            NutritionAiSetupHint()
+        ProductSearchField(query = searchQuery, onQueryChange = onSearchQueryChange, label = "Zoek opgeslagen producten")
+        if (foods.isEmpty()) Text("Nog geen opgeslagen producten. Maak een product om te beginnen.")
+        else if (results.isEmpty()) Text("Geen producten gevonden. Pas je zoekterm aan of maak een product.")
+        results.take(5).forEach { food ->
+            val grams = food.defaultServingGrams.takeIf { it.isFinite() && it > 0.0 } ?: 100.0
+            OutlinedButton(onClick = { onChooseFood(food) }, enabled = !isMealSaving,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                Text("${food.name} · ${formatNumber(grams)} g")
+            }
+        }
+        if (results.size > 5) TextButton(onClick = onSavedFood, modifier = Modifier.fillMaxWidth()) { Text("Alle producten bekijken") }
+        if (foods.isEmpty() || results.isEmpty()) {
+            Button(onClick = onManualFood, modifier = Modifier.fillMaxWidth()) { Text("Handmatig product maken") }
+        }
+        TextButton(onClick = { showOtherMethods = !showOtherMethods }, modifier = Modifier.fillMaxWidth()) {
+            Text(if (showOtherMethods) "Andere manieren verbergen" else "Andere manieren toevoegen")
+        }
+        if (showOtherMethods) {
+            if (foods.isNotEmpty() && results.isNotEmpty()) {
+                Button(onClick = onManualFood, modifier = Modifier.fillMaxWidth()) { Text("Handmatig product maken") }
+            }
+            OutlinedButton(onClick = onBarcode, modifier = Modifier.fillMaxWidth()) { Text("Barcode scannen") }
+            OutlinedButton(onClick = onRecipe, enabled = hasSavedRecipes, modifier = Modifier.fillMaxWidth()) { Text("Opgeslagen recept gebruiken") }
+            if (!hasSavedRecipes) Text("Nog geen opgeslagen recepten.")
+            OutlinedButton(onClick = { showPhotoContext = !showPhotoContext }, modifier = Modifier.fillMaxWidth()) { Text("Foto / AI-inschatting") }
+            if (showPhotoContext) {
+                NutritionTextField(
+                    value = aiContext,
+                    onValueChange = onAiContextChange,
+                    label = "AI-context voor foto",
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = false,
+                )
+                OutlinedButton(onClick = onPhotoAi, enabled = aiEnabled, modifier = Modifier.fillMaxWidth()) { Text("Foto kiezen") }
+                if (!aiEnabled) {
+                    NutritionAiSetupHint()
+                }
+            }
         }
         if (hasDraft) {
             OutlinedButton(onClick = onOpenMealDraft, modifier = Modifier.fillMaxWidth()) { Text("Huidige maaltijd controleren") }
