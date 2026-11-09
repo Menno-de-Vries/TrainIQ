@@ -33,6 +33,19 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class TrainIqRepositoryTest {
+    @Test fun routineGenerationRequiresProfileWithTypedRecoverableFailure() {
+        val missing = assertThrows(com.trainiq.domain.repository.MissingProfileForAiRoutineException::class.java) {
+            com.trainiq.domain.repository.requireRoutineGenerationProfile(null)
+        }
+        assertEquals(missingProfileForAiRoutineMessage(), missing.message)
+        val profile = com.trainiq.domain.model.UserProfile(
+            id = 1L, name = "Synthetisch profiel", age = 30, sex = com.trainiq.domain.model.BiologicalSex.MALE,
+            height = 180.0, weight = 80.0, bodyFat = 20.0, activityLevel = "Licht actief", goal = "Kracht",
+            calorieTarget = 2_000, proteinTarget = 120, carbsTarget = 200, fatTarget = 60, trainingFocus = "Volledig lichaam",
+        )
+        assertEquals(profile, com.trainiq.domain.repository.requireRoutineGenerationProfile(profile))
+    }
+
     @Test fun changingOnlySetCountPreservesIndividuallyConfiguredExistingSets() {
         val sets = listOf(
             RoutineSetEntity(9L, 4L, 0, "WARM_UP", 10, 20.0, 60, 5.0),

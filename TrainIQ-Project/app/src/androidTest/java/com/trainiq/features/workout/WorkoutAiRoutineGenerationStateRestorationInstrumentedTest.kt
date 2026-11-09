@@ -2,8 +2,11 @@ package com.trainiq.features.workout
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.StateRestorationTester
@@ -28,12 +31,55 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.trainiq.core.theme.TrainIqTheme
 import com.trainiq.domain.model.WorkoutOverview
+import com.trainiq.domain.repository.requireRoutineGenerationProfile
 import org.junit.Test
 import org.junit.Assert.assertEquals
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class WorkoutAiRoutineGenerationStateRestorationInstrumentedTest {
+    @OptIn(ExperimentalTestApi::class)
+    @Test fun missingProfileRecoveryRetainsOptionsAfterClosingAndRestoringGenerator() = runComposeUiTest {
+        val restorationTester = StateRestorationTester(this)
+        var profileSaved = false
+        val requests = mutableListOf<GeneratedRoutineRequest>()
+        val recovery = "Vul eerst je profiel in. Sla het op en probeer daarna opnieuw."
+        restorationTester.setContent {
+            val scope = rememberCoroutineScope()
+            val generation = remember { RoutineGenerationState(scope) }
+            val state by generation.state.collectAsState()
+            SyntheticWorkoutScreen(message = null, onCreateRoutine = {}, onGenerate = { days, equipment, focus, level, duration, deload, options ->
+                generation.submit {
+                    requests += GeneratedRoutineRequest(days, equipment, focus, level, duration, deload, options)
+                    if (!profileSaved) requireRoutineGenerationProfile(null)
+                }
+            }, generationError = state.error, onDismissGenerationError = generation::dismissError)
+        }
+        onNodeWithContentDescription("Met AI genereren").performScrollTo().performClick()
+        onAllNodes(hasSetTextAction())[0].performTextReplacement("Mijn herstelplan")
+        onAllNodes(hasSetTextAction())[1].performTextReplacement("4")
+        onAllNodes(hasSetTextAction())[2].performTextReplacement("Dumbbells")
+        onNodeWithText("Meer opties").performScrollTo().performClick()
+        onNode(hasSetTextAction() and hasText("Uitgesloten oefeningen")).performScrollTo().performTextReplacement("Plank")
+        onNodeWithText("Genereren").performClick()
+        onNodeWithText(recovery).assertIsDisplayed()
+        onNodeWithText("Opnieuw proberen").assertIsDisplayed()
+        onNodeWithText("Annuleren").performClick()
+        runOnIdle { profileSaved = true }
+        restorationTester.emulateSaveAndRestore()
+        onNodeWithContentDescription("Met AI genereren").performScrollTo().performClick()
+        onNode(hasSetTextAction() and hasText("Mijn herstelplan")).assertExists()
+        onNode(hasSetTextAction() and hasText("Plank")).assertExists()
+        onNodeWithText("Genereren").performClick()
+        assertEquals(2, requests.size)
+        assertEquals(requests[0], requests[1])
+        assertEquals("Mijn herstelplan", requests[1].focus)
+        assertEquals("Dumbbells", requests[1].equipment)
+        assertEquals(4, requests[1].daysPerWeek)
+        assertEquals(listOf("Plank"), requests[1].options.excludedExercises)
+        onNodeWithText(recovery).assertDoesNotExist()
+    }
+
     @OptIn(ExperimentalTestApi::class)
     @Test fun generatorErrorAndActionsRemainReachableAtLargeFontWithFocusedInput() = runComposeUiTest {
         var loading by mutableStateOf(false)

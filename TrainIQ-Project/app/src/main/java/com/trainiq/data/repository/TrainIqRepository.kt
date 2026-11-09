@@ -113,6 +113,8 @@ import com.trainiq.domain.repository.ProgressRepository
 import com.trainiq.domain.repository.WorkoutRepository
 import com.trainiq.domain.repository.WorkoutDebriefRefreshOutcome
 import com.trainiq.domain.repository.WorkoutDebriefScheduler
+import com.trainiq.domain.repository.requireRoutineGenerationProfile
+import com.trainiq.domain.repository.MissingProfileForAiRoutineMessage
 import javax.inject.Inject
 import javax.inject.Singleton
 import java.util.Locale
@@ -872,8 +874,7 @@ class TrainIqDataCoordinator @Inject constructor(
         includeDeload: Boolean,
         options: com.trainiq.domain.model.RoutineGenerationOptions = com.trainiq.domain.model.RoutineGenerationOptions(),
     ): GeneratedRoutine = withContext(Dispatchers.IO) {
-        val profile = snapshotState.value.profile
-            ?: error(missingProfileForAiRoutineMessage())
+        val profile = requireRoutineGenerationProfile(snapshotState.value.profile)
         val generated = routineGeneratorService.generateRoutine(
             goal = profile.goal,
             targetFocus = targetFocus.ifBlank { profile.trainingFocus },
@@ -2586,7 +2587,7 @@ internal fun buildMealItemSnapshots(
 }
 
 internal fun missingProfileForAiRoutineMessage(): String =
-    "Vul eerst je profiel in voordat je een AI-routine maakt."
+    MissingProfileForAiRoutineMessage
 
 internal fun generatedRoutineMissingDaysMessage(): String =
     "AI gaf geen trainingsdagen terug. Probeer een specifiekere trainingsfocus."

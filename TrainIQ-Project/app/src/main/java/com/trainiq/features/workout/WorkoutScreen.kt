@@ -132,6 +132,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -1693,6 +1694,7 @@ fun WorkoutScreen(
     onDismissRoutineGenerationError: () -> Unit = {},
 ) {
     var showAiDialog by rememberSaveable { mutableStateOf(false) }
+    val generatorDraftState = rememberSaveableStateHolder()
     var showCreateDialog by rememberSaveable { mutableStateOf(false) }
     var selectedRoutineId by rememberSaveable { mutableStateOf<Long?>(null) }
     var selectedTrainingTab by rememberSaveable { mutableStateOf(WorkoutOverviewTab.Routines.key) }
@@ -1761,19 +1763,21 @@ fun WorkoutScreen(
         )
     }
     if (showAiDialog) {
-        RoutineGeneratorDialog(
-            isLoading = isGeneratingAiRoutine,
-            errorMessage = routineGenerationError,
-            onDismiss = {
-                if (!isGeneratingAiRoutine) {
-                    showAiDialog = false
-                    onDismissRoutineGenerationError()
-                }
-            },
-            onGenerate = { days, equipment, focus, level, duration, includeDeload, options ->
-                onGenerateAiRoutine(days, equipment, focus, level, duration, includeDeload, options)
-            },
-        )
+        generatorDraftState.SaveableStateProvider("routine-generator") {
+            RoutineGeneratorDialog(
+                isLoading = isGeneratingAiRoutine,
+                errorMessage = routineGenerationError,
+                onDismiss = {
+                    if (!isGeneratingAiRoutine) {
+                        showAiDialog = false
+                        onDismissRoutineGenerationError()
+                    }
+                },
+                onGenerate = { days, equipment, focus, level, duration, includeDeload, options ->
+                    onGenerateAiRoutine(days, equipment, focus, level, duration, includeDeload, options)
+                },
+            )
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {

@@ -1,6 +1,7 @@
 package com.trainiq.features.workout
 
 import com.trainiq.ai.services.toAiUserMessage
+import com.trainiq.domain.repository.MissingProfileForAiRoutineException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -30,7 +31,11 @@ internal class RoutineGenerationState(private val scope: CoroutineScope) {
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Throwable) {
-                _state.value = _state.value.copy(error = failure.toAiUserMessage("Routine genereren is mislukt."))
+                val message = when (failure) {
+                    is MissingProfileForAiRoutineException -> "Vul eerst je profiel in. Sla het op en probeer daarna opnieuw."
+                    else -> failure.toAiUserMessage("Routine genereren is mislukt.")
+                }
+                _state.value = _state.value.copy(error = message)
             } finally {
                 _state.value = _state.value.copy(isLoading = false)
             }
