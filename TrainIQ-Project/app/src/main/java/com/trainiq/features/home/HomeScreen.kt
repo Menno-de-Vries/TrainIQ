@@ -626,7 +626,7 @@ internal fun homeHealthCompactSummary(status: HealthConnectStatus): String = whe
 }
 
 internal fun homeHealthSyncSummary(status: HealthConnectStatus): String? {
-    val updatedAt = status.stepDataUpdatedAt ?: status.lastSyncedAt ?: return null
+    val updatedAt = status.stepDataUpdatedAt ?: return null
     return when (status.stepDataFreshness) {
         HealthConnectStepDataFreshness.FRESH -> "Bijgewerkt om ${formatHomeLastSync(updatedAt)}"
         HealthConnectStepDataFreshness.STALE_CACHE -> "Laatste update om ${formatHomeLastSync(updatedAt)}"

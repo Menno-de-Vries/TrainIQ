@@ -48,6 +48,12 @@ interface TrainIqDao {
     @Query("SELECT * FROM room_mirror_import_runs ORDER BY finished_at DESC LIMIT 1")
     suspend fun latestMirrorImportRun(): RoomMirrorImportRunEntity?
 
+    @Query("SELECT * FROM room_mirror_import_runs WHERE generation_id = :generationId LIMIT 1")
+    suspend fun getMirrorImportRun(generationId: String): RoomMirrorImportRunEntity?
+
+    @Query("SELECT EXISTS(SELECT 1 FROM room_mirror_import_runs WHERE UPPER(status) = 'SUCCESS' AND imported_row_count > 0 AND mismatch_count = 0)")
+    suspend fun hasSuccessfulMirrorImport(): Boolean
+
     @Query(
         """
         SELECT

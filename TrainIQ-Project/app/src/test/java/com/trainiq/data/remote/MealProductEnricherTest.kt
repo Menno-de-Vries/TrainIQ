@@ -65,6 +65,13 @@ class MealProductEnricherTest {
         assertEquals(result(), enrichMealProducts(result()) { _, _ -> product.copy(isBeverage = true) })
     }
 
+    @Test fun liquidNonBeverageRetainsEditableEstimateInsteadOfInventingDensity() = runTest {
+        val oil = parseOpenFoodFactsProduct("3017620422003", """{"status":1,"product":{"product_name":"Olijfolie","product_quantity":500,"product_quantity_unit":"ml","categories_tags":["en:olive-oils"],"nutriments":{"energy-kcal_100g":824,"proteins_100g":0,"carbohydrates_100g":0,"fat_100g":92}}}""")
+        requireNotNull(oil)
+        assertFalse(oil.isBeverage)
+        assertEquals(result(), enrichMealProducts(result()) { _, _ -> oil })
+    }
+
     @Test fun uncertainExtractedIdentityRetainsEstimateWithoutLookup() = runTest {
         val uncertain = result(item.copy(confidence = "low", barcode = "3017620422003"))
         assertEquals(uncertain, enrichMealProducts(uncertain) { _, _ -> fail("Uncertain barcode must not query"); null })

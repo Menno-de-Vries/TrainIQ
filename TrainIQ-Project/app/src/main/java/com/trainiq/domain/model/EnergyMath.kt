@@ -5,6 +5,7 @@ import java.time.ZoneId
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.floor
 
 enum class BiologicalSex {
     MALE,
@@ -40,6 +41,14 @@ data class EnergyBalanceSnapshot(
 )
 
 private const val TefRate = 0.10
+
+fun String.isWeightLossGoal(): Boolean =
+    listOf("cut", "fat", "lose", "vetverlies", "afvallen", "gewichtsverlies")
+        .any { contains(it, ignoreCase = true) }
+
+fun String.isMuscleGainGoal(): Boolean =
+    listOf("bulk", "gain", "spieropbouw", "spiermassa opbouwen", "aankomen")
+        .any { contains(it, ignoreCase = true) }
 
 fun String.toActivityMultiplier(): Double = when (trim().lowercase()) {
     "zittend" -> 1.2
@@ -93,9 +102,9 @@ fun buildGoalBaseline(
     val activityMultiplier = activityLevel.toActivityMultiplier()
     val maintenanceCalories = (bmr * activityMultiplier).roundToInt()
     val calculatedTargetCalories = when {
-        goal.contains("cut", ignoreCase = true) || goal.contains("fat", ignoreCase = true) || goal.contains("lose", ignoreCase = true) ->
+        goal.isWeightLossGoal() ->
             (maintenanceCalories * 0.90).roundToInt()
-        goal.contains("bulk", ignoreCase = true) || goal.contains("gain", ignoreCase = true) ->
+        goal.isMuscleGainGoal() ->
             (maintenanceCalories * 1.07).roundToInt()
         goal.contains("recomp", ignoreCase = true) || bodyFat >= 20.0 ->
             (maintenanceCalories * 0.92).roundToInt()
@@ -106,18 +115,24 @@ fun buildGoalBaseline(
     val leanMassKg = if (hasUsableBodyFat) weightKg * (1.0 - bodyFat / 100.0) else weightKg
     val proteinReferenceKg = if (hasUsableBodyFat) leanMassKg else weightKg
     val proteinPerKg = when {
-        goal.contains("cut", ignoreCase = true) || goal.contains("fat", ignoreCase = true) || goal.contains("lose", ignoreCase = true) -> 2.2
-        goal.contains("bulk", ignoreCase = true) || goal.contains("gain", ignoreCase = true) -> 2.0
+        goal.isWeightLossGoal() -> 2.2
+        goal.isMuscleGainGoal() -> 2.0
         else -> 2.0
     }
     val proteinUpperBound = if (hasUsableBodyFat) (weightKg * 1.9).roundToInt() else (weightKg * 2.2).roundToInt()
-    val proteinTarget = (proteinReferenceKg * proteinPerKg)
+    val preferredProteinTarget = (proteinReferenceKg * proteinPerKg)
         .roundToInt()
         .coerceIn(90, proteinUpperBound.coerceAtLeast(90))
     val fatMinimum = max(45, (weightKg * 0.55).roundToInt())
     val fatPreferred = (weightKg * 0.7).roundToInt()
     val fatCalorieCap = (targetCalories * 0.35 / 9.0).roundToInt()
-    val fatTarget = min(fatPreferred, fatCalorieCap).coerceAtLeast(fatMinimum)
+    val preferredFatTarget = min(fatPreferred, fatCalorieCap).coerceAtLeast(fatMinimum)
+    // Preserve the existing allocation whenever it fits. For a smaller explicit calorie
+    // budget, scale protein/fat together; never publish macros above that same budget.
+    val preferredMacroCalories = preferredProteinTarget * 4 + preferredFatTarget * 9
+    val scale = min(1.0, targetCalories.coerceAtLeast(0).toDouble() / preferredMacroCalories)
+    val proteinTarget = floor(preferredProteinTarget * scale).toInt()
+    val fatTarget = floor(preferredFatTarget * scale).toInt()
     val carbsTarget = ((targetCalories - (proteinTarget * 4) - (fatTarget * 9)) / 4.0).roundToInt().coerceAtLeast(0)
     return GoalBaseline(
         bmr = bmr,

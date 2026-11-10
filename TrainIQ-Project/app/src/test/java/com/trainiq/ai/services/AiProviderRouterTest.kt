@@ -321,6 +321,38 @@ class AiProviderRouterTest {
     }
 
     @Test
+    fun geminiNetworkFailuresUseConsentedSecondProvider() = runTest {
+        for (failure in listOf(java.io.IOException("private network detail"), java.net.SocketTimeoutException("private timeout"))) {
+            val gemini = FakeAiModelClient(AiProvider.GEMINI, error = failure)
+            val openAi = FakeAiModelClient(AiProvider.OPENAI)
+            val diagnostics = mutableListOf<Map<String, String>>()
+            val result = routeAiProviderRequest(
+                settings = aiSettings(AiProviderPreference.GEMINI_FIRST, "gemini-key", "openai-key", true),
+                request = weeklyRequest(),
+                clientFor = { if (it == AiProvider.GEMINI) gemini else openAi },
+                onFailureDiagnostic = { diagnostics += it },
+            )
+            assertEquals(AiProvider.OPENAI, result.providerUsed)
+            assertEquals(listOf("openai-key"), openAi.apiKeys)
+            assertFalse(diagnostics.toString().contains("private"))
+        }
+    }
+
+    @Test
+    fun geminiNetworkFailureWithoutConsentDoesNotUseSecondProvider() = runTest {
+        val openAi = FakeAiModelClient(AiProvider.OPENAI)
+        val error = runCatching {
+            routeAiProviderRequest(
+                settings = aiSettings(AiProviderPreference.GEMINI_FIRST, "gemini-key", "openai-key"),
+                request = weeklyRequest(),
+                clientFor = { if (it == AiProvider.GEMINI) FakeAiModelClient(it, java.io.IOException("private network detail")) else openAi },
+            )
+        }.exceptionOrNull()
+        assertTrue(error!!.allowsDeterministicAiFallback())
+        assertTrue(openAi.apiKeys.isEmpty())
+    }
+
+    @Test
     fun routeAiProviderRequest_preservesPreferredFailureWhenFallbackProviderFailsTerminally() = runTest {
         val openAiFailure = AiProviderRequestException(
             provider = AiProvider.OPENAI,

@@ -521,6 +521,7 @@ private fun Throwable.isTransientAiProviderFailure(): Boolean {
             AiFailureCategory.SERVICE_FAILURE,
         )
     }
+    if (this is IOException) return true
     val mapped = asAiRateLimitExceptionIfNeeded()
     if (mapped is AiRateLimitException || mapped is AiFeatureThrottledException || mapped is AiTimeoutException) return true
     return this is HttpException && code() in listOf(408, 409, 425, 429, 500, 502, 503, 504)
@@ -534,6 +535,7 @@ private fun Throwable.toSafeProviderFailure(
     val category = when {
         this is AiRateLimitException || this is AiFeatureThrottledException -> AiFailureCategory.TEMPORARY_RATE_LIMIT
         this is AiTimeoutException -> AiFailureCategory.TIMEOUT
+        this is SocketTimeoutException -> AiFailureCategory.TIMEOUT
         this is HttpException && code() == 401 -> AiFailureCategory.AUTHENTICATION
         this is HttpException && code() == 403 -> AiFailureCategory.ACCESS
         this is HttpException && code() in setOf(400, 404, 422) -> AiFailureCategory.REQUEST_CONFIGURATION

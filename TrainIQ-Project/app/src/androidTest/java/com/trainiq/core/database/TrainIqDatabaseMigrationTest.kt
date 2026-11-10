@@ -197,6 +197,39 @@ class TrainIqDatabaseMigrationTest {
     }
 
     @Test
+    fun migration11To12RepairsTransitiveOrphansAndPreservesHistory() {
+        helper.createDatabase(TEST_DB, 11).apply {
+            seedVersion11RelationalData()
+            seedVersion11TransitiveOrphanRows()
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(
+            TEST_DB,
+            12,
+            true,
+            TrainIqMigrations.Migration11To12,
+        )
+
+        migrated.assertTransitiveOrphansRepairedAndHistoryPreserved()
+        migrated.close()
+    }
+
+    @Test
+    fun migration11ToCurrentRepairsTransitiveOrphansAndValidatesCurrentSchema() {
+        helper.createDatabase(TEST_DB, 11).apply {
+            seedVersion11RelationalData()
+            seedVersion11TransitiveOrphanRows()
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 21, true, *TrainIqMigrations.All)
+
+        migrated.assertTransitiveOrphansRepairedAndHistoryPreserved()
+        migrated.close()
+    }
+
+    @Test
     fun migration12To13AddsServingCountAndPreservesMealItems() {
         helper.createDatabase(TEST_DB, 12).apply {
             seedVersion11RelationalData()
@@ -613,6 +646,136 @@ class TrainIqDatabaseMigrationTest {
             ) VALUES (990, 404, 'FOOD', 200, 'Orphan meal item', 100.0, 100.0, 10.0, 10.0, 1.0, NULL, 0)
             """.trimIndent(),
         )
+    }
+
+    private fun SupportSQLiteDatabase.seedVersion11TransitiveOrphanRows() {
+        seedVersion11OrphanRows()
+        seedActiveWorkoutDraftState()
+        // Each parent exists initially, but its own parent is missing.
+        execSQL("UPDATE workout_exercises SET dayId = 920 WHERE id = 940")
+        execSQL("UPDATE routine_sets SET workoutExerciseId = 940 WHERE id = 950")
+        execSQL(
+            """
+            INSERT INTO workout_exercises (
+                id, dayId, exerciseId, targetSets, repRange, restSeconds,
+                target_weight_kg, target_rpe, set_type, superset_group_id, order_index
+            ) SELECT 941, 20, 404, targetSets, repRange, restSeconds,
+                target_weight_kg, target_rpe, set_type, superset_group_id, order_index
+                FROM workout_exercises WHERE id = 40
+            """.trimIndent(),
+        )
+        execSQL(
+            """
+            INSERT INTO routine_sets (
+                id, workoutExerciseId, order_index, set_type, target_reps,
+                target_weight_kg, rest_seconds, target_rpe, target_rir
+            ) SELECT 951, 941, order_index, set_type, target_reps,
+                target_weight_kg, rest_seconds, target_rpe, target_rir
+                FROM routine_sets WHERE id = 50
+            """.trimIndent(),
+        )
+        execSQL("UPDATE workout_sessions SET routine_id = 404, workout_day_id = 920 WHERE id = 60")
+        execSQL(
+            """
+            INSERT INTO performed_exercises (id, session_id, exercise_id, source_workout_exercise_id, order_index)
+            VALUES (71, 60, 30, 940, 1), (72, 60, 30, 941, 2), (73, 60, 30, 404, 3)
+            """.trimIndent(),
+        )
+        // 900 loses its day transitively; 901 is a direct orphan; 902 only loses an optional routine.
+        execSQL(
+            """
+            INSERT INTO active_workout_sessions (
+                sessionId, dayId, routineId, startedAt, updatedAt, restTimerEndsAt, restTimerTotalSeconds
+            ) VALUES (900, 920, 10, 1000, 1000, NULL, 0),
+                (901, 404, 10, 1000, 1000, NULL, 0), (902, 20, 404, 1000, 1000, NULL, 0)
+            """.trimIndent(),
+        )
+        listOf(900, 901, 902).forEach { sessionId ->
+            execSQL(
+                """
+                INSERT INTO active_workout_sets (
+                    session_id, id, exercise_id, performed_exercise_id, source_workout_exercise_id,
+                    weight, reps, rpe, reps_in_reserve, set_type, rest_seconds, order_index, completed, logged_at
+                ) SELECT $sessionId, id, exercise_id, performed_exercise_id, source_workout_exercise_id,
+                    weight, reps, rpe, reps_in_reserve, set_type, rest_seconds, order_index, completed, logged_at
+                    FROM active_workout_sets WHERE session_id = 300
+                """.trimIndent(),
+            )
+            execSQL("INSERT INTO active_workout_drafts SELECT $sessionId, exercise_id, weight, reps, rpe, set_type FROM active_workout_drafts WHERE session_id = 300")
+            execSQL("INSERT INTO active_workout_collapsed_exercises VALUES ($sessionId, 30)")
+        }
+        execSQL(
+            """
+            INSERT INTO workout_log_events (id, day_id, session_id, type, sync_status, created_at, undo_expires_at, target_event_id)
+            VALUES (910, 920, 900, 'ADD_SET', 'PENDING', 1000, NULL, NULL),
+                (911, 404, 901, 'ADD_SET', 'PENDING', 1000, NULL, NULL)
+            """.trimIndent(),
+        )
+        listOf(910, 911).forEach { eventId ->
+            execSQL(
+                """
+                INSERT INTO workout_log_event_sets (
+                    event_id, snapshot_role, snapshot_index, id, exercise_id, performed_exercise_id,
+                    source_workout_exercise_id, weight, reps, rpe, reps_in_reserve, set_type,
+                    rest_seconds, order_index, completed, logged_at
+                ) SELECT $eventId, snapshot_role, snapshot_index, id, exercise_id, performed_exercise_id,
+                    source_workout_exercise_id, weight, reps, rpe, reps_in_reserve, set_type,
+                    rest_seconds, order_index, completed, logged_at FROM workout_log_event_sets WHERE event_id = 400
+                """.trimIndent(),
+            )
+        }
+    }
+
+    private fun SupportSQLiteDatabase.assertTransitiveOrphansRepairedAndHistoryPreserved() {
+        assertVersion11RelationalDataSurvived()
+        assertVersion11OrphansRemoved()
+        assertActiveWorkoutDraftStateSurvived()
+        assertNoForeignKeyViolations()
+        listOf(
+            "SELECT COUNT(*) FROM workout_exercises WHERE id = 941",
+            "SELECT COUNT(*) FROM routine_sets WHERE id = 951",
+            "SELECT COUNT(*) FROM active_workout_sessions WHERE sessionId IN (900, 901)",
+            "SELECT COUNT(*) FROM active_workout_sets WHERE session_id IN (900, 901)",
+            "SELECT COUNT(*) FROM active_workout_drafts WHERE session_id IN (900, 901)",
+            "SELECT COUNT(*) FROM active_workout_collapsed_exercises WHERE session_id IN (900, 901)",
+            "SELECT COUNT(*) FROM workout_log_events WHERE id IN (910, 911)",
+            "SELECT COUNT(*) FROM workout_log_event_sets WHERE event_id IN (910, 911)",
+        ).forEach { sql ->
+            query(sql).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("Transitive orphans should be removed: $sql", 0, cursor.getInt(0))
+            }
+        }
+        query("SELECT routine_id, workout_day_id FROM workout_sessions WHERE id = 60").use { cursor ->
+            assertTrue("History must survive loss of its optional routine/day", cursor.moveToFirst())
+            assertTrue(cursor.isNull(0))
+            assertTrue(cursor.isNull(1))
+        }
+        query("SELECT id, source_workout_exercise_id FROM performed_exercises WHERE session_id = 60 ORDER BY id").use { cursor ->
+            assertEquals(4, cursor.count)
+            assertTrue(cursor.moveToFirst())
+            assertEquals(70L, cursor.getLong(0))
+            assertEquals(40L, cursor.getLong(1))
+            listOf(71L, 72L, 73L).forEach { id ->
+                assertTrue(cursor.moveToNext())
+                assertEquals(id, cursor.getLong(0))
+                assertTrue("Removed or absent plans must be detached from history", cursor.isNull(1))
+            }
+        }
+        query("SELECT COUNT(*) FROM workout_sets WHERE id = 80 AND sessionId = 60 AND weight = 100.0").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(1, cursor.getInt(0))
+        }
+        query("SELECT routineId FROM active_workout_sessions WHERE sessionId = 902").use { cursor ->
+            assertTrue("An active session with a valid day must survive", cursor.moveToFirst())
+            assertTrue(cursor.isNull(0))
+        }
+        listOf("active_workout_sets", "active_workout_drafts", "active_workout_collapsed_exercises").forEach { table ->
+            query("SELECT COUNT(*) FROM $table WHERE session_id = 902").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("Valid active children should survive: $table", 1, cursor.getInt(0))
+            }
+        }
     }
 
     private fun SupportSQLiteDatabase.seedActiveWorkoutDraftState() {

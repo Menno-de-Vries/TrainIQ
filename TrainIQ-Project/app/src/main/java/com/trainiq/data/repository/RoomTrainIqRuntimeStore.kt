@@ -15,6 +15,7 @@ import com.trainiq.core.database.PerformedExerciseEntity
 import com.trainiq.core.database.RecipeEntity
 import com.trainiq.core.database.RecipeIngredientEntity
 import com.trainiq.core.database.RoutineSetEntity
+import com.trainiq.core.database.RoomMirrorImportRunEntity
 import com.trainiq.core.database.SavedGoalAdviceEntity
 import com.trainiq.core.database.TrainIqDatabase
 import com.trainiq.core.database.UserProfileEntity
@@ -99,11 +100,9 @@ class RoomTrainIqRuntimeStore internal constructor(
     private val sink = RoomJsonImportSink(database)
     private val mutex = Mutex()
 
-    init {
-        scope.launch {
-            runCatching {
-                seedRoomFromLegacyJsonIfNeeded()
-            }
+    private val initializationJob = scope.launch {
+        runCatching {
+            seedRoomFromLegacyJsonIfNeeded()
         }
     }
 
@@ -167,44 +166,50 @@ class RoomTrainIqRuntimeStore internal constructor(
         )
     }.stateIn(scope, SharingStarted.Eagerly, TrainIqStorageState())
 
-    suspend fun readExportSnapshot(): TrainIqStorageState = mutex.withLock {
-        database.withTransaction {
-            val active = ActiveWorkoutTables(
-                sessions = dao.readActiveWorkoutSessionsForExport(),
-                drafts = dao.readActiveWorkoutDraftsForExport(),
-                collapsed = dao.readActiveWorkoutCollapsedExercisesForExport(),
-                sets = dao.readActiveWorkoutSetsForExport(),
-                events = dao.readWorkoutLogEventsForExport(),
-            )
-            val eventSets = dao.readWorkoutLogEventSetsForExport()
-            TrainIqStorageState(
-                hydrationEntries = dao.readHydrationForExport(),
-                profile = dao.readUserProfileForExport(),
-                routines = dao.readRoutinesForExport(),
-                days = dao.readWorkoutDaysForExport(),
-                exercises = dao.readExercisesForExport(),
-                workoutExercises = dao.readWorkoutExercisesForExport(),
-                routineSets = dao.readRoutineSetsForExport(),
-                foods = dao.readFoodItemsForExport().map { it.toStorage() },
-                recipes = dao.readRecipesForExport().map { it.toStorage() },
-                recipeIngredients = dao.readRecipeIngredientsForExport().map { it.toStorage() },
-                meals = dao.readMealsForExport().map { it.toStorage() },
-                mealItems = dao.readMealItemsForExport().map { it.toStorage() },
-                measurements = dao.readMeasurementsForExport(),
-                sessions = dao.readWorkoutSessionsForExport(),
-                performedExercises = dao.readPerformedExercisesForExport(),
-                workoutSets = dao.readWorkoutSetsForExport(),
-                activeWorkoutSession = active.toStorage(),
-                workoutLogEvents = active.events.map { event ->
-                    event.toStorage(eventSets.filter { set -> set.eventId == event.id })
-                },
-            )
+    suspend fun readExportSnapshot(): TrainIqStorageState {
+        initializationJob.join()
+        return mutex.withLock {
+            database.withTransaction {
+                val active = ActiveWorkoutTables(
+                    sessions = dao.readActiveWorkoutSessionsForExport(),
+                    drafts = dao.readActiveWorkoutDraftsForExport(),
+                    collapsed = dao.readActiveWorkoutCollapsedExercisesForExport(),
+                    sets = dao.readActiveWorkoutSetsForExport(),
+                    events = dao.readWorkoutLogEventsForExport(),
+                )
+                val eventSets = dao.readWorkoutLogEventSetsForExport()
+                TrainIqStorageState(
+                    hydrationEntries = dao.readHydrationForExport(),
+                    profile = dao.readUserProfileForExport(),
+                    routines = dao.readRoutinesForExport(),
+                    days = dao.readWorkoutDaysForExport(),
+                    exercises = dao.readExercisesForExport(),
+                    workoutExercises = dao.readWorkoutExercisesForExport(),
+                    routineSets = dao.readRoutineSetsForExport(),
+                    foods = dao.readFoodItemsForExport().map { it.toStorage() },
+                    recipes = dao.readRecipesForExport().map { it.toStorage() },
+                    recipeIngredients = dao.readRecipeIngredientsForExport().map { it.toStorage() },
+                    meals = dao.readMealsForExport().map { it.toStorage() },
+                    mealItems = dao.readMealItemsForExport().map { it.toStorage() },
+                    measurements = dao.readMeasurementsForExport(),
+                    sessions = dao.readWorkoutSessionsForExport(),
+                    performedExercises = dao.readPerformedExercisesForExport(),
+                    workoutSets = dao.readWorkoutSetsForExport(),
+                    activeWorkoutSession = active.toStorage(),
+                    workoutLogEvents = active.events.map { event ->
+                        event.toStorage(eventSets.filter { set -> set.eventId == event.id })
+                    },
+                )
+            }
         }
     }
 
     suspend fun clearAll() {
         restTimers.mutate { mutex.withLock {
-            database.dao().clearMirrorTables()
+            database.withTransaction {
+                dao.clearMirrorTables()
+                recordRoomAuthority()
+            }
         } }
     }
 
@@ -213,6 +218,7 @@ class RoomTrainIqRuntimeStore internal constructor(
             database.withTransaction {
                 dao.clearSavedGoalAdvice()
                 dao.clearMirrorUserProfile()
+                recordRoomAuthority()
             }
         }
     }
@@ -955,11 +961,42 @@ class RoomTrainIqRuntimeStore internal constructor(
 
     private suspend fun seedRoomFromLegacyJsonIfNeeded() {
         mutex.withLock {
-            if (dao.mirrorRowCount() > 0) return
             val legacyState = legacyStore.exportLegacyState()
-            if (legacyState == TrainIqStorageState()) return
-            sink.importTransaction(planner.plan(gson.toJson(legacyState)))
+            database.withTransaction {
+                if (dao.getMirrorImportRun(RoomAuthorityGenerationId) != null) return@withTransaction
+                if (dao.mirrorRowCount() == 0 && !dao.hasSuccessfulMirrorImport()) {
+                    if (!legacyStore.hasLoadedLegacyStateSuccessfully()) return@withTransaction
+                    if (legacyState != TrainIqStorageState()) {
+                        sink.importTransaction(planner.plan(gson.toJson(legacyState)))
+                    }
+                }
+                recordRoomAuthority()
+            }
         }
+    }
+
+    /** Kept outside mirror tables so deleting the last user row cannot revive a legacy backup. */
+    private suspend fun recordRoomAuthority() {
+        if (dao.getMirrorImportRun(RoomAuthorityGenerationId) != null) return
+        val now = System.currentTimeMillis()
+        dao.insertMirrorImportRun(RoomMirrorImportRunEntity(
+            generationId = RoomAuthorityGenerationId,
+            sourceFingerprint = "",
+            startedAt = now,
+            finishedAt = now,
+            status = "SUCCESS",
+            schemaVersion = database.openHelper.readableDatabase.version,
+            expectedRowCount = 0,
+            importedRowCount = 0,
+            staleRowCount = 0,
+            mismatchCount = 0,
+            jsonAuthoritative = false,
+            roomAuthoritative = true,
+        ))
+    }
+
+    private companion object {
+        const val RoomAuthorityGenerationId = "room-runtime-authority"
     }
 
     /** Planning inputs only; history, nutrition and JSON mirrors are never read or rewritten. */

@@ -25,6 +25,24 @@ import org.junit.Test
 
 class HealthConnectPermissionPolicyTest {
     @Test
+    fun stepUpdateTimeTracksFreshSelectionAndPreservesOnlySameDayCache() {
+        val fresh = HealthConnectStepDiagnostic(aggregateStepsToday = 1234, queriedAt = 200L)
+        val cached = fresh.copy(displayStepsFromCache = true)
+        fun timestamp(previous: Long?, previousDate: String?, currentDate: String?, granted: Boolean, diagnostic: HealthConnectStepDiagnostic?) =
+            resolveStepDataUpdatedAt(previous, previousDate, currentDate, granted, diagnostic, 200L)
+
+        assertEquals(200L, timestamp(100L, "today", "today", true, fresh))
+        assertEquals(100L, timestamp(100L, "today", "today", true, cached))
+        assertEquals(100L, timestamp(100L, "today", "today", true, fresh.copy(samsungHealthDirectFromCache = true)))
+        assertNull(timestamp(null, "today", "today", true, cached))
+        assertNull(timestamp(100L, "yesterday", "today", true, cached))
+        assertNull(timestamp(100L, "today", null, true, cached))
+        assertNull(timestamp(100L, "today", "today", false, fresh))
+        assertNull(timestamp(100L, "today", "today", true, null))
+        assertEquals(200L, timestamp(null, "today", "today", true, fresh))
+    }
+
+    @Test
     fun canReadStepsWhenOnlyStepPermissionIsGranted() {
         assertTrue(
             hasHealthConnectPermission(
@@ -409,7 +427,8 @@ class HealthConnectPermissionPolicyTest {
 
         assertEquals(cachedState, payload.cacheState)
         assertEquals("existing-token", payload.nextChangesToken)
-        assertEquals(987L, payload.lastSyncedAt)
+        // The provider was checked now, even though its data could not be refreshed.
+        assertEquals(now.toEpochMilli(), payload.lastSyncedAt)
         assertEquals(
             HealthMetricSyncState.FAILED,
             payload.metricStatuses.single { it.metric == HealthMetricType.STEPS }.state,

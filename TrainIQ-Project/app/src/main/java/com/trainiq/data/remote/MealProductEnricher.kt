@@ -33,7 +33,7 @@ class MealProductEnricher @Inject constructor(client: OkHttpClient) {
             val cached = synchronized(cache) { cache[key]?.takeIf { System.currentTimeMillis() - it.first < 300_000 } }
             if (cached != null) cached.second else {
                 val product = try { if (barcode != null) lookupFoodProduct(barcode, provider,
-                    primary = { code -> transport.get("https://world.openfoodfacts.org/api/v2/product/$code.json?fields=status,product_name,nutriments,categories_tags")?.let { parseOpenFoodFactsProduct(code, it) } },
+                    primary = { code -> transport.get("https://world.openfoodfacts.org/api/v2/product/$code.json?fields=$OpenFoodFactsProductFields")?.let { parseOpenFoodFactsProduct(code, it) } },
                     fallback = { code ->
                         val base = com.trainiq.BuildConfig.FOOD_GATEWAY_URL
                         val gtin = com.trainiq.domain.model.fatSecretGtin13(code)
@@ -76,7 +76,8 @@ internal suspend fun enrichMealProducts(
             }
             val product = resolved[identity] ?: continue
             // OFF uses _100g keys for liquid bases too; do not invent a density.
-            if (product.provider == FoodProviderMode.OPEN_FOOD_FACTS && product.isBeverage) continue
+            if (product.nutritionBasis != com.trainiq.domain.model.ProductNutritionBasis.PER_100_GRAMS ||
+                (product.provider == FoodProviderMode.OPEN_FOOD_FACTS && product.isBeverage)) continue
             val factor = item.estimatedGrams / 100.0
             val nutrition = NutritionFacts(product.caloriesPer100g * factor, product.proteinPer100g * factor,
                 product.carbsPer100g * factor, product.fatPer100g * factor)
@@ -92,7 +93,7 @@ internal suspend fun enrichMealProducts(
 
 internal suspend fun searchExactMealProduct(item: MealScanItem, transport: MealProductTransport): BarcodeProductLookupResult? {
     val query = listOfNotNull(item.brand, item.productName, item.variant).joinToString(" ").take(200)
-    val url = "https://world.openfoodfacts.org/cgi/search.pl?search_terms=${URLEncoder.encode(query, "UTF-8")}&search_simple=1&action=process&json=1&page_size=5&fields=code,product_name,brands,nutriments,categories_tags"
+    val url = "https://world.openfoodfacts.org/cgi/search.pl?search_terms=${URLEncoder.encode(query, "UTF-8")}&search_simple=1&action=process&json=1&page_size=5&fields=code,brands,$OpenFoodFactsProductFields"
     return transport.get(url)?.let { selectExactMealProduct(item, it) }
 }
 

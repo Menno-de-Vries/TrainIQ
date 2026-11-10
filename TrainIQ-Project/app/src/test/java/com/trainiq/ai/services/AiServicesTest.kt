@@ -65,6 +65,22 @@ class AiServicesTest {
         assertEquals(80.0, result.weight, 0.0)
     }
 
+    @Test fun muscleMassOnlyContextNeverOverridesPhotographedWeight() = runTest {
+        val service = BodyMeasurementPhotoService(object : AiJsonGenerator {
+            override suspend fun generateJson(request: AiRouteRequest) = AiRouteResult(AiProvider.OPENAI, "fixture",
+                """{"weight":80,"bodyFat":20,"muscleMass":55,"unit":"kg","confidence":"high","notes":null}""")
+        }, { AiReadiness.CONFIGURED }, { byteArrayOf(1) })
+        val result = service.analyzeScaleImage("fixture.jpg", "spiermassa 63 kg")
+        assertEquals(80.0, result.weight, 0.0)
+        assertEquals(63.0, result.muscleMass, 0.0)
+    }
+
+    @Test fun unlabeledWeightCanFollowLabeledMuscleMass() {
+        val overrides = parseBodyMeasurementContextOverrides("spiermassa 63 kg; weegschaal toont 82,4 kg")
+        assertEquals(82.4, overrides.weight!!, 0.0)
+        assertEquals(63.0, overrides.muscleMass!!, 0.0)
+    }
+
     @Test
     fun parseMealContextOverrides_acceptsBulletedNumberedAndParenthesizedWeights() {
         val overrides = parseMealContextOverrides("- brood 35 g\n2. boter: 5 g\n• kiprollade (25 g)\n4) 20 g kaas")

@@ -376,6 +376,8 @@ data class FoodItem(
     val updatedAt: Long,
 )
 
+enum class ProductNutritionBasis { PER_100_GRAMS, PER_100_MILLILITRES }
+
 data class BarcodeProductLookupResult(
     val barcode: String,
     val name: String,
@@ -386,6 +388,7 @@ data class BarcodeProductLookupResult(
     val provider: FoodProviderMode = FoodProviderMode.OPEN_FOOD_FACTS,
     val explicitServingMl: Double? = null,
     val isBeverage: Boolean = false,
+    val nutritionBasis: ProductNutritionBasis = ProductNutritionBasis.PER_100_GRAMS,
 )
 
 data class FoodPortion(

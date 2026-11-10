@@ -78,6 +78,8 @@ import com.trainiq.domain.model.WeeklyReportResult
 import com.trainiq.ai.services.safeUserMessage
 import com.trainiq.domain.model.WeeklyReportSource
 import com.trainiq.domain.model.buildGoalBaseline
+import com.trainiq.domain.model.isWeightLossGoal
+import com.trainiq.domain.model.isMuscleGainGoal
 import com.trainiq.domain.model.goalAdviceProfileFingerprint
 import com.trainiq.domain.usecase.GenerateGoalAdviceUseCase
 import com.trainiq.domain.usecase.GenerateWeeklyReportUseCase
@@ -424,8 +426,8 @@ private fun GoalAdviceInput.toDeterministicGoalAdvice(): GoalAdvice {
         manualCalorieTarget = manualCalorieTarget,
     )
     val trainingFocus = when {
-        goal.contains("bulk", ignoreCase = true) -> "Progressieve overload op compoundoefeningen"
-        goal.contains("cut", ignoreCase = true) || goal.contains("fat", ignoreCase = true) -> "Consistentie, stappen en herstel"
+        goal.isMuscleGainGoal() -> "Progressieve overload op compoundoefeningen"
+        goal.isWeightLossGoal() -> "Consistentie, stappen en herstel"
         bodyFat > 20 -> "Body recomposition met consistente krachttraining"
         else -> "Gebalanceerde krachtopbouw en herstel"
     }

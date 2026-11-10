@@ -14,6 +14,19 @@ import org.junit.Test
 
 class BarcodeProductLookupServiceTest {
     @Test
+    fun directBarcodeLookupDoesNotOfferVolumeNutritionAsGramNutrition() = runTest {
+        val connection = FakeHttpConnection("""{"status":1,"product":{"product_name":"Olijfolie","product_quantity":500,"product_quantity_unit":"ml","categories_tags":["en:olive-oils"],"nutriments":{"energy-kcal_100g":824,"proteins_100g":0,"carbohydrates_100g":0,"fat_100g":92}}}""")
+        var requestedUrl: URL? = null
+        val error = runCatching {
+            lookupOpenFoodFactsProduct("3017620422003") { requestedUrl = it; connection }
+        }.exceptionOrNull()
+        assertTrue("Volume nutrition must require manual gram values", error is com.trainiq.domain.model.FoodLookupException)
+        assertEquals(com.trainiq.domain.model.FoodLookupFailure.INVALID_RESPONSE, (error as com.trainiq.domain.model.FoodLookupException).failure)
+        assertTrue(requestedUrl.toString().contains("product_quantity_unit"))
+        assertTrue(connection.disconnected)
+    }
+
+    @Test
     fun unknownHttp404IsNotATransportFailure() = runTest {
         val connection = FakeHttpConnection("", HttpURLConnection.HTTP_NOT_FOUND)
         assertNull(lookupOpenFoodFactsProduct("0000000000000") { connection })

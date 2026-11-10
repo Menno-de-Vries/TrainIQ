@@ -35,6 +35,8 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.trainiq.domain.model.buildGoalBaseline
+import com.trainiq.domain.model.isWeightLossGoal
+import com.trainiq.domain.model.isMuscleGainGoal
 import com.trainiq.domain.model.suggestMealType
 
 class MealAnalysisUnavailableException(
@@ -377,6 +379,9 @@ internal fun parseMealContextOverrides(context: String): MealContextOverrides {
 }
 internal fun parseBodyMeasurementContextOverrides(context: String): BodyMeasurementContextOverrides {
     if (context.isBlank()) return BodyMeasurementContextOverrides()
+    val muscleMassPattern = """(?i)\b(?:spier|spiermassa|muscle|muscle\s*mass)\s*[:=]?\s*(\d+(?:[,.]\d+)?)\s*(?:kg)?\b"""
+    // A labeled muscle value must never become the fallback unlabeled body weight.
+    val weightContext = Regex(muscleMassPattern).replace(context, " ")
     fun firstNumber(pattern: String, range: ClosedFloatingPointRange<Double>): Double? =
         Regex(pattern)
             .find(context)
@@ -387,9 +392,10 @@ internal fun parseBodyMeasurementContextOverrides(context: String): BodyMeasurem
 
     return BodyMeasurementContextOverrides(
         weight = firstNumber("""(?i)\b(?:gewicht|weight)\s*[:=]?\s*(\d+(?:[,.]\d+)?)\s*(?:kg)?\b""", 30.0..300.0)
-            ?: firstNumber("""(?i)\b(\d+(?:[,.]\d+)?)\s*kg\b""", 30.0..300.0),
+            ?: Regex("""(?i)\b(\d+(?:[,.]\d+)?)\s*kg\b""").find(weightContext)
+                ?.groupValues?.getOrNull(1)?.toAiDoubleOrNull()?.takeIf { it in 30.0..300.0 },
         bodyFat = firstNumber("""(?i)\b(?:vet|vetpercentage|body\s*fat|fat)\s*[:=]?\s*(\d+(?:[,.]\d+)?)\s*%?\b""", 0.0..100.0),
-        muscleMass = firstNumber("""(?i)\b(?:spier|spiermassa|muscle|muscle\s*mass)\s*[:=]?\s*(\d+(?:[,.]\d+)?)\s*(?:kg)?\b""", 1.0..200.0),
+        muscleMass = firstNumber(muscleMassPattern, 1.0..200.0),
     )
 }
 
@@ -933,8 +939,8 @@ class GoalAdvisorService internal constructor(
             manualCalorieTarget = manualCalorieTarget,
         )
         val trainingFocus = when {
-            goal.contains("bulk", ignoreCase = true) -> "Progressieve overload op compoundoefeningen"
-            goal.contains("cut", ignoreCase = true) || goal.contains("fat", ignoreCase = true) -> "Consistentie, stappen en herstel"
+            goal.isMuscleGainGoal() -> "Progressieve overload op compoundoefeningen"
+            goal.isWeightLossGoal() -> "Consistentie, stappen en herstel"
             bodyFat > 20 -> "Body recomposition met consistente krachttraining"
             height > 0 && weight / ((height / 100.0) * (height / 100.0)) < 22 -> "Spiermassa opbouwen met stabiel weekvolume"
             else -> "Gebalanceerde krachtopbouw en herstel"
@@ -974,9 +980,9 @@ class GoalAdvisorService internal constructor(
     }
 
     private fun buildGoalAdviceText(baseline: com.trainiq.domain.model.GoalBaseline, goal: String): String = when {
-        goal.contains("cut", ignoreCase = true) || goal.contains("fat", ignoreCase = true) || goal.contains("lose", ignoreCase = true) ->
+        goal.isWeightLossGoal() ->
             "Start twee weken met ${baseline.targetCalories} kcal, houd eiwit stabiel en verlaag pas verder als gewicht en taille niet bewegen."
-        goal.contains("bulk", ignoreCase = true) || goal.contains("gain", ignoreCase = true) ->
+        goal.isMuscleGainGoal() ->
             "Verhoog pas verder als gewicht niet langzaam stijgt en training niet vooruitgaat."
         else -> "Houd deze targets stabiel en evalueer op basis van gewichtstrend, energie en krachtprestaties."
     }

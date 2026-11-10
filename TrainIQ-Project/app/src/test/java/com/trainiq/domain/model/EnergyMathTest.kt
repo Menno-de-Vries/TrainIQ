@@ -7,6 +7,40 @@ import kotlin.math.abs
 
 class EnergyMathTest {
     @Test
+    fun dutchGoalsUseTheSameCalculationAsTheirEnglishEquivalent() {
+        listOf("Spieropbouw" to "lean bulk", "Vetverlies" to "fat loss", "Afvallen" to "fat loss")
+            .forEach { (dutch, english) ->
+                fun baseline(goal: String) = buildGoalBaseline(180.0, 90.0, 25.0, 30,
+                    BiologicalSex.MALE, "Gemiddeld actief", goal)
+                assertEquals(dutch, baseline(english), baseline(dutch))
+            }
+    }
+
+    @Test
+    fun manualCalorieBudgetCannotBeExceededByProteinAndFatTargets() {
+        val result = buildGoalBaseline(180.0, 150.0, 20.0, 30,
+            BiologicalSex.MALE, "Gemiddeld actief", "fat loss", 1200)
+        assertEquals(1200, result.targetCalories)
+        assertTrue(abs(result.targetCalories -
+            (result.proteinTarget * 4 + result.fatTarget * 9 + result.carbsTarget * 4)) <= 2)
+    }
+
+    @Test
+    fun macroBudgetsStayConsistentAcrossAcceptedManualTargetsAndWeights() {
+        for (weight in listOf(30.0, 80.0, 150.0, 300.0)) {
+            for (bodyFat in listOf(0.0, 20.0, 60.0)) {
+                for (target in listOf(1200, 2000, 6000)) {
+                    val result = buildGoalBaseline(180.0, weight, bodyFat, 30,
+                        BiologicalSex.MALE, "Gemiddeld actief", "fat loss", target)
+                    assertTrue(result.proteinTarget >= 0 && result.fatTarget >= 0 && result.carbsTarget >= 0)
+                    assertTrue("$weight/$bodyFat/$target", abs(target -
+                        (result.proteinTarget * 4 + result.fatTarget * 9 + result.carbsTarget * 4)) <= 2)
+                }
+            }
+        }
+    }
+
+    @Test
     fun buildGoalBaseline_withManualCalorieTargetKeepsBmrAndMaintenanceButRecalculatesMacros() {
         val automatic = buildGoalBaseline(
             heightCm = 195.0,

@@ -322,6 +322,7 @@ class HomeDashboardRefreshTest {
         assertEquals("Stappentoegang ontbreekt.", homeHealthCompactSummary(missing))
         assertEquals("Laatste update om ${formatHomeLastSync(1_800_000L)}", homeHealthSyncSummary(stale))
         assertNull(homeHealthSyncSummary(missing))
+        assertNull(homeHealthSyncSummary(stale.copy(stepDataUpdatedAt = null)))
     }
 
     @Test

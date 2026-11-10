@@ -804,18 +804,24 @@ object TrainIqMigrations {
     }
 
     private fun SupportSQLiteDatabase.removeVersion11ForeignKeyOrphans() {
+        // v11 has no foreign keys: remove invalid parents before repairing their descendants.
+        execSQL("DELETE FROM workout_days WHERE routineId NOT IN (SELECT id FROM workout_routines)")
+        execSQL("DELETE FROM workout_exercises WHERE dayId NOT IN (SELECT id FROM workout_days)")
+        execSQL("DELETE FROM workout_exercises WHERE exerciseId NOT IN (SELECT id FROM exercises)")
+        execSQL("DELETE FROM routine_sets WHERE workoutExerciseId NOT IN (SELECT id FROM workout_exercises)")
+
+        execSQL("DELETE FROM workout_log_events WHERE day_id NOT IN (SELECT id FROM workout_days)")
         execSQL("DELETE FROM workout_log_event_sets WHERE event_id NOT IN (SELECT id FROM workout_log_events)")
         execSQL("DELETE FROM workout_log_event_sets WHERE exercise_id NOT IN (SELECT id FROM exercises)")
-        execSQL("DELETE FROM workout_log_events WHERE day_id NOT IN (SELECT id FROM workout_days)")
 
+        execSQL("DELETE FROM active_workout_sessions WHERE dayId NOT IN (SELECT id FROM workout_days)")
+        execSQL("UPDATE active_workout_sessions SET routineId = NULL WHERE routineId IS NOT NULL AND routineId NOT IN (SELECT id FROM workout_routines)")
         execSQL("DELETE FROM active_workout_sets WHERE session_id NOT IN (SELECT sessionId FROM active_workout_sessions)")
         execSQL("DELETE FROM active_workout_sets WHERE exercise_id NOT IN (SELECT id FROM exercises)")
         execSQL("DELETE FROM active_workout_drafts WHERE session_id NOT IN (SELECT sessionId FROM active_workout_sessions)")
         execSQL("DELETE FROM active_workout_drafts WHERE exercise_id NOT IN (SELECT id FROM exercises)")
         execSQL("DELETE FROM active_workout_collapsed_exercises WHERE session_id NOT IN (SELECT sessionId FROM active_workout_sessions)")
         execSQL("DELETE FROM active_workout_collapsed_exercises WHERE exercise_id NOT IN (SELECT id FROM exercises)")
-        execSQL("DELETE FROM active_workout_sessions WHERE dayId NOT IN (SELECT id FROM workout_days)")
-        execSQL("UPDATE active_workout_sessions SET routineId = NULL WHERE routineId IS NOT NULL AND routineId NOT IN (SELECT id FROM workout_routines)")
 
         execSQL("DELETE FROM meal_items WHERE meal_id NOT IN (SELECT id FROM meals)")
         execSQL("DELETE FROM recipe_ingredients WHERE recipe_id NOT IN (SELECT id FROM recipes)")
@@ -828,11 +834,6 @@ object TrainIqMigrations {
         execSQL("UPDATE performed_exercises SET source_workout_exercise_id = NULL WHERE source_workout_exercise_id IS NOT NULL AND source_workout_exercise_id NOT IN (SELECT id FROM workout_exercises)")
         execSQL("UPDATE workout_sessions SET routine_id = NULL WHERE routine_id IS NOT NULL AND routine_id NOT IN (SELECT id FROM workout_routines)")
         execSQL("UPDATE workout_sessions SET workout_day_id = NULL WHERE workout_day_id IS NOT NULL AND workout_day_id NOT IN (SELECT id FROM workout_days)")
-
-        execSQL("DELETE FROM routine_sets WHERE workoutExerciseId NOT IN (SELECT id FROM workout_exercises)")
-        execSQL("DELETE FROM workout_exercises WHERE dayId NOT IN (SELECT id FROM workout_days)")
-        execSQL("DELETE FROM workout_exercises WHERE exerciseId NOT IN (SELECT id FROM exercises)")
-        execSQL("DELETE FROM workout_days WHERE routineId NOT IN (SELECT id FROM workout_routines)")
     }
 
     private fun SupportSQLiteDatabase.assertNoForeignKeyViolations() {

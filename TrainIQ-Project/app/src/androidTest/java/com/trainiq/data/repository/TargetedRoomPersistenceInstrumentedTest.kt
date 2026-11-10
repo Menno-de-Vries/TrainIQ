@@ -33,13 +33,6 @@ import com.trainiq.data.local.LoggedMealItemStorage
 import com.trainiq.data.local.RecipeStorage
 import com.trainiq.data.local.RecipeIngredientStorage
 import com.trainiq.data.local.TrainIqLocalStore
-import com.trainiq.data.migration.JsonRoomImportPlanner
-import com.trainiq.data.migration.RoomImportDryRun
-import com.trainiq.data.migration.RoomJsonImportSink
-import com.trainiq.data.migration.RoomMigrationChainVerificationMarker
-import com.trainiq.data.migration.RoomMigrationChainVerificationMarkerSource
-import com.trainiq.data.migration.RoomMigrationChainVerificationProvider
-import com.trainiq.data.migration.RoomRuntimeReadinessGate
 import com.trainiq.domain.model.FoodSourceType
 import com.trainiq.domain.model.ActiveWorkoutSetDraft
 import com.trainiq.domain.model.LoggedSet
@@ -1835,18 +1828,7 @@ class TargetedRoomPersistenceInstrumentedTest {
             override fun getFilesDir() = context.cacheDir.resolve("targeted-room-runtime-store").also { it.mkdirs() }
         }
         isolatedFilesContext.filesDir.resolve("trainiq-state.json").delete()
-        val planner = JsonRoomImportPlanner()
-        val sink = RoomJsonImportSink(database)
-        val legacyStore = TrainIqLocalStore(
-            context = isolatedFilesContext,
-            roomImportDryRun = RoomImportDryRun(planner, sink),
-            roomRuntimeReadinessGate = RoomRuntimeReadinessGate(database.dao()),
-            roomMigrationChainVerificationProvider = RoomMigrationChainVerificationProvider(
-                markerSource = object : RoomMigrationChainVerificationMarkerSource {
-                    override fun latestMarker(): RoomMigrationChainVerificationMarker? = null
-                },
-            ),
-        )
+        val legacyStore = TrainIqLocalStore(context = isolatedFilesContext)
         // The fixture owns observation jobs and joins them before closing the database.
         runBlocking { legacyStore.exportLegacyState() }
         val job = SupervisorJob().also { storeJobs.add(it) }
