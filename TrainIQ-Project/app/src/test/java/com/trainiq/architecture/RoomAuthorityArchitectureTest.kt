@@ -41,14 +41,15 @@ class RoomAuthorityArchitectureTest {
     }
 
     @Test
-    fun legacyRoomPreflightCannotCrashStartupLoadJob() {
+    fun legacyLocalStoreCannotTriggerRoomImports() {
         val localStore = File(mainSources, "data/local/TrainIqLocalStore.kt").readText()
         val loadJobBody = localStore.substringAfter("private val loadJob = scope.launch {")
             .substringBefore("private val legacyState")
 
         assertTrue(loadJobBody.contains("loadState()"))
-        assertTrue(loadJobBody.contains("runCatching"))
-        assertTrue(loadJobBody.contains("updateRoomPreflightStatus("))
+        assertFalse(localStore.contains("RoomImportDryRun"))
+        assertFalse(localStore.contains("RoomJsonImportSink"))
+        assertFalse(localStore.contains("TrainIqDatabase"))
     }
 
     @Test
@@ -56,11 +57,10 @@ class RoomAuthorityArchitectureTest {
         val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
         val legacySeedBody = runtimeStore.substringAfter("private suspend fun seedRoomFromLegacyJsonIfNeeded()")
             .substringBefore("private data class CorePlanTables")
-        val initBody = runtimeStore.substringAfter("init {")
+        val initBody = runtimeStore.substringAfter("private val initializationJob = scope.launch {")
             .substringBefore("val state:")
 
         assertFalse(runtimeStore.contains("suspend fun update(transform:"))
-        assertFalse(runtimeStore.contains("RoomMirrorImportRun"))
         assertTrue(initBody.contains("runCatching"))
         assertTrue(legacySeedBody.contains("legacyStore.exportLegacyState()"))
         assertTrue(legacySeedBody.contains("sink.importTransaction(planner.plan(gson.toJson(legacyState)))"))

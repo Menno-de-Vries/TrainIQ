@@ -23,7 +23,7 @@ class RoomAuthoritativeReadParityTest {
 
         assertTrue(store.contains("seedRoomFromLegacyJsonIfNeeded()"))
         assertTrue(store.contains("legacyStore.exportLegacyState()"))
-        assertTrue(store.contains("if (dao.mirrorRowCount() > 0) return"))
+        assertTrue(store.contains("dao.mirrorRowCount() == 0"))
         assertTrue(store.contains("sink.importTransaction"))
     }
 }
