@@ -82,7 +82,7 @@ internal suspend fun lookupOpenFoodFactsProduct(
     val cleanBarcode = barcode.filter(Char::isDigit).takeIf { it.length in 8..14 } ?: return@withContext null
     run {
         val encodedBarcode = URLEncoder.encode(cleanBarcode, Charsets.UTF_8.name())
-        val url = URL("$OpenFoodFactsBaseUrl$encodedBarcode.json?fields=status,product_name,nutriments,categories_tags,serving_quantity,serving_quantity_unit")
+        val url = URL("$OpenFoodFactsBaseUrl$encodedBarcode.json?fields=$OpenFoodFactsProductFields")
         val connection = (openConnection(url) as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 5_000
@@ -98,8 +98,16 @@ internal suspend fun lookupOpenFoodFactsProduct(
                 val json = reader.readText(MaxOpenFoodFactsResponseChars)
                 val status = runCatching { JsonParser.parseString(json).asJsonObject.get("status").asInt }.getOrNull()
                     ?: throw FoodLookupException(FoodLookupFailure.INVALID_RESPONSE)
-                if (status == 0) null else parseOpenFoodFactsProduct(cleanBarcode, json)
-                    ?: throw FoodLookupException(FoodLookupFailure.INVALID_RESPONSE)
+                if (status == 0) null else {
+                    val product = parseOpenFoodFactsProduct(cleanBarcode, json)
+                        ?: throw FoodLookupException(FoodLookupFailure.INVALID_RESPONSE)
+                    // The food editor stores grams. Volume-based nutrition needs manual review,
+                    // never an implicit density of 1 g/ml.
+                    if (product.nutritionBasis != ProductNutritionBasis.PER_100_GRAMS) {
+                        throw FoodLookupException(FoodLookupFailure.INVALID_RESPONSE)
+                    }
+                    product
+                }
             }
         } catch (error: java.io.IOException) { throw FoodLookupException(FoodLookupFailure.NETWORK) }
         finally {
@@ -119,6 +127,13 @@ internal fun parseOpenFoodFactsProduct(barcode: String, json: String): BarcodePr
     val protein = nutriments.safeOpenFoodFactsNumber("proteins_100g", 0.0..1000.0) ?: return null
     val carbs = nutriments.safeOpenFoodFactsNumber("carbohydrates_100g", 0.0..1000.0) ?: return null
     val fat = nutriments.safeOpenFoodFactsNumber("fat_100g", 0.0..1000.0) ?: return null
+    val isBeverage = product.getAsJsonArray("categories_tags")?.any { it.asString == "en:beverages" } == true
+    val volumeUnits = setOf("ml", "cl", "dl", "l", "milliliter", "milliliters", "litre", "liter", "litres", "liters")
+    fun unit(key: String): String = product.get(key)?.takeUnless { it.isJsonNull }?.asString?.trim()?.lowercase(java.util.Locale.ROOT).orEmpty()
+    val nutritionBasis = if (isBeverage || unit("product_quantity_unit") in volumeUnits ||
+        unit("serving_quantity_unit") in volumeUnits || unit("nutrition_data_per") == "100ml") {
+        ProductNutritionBasis.PER_100_MILLILITRES
+    } else ProductNutritionBasis.PER_100_GRAMS
     return BarcodeProductLookupResult(
         barcode = barcode,
         name = name,
@@ -129,7 +144,8 @@ internal fun parseOpenFoodFactsProduct(barcode: String, json: String): BarcodePr
         explicitServingMl = product.get("serving_quantity")?.asString?.let { quantity ->
             explicitVolumeMl(quantity, product.get("serving_quantity_unit")?.asString.orEmpty())
         },
-        isBeverage = product.getAsJsonArray("categories_tags")?.any { it.asString == "en:beverages" } == true,
+        isBeverage = isBeverage,
+        nutritionBasis = nutritionBasis,
     )
 }
 
@@ -165,3 +181,4 @@ private class OpenFoodFactsResponseTooLargeException : RuntimeException()
 
 private const val MaxOpenFoodFactsResponseChars = 256 * 1024
 private const val OpenFoodFactsBaseUrl = "https://world.openfoodfacts.org/api/v2/product/"
+internal const val OpenFoodFactsProductFields = "status,product_name,nutriments,categories_tags,serving_quantity,serving_quantity_unit,product_quantity_unit,nutrition_data_per"
