@@ -39,6 +39,7 @@ data class HealthConnectSyncPreferences(
     val cacheStateJson: String,
     val lastSyncedAt: Long,
     val changesTokensJson: String = "",
+    val stepDataUpdatedAt: Long? = null,
 )
 
 data class OnboardingPreferences(
@@ -84,6 +85,7 @@ class UserPreferencesRepository @Inject constructor(
     private val healthMetricChangesTokensKey = stringPreferencesKey("health_connect_metric_changes_tokens")
     private val healthCacheStateKey = stringPreferencesKey("health_connect_cache_state")
     private val healthLastSyncedAtKey = stringPreferencesKey("health_connect_last_synced_at")
+    private val healthStepDataUpdatedAtKey = longPreferencesKey("health_connect_step_data_updated_at")
     private val remindersEnabledKey = booleanPreferencesKey("reminders_enabled")
     private val lastMealReminderAtKey = longPreferencesKey("last_meal_reminder_at")
     private val lastWorkoutReminderAtKey = longPreferencesKey("last_workout_reminder_at")
@@ -279,6 +281,7 @@ class UserPreferencesRepository @Inject constructor(
             cacheStateJson = preferences[healthCacheStateKey].orEmpty(),
             lastSyncedAt = preferences[healthLastSyncedAtKey]?.toLongOrNull() ?: 0L,
             changesTokensJson = preferences[healthMetricChangesTokensKey].orEmpty(),
+            stepDataUpdatedAt = preferences[healthStepDataUpdatedAtKey]?.takeIf { it > 0L },
         )
     }
 
@@ -290,11 +293,14 @@ class UserPreferencesRepository @Inject constructor(
         cacheStateJson: String,
         lastSyncedAt: Long,
         changesTokensJson: String = "",
+        stepDataUpdatedAt: Long? = null,
     ) {
         context.dataStore.edit { preferences ->
             preferences[healthChangesTokenKey] = changesToken
             preferences[healthCacheStateKey] = cacheStateJson
             preferences[healthLastSyncedAtKey] = lastSyncedAt.toString()
+            if (stepDataUpdatedAt == null) preferences.remove(healthStepDataUpdatedAtKey)
+            else preferences[healthStepDataUpdatedAtKey] = stepDataUpdatedAt
             if (changesTokensJson.isBlank()) {
                 preferences.remove(healthMetricChangesTokensKey)
             } else {
@@ -309,6 +315,7 @@ class UserPreferencesRepository @Inject constructor(
             preferences.remove(healthMetricChangesTokensKey)
             preferences.remove(healthCacheStateKey)
             preferences.remove(healthLastSyncedAtKey)
+            preferences.remove(healthStepDataUpdatedAtKey)
         }
     }
 

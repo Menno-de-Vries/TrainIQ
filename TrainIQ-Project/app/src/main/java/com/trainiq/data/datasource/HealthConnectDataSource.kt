@@ -168,8 +168,16 @@ class HealthConnectDataSource @Inject constructor(
                     stepDataFreshness = HealthConnectStepDataFreshness.PERMISSION_MISSING,
                 )
             } else {
-                val syncPayload = syncTrackedMetrics(client, grantedMetrics)
+                val rawPayload = syncTrackedMetrics(client, grantedMetrics)
                 val storedState = preferencesRepository.getHealthConnectSyncPreferences()
+                val syncPayload = rawPayload.copy(stepDataUpdatedAt = resolveStepDataUpdatedAt(
+                    previousTimestamp = storedState.stepDataUpdatedAt,
+                    previousDate = readCacheStateFromStoredState(storedState).stepsLocalDate,
+                    currentDate = rawPayload.cacheState.stepsLocalDate,
+                    stepsGranted = HealthMetricType.STEPS in grantedMetrics,
+                    diagnostic = rawPayload.stepDiagnostic,
+                    checkedAt = rawPayload.lastSyncedAt,
+                ))
                 val mergedMetricTokens = mergeMetricChangesTokens(
                     storedTokens = storedState.resolvedMetricChangesTokens(requiredPermissionsByMetric.keys),
                     grantedMetrics = grantedMetrics,
@@ -185,6 +193,7 @@ class HealthConnectDataSource @Inject constructor(
                     cacheStateJson = gson.toJson(persistedCacheState),
                     lastSyncedAt = syncPayload.lastSyncedAt,
                     changesTokensJson = encodeMetricChangesTokens(mergedMetricTokens),
+                    stepDataUpdatedAt = syncPayload.stepDataUpdatedAt,
                 )
                 syncPayload.toStatus(
                     metricStatuses = syncPayload.metricStatuses.withDeniedMetrics(
@@ -512,7 +521,6 @@ class HealthConnectDataSource @Inject constructor(
             LocalDateTime.ofInstant(syncInstant, ZoneId.systemDefault()),
         )
         val normalizedCacheState = cacheState.pruneForInstant(syncInstant)
-        val hasNewUiData = normalizedCacheState != initialCacheState
 
         // Always re-aggregate: the call is a single cheap round-trip and guarantees
         // deduplication-correct results. We cannot safely reuse the cached value because
@@ -565,13 +573,7 @@ class HealthConnectDataSource @Inject constructor(
             cacheState = resolvedStepCache,
             aggregateFailed = stepAggregateFailed,
         )
-        val hasFreshAggregateData = shouldRefreshSteps &&
-            resolvedStepCache.displayStepsToday != normalizedCacheState.displayStepsToday
-        val lastSyncedAt = if (hasNewUiData || hasFreshAggregateData || metricFailures.isNotEmpty()) {
-            System.currentTimeMillis()
-        } else {
-            storedState.lastSyncedAt
-        }
+        val lastSyncedAt = System.currentTimeMillis()
 
         return SyncPayload(
             cacheState = resolvedStepCache,
@@ -665,7 +667,7 @@ class HealthConnectDataSource @Inject constructor(
             lastSyncedAt = lastSyncedAt,
             metricStatuses = metricStatuses,
             stepDataFreshness = freshness,
-            stepDataUpdatedAt = lastSyncedAt.takeIf {
+            stepDataUpdatedAt = stepDataUpdatedAt?.takeIf {
                 freshness == HealthConnectStepDataFreshness.FRESH ||
                     freshness == HealthConnectStepDataFreshness.STALE_CACHE
             },
@@ -1323,9 +1325,28 @@ internal fun mergeHealthConnectCacheMetrics(
     exerciseSessionRecords = if (HealthMetricType.WORKOUTS in updatedMetrics) updatedState.exerciseSessionRecords else cachedState.exerciseSessionRecords,
 )
 
+/** Legacy snapshots have no trustworthy step timestamp: never infer one from another metric. */
+internal fun resolveStepDataUpdatedAt(
+    previousTimestamp: Long?,
+    previousDate: String?,
+    currentDate: String?,
+    stepsGranted: Boolean,
+    diagnostic: HealthConnectStepDiagnostic?,
+    checkedAt: Long,
+): Long? {
+    if (!stepsGranted || currentDate == null || diagnostic == null) return null
+    val previousForDay = previousTimestamp.takeIf { previousDate == currentDate }
+    return if (diagnostic.displayStepsFromCache || diagnostic.samsungHealthDirectFromCache) {
+        previousForDay
+    } else {
+        checkedAt.takeIf { it > 0L }
+    }
+}
+
 internal data class SyncPayload(
     val cacheState: HealthConnectCacheState,
     val lastSyncedAt: Long,
+    val stepDataUpdatedAt: Long? = null,
     val stepDiagnostic: HealthConnectStepDiagnostic? = null,
     val nextChangesTokens: Map<HealthMetricType, String> = emptyMap(),
     val nextChangesToken: String = nextChangesTokens[HealthMetricType.STEPS].orEmpty(),
@@ -1390,7 +1411,7 @@ internal fun cachedIncrementalFailurePayload(
     val safeCachedState = cachedState.pruneForInstant(now)
     return SyncPayload(
         cacheState = safeCachedState,
-        lastSyncedAt = storedState.lastSyncedAt,
+        lastSyncedAt = now.toEpochMilli(),
         stepDiagnostic = HealthConnectStepDiagnostic(
             aggregateStepsToday = safeCachedState.aggregatedStepsToday.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
             samsungHealthStepsToday = safeCachedState.samsungHealthStepsToday
