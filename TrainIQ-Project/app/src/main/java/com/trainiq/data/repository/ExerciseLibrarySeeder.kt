@@ -10,9 +10,7 @@ class ExerciseLibrarySeeder @Inject constructor(
     private val runtimeStore: RoomTrainIqRuntimeStore,
 ) {
     suspend fun ensureSeeded() {
-        val additions = missingCanonicalExercises(runtimeStore.state.value)
-        if (additions.isEmpty()) return
-        runtimeStore.seedExerciseLibrary(additions)
+        runtimeStore.seedExerciseLibrary()
     }
 }
 

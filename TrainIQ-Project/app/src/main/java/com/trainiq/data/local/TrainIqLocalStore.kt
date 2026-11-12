@@ -116,23 +116,30 @@ class TrainIqLocalStore @Inject constructor(
     }
 
     private fun migrateLegacyMeals(state: TrainIqStorageState, raw: String): TrainIqStorageState {
-        if (state.meals.isNotEmpty() || state.mealItems.isNotEmpty()) return state
         val root = runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull() ?: return state
         val legacyMeals = root.getAsJsonArray("meals") ?: return state
         if (legacyMeals.size() == 0) return state
-        val migratedMeals = mutableListOf<LoggedMealStorage>()
-        val migratedItems = mutableListOf<LoggedMealItemStorage>()
+        val migratedMeals = state.meals.toMutableList()
+        val migratedItems = state.mealItems.toMutableList()
+        var nextItemId = (migratedItems.maxOfOrNull { it.id } ?: 0L) + 1L
         legacyMeals.forEachIndexed { index, element ->
             val obj = element.asJsonObject
+            // Modern snapshots may intentionally have no items; only the original aggregate shape needs conversion.
+            if (obj.has("timestamp") || !obj.has("date") ||
+                listOf("calories", "protein", "carbs", "fat").none(obj::has)) return@forEachIndexed
             val mealId = obj.get("id")?.asLong ?: (index + 1L)
-            migratedMeals += LoggedMealStorage(
+            val timestamp = obj.get("date").asLong
+            val parsed = state.meals[index]
+            migratedMeals[index] = LoggedMealStorage(
                 id = mealId,
-                timestamp = obj.get("date")?.asLong ?: 0L,
-                mealType = suggestMealType(obj.get("date")?.asLong ?: 0L),
-                name = "Imported meal",
+                timestamp = timestamp,
+                mealType = if (obj.has("mealType")) parsed.mealType else suggestMealType(timestamp),
+                name = parsed.name.orEmpty().ifBlank { "Imported meal" },
+                notes = parsed.notes,
             )
+            if (migratedItems.any { it.mealId == mealId }) return@forEachIndexed
             migratedItems += LoggedMealItemStorage(
-                id = index + 1L,
+                id = nextItemId++,
                 mealId = mealId,
                 calories = obj.get("calories")?.asDouble ?: 0.0,
                 protein = obj.get("protein")?.asDouble ?: 0.0,
@@ -148,7 +155,7 @@ class TrainIqLocalStore @Inject constructor(
     private fun migrateProfileAndWorkoutDefaults(state: TrainIqStorageState): TrainIqStorageState {
         val migratedProfile = state.profile?.copy(
             age = state.profile.age.takeIf { it > 0 } ?: 30,
-            sex = state.profile.sex.takeIf { it.isNotBlank() } ?: "MALE",
+            sex = state.profile.sex.orEmpty().ifBlank { "MALE" },
         )
         val migratedSessions = state.sessions.map { session ->
             if (session.caloriesBurned > 0) {
@@ -158,9 +165,10 @@ class TrainIqLocalStore @Inject constructor(
             }
         }
         val migratedMeals = state.meals.map { meal ->
+            val mealType = meal.mealType.takeIf { it in MealType.entries } ?: suggestMealType(meal.timestamp)
             meal.copy(
-                mealType = meal.mealType.takeIf { it in MealType.entries } ?: suggestMealType(meal.timestamp),
-                name = meal.name.ifBlank { meal.mealType.label },
+                mealType = mealType,
+                name = meal.name.orEmpty().ifBlank { mealType.label },
             )
         }
         return state.copy(

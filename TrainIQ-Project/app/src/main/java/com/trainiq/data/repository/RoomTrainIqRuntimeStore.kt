@@ -417,10 +417,16 @@ class RoomTrainIqRuntimeStore internal constructor(
         }
     }
 
-    suspend fun seedExerciseLibrary(exercises: List<ExerciseEntity>) {
-        if (exercises.isEmpty()) return
+    suspend fun seedExerciseLibrary() {
+        initializationJob.join()
         mutex.withLock {
-            dao.insertExercises(exercises)
+            database.withTransaction {
+                // A failed first legacy load must remain recoverable on the next startup.
+                if (dao.getMirrorImportRun(RoomAuthorityGenerationId) == null) return@withTransaction
+                val current = TrainIqStorageState(exercises = dao.readExercisesForExport())
+                val additions = missingCanonicalExercises(current)
+                if (additions.isNotEmpty()) dao.insertExercises(additions)
+            }
         }
     }
 

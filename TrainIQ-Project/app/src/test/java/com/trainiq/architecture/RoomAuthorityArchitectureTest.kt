@@ -601,11 +601,16 @@ class RoomAuthorityArchitectureTest {
         val runtimeStore = File(mainSources, "data/repository/RoomTrainIqRuntimeStore.kt").readText()
         val dao = File(mainSources, "core/database/TrainIqDao.kt").readText()
 
-        assertTrue(ensureSeededBody.contains("missingCanonicalExercises(runtimeStore.state.value)"))
-        assertTrue(ensureSeededBody.contains("runtimeStore.seedExerciseLibrary(additions)"))
+        assertFalse(ensureSeededBody.contains("runtimeStore.state"))
+        assertTrue(ensureSeededBody.contains("runtimeStore.seedExerciseLibrary()"))
         assertFalse(ensureSeededBody.contains("runtimeStore.update"))
-        assertTrue(runtimeStore.contains("suspend fun seedExerciseLibrary(exercises: List<ExerciseEntity>)"))
-        assertTrue(runtimeStore.contains("dao.insertExercises(exercises)"))
+        val seedBody = runtimeStore.substringAfter("suspend fun seedExerciseLibrary()")
+            .substringBefore("suspend fun replaceWorkoutExerciseInActiveWorkout(")
+        assertTrue(seedBody.contains("initializationJob.join()"))
+        assertTrue(seedBody.contains("mutex.withLock"))
+        assertTrue(seedBody.contains("database.withTransaction"))
+        assertTrue(seedBody.contains("dao.readExercisesForExport()"))
+        assertTrue(seedBody.contains("dao.insertExercises(additions)"))
         assertTrue(dao.contains("suspend fun insertExercises(exercises: List<ExerciseEntity>)"))
     }
 
