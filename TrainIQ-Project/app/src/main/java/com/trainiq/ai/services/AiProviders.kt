@@ -604,7 +604,9 @@ internal suspend fun routeAiProviderRequest(
                         readiness = settings.readiness(),
                     )
                 }
-                throw error
+                // Keep HTTP status/category through feature fallback handling; a raw
+                // HttpException would otherwise become a generic local fallback.
+                throw if (error is HttpException) safeFailure else error
             }
             hasRecoverableFailure = true
         }
