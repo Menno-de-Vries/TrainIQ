@@ -154,6 +154,7 @@ internal fun Throwable.toAiUserMessage(defaultMessage: String): String = when (v
 }
 
 private fun AiProviderUnavailableException.toUserMessage(): String {
+    terminalFailure?.message?.let { return it }
     if (failures.isEmpty()) {
         return "Er is geen AI-provider ingesteld. Voeg een Gemini- of OpenAI-sleutel toe in Instellingen."
     }

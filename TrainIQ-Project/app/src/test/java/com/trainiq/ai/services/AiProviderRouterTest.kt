@@ -62,10 +62,135 @@ class AiProviderRouterTest {
                 request = weeklyRequest(), clientFor = { client }, onFailureDiagnostic = { diagnostics += it },
             )
         }.exceptionOrNull()
-        assertEquals(failure, error)
+        assertTrue(error is AiProviderRequestException)
+        val providerFailure = error as AiProviderRequestException
+        assertEquals(AiProvider.GEMINI, providerFailure.provider)
+        assertEquals(AiFailureCategory.REQUEST_CONFIGURATION, providerFailure.category)
+        assertEquals(400, providerFailure.httpStatus)
         assertEquals(listOf(mapOf("provider" to "gemini", "feature" to "weekly_report", "category" to "request_configuration", "http_status" to "400")), diagnostics)
         assertFalse(diagnostics.toString().contains("private"))
         assertFalse(diagnostics.toString().contains("gemini-key"))
+    }
+
+    @Test
+    fun mealPhotoGeminiBadRequestRemainsActionableInsteadOfGenericFallback() = runTest {
+        assertMealPhotoGeminiTerminalHttpFailure(400, AiFailureCategory.REQUEST_CONFIGURATION, "geldige aanvraag")
+    }
+
+    @Test
+    fun mealPhotoGeminiAuthenticationFailureRemainsActionableInsteadOfGenericFallback() = runTest {
+        assertMealPhotoGeminiTerminalHttpFailure(401, AiFailureCategory.AUTHENTICATION, "API-sleutel")
+    }
+
+    @Test
+    fun mealPhotoGeminiAccessFailureRemainsActionableInsteadOfGenericFallback() = runTest {
+        assertMealPhotoGeminiTerminalHttpFailure(403, AiFailureCategory.ACCESS, "projectrechten")
+    }
+
+    private suspend fun assertMealPhotoGeminiTerminalHttpFailure(
+        status: Int,
+        expectedCategory: AiFailureCategory,
+        expectedAction: String,
+    ) {
+        val diagnostics = mutableListOf<Map<String, String>>()
+        val api = object : com.trainiq.data.remote.GeminiApi {
+            override suspend fun generateContent(
+                model: String,
+                apiKey: String,
+                request: com.trainiq.data.model.GeminiRequest,
+            ): com.trainiq.data.model.GeminiResponse {
+                throw HttpException(Response.error<Unit>(status,
+                    "gemini-key prompt-private image-private".toResponseBody()))
+            }
+        }
+        val client = GeminiModelClient(api)
+        val service = MealAnalysisService(
+            aiJsonGenerator = object : AiJsonGenerator {
+                override suspend fun generateJson(request: AiRouteRequest) = routeAiProviderRequest(
+                    settings = aiSettings(AiProviderPreference.GEMINI_FIRST, "gemini-key", ""),
+                    request = request,
+                    clientFor = { client },
+                    onFailureDiagnostic = { diagnostics += it },
+                )
+            },
+            isAiReady = { true },
+            imageBytesProvider = { "image-private".toByteArray() },
+        )
+
+        val error = runCatching {
+            service.analyzeMealImage("fixture.jpg", "prompt-private", 43_200_000L)
+        }.exceptionOrNull()
+
+        assertTrue("HTTP $status must not become an empty local fallback", error is AiProviderRequestException)
+        val failure = error as AiProviderRequestException
+        assertEquals(AiProvider.GEMINI, failure.provider)
+        assertEquals(AiFeature.MEAL_SCAN, failure.feature)
+        assertEquals(expectedCategory, failure.category)
+        assertEquals(status, failure.httpStatus)
+        val message = failure.toAiUserMessage("generic")
+        assertTrue(message.contains("Gemini"))
+        assertTrue(message.contains(expectedAction))
+        assertEquals(status.toString(), diagnostics.single()["http_status"])
+        assertEquals(expectedCategory.name.lowercase(), diagnostics.single()["category"])
+        listOf("gemini-key", "prompt-private", "image-private").forEach { privateValue ->
+            assertFalse(message.contains(privateValue))
+            assertFalse(diagnostics.toString().contains(privateValue))
+        }
+    }
+
+    @Test
+    fun mealPhotoTransientPrimaryThenTerminalFallbackShowsTerminalActionWithoutPrivateInput() = runTest {
+        for ((category, status, action) in listOf(
+            Triple(AiFailureCategory.AUTHENTICATION, 401, "API-sleutel"),
+            Triple(AiFailureCategory.REQUEST_CONFIGURATION, 400, "geldige aanvraag"),
+        )) {
+            val diagnostics = mutableListOf<Map<String, String>>()
+            val gemini = GeminiModelClient(object : com.trainiq.data.remote.GeminiApi {
+                override suspend fun generateContent(
+                    model: String,
+                    apiKey: String,
+                    request: com.trainiq.data.model.GeminiRequest,
+                ): com.trainiq.data.model.GeminiResponse = throw java.io.IOException("prompt-private image-private")
+            })
+            val openAi = FakeAiModelClient(AiProvider.OPENAI, AiProviderRequestException(
+                provider = AiProvider.OPENAI,
+                feature = AiFeature.MEAL_SCAN,
+                category = category,
+                httpStatus = status,
+                cause = IllegalArgumentException("openai-key prompt-private image-private"),
+            ))
+            val service = MealAnalysisService(
+                aiJsonGenerator = object : AiJsonGenerator {
+                    override suspend fun generateJson(request: AiRouteRequest) = routeAiProviderRequest(
+                        settings = aiSettings(AiProviderPreference.GEMINI_FIRST, "gemini-key", "openai-key", true),
+                        request = request,
+                        clientFor = { if (it == AiProvider.GEMINI) gemini else openAi },
+                        onFailureDiagnostic = { diagnostics += it },
+                    )
+                },
+                isAiReady = { true },
+                imageBytesProvider = { "image-private".toByteArray() },
+            )
+
+            val error = runCatching {
+                service.analyzeMealImage("fixture.jpg", "prompt-private", 43_200_000L)
+            }.exceptionOrNull()
+
+            assertTrue(error is AiProviderUnavailableException)
+            val unavailable = error as AiProviderUnavailableException
+            assertEquals(category, unavailable.terminalFailure?.category)
+            assertEquals(status, unavailable.terminalFailure?.httpStatus)
+            assertFalse(unavailable.allowsDeterministicAiFallback())
+            val message = unavailable.toAiUserMessage("generic")
+            assertTrue("Terminal provider must own the actionable message: $message", message.contains("OpenAI"))
+            assertTrue("Terminal category must survive: $message", message.contains(action))
+            assertEquals(status.toString(), diagnostics.last()["http_status"])
+            assertEquals(category.name.lowercase(), diagnostics.last()["category"])
+            listOf("gemini-key", "openai-key", "prompt-private", "image-private").forEach { privateValue ->
+                assertFalse(message.contains(privateValue))
+                assertFalse(diagnostics.toString().contains(privateValue))
+            }
+        }
     }
 
     @Test
