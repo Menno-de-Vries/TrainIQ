@@ -48,6 +48,9 @@ import com.trainiq.core.theme.spacing
 import com.trainiq.core.theme.trainIqColors
 import com.trainiq.domain.model.HealthConnectState
 import com.trainiq.domain.model.HealthConnectStatus
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun ScreenHeader(
@@ -186,7 +189,9 @@ fun PermissionManagerCard(
                 HealthConnectState.UNSUPPORTED -> Text("Dit apparaat ondersteunt Health Connect niet.", style = MaterialTheme.typography.bodyMedium)
             }
             status.lastSyncedAt?.let {
-                Text("Laatst gesynchroniseerd: $it", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val time = Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault())
+                    .format(DateTimeFormatter.ofPattern("HH:mm"))
+                Text("Laatst gecontroleerd om $time", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
